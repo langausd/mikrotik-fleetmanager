@@ -101,6 +101,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 | Aufgabe | Vorgehen |
 |---|---|
 | VLAN hinzufügen/ändern/löschen | `cfm/work/vlans.rsc` editieren → `$cfmRelease msg="VLAN 180"` |
+| Vorher sehen, was sich ändert | `$cfmPlan host=sw1`: Probelauf gegen `work/`, das Gerät ändert nichts |
+| Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
 | Status der Flotte | `$cfmStatus` |
 | Ring vorziehen | `$cfmPromote` (bzw. automatisch nach `ringSoak`) |
@@ -111,6 +113,9 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 | Hand-Objekte finden | `$cfmAudit host=sw1` → `$cfmAudit host=sw1 op=mark sel=A2` / `op=purge sel=A5` |
 | Gerät tauschen | Ersatz bootstrappen → `$cfmEnroll name=sw1 ip=…` (neue Seriennummer wird übernommen) |
 | Manager-Ausfall | Geräte ziehen automatisch von cm2. Dauerhaft: `$cfmPromoteManager` auf cm2 |
+| RouterOS aktualisieren | `$cfmUpgrade ver=7.25 ring=0` (sofort) bzw. `host=sw1 at="2026-10-01 02:00"` (einmaliges Wartungsfenster). Der Manager lädt vorher alle Pakete; ältere Zielversion = Downgrade. Übersicht: `$cfmUpgrade`, zurückziehen: `cancel=yes` |
+| Geräteschlüssel erneuern | `$cfmRekey host=sw1` bzw. `all=yes` |
+| Archiv verkleinern | automatisch nach jedem Release (`archiveKeep`), von Hand `$cfmArchivePrune keep=5` |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 
@@ -149,6 +154,12 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Status-Dateien der Geräte werden am Manager nur als JSON gelesen, nie ausgeführt.
 * Der Werks-User `admin` wird abgeschaltet, sobald auf einem Gerät ein eigener Admin-User aktiv ist
   (`adminUser` in `global.rsc`, Ausnahmen pro Gerät im Hostfile).
+* Vor jedem Secret-Push beweist das Gerät per **Challenge-Response**, dass es seinen Geräteschlüssel
+  kennt. Ein Gerät, das sich nur unter der IP ausgibt, bekommt keine Secrets.
+* **Minimale Firewall** auf Switches, APs und Managern: nur Antworten, ICMP und Management-Netze
+  (MGMT, `mgmtAccess`, `mgmtExtra`), Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. IPv6
+  auf allen Geräten nur ICMPv6 und Link-Local aus dem MGMT-VLAN. Eigene Regeln: Chain `local-input`.
+* RouterOS-Pakete lädt nur der Manager; Geräte holen sie per SFTP, RouterOS prüft die Signatur.
 
 ## Grenzen & Hinweise
 
@@ -158,6 +169,10 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * RouterOS ≥ 7.21 empfohlen (getestet mit 7.24.2 CHR). Ab 7.24 brauchen Skripte, die aus Winbox
   gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.
 * Das CHR-Labor testet alles außer echten Funkteilen (CAPsMAN-Config ja, Radios nein).
+* `$cfmPlan` überspringt `hosts/*.post.rsc` (dort sind beliebige Befehle erlaubt). Direkte Befehle in
+  eigenen Rollen nur mit `:if ($cfmDry != true) do={ … }`, sonst würde der Probelauf sie ausführen.
+* RouterOS-Pakete brauchen ca. 20 MB pro Architektur und Version (`pkgPath` für USB/NVMe). Sie
+  werden nicht auf den Backup-Manager gespiegelt; offene Aufträge brauchen den Primary.
 * **Eigene Templates schreiben:** Objekte mit `$cfmEnsure m=<menü> k=<key> p=({…})` anlegen
   (verwaltet inkl. Aufräumen), Singletons/Built-ins mit `$cfmSet`. Funktionen als Anweisung **ohne**
   eckige Klammern aufrufen: Eine Zeile, die mit `[` beginnt, liest RouterOS u.U. als Fortsetzung

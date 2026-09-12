@@ -5,7 +5,7 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmDl
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
-:global cfmHas; :global cfmLog
+:global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
 
 :local br "bridge"
 :local mv [:tostr ($cfmG->"mgmtVlan")]
@@ -54,7 +54,7 @@ $cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=({"name"=$br;"protoco
     # Port ausdrücklich NICHT in der Bridge (wan/off): fremde Einträge entfernen
     :foreach bid in=[/interface/bridge/port/find where interface=$p and !dynamic] do={
       :if (!([:tostr [/interface/bridge/port/get $bid comment]] ~ "^cfm")) do={
-        /interface/bridge/port/remove $bid
+        :if ($cfmDry != true) do={ /interface/bridge/port/remove $bid }
         $cfmLog ("Port " . $p . " aus Bridge genommen (Profil " . $spec . ")")
       }
     }
@@ -112,6 +112,43 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 }
 $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
 
+# --- Minimale Firewall (D31). Nicht-Router bekommen einen input-Block, Router haben die
+#     Zonen-Firewall der Rolle router. Erlaubt: Antworten, ICMP, Management-Netze (MGMT-Netz,
+#     mgmtAccess-Zonen, mgmtExtra), auf Managern DHCP im Onboarding-VLAN. Eigene Regeln gehören
+#     in die Chain local-input; der Rest wird begrenzt geloggt (cfm-drop) und verworfen. ---
+:if (!$isRouter) do={
+  :local fa $an
+  :set ($fa->($mn->"net")) 1
+  :foreach n,x in=$fa do={ $cfmEnsure m="/ip/firewall/address-list" k=("al:mgmt:" . $n) p=({"list"="cfm-mgmt";"address"=$n}) }
+  :local r ({})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"connection-state"="established,related,untracked"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"connection-state"="invalid"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="icmp"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"src-address-list"="cfm-mgmt"})
+  # Manager: DHCP-Anfragen der Werksgeräte (Broadcast). Ohne Interface-Bindung, weil das
+  # Onboarding-VLAN-Interface erst die Rolle manager anlegt; der DHCP-Server läuft nur dort.
+  :if ($isMgr) do={
+    :local ob false
+    :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"onboard")] = "yes") do={ :set ob true } }
+    :if ($ob) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="udp";"dst-port"="67"}) }
+  }
+  :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"dst-address"="127.0.0.1"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="log";"log-prefix"="cfm-drop";"limit"="10/1m,5:packet"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="drop"})
+  $cfmBlock m="/ip/firewall/filter" k="fwb" l=$r
+}
+# IPv6 auf allen Geräten (bis zum IPv6-Konzept): Antworten, ICMPv6, Link-Local aus dem MGMT-VLAN
+:local r6 ({})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="accept";"connection-state"="established,related,untracked"})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="drop";"connection-state"="invalid"})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="accept";"protocol"="icmpv6"})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="accept";"src-address"="fe80::/10";"in-interface-list"="MGMT"})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="log";"log-prefix"="cfm-drop6";"limit"="10/1m,5:packet"})
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="drop"})
+$cfmBlock m="/ipv6/firewall/filter" k="fw6" l=$r6
+
 # --- Zeit & Logging ---
 $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfmG->"tz")})
 :local sl [:tostr ($cfmG->"syslog")]
@@ -134,6 +171,9 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
 $cfmEnsure m="/system/script" k="sys:conf" n=({"name"="cfm-conf"}) p=({"name"="cfm-conf";"source"=$conf;"policy"="read"})
 $cfmEnsure m="/system/script" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"="cfm-agent";"source"=[/file get ($cfmDl . "/lib/agent.rsc") contents];"policy"="ftp,reboot,read,write,policy,test,password,sensitive"})
 $cfmEnsure m="/system/scheduler" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"="cfm-agent";"start-time"="startup";"interval"=($cfmG->"interval");"on-event"="/system script run cfm-agent"})
+# Mit Intervall läuft "startup" erst nach dem ersten Intervall (7.24). Eigener Boot-Scheduler,
+# damit ein Gerät nach jedem Neustart (Update, Rollback, Stromausfall) gleich Status meldet.
+$cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}) p=({"name"="cfm-agent-boot";"start-time"="startup";"interval"="0s";"on-event"=":delay 20s; /system script run cfm-agent"})
 
 # --- Werks-User admin abschalten (global adminUser="disable"), sobald hier mindestens ein
 #     eigener Admin-User aus users aktiv ist – vorher nie, sonst droht Aussperren ---

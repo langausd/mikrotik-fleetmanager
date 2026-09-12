@@ -6,7 +6,7 @@
 # Wird von manager-backup.rsc mit cfmIsBackup=true wiederverwendet.
 # ============================================================
 :global cfmG; :global cfmWifi; :global cfmMf; :global cfmDl
-:global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmLog
+:global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmLog; :global cfmDry
 :global cfmIsBackup
 
 :local backup ($cfmIsBackup = true)
@@ -39,14 +39,18 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
 #     Schlüssel des angemeldeten Users – nötig, sobald der Werks-User admin abgeschaltet ist ---
 :foreach u,g in=($cfmG->"users") do={
   :if ([:len [/user/find where name=$u]] > 0 and [:len [/user/ssh-keys/private/find where user=$u]] = 0) do={
-    /ip/ssh/export-host-key key-file-prefix=cfm-uk
-    :delay 1s
-    :onerror e in={ /user/ssh-keys/private/import user=$u private-key-file=cfm-uk_ed25519.pem; $cfmLog ("Manager-Schlüssel für " . $u . " importiert") } do={ $cfmLog ("Manager-Schlüssel für " . $u . " fehlgeschlagen: " . $e) }
-    :onerror e in={ /file/remove [find where name~"^cfm-uk"] } do={}
+    :if ($cfmDry = true) do={ $cfmLog ("Manager-Schlüssel für " . $u . " würde importiert") } else={
+      /ip/ssh/export-host-key key-file-prefix=cfm-uk
+      :delay 1s
+      :onerror e in={ /user/ssh-keys/private/import user=$u private-key-file=cfm-uk_ed25519.pem; $cfmLog ("Manager-Schlüssel für " . $u . " importiert") } do={ $cfmLog ("Manager-Schlüssel für " . $u . " fehlgeschlagen: " . $e) }
+      :onerror e in={ /file/remove [find where name~"^cfm-uk"] } do={}
+    }
   }
 }
-:foreach d in={"work";"meta";"live";"live/m";"archive";"state";"vault"} do={
-  :if ([:len [/file find where name=($base . "/" . $d)]] = 0) do={ :onerror e in={ /file add name=($base . "/" . $d) type=directory } do={} }
+:if ($cfmDry != true) do={
+  :foreach d in={"work";"meta";"live";"live/m";"archive";"state";"vault"} do={
+    :if ([:len [/file find where name=($base . "/" . $d)]] = 0) do={ :onerror e in={ /file add name=($base . "/" . $d) type=directory } do={} }
+  }
 }
 
 # --- Onboarding-VLAN (vlans.rsc: onboard="yes"): Adresse = Host-Anteil der MGMT-IP,

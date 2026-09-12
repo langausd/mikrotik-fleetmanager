@@ -15,6 +15,8 @@
   "reapply"="1d";
   "watchdog"="5m";
   "ringSoak"={"30m";"2h"};
+  "archiveKeep"=10;
+  "pkgPath"="";
   "mgmtAccess"="mgmt";
   "mgmtExtra"={};
   "policy"={
@@ -35,6 +37,9 @@
 # Erläuterungen:
 #  managers   Fallback-Liste (Primary zuerst). Geräte ziehen per SFTP von hier.
 #  ringSoak   Wartezeit nach erfolgreichem Ring 0 -> 1 bzw. 1 -> 2. "manual" = nur per $cfmPromote.
+#  archiveKeep  so viele Versionen bleiben im Archiv (plus alle, die Ringe/Geräte nutzen).
+#  pkgPath    Ablage der RouterOS-Pakete für $cfmUpgrade, leer = <cfm>/pkg. Bei kleinem Flash
+#             auf USB/NVMe legen, z.B. "usb1/cfm-pkg" (ca. 20 MB pro Architektur und Version).
 #  policy     Zonen-Matrix: von-Zone = erlaubte Ziel-Zonen ("wan" = Internet, "*" = alles,
 #             "mtupdate" = nur die MikroTik-Update-Server aus onboard.mtHosts).
 #  rosChannel Update-Kanal beim Onboarding; rosMin = Mindestversion (sonst Abbruch).

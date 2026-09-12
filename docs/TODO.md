@@ -60,21 +60,27 @@ die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem ne
    per `/file get` nur etwa 60 KB, `$cfmRelease` lehnt größere Dateien ab).
 2. **Benachrichtigungen** (E-Mail oder Push-Dienst wie ntfy/Telegram) bei Fehler/Rollback, stummen
    Geräten, gescheitertem Onboarding, CAPsMAN-Übernahme durch den Backup-Manager.
-3. **Archiv aufräumen:** z.B. die letzten 10 Versionen plus alle von Ringen genutzten behalten,
-   damit der Flash des Managers nicht vollläuft (jede Version ≈ 150 KB).
+3. ~~**Archiv aufräumen**~~ – *erledigt (D27):* nach jedem Release und auf dem Backup-Spiegel;
+   behalten werden `archiveKeep` (10) plus alle von Ringen/Geräten genutzten Versionen.
 4. **Prüfskript für RouterOS-Fallen** (Zeile beginnt mit `[`, `\"` in Argumenten, `:return` in
    `:onerror`, Slash-Syntax für geräteabhängige Menüs) als Git-Pre-Commit-Hook und in einer
    CI-Pipeline; dort zusätzlich `:parse` und, wo KVM verfügbar ist, `e2e.sh`.
-5. **Inhaltliche Prüfung beim Release:** VLANs aus Profilen/`wifi.rsc` vorhanden, Zonen aus
-   `policy` vorhanden, keine doppelten MGMT-IPs, Hostfile zu jedem Inventar-Eintrag.
+5. ~~**Inhaltliche Prüfung beim Release**~~ – *erledigt (D27):* `$cfmCheck`, Fehler stoppen das
+   Release (`force=yes` übergeht sie), fehlende Hostfiles sind Warnungen.
 
 ### Mittelfristig
 
-6. **Plan-Modus `$cfmPlan host=<n>`:** Gerät zeigt, was ein Apply ändern würde, ohne es auszuführen.
-7. **RouterOS-Versionspflege in Ringen:** Zielversion in `global.rsc`, Rollout über die Canary-Ringe.
-8. **Identitätsprüfung vor dem Secret-Push** (Gerät beweist Kenntnis seines Geräteschlüssels,
-   da Host-Schlüssel nicht geprüft werden) und regelmäßige Erneuerung der Schlüssel.
-9. **Minimale Firewall auf allen Geräten** (Switches/APs haben bisher nur die Dienst-Adressfilter).
+6. ~~**Plan-Modus**~~ – *erledigt (D29):* `$cfmPlan host=<n>`, Probelauf gegen `work/` (ohne
+   `*.post.rsc`). Offen: Grenze der Berichtsgröße bei sehr großen Plänen prüfen.
+7. ~~**RouterOS-Versionspflege**~~ – *erledigt (D30):* `$cfmUpgrade` (sofort oder einmaliges
+   Wartungsfenster, auch Downgrade), Pakete vom Manager, automatisches Aufräumen. Offen: Pakete auf
+   den Backup-Manager spiegeln; Zusatzpakete (`wifi-qcom` …) und mehrere Architekturen auf echter
+   Hardware testen; RouterBOOT-Firmware nach dem Update (bisher `auto-upgrade` + nächster Neustart).
+8. ~~**Identitätsprüfung vor dem Secret-Push**~~ – *erledigt (D28):* Challenge-Response mit dem
+   Geräteschlüssel; Erneuerung per `$cfmRekey`. Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
+   (bisher nur per `$cfmEnroll … rekey=yes`).
+9. ~~**Minimale Firewall auf allen Geräten**~~ – *erledigt (D31):* Default-Drop auf Nicht-Routern,
+   IPv6-input auf allen Geräten. Offen: IPv6-Forward auf Routern (mit Punkt 13).
 10. **Link-Bündel (Bonding/LACP) als Port-Profil** für Uplinks.
 11. **Feste DHCP-Leases und DNS-Namen aus zentralen Daten** (z.B. `leases.rsc`).
 12. **Effektive Config und Diff anzeigen:** `$cfmShow host=<n>`, `$cfmDiff ver=A ver=B`.

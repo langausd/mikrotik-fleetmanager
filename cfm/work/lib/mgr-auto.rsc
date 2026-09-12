@@ -98,6 +98,8 @@
     $get s=$src u=$u r=("live/m/" . ($d->"serial") . ".mf") l=($b . "/live/m/" . ($d->"serial") . ".mf")
     :foreach f in={"status.dat";"export.rsc";"audit.txt"} do={ $get s=$src u=$u r=("state/" . $name . "/" . $f) l=($b . "/state/" . $name . "/" . $f) }
   }
+  # der Spiegel wächst sonst unbegrenzt (gleiche Regel wie auf dem Primary)
+  :global cfmArchivePrune; $cfmArchivePrune
   :return true
 }
 
@@ -135,6 +137,7 @@
       :global cfmOnbTick; $cfmOnbTick
       $cfmAutoPromote
       $cfmSecretSync
+      :global cfmUpgTick; $cfmUpgTick
       $cfmHookState
       :local vj [$cfmJson ([$cfmMB] . "/meta/vault.dat")]
       # als String vergleichen: [:tonum nothing] ist nil, und "3 != nil" ist weder wahr noch falsch

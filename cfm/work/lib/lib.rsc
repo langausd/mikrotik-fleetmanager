@@ -9,6 +9,10 @@
 #   "cfm-sys:<key>"     framework-intern (Onboarding), kein GC, nicht im Audit
 #   (kein Präfix)       lokal/Hand angelegt: nie angefasst, im Audit gelistet
 #
+# Probelauf ($cfmPlan am Manager): Der Agent setzt :global cfmDry true. cfmRun führt dann
+# kein add/set/remove aus, cfmLog/cfmWarn sammeln die Meldungen in cfmPlanOut (= der Plan).
+# Direkte Befehle in Rollen/Hostfiles deshalb nur mit  :if ($cfmDry != true) do={ ... }
+#
 # RouterOS-Syntaxfallen (auf 7.24 verifiziert) – für eigene Templates wichtig:
 #  * Funktionen als Anweisung OHNE eckige Klammern aufrufen. Eine Zeile, die
 #    mit "[" beginnt, liest RouterOS u.U. als Fortsetzung der vorigen Anweisung
@@ -31,19 +35,31 @@
   "/interface/bridge";"/interface/bridge/port";"/interface/vlan";"/interface/bridge/vlan";
   "/interface/vrrp";"/interface/list";"/interface/list/member";
   "/ip/address";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";"/ip/dhcp-client";
-  "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/nat";"/ip/dns/static";
+  "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/datapath";
   "/interface/wifi/steering";"/interface/wifi/configuration";"/interface/wifi/provisioning";
   "/system/logging/action";"/system/logging";"/user/group";"/user";
   "/system/script";"/system/scheduler";"/tool/netwatch"
 }
 
-:global cfmLog do={ :log info ("cfm: " . $1) }
-:global cfmWarn do={ :log warning ("cfm: " . $1) }
+# Probelauf: cfmDry=true (setzt der Agent), Meldungen landen dann in cfmPlanOut statt im Log
+:global cfmDry
+:global cfmPlanOut
+:global cfmLog do={
+  :global cfmDry; :global cfmPlanOut
+  :if ($cfmDry = true) do={ :set cfmPlanOut ($cfmPlanOut . $1 . "\n") } else={ :log info ("cfm: " . $1) }
+}
+:global cfmWarn do={
+  :global cfmDry; :global cfmPlanOut
+  :if ($cfmDry = true) do={ :set cfmPlanOut ($cfmPlanOut . "WARNUNG " . $1 . "\n") } else={ :log warning ("cfm: " . $1) }
+}
 
 # Kommando auf Menüpfad ausführen. $1="/menu/verb", P=Props-Array, I=Item-ID
 # Werte werden als Variablen übergeben -> kein Quoting/Escaping nötig.
 :global cfmRun do={
+  # Probelauf: nichts ändern, nur lesen
+  :global cfmDry
+  :if ($cfmDry = true and $1 ~ "/(add|set|remove)\$") do={ :return "*dry" }
   :local c ""
   :if ([:typeof $P] = "array") do={
     :foreach k,v in=$P do={ :set c ($c . " " . $k . "=(\$P->\"" . $k . "\")") }
@@ -103,12 +119,13 @@
 
 # Index "key -> id" aller cfm-getaggten Objekte eines Menüs (einmal pro Lauf)
 :global cfmIndex do={
-  :global cfmIdx; :global cfmSeen; :global cfmMenus
+  :global cfmIdx; :global cfmSeen; :global cfmMenus; :global cfmDry
   :if ([:typeof ($cfmIdx->$1)] = "array") do={ :return true }
-  :local code (":local r ({}); :foreach i in=[" . $1 . "/find where comment~\"^cfm:\"] do={ :local c [:tostr [" . $1 . "/get \$i comment]]; :local s [:find \$c \" \"]; :if ([:typeof \$s] = \"nil\") do={ :set s [:len \$c] }; :local k [:pick \$c 4 \$s]; :if ([:typeof (\$r->\$k)] = \"nothing\") do={ :set (\$r->\$k) \$i } else={ " . $1 . "/remove \$i } }; :return \$r")
+  # doppelt getaggte Objekte entfernen (im Probelauf nur überspringen: D=true)
+  :local code (":local r ({}); :foreach i in=[" . $1 . "/find where comment~\"^cfm:\"] do={ :local c [:tostr [" . $1 . "/get \$i comment]]; :local s [:find \$c \" \"]; :if ([:typeof \$s] = \"nil\") do={ :set s [:len \$c] }; :local k [:pick \$c 4 \$s]; :if ([:typeof (\$r->\$k)] = \"nothing\") do={ :set (\$r->\$k) \$i } else={ :if (!\$D) do={ " . $1 . "/remove \$i } } }; :return \$r")
   :local f
   :onerror e in={ :set f [:parse $code] } do={ :error ($e . " IN(index): " . $code) }
-  :set ($cfmIdx->$1) [$f]
+  :set ($cfmIdx->$1) [$f D=($cfmDry = true)]
   :set ($cfmSeen->$1) ({})
   :if ([:typeof [:find $cfmMenus $1]] = "nil") do={ :set cfmMenus ($cfmMenus, $1) }
   :return true
@@ -129,7 +146,7 @@
 #  a=Props nur beim Anlegen (optional)  x=Kommentar-Zusatztext (optional)
 :global cfmEnsure do={
   :global cfmIndex; :global cfmIdx; :global cfmSeen; :global cfmRun; :global cfmFind
-  :global cfmSame; :global cfmStat; :global cfmLog
+  :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry
   $cfmIndex $m
   :local tag ("cfm:" . $k)
   :if ([:len $x] > 0) do={ :set tag ($tag . " " . $x) }
@@ -167,7 +184,7 @@
     $cfmRun ($m . "/set") I=$id P=$ch
     :set ($cfmStat->"set") (($cfmStat->"set") + 1)
     :local s ""
-    :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk) }
+    :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [:tostr $vv]) } }
     $cfmLog ("geändert: " . $m . " " . $k . ":" . $s)
   }
   :set ($cfmIdx->$m->$k) $id
@@ -177,7 +194,7 @@
 # Props setzen ohne Tagging: Singleton-Menü (ohne n) oder alle Treffer von n.
 # Für eingebaute Objekte (Identity, DNS, IP-Services, Ethernet-Ports, ...)
 :global cfmSet do={
-  :global cfmRun; :global cfmFind; :global cfmSame; :global cfmStat; :global cfmLog
+  :global cfmRun; :global cfmFind; :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry
   :local ids ({"-"})
   :if ([:typeof $n] = "array") do={ :set ids [$cfmFind $m N=$n] }
   :foreach id in=$ids do={
@@ -189,7 +206,7 @@
       :if ([:typeof $id] = "str") do={ $cfmRun ($m . "/set") P=$ch } else={ $cfmRun ($m . "/set") I=$id P=$ch }
       :set ($cfmStat->"set") (($cfmStat->"set") + 1)
       :local s ""
-      :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk) }
+      :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [:tostr $vv]) } }
       $cfmLog ("gesetzt: " . $m . ":" . $s)
     }
   }

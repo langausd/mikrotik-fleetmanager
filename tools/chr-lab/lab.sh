@@ -63,7 +63,15 @@ start)
     echo "vm$i gestartet (ssh-Port $(port "$i"))"
   done ;;
 stop)
-  for p in "$LAB"/vm*.pid; do [ -f "$p" ] && kill "$(cat "$p")" 2>/dev/null; rm -f "$p"; done; echo gestoppt ;;
+  # auf das Ende jeder VM warten: ein direkt folgendes "start" fände sonst noch die alte
+  # VM an den Socket-Ports (vm1 lauscht) bzw. am SSH-Forward
+  for p in "$LAB"/vm*.pid; do
+    [ -f "$p" ] || continue; pid=$(cat "$p")
+    kill "$pid" 2>/dev/null || true
+    for _ in $(seq 1 50); do kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+    kill -9 "$pid" 2>/dev/null || true
+    rm -f "$p"
+  done; echo gestoppt ;;
 status)
   for p in "$LAB"/vm*.pid; do [ -f "$p" ] || continue; i=${p##*/vm}; i=${i%.pid}
     kill -0 "$(cat "$p")" 2>/dev/null && echo "vm$i up (port $(port "$i"))" || echo "vm$i down"; done ;;

@@ -137,6 +137,7 @@ $cfmEnsure m="/system/scheduler" k="sys:agent" n=({"name"="cfm-agent"}) p=({"nam
 
 # --- Werks-User admin abschalten (global adminUser="disable"), sobald hier mindestens ein
 #     eigener Admin-User aus users aktiv ist – vorher nie, sonst droht Aussperren ---
+:global cfmAU; :set cfmAU [:tostr ($cfmG->"adminUser")]
 :if ([:tostr ($cfmG->"adminUser")] = "disable" and [:typeof ($cfmG->"users"->"admin")] = "nothing") do={
   :local act 0
   :foreach u,g in=($cfmG->"users") do={

@@ -403,11 +403,11 @@
           :set c ($c . ":if ([:len [/user/find where name=\"" . $u . "\"]] > 0) do={ /user/set [find where name=\"" . $u . "\"] password=\"" . [$cfmEsc $pw] . "\" disabled=no } else={ :set ok false };")
         }
       }
-      # Werks-User admin: nach dem Setzen der Passwörter sofort einen Apply anstoßen, statt auf
-      # den nächsten zu warten. Ob admin abgeschaltet wird, entscheidet die Rolle base auf dem
-      # Gerät (dort greifen auch Ausnahmen im Hostfile).
-      :if ([:tostr ($cfmG->"adminUser")] = "disable" and $upw) do={
-        :set c ($c . ":if (\$ok and [:len [/user/find where name=\"admin\" and !disabled]] > 0) do={ :execute \":global cfmArg \\\"force\\\"; /system script run cfm-agent\" };")
+      # Werks-User admin gleich mit abschalten, wenn das Gerät den effektiven Wert
+      # adminUser=disable meldet (inkl. Hostfile-Ausnahme) und die eigenen User gesetzt sind.
+      # Die Rolle base setzt das bei jedem Apply ohnehin durch.
+      :if ([:tostr ([$cfmJson ([$cfmMB] . "/state/" . $name . "/status.dat")]->"au")] = "disable" and $upw) do={
+        :set c ($c . ":if (\$ok) do={ /user/set [find where name=\"admin\"] disabled=yes };")
       }
       :local rl ("," . ($d->"role") . ",")
       :if ($rl ~ ",manager") do={

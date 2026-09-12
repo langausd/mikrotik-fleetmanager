@@ -15,7 +15,7 @@
 #   ""  normal | "force" erzwingt Apply (auch "bad") | "wd" Watchdog
 #   {"mode"="audit";"op"="report|mark|purge";"sel"="all|A1,A3"}
 # ============================================================
-:global cfmConf; :global cfmArg; :global cfmBusy; :global cfmMf; :global cfmDl; :global cfmDir
+:global cfmConf; :global cfmArg; :global cfmMf; :global cfmDl; :global cfmDir
 
 :local arg $cfmArg
 :set cfmArg
@@ -74,10 +74,17 @@
 :set cfmDl ($dir . "/dl")
 :local now ([:tonsec [:timestamp]] / 1000000000)
 
-:if ([:typeof $cfmBusy] = "num" and ($now - $cfmBusy) < 1800 and $arg != "wd") do={
-  :log info "cfm: Agent läuft bereits – übersprungen"
+# Nur ein Lauf gleichzeitig, geprüft über die Job-Liste: gilt unabhängig davon, aus welcher
+# Sitzung (Scheduler, Push per SSH) der Lauf kam. Ein übersprungener Lauf, z.B. ein Push
+# während eines Applys, wird nach 30 s nachgeholt; ein erzwungener bleibt dabei erzwungen.
+:if ([:len [/system/script/job/find where script="cfm-agent"]] > 1 and $arg != "wd") do={
+  :log info "cfm: Agent läuft bereits – neuer Versuch in 30 s"
+  :if ([:len [/system/scheduler/find where name="cfm-agent-retry"]] = 0) do={
+    :local ev "/system/scheduler/remove [find where name=cfm-agent-retry]; /system script run cfm-agent"
+    :if ($arg = "force") do={ :set ev (":global cfmArg \"force\"; " . $ev) }
+    /system/scheduler/add name=cfm-agent-retry interval=30s comment="cfm-sys:retry" on-event=$ev
+  }
 } else={
-:set cfmBusy $now
 :onerror err in={
   :global cfmFetch; :global cfmWrite; :global cfmReport
 
@@ -206,6 +213,9 @@
     :set ($st->"t") $now
     :set ($st->"res") "ok"
     :set ($st->"stats") $cfmStat
+    # effektiver adminUser-Wert (inkl. Hostfile-Ausnahme), danach richtet sich der Secret-Push
+    :global cfmAU
+    :set ($st->"au") [:tostr $cfmAU]
     :set applied true
     # Erreichbarkeit direkt bestätigen (sonst entscheidet der Watchdog)
     :if ([$cfmFetch r=("live/m/" . $serial . ".mf") l=($dir . "/mf2.mf") prefer=$mgr] != "") do={
@@ -221,5 +231,4 @@
   $cfmWrite ($dir . "/state.json") [:serialize to=json $st]
   $cfmReport st=$st serial=$serial target=$v sv=$sv now=$now exp=$exp
 } do={ :if ($err != "cfm-done") do={ :log error ("cfm: " . $err) } }
-:set cfmBusy
 }

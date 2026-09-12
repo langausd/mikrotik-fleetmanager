@@ -114,13 +114,16 @@ expect 3 '[:len [/file/find where name="cfm/meta/rings.dat"]] = 1' "cm2: Ringe g
 expect 1 '[:len [/file/find where name~"^cfm/vault/.*-vault.bak"]] = 1' "cm1: verschlüsseltes Vault-Backup (.bak)"
 
 step "10. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
-chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ($r->"output")' | tail -1; }
+# Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)
+chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ("RES=" . ($r->"output"))' | sed -n 's/^RES=//p' | head -1; }
 v0=$(stat sw1 v)
 mgr ':local f [/file/find name="cfm/work/hosts/sw1.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "\"keep\""]; /file/set $f contents=([:pick $c 0 $p] . "\"disable\"" . [:pick $c ($p + 6) [:len $c]]); $cfmRelease msg=" admin aus auf sw1"' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 v)" != "$v0" ] && [ "$(stat sw1 res)" = ok ] && break; sleep 4; done
 [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$(stat sw1 v) angewendet" || bad "sw1 Apply: $(stat sw1 res)"
-[ "$(chk ':put [/user/get [find name=admin] disabled]')" = true ] && ok "sw1: admin deaktiviert" || bad "sw1: admin noch aktiv"
-[ "$(chk ':put [/user/get [find name=netadmin] disabled]')" = false ] && ok "sw1: eigener User netadmin aktiv" || bad "sw1: netadmin nicht aktiv"
+a=$(chk ':put [/user/get [find name=admin] disabled]')
+[ "$a" = true ] && ok "sw1: admin deaktiviert" || bad "sw1: admin noch aktiv (Antwort: '$a')"
+a=$(chk ':put [/user/get [find name=netadmin] disabled]')
+[ "$a" = false ] && ok "sw1: eigener User netadmin aktiv" || bad "sw1: netadmin nicht aktiv (Antwort: '$a')"
 printf '#!/bin/sh\necho "Lab-Passw0rd!"\n' > "$LAB/askpass-netadmin"; chmod +x "$LAB/askpass-netadmin"
 out=$(SSH_ASKPASS="$LAB/askpass-netadmin" SSH_ASKPASS_REQUIRE=force ssh -p 2210 "${O[@]}" -o PubkeyAuthentication=no netadmin@127.0.0.1 '/system script run cfm-mgr; $cfmPush host=sw1' 2>&1 | tr -d '\r')
 echo "$out" | grep -q "Push -> sw1" && ! echo "$out" | grep -q FEHLER && ok "cm1: Manager-Befehle unter eigenem User (netadmin)" || bad "netadmin: $(echo "$out" | tail -1)"

@@ -26,6 +26,10 @@ waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; 
 expect() { # expect <vm> '<ros-ausdruck, der true liefert>' <beschreibung>
   if r "$1" ":put ($2)" | grep -q true; then ok "$3"; else bad "$3"; fi; }
 stat() { mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$1"'/status.dat"]->"'"$2"'")]' | tail -1; }
+diag() { # diag <name>: Zustand von cm1 und sw1 nach $LAB/diag-<name>.txt (über ether1, unabhängig vom MGMT-Netz)
+  { echo "### cm1 -> sw1"; r 1 ':put ("ping: " . [/ping 192.168.10.21 count=3]); /ip/arp/print where address~"192.168.10."; /interface/bridge/port/print; /interface/bridge/host/print where vid=10; /log/print where !(topics~"debug")'
+    echo; echo "### sw1"; r 2 ':put ("ping: " . [/ping 192.168.10.2 count=3]); /ip/address/print; /interface/bridge/print; /interface/bridge/port/print; /interface/bridge/vlan/print; /ip/service/print; /system/script/job/print; /system/scheduler/print; /user/print; /log/print'
+  } > "$LAB/diag-$1.txt" 2>&1; echo "    (Diagnose: $LAB/diag-$1.txt)"; }
 agentwait() { # warten bis Agent auf vm $1 v$2 gemeldet hat
   for _ in $(seq 1 45); do mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$3"'/status.dat"]->"v")]' | grep -qx "$2" && return 0; sleep 4; done; return 1; }
 
@@ -43,6 +47,7 @@ echo "put $LAB/bm.rsc bootstrap-manager.rsc" | put 1
 out=$(r 1 '/import bootstrap-manager.rsc verbose=no')
 echo "$out" | grep -q "Primary-Manager bereit" && ok "Manager-Bootstrap" || { bad "Manager-Bootstrap"; echo "$out" | tail -5; }
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 4' "cm1: 4 Manager-Module als Skripte (von der Rolle übernommen)"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
 
 step "2. Geräte-Bootstrap sw1 + Enroll"
@@ -79,7 +84,7 @@ expect 2 '[/ip/dns/static/get [find name=hand.lan] comment] ~ "^cfm-override"' "
 step "6. Kaputte Version -> Rollback + bad"
 mgr ':local f [/file/find name="cfm/work/hosts/sw1.rsc"]; /file/set $f contents=":global cfmHost {\"ports\"={\"ether2\"=\"gibtsnicht\"}}"; :global cfmRelease; $cfmRelease msg=" kaputt"' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 bad)" = 3 ] && break; sleep 4; done
-[ "$(stat sw1 bad)" = 3 ] && ok "v3 als bad gemeldet ($(stat sw1 res | cut -c1-60))" || bad "Rollback/bad: $(stat sw1 res)"
+if [ "$(stat sw1 bad)" = 3 ]; then ok "v3 als bad gemeldet ($(stat sw1 res | cut -c1-60))"; else bad "Rollback/bad: $(stat sw1 res)"; diag step6; fi
 waitssh 2; sleep 20
 expect 2 '[:len [/ip/address/find where address="192.168.10.21/24"]] = 1' "sw1 nach Rollback erreichbar konfiguriert"
 mgr '$cfmRollback ver=2 all=yes' >/dev/null
@@ -121,7 +126,7 @@ mgr ':local f [/file/find name="cfm/work/hosts/sw1.rsc"]; :local c [/file/get $f
 for _ in $(seq 1 60); do [ "$(stat sw1 v)" != "$v0" ] && [ "$(stat sw1 res)" = ok ] && break; sleep 4; done
 [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$(stat sw1 v) angewendet" || bad "sw1 Apply: $(stat sw1 res)"
 a=$(chk ':put [/user/get [find name=admin] disabled]')
-[ "$a" = true ] && ok "sw1: admin deaktiviert" || bad "sw1: admin noch aktiv (Antwort: '$a')"
+if [ "$a" = true ]; then ok "sw1: admin deaktiviert"; else bad "sw1: admin noch aktiv (Antwort: '$a')"; diag step10; fi
 a=$(chk ':put [/user/get [find name=netadmin] disabled]')
 [ "$a" = false ] && ok "sw1: eigener User netadmin aktiv" || bad "sw1: netadmin nicht aktiv (Antwort: '$a')"
 printf '#!/bin/sh\necho "Lab-Passw0rd!"\n' > "$LAB/askpass-netadmin"; chmod +x "$LAB/askpass-netadmin"

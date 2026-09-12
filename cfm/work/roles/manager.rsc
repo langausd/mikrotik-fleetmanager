@@ -1,6 +1,6 @@
 # ============================================================
 # Rolle manager – Config-Manager (Primary) + wifi-CAPsMAN
-#  * installiert/aktualisiert die Manager-Funktionen (Skript cfm-mgr)
+#  * installiert/aktualisiert die Manager-Funktionen (Module lib/mgr-*.rsc, Lader cfm-mgr)
 #  * SFTP-Gruppe für Geräte, Verzeichnisstruktur
 #  * rendert die komplette CAPsMAN-Konfiguration aus wifi.rsc
 # Wird von manager-backup.rsc mit cfmIsBackup=true wiederverwendet.
@@ -13,8 +13,23 @@
 :local mv [:tostr ($cfmG->"mgmtVlan")]
 :local base ($cfmG->"mgrPath")
 
-# --- Manager-Funktionen ---
-$cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm-mgr";"source"=[/file get ($cfmDl . "/lib/manager.rsc") contents];"policy"="ftp,reboot,read,write,policy,test,password,sensitive"})
+# --- Manager-Funktionen: je Modul lib/mgr-*.rsc aus dem Manifest ein Skript cfm-mgr-<modul>,
+#     das Skript cfm-mgr lädt alle. Fehlen die Module, bricht der Apply ab (-> Rollback),
+#     statt einen Manager ohne Funktionen zu hinterlassen ---
+:local pol "ftp,reboot,read,write,policy,test,password,sensitive"
+:local nmod 0
+:foreach f in=($cfmMf->"files") do={
+  :local p [:tostr ($f->0)]
+  :if ($p ~ "^lib/mgr-") do={
+    :local mn [:pick $p 8 ([:len $p] - 4)]
+    :local s ("cfm-mgr-" . $mn)
+    $cfmEnsure m="/system/script" k=("sys:mgr-" . $mn) n=({"name"=$s}) p=({"name"=$s;"source"=[/file get ($cfmDl . "/" . $p) contents];"policy"=$pol})
+    :set nmod ($nmod + 1)
+  }
+}
+:if ($nmod = 0) do={ :error "Manager-Module lib/mgr-*.rsc fehlen im Manifest" }
+:local ld ":foreach s in=[/system/script/find where name~\"^cfm-mgr-\"] do={ /system/script/run \$s }"
+$cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm-mgr";"source"=$ld;"policy"=$pol})
 $cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"="1m";"on-event"="/system script run cfm-mgr; :global cfmTick; \$cfmTick"})
 
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---

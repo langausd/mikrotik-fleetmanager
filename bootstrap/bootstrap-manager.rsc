@@ -15,7 +15,7 @@
 # -------------------
 :local b "cfm"
 :if ([:len [/file/find where name="flash" and type="directory"]] > 0) do={ :set b "flash/cfm" }
-:if ([:len [/file/find where name=($b . "/work/lib/manager.rsc")]] = 0) do={ :error ("Seed fehlt: " . $b . "/work/ hochladen (tools/upload-seed.sh)") }
+:if ([:len [/file/find where name=($b . "/work/lib/mgr-core.rsc")]] = 0) do={ :error ("Seed fehlt: " . $b . "/work/ hochladen (tools/upload-seed.sh)") }
 
 # 1) MGMT erreichbar machen (wie bei jedem Gerät)
 :local br "bridge"
@@ -54,9 +54,16 @@
 }
 /file/add name=($b . "/meta/keys/" . $myname . ".pem") contents=$pub
 
-# 3) Manager-Funktionen laden, erstes Release, sich selbst enrollen
+# 3) Manager-Funktionen laden (je Modul lib/mgr-*.rsc ein Skript cfm-mgr-<modul>, das Skript
+#    cfm-mgr lädt alle), erstes Release, sich selbst enrollen
+:foreach f in=[/file/find where name~("^" . $b . "/work/lib/mgr-.*[.]rsc\$")] do={
+  :local fn [/file/get $f name]
+  :local s ("cfm-mgr-" . [:pick $fn ([:find $fn "lib/mgr-"] + 8) ([:len $fn] - 4)])
+  :if ([:len [/system/script/find where name=$s]] = 0) do={ /system/script/add name=$s comment="cfm-sys:mgr" policy=ftp,reboot,read,write,policy,test,password,sensitive source="" }
+  /system/script/set [find where name=$s] source=[/file/get $f contents]
+}
 :if ([:len [/system/script/find where name="cfm-mgr"]] = 0) do={ /system/script/add name=cfm-mgr comment="cfm-sys:mgr" policy=ftp,reboot,read,write,policy,test,password,sensitive source="" }
-/system/script/set [find where name="cfm-mgr"] source=[/file/get ($b . "/work/lib/manager.rsc") contents]
+/system/script/set [find where name="cfm-mgr"] source=":foreach s in=[/system/script/find where name~\"^cfm-mgr-\"] do={ /system/script/run \$s }"
 /system/script/run cfm-mgr
 :global cfmRelease; :global cfmEnroll
 $cfmRelease msg=" initial"

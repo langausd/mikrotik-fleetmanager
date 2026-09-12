@@ -59,7 +59,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
-| `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen, Bootstrap-Rumpf |
+| `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage einmalig auf den Manager laden |

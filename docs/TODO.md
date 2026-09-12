@@ -55,8 +55,9 @@ die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem ne
 
 ### Kurzfristig (großer Nutzen, wenig Aufwand)
 
-1. **`manager.rsc` aufteilen** (Kern, Onboarding, Automatik …) – *in Arbeit.* Die Datei hat
-   53 KB; RouterOS liest per `/file get` nur etwa 60 KB, und `$cfmRelease` lehnt größere Dateien ab.
+1. ~~**`manager.rsc` aufteilen**~~ – *erledigt (D26):* `lib/mgr-core.rsc`, `mgr-enroll.rsc`,
+   `mgr-onboard.rsc`, `mgr-auto.rsc` (je höchstens 21 KB statt 53 KB in einer Datei; RouterOS liest
+   per `/file get` nur etwa 60 KB, `$cfmRelease` lehnt größere Dateien ab).
 2. **Benachrichtigungen** (E-Mail oder Push-Dienst wie ntfy/Telegram) bei Fehler/Rollback, stummen
    Geräten, gescheitertem Onboarding, CAPsMAN-Übernahme durch den Backup-Manager.
 3. **Archiv aufräumen:** z.B. die letzten 10 Versionen plus alle von Ringen genutzten behalten,

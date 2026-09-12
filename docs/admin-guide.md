@@ -4,10 +4,12 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (30 Prüfungen) und der
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (61 Prüfungen, darunter
+> Probelauf, Firewall, Schlüsselwechsel und ein RouterOS-Downgrade auf 7.24.1) und der
 > Onboarding-Test (14 Prüfungen) fehlerfrei. **Nicht** mit echter Hardware erprobt sind Funk (CAPs),
-> VRRP mit zwei Routern, die CAPsMAN-Übernahme und das automatische Onboarding gegen reale
-> Werks-Configs. Plane dafür einen Pilotbetrieb mit einem Testgerät je Gerätetyp ein.
+> VRRP mit zwei Routern, die CAPsMAN-Übernahme, das automatische Onboarding gegen reale
+> Werks-Configs und RouterOS-Updates mit Zusatzpaketen auf mehreren Architekturen. Plane dafür
+> einen Pilotbetrieb mit einem Testgerät je Gerätetyp ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
 [3 Planung](#3-planung) · [4 Datenmodell](#4-datenmodell) · [5 Rollen](#5-rollen) ·
@@ -29,10 +31,13 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 * Secrets (Passwörter, PSKs) liegen nur im **Vault** des Managers und werden per SSH verteilt.
 * Die aktive Config jedes Geräts liegt zentral auf dem Manager und optional in einem **Git-Repo**.
 * **Neue Geräte** im Werkszustand werden am Zielort weitgehend automatisch aufgenommen.
+* **RouterOS-Updates** per Befehl: Der Manager lädt die Pakete und verteilt sie, sofort oder in
+  einem Wartungsfenster.
+* Jedes Gerät bekommt eine **minimale Firewall**, die nur Management-Zugriffe zulässt.
 
 **Was cfm nicht macht:** kein Monitoring oder Alerting (es gibt Status, Logs und Syslog), keine
-RouterOS-Versionspflege nach dem Onboarding, keine grafische Oberfläche (Terminal-Befehle am
-Manager), und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
+grafische Oberfläche (Terminal-Befehle am Manager), keine RouterOS-Updates ohne deinen Befehl,
+und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
 
 ---
@@ -42,14 +47,16 @@ unangetastet oder kommt über eigene Templates dazu.
 ### Manager, Arbeitsstand und Versionen
 
 Die **Source of Truth ist der Manager**. Dort liegt der Arbeitsstand in `cfm/work/`. Solange du
-dort editierst, passiert auf den Geräten nichts. Erst `$cfmRelease` prüft die Syntax, friert den
-Stand als Version `archive/v<N>/` ein und gibt ihn an Ring 0 frei. Dieses Projektverzeichnis ist
+dort editierst, passiert auf den Geräten nichts. Erst `$cfmRelease` prüft Syntax und Inhalt,
+friert den Stand als Version `archive/v<N>/` ein und gibt ihn an Ring 0 frei. Was ein Release auf
+einem Gerät ändern würde, zeigt vorher der Probelauf `$cfmPlan`. Dieses Projektverzeichnis ist
 nach dem Einrichten nur noch Vorlage und Referenz; die Historie liefern Archiv und Git-Sicherung.
+Das Archiv behält die letzten `archiveKeep` Versionen und alle, die noch gebraucht werden.
 
 ### Agent auf jedem Gerät
 
-Das Skript `cfm-agent` läuft beim Booten, alle 15 Minuten (`interval`) und sofort bei einem
-Push vom Manager:
+Das Skript `cfm-agent` läuft 20 Sekunden nach jedem Booten, alle 15 Minuten (`interval`) und
+sofort bei einem Push vom Manager:
 
 1. Manifest `live/m/<Seriennummer>.mf` per SFTP vom ersten erreichbaren Manager holen
    (Fallback-Liste `managers`) und dessen MAC mit dem Geräteschlüssel prüfen.
@@ -58,7 +65,9 @@ Push vom Manager:
 3. Bibliothek, Daten, Hostfile und Rollen importieren; verwaiste Objekte entfernen.
 4. Erreichbarkeit des Managers bestätigen. Sonst rollt der Watchdog nach 5 Minuten (`watchdog`)
    per `/system backup load` zurück.
-5. Status und Export nach `cfm/out/` legen. Der Manager holt beides jede Minute ab.
+5. Steht im Manifest ein RouterOS-Auftrag (`$cfmUpgrade`): Pakete vom Manager laden und sofort
+   oder im Wartungsfenster neu starten.
+6. Status und Export nach `cfm/out/` legen. Der Manager holt beides jede Minute ab.
 
 ### Was cfm verwaltet und was nicht
 
@@ -127,11 +136,13 @@ Bevor du etwas einspielst, kläre diese Punkte:
 | Welche Ports haben welches Profil? | Hostfiles |
 | Ring je Gerät, Name je Gerät | Inventar |
 | Git-Sicherung gewünscht? | `global.rsc`: `hook`; Git-Host einrichten |
+| Platz für RouterOS-Pakete (ca. 20 MB je Architektur und Version) | `global.rsc`: `pkgPath` (leer = Flash des Managers) |
 
 > **Warnung zum Management-Zugang:** Nach dem ersten Apply lassen alle Geräte SSH und Winbox nur
 > noch aus den Zonen in `mgmtAccess` (Standard: `mgmt`) und aus `mgmtExtra` zu. Alle anderen
-> Dienste (Telnet, FTP, WebFig, API) sind aus, MAC-Winbox gibt es nur im MGMT-VLAN. Trage deinen
-> Admin-PC in `mgmtExtra` ein, wenn er nicht im MGMT-VLAN hängt.
+> Dienste (Telnet, FTP, WebFig, API) sind aus, MAC-Winbox gibt es nur im MGMT-VLAN. Zusätzlich
+> verwirft die minimale Firewall auf Switches, APs und Managern alles, was nicht aus diesen Netzen
+> kommt. Trage deinen Admin-PC in `mgmtExtra` ein, wenn er nicht im MGMT-VLAN hängt.
 
 **Konventionen:**
 * Subnetz eines VLANs ist `192.168.<VID>.0/24`, Gateway `.1` (änderbar per `gw`, eigenes Netz per `net`).
@@ -142,8 +153,10 @@ Bevor du etwas einspielst, kläre diese Punkte:
 
 **Hardware und Software:**
 * RouterOS ≥ `rosMin` (7.20), getestet mit 7.24.2.
-* Manager: jeder MikroTik mit genug Flash (das Archiv wächst mit jedem Release), idealerweise mit
-  Funk, falls er selbst auch AP sein soll (dann Rolle `ap` separat bedenken).
+* Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
+  brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
+  Internetzugang für die Paket-Downloads, idealerweise mit Funk, falls er selbst auch AP sein soll
+  (dann Rolle `ap` separat bedenken).
 * APs brauchen den **neuen wifi-Stack** (`wifi-qcom`, ax-Geräte). Der alte `wireless`-Stack wird
   nicht unterstützt.
 
@@ -164,6 +177,8 @@ irgendetwas ausgerollt wird.
 | `domain`, `tz`, `ntp`, `dns`, `syslog` | Domain für DHCP, Zeitzone, NTP/DNS für Nicht-Router, Syslog-Ziel | |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
+| `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `10` |
+| `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
 | `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server) | |
 | `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.20` |
@@ -235,15 +250,16 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; Firmware-Auto-Upgrade; Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Firmware-Auto-Upgrade; Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; NAT nur Richtung Internet; DNS; NTP-Server; Update-Server-Adressliste |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` |
 | `manager-backup` | wie `manager`, aber CAPsMAN passiv (Netwatch übernimmt, wenn der Primary ~3 min weg ist), spiegelt den Primary, Releases gesperrt |
 
-Eigene Firewall-Regeln auf Routern gehören in die Chains `local-input` und `local-forward`, zum
-Beispiel per `hosts/<router>.post.rsc`. Sie greifen vor dem finalen Drop.
+Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
+zusätzlich `local-forward`, zum Beispiel per `hosts/<name>.post.rsc`. Sie greifen vor dem finalen
+Drop.
 
 ---
 
@@ -387,10 +403,24 @@ $cfmPromote                # optional: nächsten Ring sofort freigeben
 ```
 
 `$cfmRelease` bricht bei Syntaxfehlern oder Dateien über 60 KB ab, bevor irgendetwas
-ausgerollt wird. Ohne `$cfmPromote` rücken die Ringe automatisch auf, sobald alle Geräte des
-vorigen Rings „ok“ melden und `ringSoak` abgelaufen ist.
+ausgerollt wird, und ebenso bei inhaltlichen Fehlern (`$cfmCheck`): unbekannte VLANs, Zonen oder
+Port-Profile, doppelte MGMT-IPs, Rollen ohne Datei. Mit `force=yes` releast du bewusst trotzdem.
+Ohne `$cfmPromote` rücken die Ringe automatisch auf, sobald alle Geräte des vorigen Rings „ok“
+melden und `ringSoak` abgelaufen ist.
 
-### 8.3 Rezepte
+### 8.3 Probelauf
+
+```
+$cfmPlan host=sw1
+```
+
+zeigt, was ein Release des aktuellen `work/` auf diesem Gerät ändern würde, ohne etwas
+anzuwenden: je Änderung eine Zeile (`neu: …`, `geändert: … feld=wert`, `entfernt: …`,
+`Regelblock … neu aufgebaut`), am Ende die Summe. Fehler der inhaltlichen Prüfung erscheinen
+vorab. Der Probelauf überspringt `hosts/*.post.rsc`, weil dort beliebige Befehle stehen dürfen.
+Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
+
+### 8.4 Rezepte
 
 | Aufgabe | Vorgehen |
 |---|---|
@@ -405,15 +435,48 @@ vorigen Rings „ok“ melden und `ringSoak` abgelaufen ist.
 | Gerät sofort aktualisieren | `$cfmPush host=<name>`; Voll-Apply trotz gleicher Version: `force=yes` |
 | Ring eines Geräts ändern | Inventar editieren (wirkt sofort) |
 | Hand-Objekte finden | `$cfmAudit host=<name>` → `op=mark|purge sel=…` |
+| Vorher sehen, was sich ändert | `$cfmPlan host=<name>` |
+| RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
+| Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
+| Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
 
-### 8.4 Überblick
+### 8.5 Überblick
 
 * `$cfmStatus` zeigt je Gerät Ring, Soll- und Ist-Version, Ergebnis (`ok`, `failed …`,
-  `bad vN`, `pend vN`), Secrets-Version und das Alter der letzten Meldung.
+  `bad vN`, `pend vN`), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
+  und das Alter der letzten Meldung.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
 * Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`).
 * `$cfmCollect host=<name>` holt Status und Export sofort statt beim nächsten Tick.
+
+### 8.6 RouterOS-Updates
+
+Updates laufen nur per Befehl:
+
+```
+$cfmUpgrade ver=7.25.1 host=sw1                         # sofort
+$cfmUpgrade ver=7.25.1 ring=1 at="2026-10-01 02:00"     # einmaliges Wartungsfenster
+$cfmUpgrade                                             # offene Aufträge und ihr Stand
+$cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
+```
+
+* Der Manager lädt vorher alle nötigen Pakete (`routeros` und Zusatzpakete wie `wifi-qcom`) für
+  alle Architekturen der betroffenen Geräte von download.mikrotik.com nach `pkgPath`. Fehlt eines,
+  startet nichts. Architektur und Pakete meldet jedes Gerät in seinem Status.
+* Die Geräte holen die Pakete per SFTP vom Manager, prüfen die Größe und starten sofort bzw. zum
+  Zeitpunkt `at` neu. RouterOS prüft die Signatur der Pakete beim Installieren.
+* Eine ältere Zielversion bedeutet **Downgrade** (`/system/package/downgrade`); die Konfiguration
+  bleibt erhalten.
+* Die Geräte laden die Pakete sofort, nur der Neustart wartet auf das Fenster. Ist das Fenster
+  schon vorbei, wenn die Pakete da sind (Gerät war offline, Download zu langsam), startet das
+  Gerät nicht und meldet „Fenster verpasst“. Erteile dann einen neuen Auftrag.
+* Läuft ein Gerät nach dem Neustart nicht mit der Zielversion, meldet es „fehlgeschlagen“ und
+  versucht es nicht erneut.
+* Erledigte Aufträge trägt der Manager selbst aus, Paketversionen ohne Einsatz löscht er.
+* Nutze die Ringe: erst Ring 0, prüfen, dann die anderen.
+* Der Manager braucht Internetzugang, die Geräte nicht. Die Pakete werden nicht auf den
+  Backup-Manager gespiegelt, offene Aufträge brauchen den Primary.
 
 ---
 
@@ -428,6 +491,8 @@ vorigen Rings „ok“ melden und `ringSoak` abgelaufen ist.
 | Primary-Manager fällt aus | Geräte ziehen vom Backup; der Backup-CAPsMAN übernimmt nach ~3 min | bei längerem Ausfall auf cm2 `$cfmPromoteManager`, dann `managers` tauschen und releasen |
 | Primary kommt zurück | CAPsMAN des Backups schaltet sich ab | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
+| Release stoppt mit „Prüfung“ | nichts wurde ausgerollt | Fehler beheben oder bewusst `force=yes` |
+| RouterOS-Update schlägt fehl | Gerät bleibt auf der alten Version, Status `fehlgeschlagen`, kein weiterer Neustart | Log am Gerät lesen, `$cfmUpgrade cancel=yes host=<name>`, neuen Auftrag erteilen |
 | Beide Manager verloren | – | Git-Kopie (`work/`, `meta/`, `archive/`) auf neuen Manager, Vault aus `vault/*.bak` (mit `vaultpw`) |
 
 Zum Totalverlust: Das Vault-Backup ist ein vollständiges, verschlüsseltes RouterOS-Backup des
@@ -443,6 +508,15 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   haben am Manager nur Lesezugriff (Gruppe `cfm-dev`). Jedes Manifest ist mit einem
   gerätespezifischen Schlüssel signiert, Dateien per SHA-512 geprüft. Rückmeldungen der Geräte
   liest der Manager nur als Daten und führt sie nie aus.
+* **Identitätsprüfung:** Vor jedem Secret-Push beweist das Gerät per Challenge-Response, dass es
+  seinen Geräteschlüssel kennt (`ssh-exec` prüft keine Host-Schlüssel). Ein Gerät, das sich nur
+  unter der IP ausgibt, bekommt keine Secrets. `$cfmRekey` erneuert Geräteschlüssel, zum Beispiel
+  bei Verdacht auf eine Kompromittierung.
+* **Minimale Firewall:** Switches, APs und Manager lassen nur Antworten, ICMP und Verbindungen aus
+  den Management-Netzen zu (MGMT, `mgmtAccess`, `mgmtExtra`), Manager zusätzlich DHCP für das
+  Onboarding. Der Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
+  Geräten: nur Antworten, ICMPv6 und Link-Local aus dem MGMT-VLAN. Router behalten ihre
+  Zonen-Firewall.
 * **Manager schützen:** Wer den Manager kontrolliert, kontrolliert die Flotte. Physischer Schutz,
   wenige Admins, Zugriff nur aus dem MGMT-Netz.
 * **Werks-User `admin`:** Nach dem Onboarding-Reset hat er wieder das Aufkleber-Passwort, bei
@@ -481,6 +555,10 @@ $cfmEnsure m="/ip/dns/static" k="dns:nas" p=({"name"="nas.lan";"address"="192.16
 
 Neue Menüs, die aufgeräumt werden sollen, gehören in die Liste `cfmMenus` in `lib/lib.rsc`.
 
+**Probelauf beachten:** `$cfmPlan` führt die Rollen mit `cfmDry=true` aus. `$cfmEnsure`,
+`$cfmSet` und `$cfmBlock` ändern dann nichts, direkte Befehle dagegen schon. Schreibe sie deshalb
+als `:if ($cfmDry != true) do={ … }` (vorher `:global cfmDry`).
+
 ### RouterOS-Syntaxfallen
 
 Diese Fallen zeigen sich erst beim echten Laden per `/import`, nicht beim Syntaxcheck:
@@ -506,7 +584,8 @@ Die vollständige Liste steht in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifi
 ```bash
 cd tools/chr-lab
 ./lab.sh start 3          # CHR-Image chr-<version>.img in ~/.cache/cfm-chr-lab
-./e2e.sh fresh            # Gesamttest: Aufnahme, Idempotenz, Rollback, Backup-Manager, Router …
+./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
+                          # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts"
 ./lab.sh stop
 ```
@@ -514,6 +593,9 @@ cd tools/chr-lab
 Das CHR-Image lädst du von download.mikrotik.com (`chr-<version>.img.zip`, entpacken). Mit
 `./lab.sh ssh <n>` kommst du an die Konsole einer VM. Funkteile lassen sich auf CHR nicht testen.
 Die Lab-Hostfiles setzen `adminUser="keep"`, weil `lab.sh` sich als `admin` anmeldet.
+Der Update-Schritt lädt ein RouterOS-Paket (ca. 20 MB) aus dem Internet; dafür legt der Test auf
+cm1 zwei Routen über `ether1` an. SFTP zwischen den CHRs ist langsam (etwa 100 KB/s), der Schritt
+dauert deshalb einige Minuten.
 
 ---
 
@@ -523,7 +605,10 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 | Befehl | Wirkung |
 |---|---|
-| `$cfmRelease [msg="…"] [all=yes]` | `work/` prüfen und als neue Version an Ring 0 (bzw. alle) freigeben |
+| `$cfmRelease [msg="…"] [all=yes] [force=yes]` | `work/` prüfen und als neue Version an Ring 0 (bzw. alle) freigeben; `force=yes` trotz inhaltlicher Prüffehler |
+| `$cfmCheck` | inhaltliche Prüfung von `work/` (läuft bei jedem Release) |
+| `$cfmPlan host=<n>` | Probelauf: was ein Release von `work/` auf dem Gerät ändern würde |
+| `$cfmArchivePrune [keep=<n>]` | alte Versionen löschen (automatisch nach jedem Release) |
 | `$cfmPromote [ring=1\|2]` | Version des vorigen Rings freigeben |
 | `$cfmRollback ver=<N> [all=yes]` | alten Stand als neue Version freigeben (überschreibt `work/`) |
 | `$cfmStatus` | Flottenübersicht |
@@ -533,6 +618,10 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmSecret key=<k> value=<v>` | Vault-Eintrag setzen (`user.<name>`, `psk.<ssid>`, `vaultpw`) |
 | `$cfmSecretPush [host=<n>]` | Secrets sofort verteilen |
 | `$cfmVaultBackup` | verschlüsseltes Manager-Backup nach `vault/` |
+| `$cfmRekey host=<n>\|all=yes` | Geräteschlüssel erneuern |
+| `$cfmUpgrade ver=<x.y.z> host=<n>\|ring=<r>\|all=yes [at="YYYY-MM-DD HH:MM"]` | RouterOS-Update oder -Downgrade, sofort oder im Wartungsfenster |
+| `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
+| `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmPending` · `$cfmApprove serial= name= ip= [role=] [ring=]` | unbekannte Geräte |
@@ -552,16 +641,21 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `work/` | Arbeitsstand (Daten, Rollen, Hostfiles, Bibliothek) |
 | `archive/v<N>/` | freigegebene Versionen mit `index.dat` (Dateien + SHA-512) |
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
-| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat` |
-| `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt` je Gerät |
+| `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
+| `pkg/<ver>/` | RouterOS-Pakete für `$cfmUpgrade` (oder unter `pkgPath`) |
+| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat` |
+| `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
 | `vault/<name>-vault.bak` | verschlüsseltes Manager-Backup |
 
 `.dat` statt `.json`, weil RouterOS lesenden SFTP-Nutzern `.json`- und `.backup`-Dateien verweigert.
 
 **Auf jedem Gerät:** User `cfm` (Manager-Schlüssel), Skripte `cfm-agent` und `cfm-conf`, Scheduler
-`cfm-agent`, Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
-`cfm/dl/`, `cfm/pre.backup`; während eines Applys der Scheduler `cfm-watchdog`, während eines
-Onboardings auf dem Switch `cfm-onboard-revert`.
+`cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
+`cfm/dl/`, `cfm/pre.backup`, beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
+`cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); während eines Applys der Scheduler
+`cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
+Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
+Wurzelverzeichnis.
 
 ---
 
@@ -570,7 +664,12 @@ Onboardings auf dem Switch `cfm-onboard-revert`.
 | Symptom | Ursache | Abhilfe |
 |---|---|---|
 | Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen |
-| „Manifest-MAC ungültig“ | Geräteschlüssel passt nicht mehr (Reset, Restore) | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
+| „Manifest-MAC ungültig“ | Geräteschlüssel passt nicht mehr (Reset, Restore); direkt nach `$cfmRekey` kurzzeitig normal | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
+| „Release abgebrochen (Prüfung)“ | inhaltlicher Fehler in `work/` | Meldung lesen und beheben; bewusst: `force=yes` |
+| Secret-Push: „Identitätsprüfung fehlgeschlagen“ | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
+| Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
+| Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
+| Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
 | „Hash stimmt nicht“ / „Download fehlgeschlagen“ | unvollständiges Archiv (z.B. auf dem Backup) | Primary prüfen, neu releasen |
 | Ergebnis `failed <datei>: …`, Version `bad` | Fehler in Daten/Template, Gerät hat zurückgerollt | Meldung lesen, beheben, releasen |
 | `rollback-watchdog` | Gerät hat nach dem Apply den Manager verloren | Ports/VLANs im Hostfile prüfen |

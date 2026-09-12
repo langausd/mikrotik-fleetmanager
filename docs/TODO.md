@@ -45,3 +45,45 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
   APs im CAPs-Modus, Geräte mit Aufkleber-Passwort und `flash/`-Verzeichnis
 * echte Funkteile (CAPs), VRRP mit zwei Routern, CAPsMAN-Übernahme durch den Backup-Manager
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
+
+## Verbesserungsplan (Stand 2026-09-12)
+
+Reihenfolge: 0 → 1 → 2, 3, 4 → 6, 7 → Rest nach Bedarf.
+
+**0. Pilotbetrieb mit echter Hardware** – ein Gerät je Typ (Router, Switch, AP, Manager); deckt
+die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem neuen Feature.
+
+### Kurzfristig (großer Nutzen, wenig Aufwand)
+
+1. **`manager.rsc` aufteilen** (Kern, Onboarding, Automatik …) – *in Arbeit.* Die Datei hat
+   53 KB; RouterOS liest per `/file get` nur etwa 60 KB, und `$cfmRelease` lehnt größere Dateien ab.
+2. **Benachrichtigungen** (E-Mail oder Push-Dienst wie ntfy/Telegram) bei Fehler/Rollback, stummen
+   Geräten, gescheitertem Onboarding, CAPsMAN-Übernahme durch den Backup-Manager.
+3. **Archiv aufräumen:** z.B. die letzten 10 Versionen plus alle von Ringen genutzten behalten,
+   damit der Flash des Managers nicht vollläuft (jede Version ≈ 150 KB).
+4. **Prüfskript für RouterOS-Fallen** (Zeile beginnt mit `[`, `\"` in Argumenten, `:return` in
+   `:onerror`, Slash-Syntax für geräteabhängige Menüs) als Git-Pre-Commit-Hook und in einer
+   CI-Pipeline; dort zusätzlich `:parse` und, wo KVM verfügbar ist, `e2e.sh`.
+5. **Inhaltliche Prüfung beim Release:** VLANs aus Profilen/`wifi.rsc` vorhanden, Zonen aus
+   `policy` vorhanden, keine doppelten MGMT-IPs, Hostfile zu jedem Inventar-Eintrag.
+
+### Mittelfristig
+
+6. **Plan-Modus `$cfmPlan host=<n>`:** Gerät zeigt, was ein Apply ändern würde, ohne es auszuführen.
+7. **RouterOS-Versionspflege in Ringen:** Zielversion in `global.rsc`, Rollout über die Canary-Ringe.
+8. **Identitätsprüfung vor dem Secret-Push** (Gerät beweist Kenntnis seines Geräteschlüssels,
+   da Host-Schlüssel nicht geprüft werden) und regelmäßige Erneuerung der Schlüssel.
+9. **Minimale Firewall auf allen Geräten** (Switches/APs haben bisher nur die Dienst-Adressfilter).
+10. **Link-Bündel (Bonding/LACP) als Port-Profil** für Uplinks.
+11. **Feste DHCP-Leases und DNS-Namen aus zentralen Daten** (z.B. `leases.rsc`).
+12. **Effektive Config und Diff anzeigen:** `$cfmShow host=<n>`, `$cfmDiff ver=A ver=B`.
+
+### Größere Ausbauten
+
+13. **IPv6** (Präfixe je VLAN, Router Advertisements, IPv6-Firewall).
+14. **Zentrale Admin-Anmeldung per RADIUS** (User Manager auf dem Manager).
+15. **WireGuard-Rolle** (Fernzugang, Standortkopplung; Schlüssel aus dem Vault).
+16. **WLAN-Ausbau:** WPA-Enterprise, mehrere PSKs mit eigenem VLAN, automatische Kanalplanung.
+17. **Verkabelung prüfen per LLDP:** Nachbarn gegen Hostfiles abgleichen, Netzplan erzeugen.
+18. **Optional Git als Arbeitsort** mit Review vor dem Release – bewusste Alternative zu D4,
+    z.B. bei mehreren Admins.

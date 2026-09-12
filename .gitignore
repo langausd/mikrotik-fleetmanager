@@ -1,0 +1,7 @@
+# Testlabor-Artefakte (VM-Disks und CHR-Images gehören nicht ins Repo)
+.lab/
+*.qcow2
+*.img
+*.img.zip
+*.serial
+*.pid

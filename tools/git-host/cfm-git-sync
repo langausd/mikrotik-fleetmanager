@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# ------------------------------------------------------------------
+# cfm-git-sync – externe Sicherung des cfm-Managers in ein Git-Repo.
+#
+# Läuft auf einem Linux-Host (NAS/Server). Der Manager ruft es per
+#   /system ssh-exec address=<githost> user=cfm command="<event> <version> <host>"
+# auf; in ~cfm/.ssh/authorized_keys ist es als Forced Command eingetragen:
+#   command="/usr/local/bin/cfm-git-sync",no-pty,no-port-forwarding,no-agent-forwarding ssh-ed25519 AAAA… cfm-manager
+# Aufruf von Hand:  cfm-git-sync manual
+#
+# Einrichtung (einmalig):
+#  Git-Host:  useradd -m cfm; als cfm: ssh-keygen -t ed25519 (Key für den Pull vom Manager)
+#             Manager-Public-Key (cfm/meta/keys/cm1.pem auf dem Manager) umwandeln:
+#               ssh-keygen -i -m PKCS8 -f cm1.pem   -> Zeile mit dem command=… oben in
+#               ~cfm/.ssh/authorized_keys eintragen (für cm2 ebenso)
+#  Manager:   id_ed25519.pub des Git-Hosts hochladen, dann
+#               /user/add name=cfm-git group=cfm-dev password=<zufällig> comment="cfm-sys:git"
+#               /user/ssh-keys/import user=cfm-git public-key-file=id_ed25519.pub
+#             (auf cm2 ebenfalls, damit der Fallback funktioniert)
+#  global.rsc: "hook"={"host"="<IP Git-Host>";"user"="cfm"}  und die IP des Git-Hosts
+#             in "mgmtExtra" aufnehmen (SSH/SFTP-Zugriff auf die Manager), dann $cfmRelease.
+#
+# Konfiguration: /etc/cfm-git-sync.conf (oder $CFM_GIT_CONF)
+#   MGR_HOSTS="192.168.10.2 192.168.10.3"   # Primary zuerst, Fallback
+#   MGR_PORT=22                             # SSH-Port der Manager
+#   MGR_USER=cfm-git                        # SFTP-User auf dem Manager (Key-Login)
+#   MGR_PATH=cfm                            # Basisverzeichnis auf dem Manager
+#   REPO=/srv/cfm-git                       # lokales Git-Repo (wird angelegt)
+#   SSH_KEY=~/.ssh/id_ed25519               # Key für den Manager-Login
+#   GIT_REMOTE=                             # optional: Remote-Name/URL für git push
+# ------------------------------------------------------------------
+set -euo pipefail
+CONF=${CFM_GIT_CONF:-/etc/cfm-git-sync.conf}
+[ -r "$CONF" ] && . "$CONF"
+: "${MGR_HOSTS:?MGR_HOSTS fehlt}" "${MGR_USER:=cfm-git}" "${MGR_PATH:=cfm}" "${REPO:?REPO fehlt}"
+SSH_KEY=${SSH_KEY:-$HOME/.ssh/id_ed25519}
+
+# Argumente: aus Forced Command (SSH_ORIGINAL_COMMAND) oder direkt
+read -r EVENT VERSION HOST _ <<< "${SSH_ORIGINAL_COMMAND:-$*} - - -"
+[[ "$EVENT" =~ ^[a-z]+$ ]] || { echo "ERR bad event"; exit 2; }
+[[ "$VERSION$HOST" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "ERR bad args"; exit 2; }
+
+exec 9>"${REPO%/}.lock"; flock -w 120 9 || { echo "ERR locked"; exit 3; }
+
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# Verzeichnisse, die gesichert werden. live/ (abgeleitete Manifeste) bewusst nicht.
+DIRS="work meta archive state vault"
+ok=""
+for h in $MGR_HOSTS; do
+  batch="$TMP/batch"; : > "$batch"
+  for d in $DIRS; do echo "-get -r $MGR_PATH/$d $TMP/mirror/" >> "$batch"; done
+  mkdir -p "$TMP/mirror"
+  if sftp -q -b "$batch" -P "${MGR_PORT:-22}" -i "$SSH_KEY" -o BatchMode=yes -o ConnectTimeout=10 \
+       ${SSH_OPTS:-} "$MGR_USER@$h" >/dev/null 2>"$TMP/err"; then ok=$h; break; fi
+  rm -rf "$TMP/mirror"
+done
+[ -n "$ok" ] || { echo "ERR kein Manager erreichbar: $(tail -1 "$TMP/err")"; exit 4; }
+
+mkdir -p "$REPO"; cd "$REPO"
+[ -d .git ] || { git init -q; printf '*.backup binary\n*.bak binary\n' > .gitattributes; }
+for d in $DIRS; do rm -rf "./$d"; [ -d "$TMP/mirror/$d" ] && cp -a "$TMP/mirror/$d" "./$d"; done
+
+# Volatile Zeilen neutralisieren (Zeitstempel im Export-Header), damit Diffs echt sind
+find state -name '*.rsc' -type f -exec sed -i -E '1{/^# .* by RouterOS/d}' {} + 2>/dev/null || true
+
+# -f: auch übernehmen, was globale Ignore-Regeln (core.excludesFile) ausschließen würden
+git add -A -f .
+if git diff --cached --quiet; then echo "OK keine Änderung ($EVENT)"; exit 0; fi
+git -c user.name="cfm-manager" -c user.email="cfm@${ok}" commit -q \
+    -m "cfm: $EVENT $VERSION $HOST" -m "Quelle: $ok, $(date -Iseconds)"
+[ -n "${GIT_REMOTE:-}" ] && git push -q "$GIT_REMOTE" HEAD 2>&1 | tail -1
+echo "OK $(git rev-parse --short HEAD) $EVENT $VERSION $HOST"

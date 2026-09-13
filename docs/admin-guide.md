@@ -641,7 +641,20 @@ Diese Fallen zeigen sich erst beim echten Laden per `/import`, nicht beim Syntax
   Fehlen auf CHR/x86 ein nicht abfangbarer Syntaxfehler.
 
 Die vollständige Liste steht in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifizierte-routeros-eigenheiten-7242).
-**Teste neue Templates im Labor**, bevor du sie releast.
+
+**Prüfskript:** `tools/rsc-check.py` findet diese Fallen ohne Gerät, dazu unausgeglichene
+Klammern, zu große Dateien und Dotfiles unter `work/`:
+
+```bash
+tools/rsc-check.py                          # alle .rsc-Dateien im Repo
+tools/rsc-check.py site/                    # dein Overlay
+tools/rsc-check.py --regeln                 # Regeln mit Erklärung
+git config core.hooksPath tools/git-hooks   # Pre-Commit-Hook: blockiert Commits mit Fehlern
+```
+
+Ist ein Fund gewollt, nimm die Zeile mit `# rsc-check: erlaubt <regel>` in der Zeile darüber
+aus. Auf GitHub prüft die Action `rsc-check` jeden Push. Das Skript ersetzt weder `:parse`
+(`$cfmRelease`) noch den Labortest: **Teste neue Templates im Labor**, bevor du sie releast.
 
 ---
 

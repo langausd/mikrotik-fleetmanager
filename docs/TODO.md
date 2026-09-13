@@ -68,9 +68,11 @@ die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem ne
    Geräten, gescheitertem Onboarding, CAPsMAN-Übernahme durch den Backup-Manager.
 3. ~~**Archiv aufräumen**~~ – *erledigt (D27):* nach jedem Release und auf dem Backup-Spiegel;
    behalten werden `archiveKeep` (10) plus alle von Ringen/Geräten genutzten Versionen.
-4. **Prüfskript für RouterOS-Fallen** (Zeile beginnt mit `[`, `\"` in Argumenten, `:return` in
-   `:onerror`, Slash-Syntax für geräteabhängige Menüs) als Git-Pre-Commit-Hook und in einer
-   CI-Pipeline; dort zusätzlich `:parse` und, wo KVM verfügbar ist, `e2e.sh`.
+4. ~~**Prüfskript für RouterOS-Fallen**~~ – *erledigt (D34):* `tools/rsc-check.py` (Zeile beginnt
+   mit `[`, `\"` in Argumenten, `:return` in `:onerror`, Slash-Syntax für geräteabhängige Menüs,
+   Array-Klammern, `verbose=yes`, Klammern, Dateigröße, Dotfiles), Pre-Commit-Hook
+   `tools/git-hooks/pre-commit`, GitHub Action `rsc-check`. Offen: `:parse` und `e2e.sh` in der CI
+   (bisher bewusst lokal im Labor).
 5. ~~**Inhaltliche Prüfung beim Release**~~ – *erledigt (D27):* `$cfmCheck`, Fehler stoppen das
    Release (`force=yes` übergeht sie), fehlende Hostfiles sind Warnungen.
 

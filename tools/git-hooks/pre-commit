@@ -1,0 +1,5 @@
+#!/bin/sh
+# cfm: gestagte .rsc-Dateien auf RouterOS-Fallen prüfen (tools/rsc-check.py).
+# Einrichten:  git config core.hooksPath tools/git-hooks
+# Übergehen:   git commit --no-verify
+exec python3 "$(git rev-parse --show-toplevel)/tools/rsc-check.py" --staged

@@ -1,0 +1,17 @@
+# Statische Prüfung aller RouterOS-Skripte auf bekannte Fallen (tools/rsc-check.py).
+# :parse und e2e.sh laufen bewusst lokal im CHR-Labor (tools/chr-lab), siehe docs/DECISIONS.md D34.
+name: rsc-check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rsc-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests des Prüfskripts
+        run: python3 tools/rsc-check-test.py -v
+      - name: RouterOS-Fallen in allen .rsc-Dateien
+        run: python3 tools/rsc-check.py

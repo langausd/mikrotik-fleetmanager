@@ -64,6 +64,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage einmalig auf den Manager laden |
+| `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
 | `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Lab-Overlay `seed/` |
 

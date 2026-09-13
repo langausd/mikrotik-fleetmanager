@@ -179,7 +179,10 @@ $cfmEnsure m="/system/script" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"=
 $cfmEnsure m="/system/scheduler" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"="cfm-agent";"start-time"="startup";"interval"=($cfmG->"interval");"on-event"="/system script run cfm-agent"})
 # Mit Intervall läuft "startup" erst nach dem ersten Intervall (7.24). Eigener Boot-Scheduler,
 # damit ein Gerät nach jedem Neustart (Update, Rollback, Stromausfall) gleich Status meldet.
-$cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}) p=({"name"="cfm-agent-boot";"start-time"="startup";"interval"="0s";"on-event"=":delay 20s; /system script run cfm-agent"})
+# Der Boot-Lauf ist als "boot" gekennzeichnet: findet er keinen Manager, startet der Agent
+# die Bridge-Ports neu (RouterOS-Eigenheit nach einem Neustart, siehe agent.rsc)
+:local bev ":delay 20s; :global cfmArg \"boot\"; /system script run cfm-agent"
+$cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}) p=({"name"="cfm-agent-boot";"start-time"="startup";"interval"="0s";"on-event"=$bev})
 
 # --- Werks-User admin abschalten (global adminUser="disable"), sobald hier mindestens ein
 #     eigener Admin-User aus users aktiv ist – vorher nie, sonst droht Aussperren ---

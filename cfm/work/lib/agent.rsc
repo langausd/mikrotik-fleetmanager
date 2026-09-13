@@ -247,6 +247,24 @@
 
   # --- Manifest holen ---
   :local mgr [$cfmFetch r=("live/m/" . $serial . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+  # RouterOS-Eigenheit (7.24, im CHR-Labor): Nach einem Neustart – besonders nach /system backup
+  # load (Rollback) – nimmt die Bridge getaggte Frames ihrer Ports u.U. erst wieder an, wenn die
+  # Ports neu starten. Findet der Boot-Lauf keinen Manager, die Ethernet-Ports der Bridge einmal
+  # aus- und einschalten, erneut versuchen.
+  :if ($mgr = "" and $arg = "boot") do={
+    :log warning "cfm: nach dem Neustart kein Manager erreichbar - Bridge-Ports werden neu gestartet"
+    :local bp ({})
+    :foreach p in=[/interface/bridge/port/find where !disabled] do={
+      :local ifn [/interface/bridge/port/get $p interface]
+      :if ([:len [/interface/ethernet/find where name=$ifn and !disabled]] > 0) do={ :set ($bp->[:len $bp]) $ifn }
+    }
+    :foreach ifn in=$bp do={ /interface/ethernet/disable [find where name=$ifn] }
+    :delay 2s
+    :foreach ifn in=$bp do={ /interface/ethernet/enable [find where name=$ifn] }
+    :delay 15s
+    :set mgr [$cfmFetch r=("live/m/" . $serial . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+    :if ($mgr != "") do={ :log warning "cfm: Manager nach dem Neustart der Bridge-Ports wieder erreichbar" }
+  }
 
   # --- Watchdog-Lauf: Apply bestätigen oder zurückrollen ---
   :if ($arg = "wd") do={

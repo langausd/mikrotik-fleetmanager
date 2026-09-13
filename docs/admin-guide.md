@@ -4,11 +4,12 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (61 Prüfungen, darunter
-> Probelauf, Firewall, Schlüsselwechsel und ein RouterOS-Downgrade auf 7.24.1) und der
-> Onboarding-Test (14 Prüfungen) fehlerfrei. **Nicht** mit echter Hardware erprobt sind Funk (CAPs),
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (74 Prüfungen, darunter
+> Probelauf, Firewall, Schlüsselwechsel, Netzplan, PPSK und ein RouterOS-Downgrade auf 7.24.1) und
+> der Onboarding-Test (14 Prüfungen) fehlerfrei. **Nicht** mit echter Hardware erprobt sind Funk (CAPs),
 > VRRP mit zwei Routern, die CAPsMAN-Übernahme, das automatische Onboarding gegen reale
-> Werks-Configs und RouterOS-Updates mit Zusatzpaketen auf mehreren Architekturen. Plane dafür
+> Werks-Configs, RouterOS-Updates mit Zusatzpaketen auf mehreren Architekturen sowie PPSK-VLANs
+> und der Kanalbericht (CHR hat keine Radios). Plane dafür
 > einen Pilotbetrieb mit einem Testgerät je Gerätetyp ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -34,6 +35,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 * **RouterOS-Updates** per Befehl: Der Manager lädt die Pakete und verteilt sie, sofort oder in
   einem Wartungsfenster.
 * Jedes Gerät bekommt eine **minimale Firewall**, die nur Management-Zugriffe zulässt.
+* Die **Verkabelung** wird per LLDP erfasst und gegen einen Soll-Stand geprüft; daraus entsteht
+  ein Netzplan.
 
 **Was cfm nicht macht:** kein Monitoring oder Alerting (es gibt Status, Logs und Syslog), keine
 grafische Oberfläche (Terminal-Befehle am Manager), keine RouterOS-Updates ohne deinen Befehl,
@@ -224,6 +227,12 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   `$cfmSecret key=psk.<schlüssel> value=…`.
 * `master`: die SSID, die das physische Radio trägt, alle anderen werden virtuelle APs.
 * `channels`: Kanal-Pools je Band; `radios`: optional feste Kanäle je AP (`{"ap1"={"5"="5180"}}`).
+* `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (Standard `03:00`); je Band `skipDfs`
+  (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
+* `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
+  `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
+  `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
+  `$cfmSecret key=ppsk.iot.kameras value=…`.
 
 ### `meta/inventory.rsc`
 
@@ -240,6 +249,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: VRRP-ID 1–3 |
 | `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` |
+| `links` | erwartete Verkabelung für `$cfmLinks`: `{"ether1"="rtr1:ether2";"ether8"="-"}` (Gerät:Port, nur Gerät oder `-` für „hier hängt nichts“) |
 
 Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 `:global cfmVlans; :set ($cfmVlans->"119"->"l3") "no"`.
@@ -250,11 +260,11 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Firmware-Auto-Upgrade; Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade; Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; NAT nur Richtung Internet; DNS; NTP-Server; Update-Server-Adressliste |
-| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` |
+| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK und Kanal-Neuwahl |
 | `manager-backup` | wie `manager`, aber CAPsMAN passiv (Netwatch übernimmt, wenn der Primary ~3 min weg ist), spiegelt den Primary, Releases gesperrt |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
@@ -439,6 +449,9 @@ Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
 | Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
+| Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
+| Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
+| WLAN-Kanäle ansehen | `$cfmChannels` |
 
 ### 8.5 Überblick
 
@@ -477,6 +490,29 @@ $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
 * Nutze die Ringe: erst Ring 0, prüfen, dann die anderen.
 * Der Manager braucht Internetzugang, die Geräte nicht. Die Pakete werden nicht auf den
   Backup-Manager gespiegelt, offene Aufträge brauchen den Primary.
+
+### 8.7 Verkabelung und Netzplan
+
+Alle Geräte betreiben die Nachbarsuche (LLDP, MNDP, CDP) auf ihren Bridge-Ports und melden
+ihre Nachbarn je Port mit jedem Agent-Lauf.
+
+```
+$cfmLinks                  # Links und Abweichungen anzeigen, schreibt cfm/state/netzplan.md
+$cfmLinks accept=yes       # aktuellen Stand als Soll (Baseline) einfrieren
+$cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.csv
+```
+
+* Status je Link: `ok` (beide Seiten melden), `einseitig`, `extern` (Gerät außerhalb von cfm,
+  z.B. ein Telefon mit LLDP), `neu` (nicht in der Baseline) und `fehlt` (in der Baseline, aber
+  nicht mehr gemeldet).
+* Feste Erwartungen im Hostfile: `"links"={"ether1"="rtr1:ether2";"ether8"="-"}` (Gerät:Port,
+  nur Gerät oder `-` für „hier hängt nichts“). Sie gelten sofort aus `work/`, ohne Release.
+* `netzplan.md` enthält ein Mermaid-Diagramm (rendert in Gitea, GitHub, GitLab und vielen
+  Editoren) und die Link-Tabelle; neue Links sind dick, fehlende gestrichelt gezeichnet. Die Datei
+  wird nur bei Änderungen neu geschrieben und landet mit der Git-Sicherung im Repo.
+* Der Manager prüft alle 15 Minuten selbst und schreibt neue Abweichungen ins Log (`cfm: Netz:`).
+* `$cfmChannels` zeigt die Kanäle der APs und warnt, wenn zwei APs am selben Switch denselben
+  Kanal nutzen. Die Kanäle wählen die APs selbst aus den Pools in `wifi.rsc` (`reselect`).
 
 ---
 
@@ -517,6 +553,10 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   Onboarding. Der Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
   Geräten: nur Antworten, ICMPv6 und Link-Local aus dem MGMT-VLAN. Router behalten ihre
   Zonen-Firewall.
+* **Nachbarsuche:** LLDP/MNDP/CDP läuft auch an Access-Ports; Endgeräte sehen Modell, Version und
+  Identität des Switches (bewusste Entscheidung für den Netzplan).
+* **PPSK:** Passphrasen liegen nur im Vault und kommen per Secret-Push. Wer eine Passphrase kennt,
+  landet in deren VLAN; vergib sie wie Schlüssel und begrenze Gäste-Passphrasen per `expires`.
 * **Manager schützen:** Wer den Manager kontrolliert, kontrolliert die Flotte. Physischer Schutz,
   wenige Admins, Zugriff nur aus dem MGMT-Netz.
 * **Werks-User `admin`:** Nach dem Onboarding-Reset hat er wieder das Aufkleber-Passwort, bei
@@ -585,7 +625,7 @@ Die vollständige Liste steht in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifi
 cd tools/chr-lab
 ./lab.sh start 3          # CHR-Image chr-<version>.img in ~/.cache/cfm-chr-lab
 ./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
-                          # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade …
+                          # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade, Netzplan, PPSK …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts"
 ./lab.sh stop
 ```
@@ -622,6 +662,8 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmUpgrade ver=<x.y.z> host=<n>\|ring=<r>\|all=yes [at="YYYY-MM-DD HH:MM"]` | RouterOS-Update oder -Downgrade, sofort oder im Wartungsfenster |
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
+| `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
+| `$cfmChannels` | Kanäle der APs, Warnung bei gleichem Kanal an einem Switch |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmPending` · `$cfmApprove serial= name= ip= [role=] [ring=]` | unbekannte Geräte |
@@ -643,8 +685,9 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
 | `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
 | `pkg/<ver>/` | RouterOS-Pakete für `$cfmUpgrade` (oder unter `pkgPath`) |
-| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat` |
+| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat` |
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
+| `state/netzplan.md` | Netzplan (Mermaid + Tabelle), auf Anforderung `netzplan.dot` und `netzplan.csv` |
 | `vault/<name>-vault.bak` | verschlüsseltes Manager-Backup |
 
 `.dat` statt `.json`, weil RouterOS lesenden SFTP-Nutzern `.json`- und `.backup`-Dateien verweigert.
@@ -652,7 +695,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 **Auf jedem Gerät:** User `cfm` (Manager-Schlüssel), Skripte `cfm-agent` und `cfm-conf`, Scheduler
 `cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
 `cfm/dl/`, `cfm/pre.backup`, beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
-`cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); während eines Applys der Scheduler
+`cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); während eines Applys der Scheduler
 `cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
 Wurzelverzeichnis.
@@ -670,6 +713,9 @@ Wurzelverzeichnis.
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
+| `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
+| Log `cfm: Netz: fehlt …` | Kabel gezogen, umgesteckt oder Gerät aus | Verkabelung prüfen; gewollte Änderung: `$cfmLinks accept=yes` |
+| PPSK-Client landet nicht im richtigen VLAN | VLAN fehlt auf dem AP-Uplink (`trunk-ap`) oder AP ohne wifi-qcom | Warnung von `$cfmCheck` beachten, Profil erweitern |
 | „Hash stimmt nicht“ / „Download fehlgeschlagen“ | unvollständiges Archiv (z.B. auf dem Backup) | Primary prüfen, neu releasen |
 | Ergebnis `failed <datei>: …`, Version `bad` | Fehler in Daten/Template, Gerät hat zurückgerollt | Meldung lesen, beheben, releasen |
 | `rollback-watchdog` | Gerät hat nach dem Apply den Manager verloren | Ports/VLANs im Hostfile prüfen |

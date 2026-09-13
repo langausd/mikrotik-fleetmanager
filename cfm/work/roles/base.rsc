@@ -31,9 +31,12 @@ $cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=({"name"=$br;"protoco
   :foreach p,spec in=($cfmHost->"ports") do={ :set ($ports->$p) $spec }
 }
 :local tagged ({}); :local untagged ({})
+# Nachbarsuche (LLDP/MNDP/CDP) auf allen Bridge-Ports + MGMT-VLAN: Grundlage für $cfmLinks (D33)
+$cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"})
 :foreach p,spec in=$ports do={
   :local pr [$cfmProfile $spec]
   :if ($pr->"bridge") do={
+    $cfmEnsure m="/interface/list/member" k=("ilm:DISC:" . $p) n=({"list"="DISC";"interface"=$p}) p=({"list"="DISC";"interface"=$p})
     :local pv 1
     :if ([:len ($pr->"untag")] > 0) do={ :set pv [:tonum ($pr->"untag")] }
     :local bpdu "no"
@@ -89,7 +92,8 @@ $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($c
 }
 $cfmEnsure m="/interface/list" k="il:MGMT" n=({"name"="MGMT"}) p=({"name"="MGMT"})
 $cfmEnsure m="/interface/list/member" k="ilm:MGMT" n=({"list"="MGMT";"interface"=$mif}) p=({"list"="MGMT";"interface"=$mif})
-$cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="MGMT"})
+$cfmEnsure m="/interface/list/member" k="ilm:DISC:mgmt" n=({"list"="DISC";"interface"=$mif}) p=({"list"="DISC";"interface"=$mif})
+$cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="DISC"})
 $cfmSet m="/tool/mac-server" p=({"allowed-interface-list"="none"})
 $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 
@@ -145,6 +149,8 @@ $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
 :set ($r6->[:len $r6]) ({"chain"="input";"action"="accept";"protocol"="icmpv6"})
 :set ($r6->[:len $r6]) ({"chain"="input";"action"="accept";"src-address"="fe80::/10";"in-interface-list"="MGMT"})
 :set ($r6->[:len $r6]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
+# MNDP-Nachbarsuche (UDP 5678 an ff02::1) aus anderen VLANs still verwerfen, sonst füllt sie das Log
+:set ($r6->[:len $r6]) ({"chain"="input";"action"="drop";"protocol"="udp";"dst-port"="5678"})
 :set ($r6->[:len $r6]) ({"chain"="input";"action"="log";"log-prefix"="cfm-drop6";"limit"="10/1m,5:packet"})
 :set ($r6->[:len $r6]) ({"chain"="input";"action"="drop"})
 $cfmBlock m="/ipv6/firewall/filter" k="fw6" l=$r6

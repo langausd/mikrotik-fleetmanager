@@ -8,6 +8,7 @@
 #   mgr-enroll   Geräte aufnehmen, Bootstrap-Datei, Manager-Schlüssel verteilen
 #   mgr-onboard  Onboarding per Push in die Werks-Config
 #   mgr-ros      RouterOS-Pakete und -Updates ($cfmUpgrade)
+#   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels)
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel und Übernahme durch den Backup
 # Die Module hängen nur beim Aufruf voneinander ab (:global in den Funktionen), die
 # Ladereihenfolge ist daher egal.
@@ -33,6 +34,8 @@
 #   $cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at="YYYY-MM-DD HH:MM"]
 #                                      RouterOS-Update/-Downgrade, Pakete kommen vom Manager
 #   $cfmUpgrade cancel=yes host=..|ring=..|all=yes   Auftrag zurückziehen; ohne ver: Übersicht
+#   $cfmLinks [accept=yes] [export=yes]   Verkabelung (LLDP) prüfen, Netzplan state/netzplan.md
+#   $cfmChannels                       Kanäle der APs, Warnung bei gleichem Kanal an einem Switch
 #   $cfmBootstrap                      bootstrap.rsc für neue Geräte erzeugen
 #   $cfmPromoteManager                 (auf dem Backup) zum Primary befördern
 #   Onboarding (Push in die Werks-Config):
@@ -445,6 +448,16 @@
           :local psk [$cfmVaultGet ("psk." . $k)]
           :if ([:len $psk] > 0) do={
             :set c ($c . ":if ([:len [/interface/wifi/security/find where name=\"cfm-" . $k . "\"]] > 0) do={ /interface/wifi/security/set [find where name=\"cfm-" . $k . "\"] passphrase=\"" . [$cfmEsc $psk] . "\" } else={ :set ok false };")
+          }
+        }
+        # PPSK-Passphrasen (die Rolle manager legt die Multi-Passphrase-Einträge mit Zufallswert an)
+        :foreach k,ents in=($cfmWifi->"ppsk") do={
+          :foreach e,o in=$ents do={
+            :local pp [$cfmVaultGet ("ppsk." . $k . "." . $e)]
+            :if ([:len $pp] > 0) do={
+              :local tg ("cfm:mpp:" . $k . "." . $e)
+              :set c ($c . ":if ([:len [/interface/wifi/security/multi-passphrase/find where comment=\"" . $tg . "\"]] > 0) do={ /interface/wifi/security/multi-passphrase/set [find where comment=\"" . $tg . "\"] passphrase=\"" . [$cfmEsc $pp] . "\" } else={ :set ok false };")
+            }
           }
         }
       }

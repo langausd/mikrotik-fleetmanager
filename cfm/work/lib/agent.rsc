@@ -71,6 +71,37 @@
     :foreach i in=[/system/package/find where !disabled and !available] do={ :set ($pk->[:len $pk]) [/system/package/get $i name] }
   } do={ :foreach i in=[/system/package/find] do={ :set ($pk->[:len $pk]) [/system/package/get $i name] } }
   :set ($s->"pkgs") $pk
+  # Nachbarn je physischem Port ($cfmLinks): {Port;Identität;Port der Gegenseite;"m"MAC;Plattform}
+  # (interface ist bei Bridge-Ports eine Liste "ether2;bridge", interface-name z.B. "bridge/ether3")
+  :local nb ({})
+  :onerror e in={
+    :foreach n in=[/ip/neighbor/find] do={
+      :local g [/ip/neighbor/get $n]
+      :local iv ($g->"interface")
+      :local pt [:tostr $iv]
+      :if ([:typeof $iv] = "array") do={ :set pt [:tostr ($iv->0)] }
+      :if ([:len [/interface/ethernet/find where name=$pt]] > 0) do={
+        :local rp [:tostr ($g->"interface-name")]
+        :local sl [:find $rp "/"]
+        :if ([:typeof $sl] != "nil") do={ :set rp [:pick $rp ($sl + 1) [:len $rp]] }
+        :set ($nb->[:len $nb]) ({$pt;[:tostr ($g->"identity")];$rp;("m" . [:tostr ($g->"mac-address")]);[:tostr ($g->"platform")]})
+      }
+    }
+  } do={}
+  :set ($s->"nb") $nb
+  # APs: aktueller Kanal je Radio ($cfmChannels), {Radio;"c"Kanal}
+  :global cfmMf
+  :if (("," . [:tostr ($cfmMf->"role")] . ",") ~ ",ap,") do={
+    :local rd ({})
+    :onerror e in={
+      :foreach i in=[/interface/wifi/find] do={
+        :local ch ""
+        :onerror e2 in={ :set ch [:tostr ([/interface/wifi/monitor $i once as-value]->"channel")] } do={}
+        :set ($rd->[:len $rd]) ({[/interface/wifi/get $i name];("c" . $ch)})
+      }
+    } do={}
+    :set ($s->"radios") $rd
+  }
   # status.json zuerst: legt cfm/out/ an (auf frischen Geräten sonst "invalid file name" beim Export)
   $cfmWrite ($d . "/out/status.json") [:serialize to=json $s]
   :if ($exp = true) do={
@@ -98,8 +129,19 @@
   :if ([:len $src] = 0) do={ :set src ("archive/v" . ($mf->"v")) }
   :foreach fe in=($mf->"files") do={
     :local lp ($d . "/" . ($fe->0))
-    :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] = "") do={ :error ("Download fehlgeschlagen: " . ($fe->0)) }
-    :if ([:convert [/file/get $lp contents] transform=sha512 to=hex] != ($fe->1)) do={ :error ("Hash stimmt nicht: " . ($fe->0)) }
+    # bis zu drei Versuche: ein Download kann unvollständig gelesen werden
+    :local ok false
+    :local info ""
+    :for t from=1 to=3 do={
+      :if (!$ok) do={
+        :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] != "") do={
+          :delay 300ms
+          :local c [/file/get $lp contents]
+          :if ([:convert $c transform=sha512 to=hex] = ($fe->1)) do={ :set ok true } else={ :set info ("gelesen " . [:len $c] . " Byte, Versuch " . $t) }
+        } else={ :set info ("Download fehlgeschlagen, Versuch " . $t) }
+      }
+    }
+    :if (!$ok) do={ :error ("Hash stimmt nicht: " . ($fe->0) . " (" . $info . ")") }
   }
   :return true
 }

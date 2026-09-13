@@ -90,7 +90,10 @@ die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem ne
 13. **IPv6** (Präfixe je VLAN, Router Advertisements, IPv6-Firewall).
 14. **Zentrale Admin-Anmeldung per RADIUS** (User Manager auf dem Manager).
 15. **WireGuard-Rolle** (Fernzugang, Standortkopplung; Schlüssel aus dem Vault).
-16. **WLAN-Ausbau:** WPA-Enterprise, mehrere PSKs mit eigenem VLAN, automatische Kanalplanung.
-17. **Verkabelung prüfen per LLDP:** Nachbarn gegen Hostfiles abgleichen, Netzplan erzeugen.
+16. ~~**WLAN-Ausbau**~~ – *erledigt (D32):* PPSK per Multi-Passphrase-Gruppen, nächtliche
+    Kanal-Neuwahl, Kanalbericht `$cfmChannels`. Offen: **WPA2/WPA3-Enterprise** (externer RADIUS
+    oder User Manager); Kanalbericht und PPSK-VLANs mit echten APs testen (CHR hat keine Radios).
+17. ~~**Verkabelung prüfen per LLDP**~~ – *erledigt (D33):* `$cfmLinks` mit Baseline und
+    Hostfile-Angaben, `netzplan.md` (Mermaid + Tabelle), `export=yes` für Graphviz/CSV.
 18. **Optional Git als Arbeitsort** mit Review vor dem Release – bewusste Alternative zu D4,
     z.B. bei mehreren Admins.

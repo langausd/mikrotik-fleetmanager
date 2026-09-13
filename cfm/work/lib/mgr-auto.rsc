@@ -54,7 +54,7 @@
   # Signatur über Name + Änderungszeit aller Exporte/Audits (Strings lassen sich
   # in RouterOS nicht mit < / > vergleichen)
   :local all ""
-  :foreach f in=[/file/find where name~("^" . $b . "/state/.*/(export.rsc|audit.txt)\$")] do={
+  :foreach f in=[/file/find where name~("^" . $b . "/state/(.*/(export.rsc|audit.txt)|netzplan.md)\$")] do={
     :set all ($all . [/file/get $f name] . "@" . [:tostr [/file/get $f last-modified]] . ";")
   }
   :local sig [:convert $all transform=md5 to=hex]
@@ -138,6 +138,7 @@
       $cfmAutoPromote
       $cfmSecretSync
       :global cfmUpgTick; $cfmUpgTick
+      :global cfmNetTick; $cfmNetTick
       $cfmHookState
       :local vj [$cfmJson ([$cfmMB] . "/meta/vault.dat")]
       # als String vergleichen: [:tonum nothing] ist nil, und "3 != nil" ist weder wahr noch falsch

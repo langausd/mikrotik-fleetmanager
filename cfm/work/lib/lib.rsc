@@ -36,7 +36,8 @@
   "/interface/vrrp";"/interface/list";"/interface/list/member";
   "/ip/address";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";"/ip/dhcp-client";
   "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
-  "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/datapath";
+  "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
+  "/interface/wifi/datapath";
   "/interface/wifi/steering";"/interface/wifi/configuration";"/interface/wifi/provisioning";
   "/system/logging/action";"/system/logging";"/user/group";"/user";
   "/system/script";"/system/scheduler";"/tool/netwatch"

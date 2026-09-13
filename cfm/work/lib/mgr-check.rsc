@@ -11,7 +11,7 @@
 # Warnungen: Inventar-Eintrag ohne Hostfile.
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
-  :global cfmWifi; :global cfmInvLoad; :global cfmHost
+  :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet
   :local b [$cfmMB]
   :local w ($b . "/work")
   :local err ({}); :local warn ({})
@@ -31,6 +31,18 @@
     }
     :return $r
   }
+  # Liegt VLAN v in der Spezifikation ("*", Zonen, VIDs, "!x")?
+  :local inSpec do={
+    :global cfmVlans
+    :local z [:tostr ($cfmVlans->$v->"zone")]
+    :local r false
+    :foreach t in=[:toarray $1] do={
+      :local x [:tostr $t]
+      :if ($x = "*" or $x = $v or $x = $z) do={ :set r true }
+      :if ($x = ("!" . $v) or $x = ("!" . $z)) do={ :set r false }
+    }
+    :return $r
+  }
 
   # Port-Profile
   :foreach pn,pr in=$cfmProfiles do={
@@ -43,6 +55,23 @@
   :foreach k,s in=($cfmWifi->"ssids") do={
     :local vv [:tostr ($s->"vlan")]
     :if ([:len $vv] > 0 and [:typeof ($cfmVlans->$vv)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": VLAN " . $vv . " fehlt in vlans.rsc") }
+  }
+  # PPSK (Multi-Passphrase, D32): nur WPA2-PSK, VLAN vorhanden und auf den AP-Uplinks (trunk-ap)
+  :local apTag [:tostr ($cfmProfiles->"trunk-ap"->"tag")]
+  :foreach k,ents in=($cfmWifi->"ppsk") do={
+    :local s ($cfmWifi->"ssids"->$k)
+    :if ([:typeof $s] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: ppsk nennt unbekannte SSID " . $k) } else={
+      :local sec [:tostr ($s->"sec")]
+      :if ([:len $sec] = 0) do={ :set sec [:tostr ($cfmWifi->"defaults"->"sec")] }
+      :if ($sec ~ "wpa3") do={ :set ($err->[:len $err]) ("wifi.rsc: PPSK auf SSID " . $k . " braucht sec=wpa2-psk (Multi-Passphrase gibt es nicht mit WPA3)") }
+    }
+    :foreach e,o in=$ents do={
+      :local vv [:tostr ($o->"vlan")]
+      :if ([:typeof ($cfmVlans->$vv)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: PPSK " . $k . "." . $e . ": VLAN " . $vv . " fehlt in vlans.rsc") } else={
+        :if ([:len $apTag] > 0 and ![$inSpec $apTag v=$vv]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: PPSK " . $k . "." . $e . ": VLAN " . $vv . " fehlt im AP-Uplink-Profil trunk-ap") }
+      }
+      :if ([:len [$cfmVaultGet ("ppsk." . $k . "." . $e)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: Passphrase fehlt, \$cfmSecret key=ppsk." . $k . "." . $e . " value=...") }
+    }
   }
   # Zonen-Matrix, Management-Zugang, MGMT-VLAN
   :foreach z,to in=($cfmG->"policy") do={
@@ -58,7 +87,8 @@
 
   # Inventar + Hostfiles
   :local ips ({})
-  :foreach n,d in=[$cfmInvLoad] do={
+  :local inv [$cfmInvLoad]
+  :foreach n,d in=$inv do={
     :local ip [:tostr ($d->"ip")]
     :if ([:len $ip] > 0) do={
       :if ([:typeof ($ips->$ip)] != "nothing") do={ :set ($err->[:len $err]) ("inventory: MGMT-IP " . $ip . " doppelt (" . ($ips->$ip) . ", " . $n . ")") }
@@ -85,6 +115,13 @@
           :if ([:typeof $pr] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": unbekanntes Port-Profil " . $sp) } else={
             :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": VLAN " . $arg . " fehlt in vlans.rsc") }
           }
+        }
+        # erwartete Verkabelung ("links", D33): Gegenstelle sollte im Inventar stehen
+        :foreach lp,lw in=($cfmHost->"links") do={
+          :local pe [:tostr $lw]
+          :local c2 [:find $pe ":"]
+          :if ([:typeof $c2] != "nil") do={ :set pe [:pick $pe 0 $c2] }
+          :if ($pe != "-" and [:typeof ($inv->$pe)] != "array") do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: links " . $lp . ": " . $pe . " steht nicht im Inventar") }
         }
       }
     }

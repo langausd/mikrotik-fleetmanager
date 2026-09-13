@@ -30,11 +30,11 @@ Inbetriebnahme, tägliche Arbeit, Notfälle, eigene Templates, Befehlsreferenz).
 ## Architektur
 
 ```
-                 ┌──────────────── cm1 (Primary-Manager, CAPsMAN aktiv) ────────────────┐
+                 ┌──────────────── cm1 (Primary-Manager, CAPsMAN aktiv) ─────────────────┐
   Admin ──SSH──▶ │ cfm/work/  ──$cfmRelease──▶ archive/v<N>/  +  live/m/<serial>.mf (MAC)│
                  │ meta/ (Inventar, Ringe, Keys)   state/<gerät>/ (Status, Export, Audit)│
                  │ Vault = /ppp secret cfm:*   Scheduler cfm-mgr-tick (Promote, Secrets) │
-                 └───────▲──────────────┬──────────────────────┬─────────────┬──────────┘
+                 └───────▲──────────────┬──────────────────────┬─────────────┬───────────┘
          SFTP pull (Key) │   ssh-exec   │ Push-Trigger/Secrets │ Mirror      │ ssh-exec Hook
                          │              ▼                      ▼             ▼
      ┌──────────┐  ┌──────────┐  ┌──────────┐        ┌──────────────┐  ┌────────────┐
@@ -116,6 +116,9 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 | RouterOS aktualisieren | `$cfmUpgrade ver=7.25 ring=0` (sofort) bzw. `host=sw1 at="2026-10-01 02:00"` (einmaliges Wartungsfenster). Der Manager lädt vorher alle Pakete; ältere Zielversion = Downgrade. Übersicht: `$cfmUpgrade`, zurückziehen: `cancel=yes` |
 | Geräteschlüssel erneuern | `$cfmRekey host=sw1` bzw. `all=yes` |
 | Archiv verkleinern | automatisch nach jedem Release (`archiveKeep`), von Hand `$cfmArchivePrune keep=5` |
+| Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
+| Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
+| WLAN-Kanäle der APs | `$cfmChannels` (Warnung bei gleichem Kanal an einem Switch) |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 
@@ -160,6 +163,8 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   (MGMT, `mgmtAccess`, `mgmtExtra`), Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. IPv6
   auf allen Geräten nur ICMPv6 und Link-Local aus dem MGMT-VLAN. Eigene Regeln: Chain `local-input`.
 * RouterOS-Pakete lädt nur der Manager; Geräte holen sie per SFTP, RouterOS prüft die Signatur.
+* Die Nachbarsuche (LLDP/MNDP/CDP) läuft auf allen Bridge-Ports, auch an Access-Ports: Endgeräte
+  sehen Modell, Version und Identität des Switches (bewusste Entscheidung für den Netzplan, D33).
 
 ## Grenzen & Hinweise
 

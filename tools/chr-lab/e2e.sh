@@ -47,7 +47,7 @@ echo "put $LAB/bm.rsc bootstrap-manager.rsc" | put 1
 out=$(r 1 '/import bootstrap-manager.rsc verbose=no')
 echo "$out" | grep -q "Primary-Manager bereit" && ok "Manager-Bootstrap" || { bad "Manager-Bootstrap"; echo "$out" | tail -5; }
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 6' "cm1: 6 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 7' "cm1: 7 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
 
@@ -63,7 +63,8 @@ expect 2 '[/interface/bridge/get bridge vlan-filtering]' "sw1: VLAN-Filtering ak
 expect 2 '[:len [/interface/bridge/vlan/find where comment="cfm:bv:119"]] = 1' "sw1: Trunk trägt VLAN 119"
 expect 2 '[:len [/ip/address/find where address="192.168.10.21/24"]] = 1' "sw1: MGMT-IP"
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 8 and [/ip/firewall/filter/get [find where comment="cfm:fwb:07"] action] = "drop"' "sw1: minimale Firewall IPv4 (8 Regeln, zuletzt drop)"
-expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 7' "sw1: minimale Firewall IPv6 (7 Regeln)"
+expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 8' "sw1: minimale Firewall IPv6 (8 Regeln)"
+expect 2 '[/ip/neighbor/discovery-settings/get discover-interface-list] = "DISC" and [:len [/interface/list/member/find where list="DISC" and interface="ether2"]] = 1' "sw1: Nachbarsuche auf den Bridge-Ports (Liste DISC)"
 
 step "3. Secrets-Push & Idempotenz"
 sleep 70
@@ -183,7 +184,34 @@ r 1 '/file/add name="cfm/pkg/7.0.0/routeros-7.0.0.npk" contents="x"' >/dev/null
 mgr '$cfmPkgPrune' >/dev/null
 expect 1 '[:len [/file/find where name~"^cfm/pkg/7.0.0"]] = 0 and [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] = 1' "Paketversion ohne Einsatz gelöscht, 7.24.1 bleibt"
 
-step "14. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
+step "14. Verkabelung (LLDP, Netzplan) und WLAN (PPSK, Kanäle)"
+# alle Geräte melden ihre Nachbarn mit dem nächsten Lauf
+for h in sw1 cm2 cm1; do mgr "\$cfmPush host=$h force=yes" >/dev/null; done
+for _ in $(seq 1 40); do [ -n "$(stat sw1 nb)" ] && [ -n "$(stat cm2 nb)" ] && [ -n "$(stat cm1 nb)" ] && break; sleep 5; done
+out=$(mgr '$cfmLinks')
+echo "$out" | grep -qE "^(cm1 +ether2 +sw1 +ether2|sw1 +ether2 +cm1 +ether2) +ok" && ok "Link cm1:ether2 - sw1:ether2 (beide Seiten melden)" || { bad "Link cm1-sw1 fehlt"; echo "$out" | tail -8; }
+echo "$out" | grep -qE "^(cm1 +ether3 +cm2 +ether2|cm2 +ether2 +cm1 +ether3) +ok" && ok "Link cm1:ether3 - cm2:ether2 (beide Seiten melden)" || bad "Link cm1-cm2 fehlt"
+expect 1 '[/file/get [find where name="cfm/state/netzplan.md"] contents] ~ "graph LR"' "netzplan.md mit Mermaid-Diagramm"
+mgr '$cfmLinks accept=yes' | grep -q "Baseline gespeichert: 2 Links" && ok "Baseline mit 2 Links eingefroren" || bad "Baseline"
+mgr ':global e2eH [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eH . ":set (\$cfmHost->\"links\") {\"ether2\"=\"cm1:ether3\"}\n")' >/dev/null
+out=$(mgr '$cfmLinks export=yes')
+echo "$out" | grep -q "sw1 ether2: erwartet cm1:ether3, gefunden cm1:ether2" && ok "Hostfile-Angabe links wird geprüft" || { bad "Erwartung nicht geprüft"; echo "$out" | tail -4; }
+expect 1 '[:len [/file/find where name="cfm/state/netzplan.dot"]] = 1 and [/file/get [find where name="cfm/state/netzplan.csv"] contents] ~ "geraet_a;port_a"' "Export: netzplan.dot und netzplan.csv"
+mgr ':global e2eH; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eH' >/dev/null
+mgr '$cfmChannels' | grep -q "keine Funkdaten" && ok "Kanalbericht (Labor ohne Radios)" || bad "Kanalbericht"
+expect 1 '[:tostr [/interface/wifi/channel/get [find name="cfm-5g"] reselect-time]] = "03:00:00" and [/interface/wifi/channel/get [find name="cfm-5g"] skip-dfs-channels] = "10min-cac"' "cm1: Kanalprofil 5 GHz mit nächtlicher Neuwahl, ohne DFS-Wartezeit"
+# PPSK: zweite Passphrase auf der IoT-SSID landet in VLAN 40
+mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"ppsk\") {\"iot\"={\"gast\"={\"vlan\"=40;\"isolation\"=\"yes\"}}}\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" PPSK" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (PPSK) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
+expect 1 '[:len [/interface/wifi/security/multi-passphrase/find where comment="cfm:mpp:iot.gast" and vlan-id=40]] = 1 and [/interface/wifi/security/get [find name="cfm-iot"] multi-passphrase-group] = "cfm-iot"' "cm1: Multi-Passphrase für VLAN 40 an der IoT-SSID"
+mgr '$cfmSecret key=ppsk.iot.gast value="PPSK-Gast-2026"; :global cfmSecretPush; $cfmSecretPush host=cm1' >/dev/null
+expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot.gast"] passphrase] = "PPSK-Gast-2026"' "PPSK-Passphrase per Secret-Push gesetzt"
+out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ppsk\"->\"main\") {\"x\"={\"vlan\"=20}}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
+echo "$out" | grep -q "PPSK auf SSID main braucht sec=wpa2-psk" && ok "Prüfung: PPSK nur mit WPA2-PSK" || { bad "PPSK/WPA3 nicht erkannt"; echo "$out" | tail -3; }
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
+
+step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)
 chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ("RES=" . ($r->"output"))' | sed -n 's/^RES=//p' | head -1; }
 v0=$(stat sw1 v)
@@ -191,7 +219,7 @@ mgr ':local f [/file/find name="cfm/work/hosts/sw1.rsc"]; :local c [/file/get $f
 for _ in $(seq 1 60); do [ "$(stat sw1 v)" != "$v0" ] && [ "$(stat sw1 res)" = ok ] && break; sleep 4; done
 [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$(stat sw1 v) angewendet" || bad "sw1 Apply: $(stat sw1 res)"
 a=$(chk ':put [/user/get [find name=admin] disabled]')
-if [ "$a" = true ]; then ok "sw1: admin deaktiviert"; else bad "sw1: admin noch aktiv (Antwort: '$a')"; diag step14; fi
+if [ "$a" = true ]; then ok "sw1: admin deaktiviert"; else bad "sw1: admin noch aktiv (Antwort: '$a')"; diag step15; fi
 a=$(chk ':put [/user/get [find name=netadmin] disabled]')
 [ "$a" = false ] && ok "sw1: eigener User netadmin aktiv" || bad "sw1: netadmin nicht aktiv (Antwort: '$a')"
 printf '#!/bin/sh\necho "Lab-Passw0rd!"\n' > "$LAB/askpass-netadmin"; chmod +x "$LAB/askpass-netadmin"

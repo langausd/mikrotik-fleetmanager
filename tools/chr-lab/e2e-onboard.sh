@@ -5,7 +5,9 @@
 #   vm3 = neues Gerät "ob1" an cm1/ether3 (Stern-Topologie aus lab.sh)
 # Der Werkszustand wird auf dem frischen CHR simuliert: 192.168.88.1 auf ether2,
 # admin ohne Passwort (echte Geräte: Aufkleber-Passwort per $cfmRegister pw=...).
-#   ./e2e-onboard.sh [fresh]
+#   ./e2e-onboard.sh [fresh] [dhcp]
+#   dhcp = Werksgerät im CAPs-Modus: DHCP-Client auf dem Uplink statt 192.168.88.1, wie ein hAP,
+#          der per PoE an ether1 hängt (dessen normale Werks-Config dort eine WAN-Firewall hat)
 # ------------------------------------------------------------------
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -24,7 +26,9 @@ waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; 
 expect() { if r "$1" ":put ($2)" | grep -q true; then ok "$3"; else bad "$3"; fi; }
 stat() { mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$1"'/status.dat"]->"'"$2"'")]' | tail -1; }
 
-if [ "${1:-}" = fresh ]; then
+fresh=0; mode=static
+for a in "$@"; do case $a in fresh) fresh=1;; dhcp) mode=dhcp;; esac; done
+if [ $fresh = 1 ]; then
   step "VMs neu aufsetzen"
   ./lab.sh stop >/dev/null; rm -f "$LAB"/vm*.qcow2; ./lab.sh start 3
 fi
@@ -40,9 +44,16 @@ for _ in $(seq 1 45); do [ "$(stat cm1 v)" = 1 ] && break; sleep 4; done
 [ "$(stat cm1 v)" = 1 ] && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 expect 1 '[:len [/ip/dhcp-server/find where name=dhcp88]] = 1' "cm1: DHCP im Onboarding-VLAN 88"
 
-step "2. Werkszustand auf vm3 simulieren"
 serial=$(r 3 ':put [/system/license/get system-id]' | tail -1)
-r 3 '/ip/address/add address=192.168.88.1/24 interface=ether2' >/dev/null
+if [ $mode = dhcp ]; then
+  step "2. Werkszustand auf vm3 simulieren: CAPs-Modus (DHCP-Client auf dem Uplink, keine 192.168.88.1)"
+  # ohne Default-Route: im Labor gibt es den Onboarding-Router .250 nicht, das Update-Prüfen
+  # läuft weiter über ether1 (QEMU-Netz); ein echtes Gerät nutzt den Router des Onboarding-VLANs
+  r 3 '/ip/dhcp-client/add interface=ether2 add-default-route=no use-peer-dns=no disabled=no' >/dev/null
+else
+  step "2. Werkszustand auf vm3 simulieren: Werks-IP 192.168.88.1"
+  r 3 '/ip/address/add address=192.168.88.1/24 interface=ether2' >/dev/null
+fi
 echo "   Seriennummer vm3: $serial"
 
 step "3. Registrieren + Onboarding-Port cm1/ether3"
@@ -61,6 +72,7 @@ done
 mgr ':foreach l in=[/log/find where message~"Onboarding"] do={:put [/log/get $l message]}' | tail -3 | sed 's/^/   log: /'
 mgr ':put [:len [/log/find where message~"beendet: erfolgreich: ob1"]]' | tail -1 | grep -qx 1 && ok "Onboarding erfolgreich beendet" || bad "Onboarding nicht erfolgreich"
 [ "$(stat ob1 res)" = ok ] && ok "ob1 meldet Apply ok (v$(stat ob1 v))" || bad "ob1 Status: $(stat ob1 res)"
+[ $mode = dhcp ] && expect 1 '[:len [/ip/dhcp-server/lease/find where server=dhcp88 and mac-address="52:54:00:00:03:02"]] = 1' "cm1: ob1 hat seine Adresse per DHCP im Onboarding-VLAN bekommen (CAPs-Modus)"
 
 step "5. Port zurück auf sein Profil, Gerät vollständig aufgenommen"
 sleep 20

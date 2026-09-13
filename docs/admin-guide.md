@@ -362,6 +362,13 @@ Das dauert je nach Update 5–15 Minuten. Zu beachten:
   (ein Apply auf dem Switch würde den Port vorzeitig zurücksetzen);
 * **Router** mit Werks-Config über einen **LAN-Port** anschließen, `ether1` ist dort WAN mit Firewall;
 * **APs** müssen im Werkszustand per DHCP eine Adresse holen (CAPs-Modus) oder `192.168.88.1` haben;
+* **Geräte mit PoE-Eingang nur an ether1** (z.B. hAP): Ihre normale Werks-Config macht ether1 zum
+  WAN-Port mit Firewall, darüber geht kein Onboarding. Starte sie stattdessen im **CAPs-Modus**:
+  Reset-Taster gedrückt halten, PoE-Kabel einstecken und erst loslassen, wenn die LED nach etwa
+  10 s dauerhaft leuchtet (nach etwa 5 s blinkt sie, das wäre der normale Reset). Im CAPs-Modus ist
+  ether1 ein Management-Port mit DHCP-Client ohne Firewall; der Manager findet das Gerät über seine
+  DHCP-Lease im Onboarding-VLAN, der Rest läuft wie gewohnt. Ein laufendes Gerät bringst du mit
+  `/system reset-configuration caps-mode=yes` in diesen Zustand;
 * ein Fail-safe-Timer auf dem Switch setzt den Port spätestens nach `onboard.timeout` + 10 min zurück;
 * ohne `name=` sucht der Manager unter allen registrierten, noch nicht aufgenommenen Geräten;
   unbekannte Seriennummern erscheinen in `$cfmPending` und werden per `$cfmApprove` freigegeben.
@@ -629,7 +636,8 @@ cd tools/chr-lab
 ./lab.sh start 3          # CHR-Image chr-<version>.img in ~/.cache/cfm-chr-lab
 ./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
                           # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade, Netzplan, PPSK …
-./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts"
+./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
+./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./lab.sh stop
 ```
 

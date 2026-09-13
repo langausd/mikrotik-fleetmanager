@@ -143,6 +143,9 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Unbekannte Seriennummern landen in `$cfmPending` und werden per `$cfmApprove` freigegeben.
 * Router mit Werks-Config über einen LAN-Port anschließen (ether1 ist dort WAN mit Firewall).
   APs funktionieren im CAPs-Modus (DHCP-Client) oder mit `192.168.88.1`.
+* Geräte mit PoE-Eingang nur an ether1 (hAP): im **CAPs-Modus** starten (Reset-Taster beim Einstecken
+  des PoE-Kabels halten, bis die LED nach ~10 s dauerhaft leuchtet). Dann ist ether1 ohne Firewall
+  per DHCP erreichbar, und das Onboarding läuft über den PoE-Port.
 * Mit echter Hardware noch nicht getestet, siehe [docs/TODO.md](docs/TODO.md).
 
 ## Sicherheitsmodell (Kurzfassung)

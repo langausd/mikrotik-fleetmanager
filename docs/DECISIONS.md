@@ -53,6 +53,9 @@ Umsetzungsdetails:
 * **Onboarding-VLAN 88 = `192.168.88.0/24`**, bewusst passend zur Werks-IP `192.168.88.1` neuer Geräte. Gateway `.250` (Router), DHCP `.100–.199` vom Primary-Manager (für Geräte mit DHCP-Client in der Werks-Config, z.B. APs im CAPs-Modus). Die Manager erreichen die Geräte direkt auf Layer 2 und haben dort die Host-Adresse ihrer MGMT-IP.
 * **Zweistufiger Push:** Stufe 1 (Probe) liest Seriennummer/Modell/Version und stößt ggf. das Update an. Stufe 2 lädt den gerätespezifischen Bootstrap hoch und setzt das Gerät per `reset-configuration no-defaults=yes run-after-reset=` auf eine leere Config mit genau diesem Bootstrap zurück (keine Werks-Firewall/-DHCP-Reste). Danach läuft das normale `$cfmEnroll`.
 * **Immer nur eine Onboarding-Sitzung gleichzeitig** (alle Werksgeräte haben `192.168.88.1`).
+* **Werksgeräte findet der Manager unter `192.168.88.1` oder über ihre DHCP-Lease** im Onboarding-VLAN.
+  Geräte mit PoE-Eingang nur an ether1 (hAP) starten dafür im CAPs-Modus (Reset-Taster ~10 s): Dort
+  ist ether1 ein Management-Port mit DHCP-Client ohne Firewall, statt WAN-Port mit Firewall.
 
 ## Verbesserungsplan, Punkte 3 und 5–9 (Runde 2026-09-12/13)
 

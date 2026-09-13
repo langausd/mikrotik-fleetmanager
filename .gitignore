@@ -5,3 +5,8 @@
 *.img.zip
 *.serial
 *.pid
+
+# Editor-Dateien (Emacs: Sicherungskopien, Auto-Save, Sperrdateien)
+*~
+\#*#
+.#*

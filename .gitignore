@@ -13,3 +13,6 @@ site/
 *~
 \#*#
 .#*
+
+# Python (Tests von tools/rsc-check.py)
+__pycache__/

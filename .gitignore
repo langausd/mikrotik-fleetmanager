@@ -1,5 +1,7 @@
-# Private Standortdaten (Overlay für tools/upload-seed.sh --overlay site) – nie ins Repo
+# Private Standortdaten (Overlay für tools/upload-seed.sh --overlay site, angelegt mit
+# tools/new-site.py) – nie ins Repo
 site/
+site-*/
 
 # Testlabor-Artefakte (VM-Disks und CHR-Images gehören nicht ins Repo)
 .lab/

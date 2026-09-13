@@ -278,12 +278,20 @@ Drop.
 
 ### 6.1 Vorlage anpassen
 
-Lege deine Standortdaten als privates Overlay `site/` an; Git ignoriert dieses Verzeichnis. Kopiere
-dafür `cfm/work/global.rsc`, `vlans.rsc`, `profiles.rsc`, `wifi.rsc` und `cfm/work/hosts/` nach
-`site/` sowie `cfm/meta/inventory.rsc` nach `site/meta/` und passe sie an (im Inventar zunächst
-nur der Primary-Manager). Die mitgelieferten Beispiele sind ein fiktives Netz, keine fertige
-Konfiguration. So bleiben deine Daten aus dem Repo, und neue Versionen des Frameworks lassen sich
-einfach übernehmen.
+Lege deine Standortdaten als privates Overlay an; Git ignoriert die Verzeichnisse `site/` und
+`site-*/`. `tools/new-site.py` legt es aus den Beispieldaten an, setzt Manager-Name, Uplink,
+Admin-User und Management-Zugang ein und schreibt dazu eine `CHECKLISTE.md` und einen
+`bootstrap-manager.rsc` mit ausgefülltem Kopf:
+
+```bash
+tools/new-site.py site --name cm1 --uplink ether1 --user <dein-user> --mgmt-extra <admin-pc>/32
+```
+
+Die mitgelieferten Beispiele sind ein fiktives Netz (VLAN 10, 192.168.10.0/24), keine fertige
+Konfiguration: Arbeite die Checkliste ab (Adressen, Inventar, Hostfiles, WLAN). So bleiben deine
+Daten aus dem Repo, und neue Versionen des Frameworks lassen sich einfach übernehmen.
+`tools/upload-seed.sh` lädt aus dem Overlay nur die Daten (`*.rsc`, `hosts/`, `meta/` …); Notizen
+wie die Checkliste oder eigene CSV-Listen bleiben lokal.
 
 ### 6.2 Primary-Manager
 

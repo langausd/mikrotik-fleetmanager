@@ -15,3 +15,5 @@ jobs:
         run: python3 tools/rsc-check-test.py -v
       - name: RouterOS-Fallen in allen .rsc-Dateien
         run: python3 tools/rsc-check.py
+      - name: new-site.py erzeugt eine prüfbare Site
+        run: python3 tools/new-site.py "$RUNNER_TEMP/site-ci" --name cm-ci --uplink ether2 --user ci --mgmt-extra 10.0.0.0/8

@@ -3,8 +3,10 @@
 # Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz.
 #   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm]
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
-#            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert) oder
-#            tools/chr-lab/seed für das Testlabor.
+#            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert, anlegen mit
+#            tools/new-site.py) oder tools/chr-lab/seed für das Testlabor. Hochgeladen werden
+#            nur *.rsc (außer bootstrap*.rsc) und die Verzeichnisse hosts/ roles/ lib/ meta/;
+#            Notizen wie CHECKLISTE.md oder CSV-Listen bleiben lokal.
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
 port=22; overlay=""; base=cfm
@@ -17,7 +19,18 @@ mkdir -p "$stage/work" "$stage/meta"
 cp -r "$root/cfm/work/." "$stage/work/"; cp -r "$root/cfm/meta/." "$stage/meta/"
 if [ -n "$overlay" ]; then
   [ -d "$overlay/meta" ] && cp -r "$overlay/meta/." "$stage/meta/"
-  for d in "$overlay"/*; do [ "$(basename "$d")" = meta ] || cp -r "$d" "$stage/work/"; done
+  skipped=""
+  for d in "$overlay"/*; do
+    n=$(basename "$d")
+    case $n in
+      meta) ;;
+      hosts|roles|lib) [ -d "$d" ] && cp -r "$d" "$stage/work/" ;;
+      bootstrap*.rsc) skipped="$skipped $n" ;;
+      *.rsc) [ -f "$d" ] && cp "$d" "$stage/work/" ;;
+      *) skipped="$skipped $n" ;;
+    esac
+  done
+  [ -n "$skipped" ] && echo "nicht hochgeladen (nur lokal):$skipped"
 fi
 batch=$(mktemp); trap 'rm -rf "$stage" "$batch"' EXIT
 echo "-mkdir $base" > "$batch"

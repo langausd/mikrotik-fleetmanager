@@ -75,7 +75,8 @@
   :return $o
 }
 :global cfmPad do={
-  :local s [:tostr $1]
+  # mindestens ein Leerzeichen als Trenner, auch wenn der Wert die Spalte füllt
+  :local s ([:tostr $1] . " ")
   :while ([:len $s] < $2) do={ :set s ($s . " ") }
   :return $s
 }
@@ -350,8 +351,12 @@
   :local now [$cfmNow]
   :put ("Releases: latest v" . ($rg->"latest") . "  Ring0 v" . ($rg->"r0") . "  Ring1 v" . ($rg->"r1") . "  Ring2 v" . ($rg->"r2") . "   Vault v" . [:tonum ($vj->"ver")])
   :local ord [$cfmJson ($b . "/meta/upgrade.dat")]
-  :put ([$cfmPad "NAME" 10] . [$cfmPad "RING" 5] . [$cfmPad "SOLL" 6] . [$cfmPad "IST" 6] . [$cfmPad "ERGEBNIS" 26] . [$cfmPad "SV" 4] . [$cfmPad "ROUTEROS" 16] . "ZULETZT")
-  :foreach name,d in=[$cfmInvLoad] do={
+  # NAME-Spalte so breit wie der längste Name (mindestens 10)
+  :local inv [$cfmInvLoad]
+  :local nw 10
+  :foreach n,x in=$inv do={ :if ([:len $n] >= $nw) do={ :set nw ([:len $n] + 1) } }
+  :put ([$cfmPad "NAME" $nw] . [$cfmPad "RING" 5] . [$cfmPad "SOLL" 6] . [$cfmPad "IST" 6] . [$cfmPad "ERGEBNIS" 26] . [$cfmPad "SV" 4] . [$cfmPad "ROUTEROS" 16] . "ZULETZT")
+  :foreach name,d in=$inv do={
     :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
     :local ros [:tostr ($s->"ros")]
     :set ros [:pick $ros 0 [:find ($ros . " ") " "]]
@@ -364,7 +369,7 @@
     :local res [:tostr ($s->"res")]
     :if ([:len [:tostr ($s->"pending")]] > 0) do={ :set res ($res . " pend v" . ($s->"pending")) }
     :if ([:len [:tostr ($s->"bad")]] > 0) do={ :set res ($res . " bad v" . ($s->"bad")) }
-    :put ([$cfmPad $name 10] . [$cfmPad ($d->"ring") 5] . [$cfmPad ("v" . ($rg->("r" . ($d->"ring")))) 6] . [$cfmPad ("v" . [:tostr ($s->"v")]) 6] . [$cfmPad [:pick $res 0 25] 26] . [$cfmPad $sv 4] . [$cfmPad $ros 16] . $age)
+    :put ([$cfmPad $name $nw] . [$cfmPad ($d->"ring") 5] . [$cfmPad ("v" . ($rg->("r" . ($d->"ring")))) 6] . [$cfmPad ("v" . [:tostr ($s->"v")]) 6] . [$cfmPad [:pick $res 0 25] 26] . [$cfmPad $sv 4] . [$cfmPad $ros 16] . $age)
   }
 }
 

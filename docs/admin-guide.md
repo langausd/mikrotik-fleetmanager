@@ -4,9 +4,10 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (74 Prüfungen, darunter
-> Probelauf, Firewall, Schlüsselwechsel, Netzplan, PPSK und ein RouterOS-Downgrade auf 7.24.1) und
-> der Onboarding-Test (14 Prüfungen) fehlerfrei. **Nicht** mit echter Hardware erprobt sind Funk (CAPs),
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (77 Prüfungen, darunter
+> Manager-Bootstrap mit Reset, Probelauf, Firewall, Schlüsselwechsel, Netzplan, PPSK und ein
+> RouterOS-Downgrade auf 7.24.1) und der Onboarding-Test (14 Prüfungen mit Werks-IP,
+> 15 im CAPs-Modus per DHCP) fehlerfrei. **Nicht** mit echter Hardware erprobt sind Funk (CAPs),
 > VRRP mit zwei Routern, die CAPsMAN-Übernahme, das automatische Onboarding gegen reale
 > Werks-Configs, RouterOS-Updates mit Zusatzpaketen auf mehreren Architekturen sowie PPSK-VLANs
 > und der Kanalbericht (CHR hat keine Radios). Plane dafür
@@ -292,12 +293,30 @@ einfach übernehmen.
    tools/upload-seed.sh admin@<aktuelle-IP-des-Managers> --overlay site
    ```
 3. In `bootstrap/bootstrap-manager.rsc` den Kopf anpassen (`myname`, `ip` = `managers[0]`,
-   `uplink`, `mv`, `gw`, `admin`, `role`), die Datei hochladen und im Terminal ausführen:
+   `uplink`, `mv`, `gw`, `admin`, `role`), die Datei als `bootstrap-manager.rsc` ins
+   Wurzelverzeichnis hochladen und im Terminal ausführen:
    ```
    /import bootstrap-manager.rsc
    ```
-   Der Bootstrap richtet den MGMT-Zugang und den Manager-Schlüssel ein, erzeugt Release v1 und
-   nimmt den Manager selbst als Gerät auf. Nach wenigen Minuten meldet `$cfmStatus` ihn mit v1.
+   Mit `clean="yes"` (Standard) setzt sich das Gerät zuerst auf eine leere Config zurück, damit
+   keine Reste der Werks- oder CAPs-Config bleiben, startet neu und führt den Bootstrap danach
+   selbst aus. Die hochgeladenen Dateien, User, Passwörter und SSH-Schlüssel bleiben erhalten
+   (`keep-users`), die SSH-Sitzung bricht ab. Nach dem Neustart ist der Manager über seine MGMT-IP
+   am Uplink erreichbar; den Rest erledigt der Bootstrap als User cfm, sobald RouterOS
+   hochgefahren ist. Den Fortschritt zeigt `/log print where message~"cfm: "`, am Ende steht
+   `cfm: Primary-Manager bereit`. Scheitert der Bootstrap, steht der Grund dort
+   (`cfm: Bootstrap fehlgeschlagen: …`); nach der Korrektur mit `clean="no"` erneut importieren.
+   In `post` kannst du Befehle eintragen, die direkt nach dem Reset laufen, z.B. einen
+   zusätzlichen Zugang; ein Fehler darin gibt nur eine Warnung im Log. Auf einem Gerät, das
+   schon Manager ist, verweigert der Bootstrap den Reset; `clean="no"` baut auf der vorhandenen
+   Config auf. Der Bootstrap richtet den MGMT-Zugang und den Manager-Schlüssel ein, erzeugt
+   Release v1 und nimmt den Manager selbst als Gerät auf. Nach wenigen Minuten meldet
+   `$cfmStatus` ihn mit v1.
+4. **Manager mit PoE-Eingang nur an ether1** (z.B. hAP ax³): Starte ihn im CAPs-Modus
+   (Reset-Taster beim Einstecken des PoE-Kabels halten, bis die LED nach etwa 10 s dauerhaft
+   leuchtet). Dann ist ether1 ohne Firewall erreichbar, per DHCP aus deinem Netz oder mit Winbox
+   über die MAC-Adresse. Seed und Bootstrap hochladen, `uplink "ether1"` lassen und importieren;
+   der Reset entfernt die CAPs-Config wieder.
 
 ### 6.3 Secrets setzen
 

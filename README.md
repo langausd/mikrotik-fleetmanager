@@ -90,7 +90,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
    Beispiele dort sind ein fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast,
    Demo-Event, Demo-IoT).
 2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site`, dann `bootstrap/bootstrap-manager.rsc`
-   anpassen, hochladen, `/import bootstrap-manager.rsc`. Das erzeugt Release v1 und enrollt cm1 selbst.
+   anpassen, hochladen, `/import bootstrap-manager.rsc`. Das Gerät setzt sich dabei zuerst auf eine
+   leere Config zurück (`clean`), erzeugt danach Release v1 und enrollt cm1 selbst.
 3. **Secrets:**
    `$cfmSecret key=user.netadmin value=…`, `$cfmSecret key=psk.main value=…` (je SSID-Key), `$cfmSecret key=vaultpw value=…`
 4. **Weitere Geräte:** `$cfmBootstrap` erzeugt `cfm/cfm-bootstrap.rsc`. Datei aufs neue Gerät

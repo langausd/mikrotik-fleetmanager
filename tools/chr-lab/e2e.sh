@@ -42,10 +42,20 @@ for i in 1 2 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 step "1. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
   "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" >/dev/null && ok "Seed hochgeladen"
-sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm.rsc"
+# clean="yes" (Standard): Reset auf leere Config, danach läuft der Bootstrap selbst weiter.
+# post sichert den Host-Zugang über ether1 per DHCP-Client (CHR legt ihn nach dem Reset meist
+# selbst wieder an, deshalb nur, wenn er fehlt).
+sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' \
+    -e 's|^:local post ""|:local post ":if ([:len [/ip/dhcp-client/find where interface=ether1]] = 0) do={ /ip/dhcp-client/add interface=ether1 disabled=no }"|' \
+    "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm.rsc"
 echo "put $LAB/bm.rsc bootstrap-manager.rsc" | put 1
-out=$(r 1 '/import bootstrap-manager.rsc verbose=no')
-echo "$out" | grep -q "Primary-Manager bereit" && ok "Manager-Bootstrap" || { bad "Manager-Bootstrap"; echo "$out" | tail -5; }
+out=$(timeout 90 ./lab.sh ssh 1 '/import bootstrap-manager.rsc verbose=no' 2>&1 | tr -d '\r')   # Sitzung endet mit dem Reset
+echo "$out" | grep -q "Reset auf leere Config" && ok "Manager-Bootstrap Stufe 1: Reset auf leere Config" || { bad "Manager-Bootstrap Stufe 1"; echo "$out" | tail -5; }
+sleep 15; waitssh 1
+for _ in $(seq 1 60); do r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | tail -1 | grep -qx 1 && break; sleep 5; done
+if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | tail -1 | grep -qx 1; then ok "Manager-Bootstrap Stufe 2 nach dem Reset"; else bad "Manager-Bootstrap Stufe 2"; r 1 '/log/print where message~"cfm: "' | tail -5; fi
+expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
+expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 7' "cm1: 7 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"

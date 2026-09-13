@@ -44,6 +44,8 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 * Onboarding-Push gegen echte Werks-Configs: Router (ether1 = WAN mit Firewall), CRS-Switches,
   APs im CAPs-Modus, Geräte mit Aufkleber-Passwort und `flash/`-Verzeichnis
 * Onboarding eines hAP per PoE an ether1 im CAPs-Modus (Reset-Taster, LED-Verhalten je Modell)
+* Manager-Bootstrap mit Reset (`clean="yes"`) auf Hardware, besonders die Übergabe an cfm per
+  SFTP-`.auto.rsc` nach dem Hochfahren und Geräte mit `flash/`
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.

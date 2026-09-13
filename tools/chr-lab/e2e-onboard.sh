@@ -37,7 +37,9 @@ for i in 1 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 step "1. Primary-Manager cm1"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
   "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" >/dev/null && ok "Seed hochgeladen"
-sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm.rsc"
+# hier der Weg ohne Reset (clean="no"), den Reset testet e2e.sh
+sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' -e 's/^:local clean "yes"/:local clean "no" /' \
+    "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm.rsc"
 echo "put $LAB/bm.rsc bootstrap-manager.rsc" | put 1
 r 1 '/import bootstrap-manager.rsc verbose=no' | grep -q "Primary-Manager bereit" && ok "Manager-Bootstrap" || bad "Manager-Bootstrap"
 for _ in $(seq 1 45); do [ "$(stat cm1 v)" = 1 ] && break; sleep 4; done

@@ -1,3 +1,6 @@
+# Private Standortdaten (Overlay für tools/upload-seed.sh --overlay site) – nie ins Repo
+site/
+
 # Testlabor-Artefakte (VM-Disks und CHR-Images gehören nicht ins Repo)
 .lab/
 *.qcow2

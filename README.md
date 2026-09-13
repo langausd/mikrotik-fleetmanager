@@ -61,6 +61,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
 | `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
+| `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage einmalig auf den Manager laden |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
@@ -83,10 +84,12 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 
 ## Schnellstart
 
-1. **Vorlage anpassen:** `cfm/work/global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`,
-   `cfm/meta/inventory.rsc` und die Hostfiles. Die Beispiele sind ein fiktives Netz
-   (VLAN 10/20/30/40, 101–119, SSIDs Demo/Demo-Gast/Demo-Event/Demo-IoT).
-2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1>`, dann `bootstrap/bootstrap-manager.rsc`
+1. **Eigene Daten anlegen:** als privates Overlay `site/` (von Git ignoriert, gleiche Struktur wie
+   `cfm/work` plus `meta/`): `global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`,
+   `hosts/` und `meta/inventory.rsc`. Vorlage sind die Dateien in `cfm/work/` und `cfm/meta/`; die
+   Beispiele dort sind ein fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast,
+   Demo-Event, Demo-IoT).
+2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site`, dann `bootstrap/bootstrap-manager.rsc`
    anpassen, hochladen, `/import bootstrap-manager.rsc`. Das erzeugt Release v1 und enrollt cm1 selbst.
 3. **Secrets:**
    `$cfmSecret key=user.netadmin value=…`, `$cfmSecret key=psk.main value=…` (je SSID-Key), `$cfmSecret key=vaultpw value=…`

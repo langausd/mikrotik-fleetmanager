@@ -3,7 +3,8 @@
 # Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz.
 #   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm]
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
-#            die Vorlage, z.B. tools/chr-lab/seed für das Testlabor.
+#            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert) oder
+#            tools/chr-lab/seed für das Testlabor.
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
 port=22; overlay=""; base=cfm

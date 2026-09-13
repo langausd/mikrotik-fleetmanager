@@ -277,16 +277,19 @@ Drop.
 
 ### 6.1 Vorlage anpassen
 
-In diesem Verzeichnis: `cfm/work/global.rsc`, `vlans.rsc`, `profiles.rsc`, `wifi.rsc`,
-`cfm/meta/inventory.rsc` (zunächst nur der Primary-Manager) und die Hostfiles unter
-`cfm/work/hosts/`. Die mitgelieferten Beispiele sind Vorlagen, keine fertige Konfiguration.
+Lege deine Standortdaten als privates Overlay `site/` an; Git ignoriert dieses Verzeichnis. Kopiere
+dafür `cfm/work/global.rsc`, `vlans.rsc`, `profiles.rsc`, `wifi.rsc` und `cfm/work/hosts/` nach
+`site/` sowie `cfm/meta/inventory.rsc` nach `site/meta/` und passe sie an (im Inventar zunächst
+nur der Primary-Manager). Die mitgelieferten Beispiele sind ein fiktives Netz, keine fertige
+Konfiguration. So bleiben deine Daten aus dem Repo, und neue Versionen des Frameworks lassen sich
+einfach übernehmen.
 
 ### 6.2 Primary-Manager
 
 1. Den Manager mit einem Port an einen Trunk hängen, der das MGMT-VLAN tagged führt.
 2. Die Vorlage hochladen:
    ```bash
-   tools/upload-seed.sh admin@<aktuelle-IP-des-Managers>
+   tools/upload-seed.sh admin@<aktuelle-IP-des-Managers> --overlay site
    ```
 3. In `bootstrap/bootstrap-manager.rsc` den Kopf anpassen (`myname`, `ip` = `managers[0]`,
    `uplink`, `mv`, `gw`, `admin`, `role`), die Datei hochladen und im Terminal ausführen:

@@ -120,6 +120,9 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="!WAN";"protocol"="udp";"dst-port"="53,67,123"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="!WAN";"protocol"="tcp";"dst-port"="53"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"dst-address"="127.0.0.1"})
+# Verbindungen des Geräts zu sich selbst (Router + Manager: Status-Abholung, Agent-Pull und
+# Watchdog-Bestätigung an die eigene MGMT-IP) kommen nicht über Z-mgmt herein
+:set ($r->[:len $r]) ({"chain"="input";"action"="accept";"src-address-type"="local"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="drop"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="fasttrack-connection";"connection-state"="established,related"})

@@ -52,6 +52,20 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 * echte Funkteile (CAPs), VRRP mit zwei Routern, CAPsMAN-Übernahme durch den Backup-Manager
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
 
+## Bekannte Fehler
+
+* ~~**WireGuard-Fernzugang: Rückweg zu cm1 selbst startet nicht zuverlässig ohne Anstoß.**~~ –
+  *vermutlich behoben, noch nicht erneut getestet:* Ursache war wahrscheinlich, dass die
+  WireGuard-Peers ursprünglich Adressen aus dem **bereits verbundenen** MGMT-Subnetz bekamen
+  (RouterOS legt dafür keine automatische Route an, dazu Proxy-ARP nötig – beides zusammen offenbar
+  fragil beim allerersten Verbindungsaufbau). Umgebaut auf ein eigenes, nicht überlappendes
+  WireGuard-Subnetz (`wireguard.rsc` → `net`, Router bekommt Host `.1`); Proxy-ARP und die
+  explizite Peer-Route sind damit entfallen, die verbundene Route fürs ganze Subnetz entsteht
+  automatisch. Nach dem Umbau erneut testen, insbesondere den Rückweg zu cm1 selbst direkt nach
+  einem frischen `nmcli connection up`, bevor `mgmtExtra` gehärtet wird (siehe CHECKLISTE) – falls
+  es dann wieder hakt, war die Vorgeschichte mit `mgmtExtra` doch nicht die Erklärung und die
+  eigentliche Ursache liegt woanders.
+
 ## Verbesserungsplan (Stand 2026-09-12)
 
 Reihenfolge: 0 → 1 → 2, 3, 4 → 6, 7 → Rest nach Bedarf.
@@ -81,9 +95,12 @@ die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem ne
 6. ~~**Plan-Modus**~~ – *erledigt (D29):* `$cfmPlan host=<n>`, Probelauf gegen `work/` (ohne
    `*.post.rsc`). Offen: Grenze der Berichtsgröße bei sehr großen Plänen prüfen.
 7. ~~**RouterOS-Versionspflege**~~ – *erledigt (D30):* `$cfmUpgrade` (sofort oder einmaliges
-   Wartungsfenster, auch Downgrade), Pakete vom Manager, automatisches Aufräumen. Offen: Pakete auf
-   den Backup-Manager spiegeln; Zusatzpakete (`wifi-qcom` …) und mehrere Architekturen auf echter
-   Hardware testen; RouterBOOT-Firmware nach dem Update (bisher `auto-upgrade` + nächster Neustart).
+   Wartungsfenster, auch Downgrade), Pakete vom Manager, automatisches Aufräumen. RouterBOOT-Firmware
+   nach dem Update *erledigt*: `agent.rsc` erkennt `current-firmware != upgrade-firmware` (auf
+   Hardware bestätigt: hAP AX² blieb nach einem RouterOS-Update sonst dauerhaft auf der alten
+   Firmware stehen) und stößt selbst einen weiteren Neustart an. Offen: Pakete auf den
+   Backup-Manager spiegeln; Zusatzpakete (`wifi-qcom` …) und mehrere Architekturen auf echter
+   Hardware testen.
 8. ~~**Identitätsprüfung vor dem Secret-Push**~~ – *erledigt (D28):* Challenge-Response mit dem
    Geräteschlüssel; Erneuerung per `$cfmRekey`. Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
    (bisher nur per `$cfmEnroll … rekey=yes`).
@@ -105,3 +122,7 @@ die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem ne
     Hostfile-Angaben, `netzplan.md` (Mermaid + Tabelle), `export=yes` für Graphviz/CSV.
 18. **Optional Git als Arbeitsort** mit Review vor dem Release – bewusste Alternative zu D4,
     z.B. bei mehreren Admins.
+19. **Individuelle `authorized_keys` je Admin-Benutzer** – aktuell (D35) gilt eine einzige
+    `authorized_keys`-Datei für ALLE User aus `global.rsc` `users`; bei mehreren Admins sollte
+    jeder Benutzer nur seine eigenen Keys bekommen (z.B. `authorized_keys.<user>` oder Zuordnung
+    innerhalb der Datei), inkl. Revocation pro Person statt nur global.

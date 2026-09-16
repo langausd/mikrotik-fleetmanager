@@ -30,7 +30,14 @@
 :if ($nmod = 0) do={ :error "Manager-Module lib/mgr-*.rsc fehlen im Manifest" }
 :local ld ":foreach s in=[/system/script/find where name~\"^cfm-mgr-\"] do={ /system/script/run \$s }"
 $cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm-mgr";"source"=$ld;"policy"=$pol})
-$cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"="1m";"on-event"="/system script run cfm-mgr; :global cfmTick; \$cfmTick"})
+# Allgemeiner Tick (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup):
+# Intervall aus global.rsc "mgrTick" (Default 10m, falls nicht gesetzt). Das Onboarding braucht
+# einen eigenen, schnellen Tick (siehe unten) - sonst würde eine laufende Sitzung proportional
+# langsamer voranschreiten, sobald "mgrTick" größer als 1m ist.
+:local mgrTick [:tostr ($cfmG->"mgrTick")]
+:if ([:len $mgrTick] = 0) do={ :set mgrTick "10m" }
+$cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"="/system script run cfm-mgr; :global cfmTick; \$cfmTick"})
+$cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-tick"}) p=({"name"="cfm-mgr-onb-tick";"start-time"="startup";"interval"="1m";"on-event"="/system script run cfm-mgr; :global cfmOnbTickRun; \$cfmOnbTickRun"})
 
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---
 $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-dev";"policy"="ssh,ftp,read"})

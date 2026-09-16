@@ -76,10 +76,14 @@
 }
 
 # IDs per natürlichem Schlüssel finden. $1=Menü, N={"prop"=wert;...}
+# !dynamic ist Pflicht: dynamische Objekte (z.B. vom Switch-Chip gelernte
+# /interface/bridge/vlan-Einträge, sobald viele Ports gleichzeitig eine neue PVID
+# bekommen) darf $cfmEnsure nie übernehmen - ein "set" darauf scheitert mit
+# RouterOS-Fehler "can not change dynamic".
 :global cfmFind do={
   :local w ""
   :foreach k,v in=$N do={ :set w ($w . " and " . $k . "=(\$N->\"" . $k . "\")") }
-  :local code (":return [" . $1 . "/find where" . [:pick $w 4 [:len $w]] . "]")
+  :local code (":return [" . $1 . "/find where !dynamic" . $w . "]")
   :local f
   :onerror e in={ :set f [:parse $code] } do={ :error ($e . " IN: " . $code) }
   :return [$f N=$N]

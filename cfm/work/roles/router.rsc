@@ -6,7 +6,7 @@
 #   wan={"if"="vlan20";"gw"="192.168.20.1";"dns"="192.168.20.1"}
 #     oder {"if"="ether1";"dhcp"="yes"}  [optional "addr"="x.x.x.x/nn"]
 # ============================================================
-:global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf
+:global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
@@ -92,8 +92,42 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   :set wdns [:tostr ($wan->"dns")]
 }
 $cfmSet m="/ip/dns" p=({"allow-remote-requests"="yes";"servers"=$wdns})
-$cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"="0.de.pool.ntp.org,1.de.pool.ntp.org"})
+:local ntpSrv $wdns
+:if ([:len $ntpSrv] = 0) do={ :set ntpSrv "0.de.pool.ntp.org,1.de.pool.ntp.org" }
+$cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntpSrv})
 $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
+
+# --- WireGuard-Fernzugang (D-WG): eigenes, nicht überlappendes Subnetz (wireguard.rsc "net") -
+#     RouterOS legt sonst keine Route für "allowed-address" an, wenn sie in einem bereits
+#     verbundenen Subnetz (z.B. MGMT) liegt, und ohne eigenes Subnetz bräuchte es zusätzlich
+#     Proxy-ARP (frühere Version, siehe docs/TODO.md "Bekannte Fehler" zur Vorgeschichte). Peers
+#     zählen trotzdem als Zone mgmt (volle mgmt-Rechte) über die Interface-Liste, unabhängig vom
+#     Subnetz. Privater Schlüssel wird beim ersten Anlegen automatisch erzeugt (wie SSH-Host-Keys)
+#     und bleibt auf dem Gerät - kein Vault-Eintrag nötig. Öffentlichen Schlüssel abrufen:
+#     /interface/wireguard/print. Leere peers-Liste = Interface bleibt aus. ---
+:local wgIf ""
+:if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
+  :set wgIf "wg-admin"
+  :local wnet [:tostr ($cfmWg->"net")]
+  :local wslash [:find $wnet "/"]
+  :local wbase [:toip [:pick $wnet 0 $wslash]]
+  :local wpfx [:pick $wnet ($wslash + 1) [:len $wnet]]
+  $cfmEnsure m="/interface/wireguard" k="wg:admin" n=({"name"=$wgIf}) p=({"name"=$wgIf;"listen-port"=[:tonum ($cfmWg->"listenPort")]})
+  $cfmEnsure m="/interface/list/member" k="ilm:wg-mgmt" n=({"list"="Z-mgmt";"interface"=$wgIf}) p=({"list"="Z-mgmt";"interface"=$wgIf})
+  # Eigene Adresse auf wg-admin: die verbundene Route fürs ganze WG-Subnetz entsteht daraus von
+  # selbst (kein Proxy-ARP, keine Route je Peer nötig - anders als im MGMT-Subnetz zuvor).
+  $cfmEnsure m="/ip/address" k="ip:wg" n=({"interface"=$wgIf}) p=({"address"=([:tostr ($wbase + 1)] . "/" . $wpfx);"interface"=$wgIf})
+  # WG-Subnetz zu cfm-mgmt: sonst erreichen Peers zwar andere Geräte (per Zone), aber nicht cm1s
+  # eigene Dienste (SSH/Winbox) - die richten sich nach cfm-mgmt, nicht nach der Zonen-Liste.
+  $cfmEnsure m="/ip/firewall/address-list" k="al:mgmt:wg" p=({"list"="cfm-mgmt";"address"=$wnet})
+  :foreach pname,pd in=($cfmWg->"peers") do={
+    :local pk [:tostr ($pd->"pubkey")]
+    :if ([:len $pk] > 0) do={
+      :local paddr ([:tostr ($wbase + [:tonum ($pd->"addr")])] . "/32")
+      $cfmEnsure m="/interface/wireguard/peers" k=("wgp:" . $pname) n=({"interface"=$wgIf;"public-key"=$pk}) p=({"interface"=$wgIf;"public-key"=$pk;"allowed-address"=$paddr})
+    }
+  }
+}
 
 # --- Adresslisten ---
 :foreach n in={"10.0.0.0/8";"172.16.0.0/12";"192.168.0.0/16"} do={
@@ -112,6 +146,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"connection-state"="established,related,untracked"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"connection-state"="invalid"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="icmp"})
+:if ([:len $wgIf] > 0) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="udp";"dst-port"=[:tostr ($cfmWg->"listenPort")]}) }
 :if ($vr) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="vrrp"}) }
 :foreach z in=[:toarray ($cfmG->"mgmtAccess")] do={
   :if (($zones->$z) = 1) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"=("Z-" . $z)}) }

@@ -3,7 +3,7 @@
 #  Identität, Bridge + VLAN-Filtering, Port-Profile, MGMT-Zugang,
 #  Dienste-Härtung, Zeit/Logging, Admin-Benutzer, cfm-Agent.
 # ============================================================
-:global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmDl
+:global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmDl; :global cfmWg
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
 :global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
 
@@ -106,6 +106,12 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
   }
 }
 :foreach x in=($cfmG->"mgmtExtra") do={ :set ($an->$x) 1 }
+# WireGuard-Peers (D-WG) zählen überall als mgmt, nicht nur beim Forwarding über den Router -
+# sonst lässt zwar die Firewall SSH/Winbox-Pakete durch, aber der Dienst selbst (eigene
+# Adressliste, unabhängig von der Firewall) weist sie zurück.
+:if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
+  :set ($an->[:tostr ($cfmWg->"net")]) 1
+}
 :foreach s in={"telnet";"ftp";"www";"www-ssl";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
   :if ([:len $port] > 0) do={
@@ -160,14 +166,59 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
 :local sl [:tostr ($cfmG->"syslog")]
 :if ([:len $sl] > 0) do={
   $cfmEnsure m="/system/logging/action" k="log:remote" n=({"name"="cfmremote"}) p=({"name"="cfmremote";"target"="remote";"remote"=$sl})
+  # ohne $cfmEnsure (kein "comment"): manche RouterOS-Builds (beobachtet auf hAP AX²,
+  # wifiwave2) lehnen /system/logging/add mit "comment" ab ("expected end of command"),
+  # obwohl derselbe Aufruf auf anderer Hardware (z.B. CRS418) funktioniert.
   :foreach t in={"info";"warning";"error";"critical"} do={
-    $cfmEnsure m="/system/logging" k=("log:remote:" . $t) p=({"action"="cfmremote";"topics"=$t})
+    :local lid [/system/logging/find where action="cfmremote" and topics=$t]
+    :if ([:len $lid] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmremote" topics=$t }
   }
 }
 
 # --- Admin-Benutzer (Passwort + Aktivierung kommen per Secret-Push) ---
 :foreach u,grp in=($cfmG->"users") do={
   $cfmEnsure m="/user" k=("user:" . $u) n=({"name"=$u}) p=({"name"=$u;"group"=$grp}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
+}
+
+# --- Persönliche Admin-SSH-Keys aus work/authorized_keys (OpenSSH-Format, eine Zeile je Key:
+#     "<typ> <base64> [kommentar]", keine OpenSSH-Optionen wie command=... davor; "#"-Zeilen und
+#     Leerzeilen werden ignoriert). Optional: Fehlt die Datei, bleiben ssh-keys unangetastet.
+#     Ist sie da, ist sie der VOLLSTÄNDIGE Sollzustand für ALLE Admin-User aus global.rsc users:
+#     Keys, die nicht (mehr) drinstehen, werden bei jedem Apply entfernt (auch von Hand
+#     hinzugefügte) - Revocation = Zeile löschen + $cfmRelease. Passwort-Login (Secret-Push) bleibt
+#     davon unberührt und funktioniert in jedem Fall zusätzlich. Kein Ersatz für die ssh-keys der
+#     Rolle manager (cfm/cfmd-<name>) - die sind Maschinen-Identität, hier geht es um Menschen. ---
+:local akf ($cfmDl . "/authorized_keys")
+:if ([:len [/file/find where name=$akf]] > 0) do={
+  :local lines ({})
+  :local t ([/file/get $akf contents] . "\n")
+  :while ([:len $t] > 0) do={
+    :local p [:find $t "\n"]
+    :local l [:pick $t 0 $p]
+    :set t [:pick $t ($p + 1) [:len $t]]
+    :if ([:len $l] > 0 and [:pick $l ([:len $l] - 1) [:len $l]] = "\r") do={ :set l [:pick $l 0 ([:len $l] - 1)] }
+    :if ([:len $l] > 0 and [:pick $l 0 1] != "#") do={ :set ($lines->[:len $lines]) $l }
+  }
+  :local aku ({})
+  :foreach u,grp in=($cfmG->"users") do={ :if ([:len [/user/find where name=$u]] > 0) do={ :set ($aku->[:len $aku]) $u } }
+  :if ([:len $aku] > 0) do={
+    :if ($cfmDry = true) do={
+      $cfmLog ("Admin-SSH-Keys wuerden aktualisiert: " . [:len $lines] . " Key(s) fuer " . [:len $aku] . " User")
+    } else={
+      :foreach u in=$aku do={ /user/ssh-keys/remove [find where user=$u] }
+      :local i 0
+      :foreach ln in=$lines do={
+        :local kf ("cfm-ak" . $i)
+        /file/add name=$kf contents=$ln
+        :delay 100ms
+        :foreach u in=$aku do={
+          :onerror e in={ /user/ssh-keys/import user=$u public-key-file=$kf } do={ $cfmLog ("Admin-Key " . ($i + 1) . " fuer " . $u . " fehlgeschlagen: " . $e) }
+        }
+        :onerror e in={ /file/remove [find where name=$kf] } do={}
+        :set i ($i + 1)
+      }
+    }
+  }
 }
 
 # --- cfm-Agent, Konfiguration und Scheduler aktuell halten ---

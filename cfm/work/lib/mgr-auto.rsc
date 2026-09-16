@@ -1,7 +1,8 @@
 # ============================================================
 # cfm lib/mgr-auto.rsc – Manager-Funktionen: Automatik
-#   $cfmTick (jede Minute, Scheduler cfm-mgr-tick), $cfmAutoPromote, $cfmSecretSync,
-#   $cfmHookState, $cfmMirror, $cfmPromoteManager, $cfmTakeover
+#   $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick"), $cfmOnbTickRun (Scheduler
+#   cfm-mgr-onb-tick, fest 1m), $cfmAutoPromote, $cfmSecretSync, $cfmHookState, $cfmMirror,
+#   $cfmPromoteManager, $cfmTakeover
 # ============================================================
 # ---------- Automatik (Scheduler cfm-mgr-tick) ----------
 :global cfmAutoPromote do={
@@ -134,7 +135,6 @@
   :onerror e in={
     :if ([$cfmIsPrimary]) do={
       :global cfmCollect; $cfmCollect
-      :global cfmOnbTick; $cfmOnbTick
       $cfmAutoPromote
       $cfmSecretSync
       :global cfmUpgTick; $cfmUpgTick
@@ -145,4 +145,13 @@
       :if ([:tostr ($vj->"ver")] != [:tostr ($vj->"bver")] and [:len [$cfmVaultGet "vaultpw"]] > 0) do={ $cfmVaultBackup }
     } else={ $cfmMirror }
   } do={ :log warning ("cfm: tick: " . $e) }
+}
+
+# Eigener, schneller Tick nur fürs Onboarding (Scheduler cfm-mgr-onb-tick, fest 1m): der
+# allgemeine Tick (cfm-mgr-tick) ist über global.rsc "mgrTick" konfigurierbar und meist deutlich
+# langsamer (Default 10m) - eine laufende Onboarding-Sitzung (DHCP-Warten, Probe, Fail-safe-Timer)
+# würde sonst proportional langsamer voranschreiten.
+:global cfmOnbTickRun do={
+  :global cfmIsPrimary; :global cfmOnbTick
+  :onerror e in={ :if ([$cfmIsPrimary]) do={ $cfmOnbTick } } do={ :log warning ("cfm: onb-tick: " . $e) }
 }

@@ -11,7 +11,8 @@
 # Warnungen: Inventar-Eintrag ohne Hostfile.
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
-  :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet
+  :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
+  :global cfmNet
   :local b [$cfmMB]
   :local w ($b . "/work")
   :local err ({}); :local warn ({})
@@ -73,6 +74,24 @@
       :if ([:len [$cfmVaultGet ("ppsk." . $k . "." . $e)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: Passphrase fehlt, \$cfmSecret key=ppsk." . $k . "." . $e . " value=...") }
     }
   }
+  # WireGuard (Peers zählen als Zone mgmt): Pubkey Pflicht, Tunnel-Adressen eindeutig, eigenes
+  # Subnetz darf nicht mit einem VLAN aus vlans.rsc überlappen (sonst wieder Proxy-ARP-Ärger)
+  :local wgAddrs ({})
+  :if ([:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] = 0) do={
+    :set ($err->[:len $err]) ("wireguard.rsc: peers vorhanden, aber net fehlt")
+  }
+  :foreach vid,v in=$cfmVlans do={
+    :local vn [:tostr (([$cfmNet $vid])->"net")]
+    :if ([:len $vn] > 0 and $vn = [:tostr ($cfmWg->"net")]) do={ :set ($err->[:len $err]) ("wireguard.rsc: net " . $vn . " überlappt mit VLAN " . $vid) }
+  }
+  :foreach k,p in=($cfmWg->"peers") do={
+    :if ([:len [:tostr ($p->"pubkey")]] = 0) do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": pubkey fehlt") }
+    :local ad [:tostr ($p->"addr")]
+    :if ([:len $ad] = 0) do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": addr fehlt") } else={
+      :if ([:typeof ($wgAddrs->$ad)] != "nothing") do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": addr " . $ad . " doppelt vergeben (" . ($wgAddrs->$ad) . ")") }
+      :set ($wgAddrs->$ad) $k
+    }
+  }
   # Zonen-Matrix, Management-Zugang, MGMT-VLAN
   :foreach z,to in=($cfmG->"policy") do={
     :if ([:typeof ($zones->$z)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy nennt Zone " . $z . ", kein VLAN hat diese Zone") }
@@ -126,6 +145,30 @@
       }
     }
   }
+  # Persönliche Admin-SSH-Keys (work/authorized_keys, OpenSSH-Format, D35): optional, grobe
+  # Zeilenprüfung (kein RouterOS-Skript, daher kein :parse möglich)
+  :local akf ($w . "/authorized_keys")
+  :if ([:len [/file/find where name=$akf]] > 0) do={
+    :local ln 0
+    :local t ([/file/get $akf contents] . "\n")
+    :while ([:len $t] > 0) do={
+      :set ln ($ln + 1)
+      :local p [:find $t "\n"]
+      :local l [:pick $t 0 $p]
+      :set t [:pick $t ($p + 1) [:len $t]]
+      :if ([:len $l] > 0 and [:pick $l ([:len $l] - 1) [:len $l]] = "\r") do={ :set l [:pick $l 0 ([:len $l] - 1)] }
+      :if ([:len $l] > 0 and [:pick $l 0 1] != "#") do={
+        :local sp [:find $l " "]
+        :local ok false
+        :if ([:typeof $sp] != "nil") do={
+          :local typ [:pick $l 0 $sp]
+          :if ($typ ~ "^(ssh-ed25519|ssh-rsa|ssh-dss|ecdsa-sha2-|sk-ssh-ed25519|sk-ecdsa-sha2-)") do={ :set ok true }
+        }
+        :if (!$ok) do={ :set ($err->[:len $err]) ("authorized_keys: Zeile " . $ln . ": kein gültiger OpenSSH-Public-Key (Format \"<typ> <base64> [kommentar]\", keine Optionen wie command=... davor)") }
+      }
+    }
+  }
+
   # Hostfiles setzen u.U. Overrides in cfmG -> Daten neu laden
   :onerror e in={ $cfmLoadData ver=0 } do={}
   :return ({"err"=$err;"warn"=$warn})

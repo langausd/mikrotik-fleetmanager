@@ -22,7 +22,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK = os.path.join(ROOT, "cfm", "work")
-DATA = ["global.rsc", "vlans.rsc", "profiles.rsc", "wifi.rsc"]
+DATA = ["global.rsc", "vlans.rsc", "profiles.rsc", "wifi.rsc", "wireguard.rsc"]
 
 
 def read(p):

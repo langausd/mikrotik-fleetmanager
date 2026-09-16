@@ -14,6 +14,7 @@
   "interval"="15m";
   "reapply"="1d";
   "watchdog"="5m";
+  "mgrTick"="10m";
   "ringSoak"={"30m";"2h"};
   "archiveKeep"=10;
   "pkgPath"="";
@@ -27,7 +28,7 @@
     "onboard"="mtupdate"
   };
   "rosChannel"="stable";
-  "rosMin"="7.20";
+  "rosMin"="7.22";
   "onboard"={"timeout"="60m";"mtHosts"={"upgrade.mikrotik.com";"download.mikrotik.com";"cdn.mikrotik.com"}};
   "users"={"netadmin"="full"};
   "adminUser"="disable";
@@ -36,6 +37,9 @@
 }
 # Erläuterungen:
 #  managers   Fallback-Liste (Primary zuerst). Geräte ziehen per SFTP von hier.
+#  mgrTick    Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync,
+#             Updates, Netzplan, Hook, Vault-Backup). Das Onboarding hat einen eigenen, festen
+#             1m-Tick und bleibt davon unberührt.
 #  ringSoak   Wartezeit nach erfolgreichem Ring 0 -> 1 bzw. 1 -> 2. "manual" = nur per $cfmPromote.
 #  archiveKeep  so viele Versionen bleiben im Archiv (plus alle, die Ringe/Geräte nutzen).
 #  pkgPath    Ablage der RouterOS-Pakete für $cfmUpgrade, leer = <cfm>/pkg. Bei kleinem Flash

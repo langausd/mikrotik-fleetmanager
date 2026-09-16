@@ -420,6 +420,27 @@
     :set ($st->"upf"); :set ($st->"upa"); :set ($st->"upg")
   }
 
+  # --- RouterBOARD-Firmware: auto-upgrade (Rolle base) flasht sie beim Neustart nach einem
+  #     RouterOS-Update automatisch, aktiv wird sie aber erst nach einem WEITEREN Neustart
+  #     (RouterOS-Eigenheit) - ohne diesen Schritt bleibt "upgrade-firmware" dauerhaft anders als
+  #     "current-firmware" stehen. Nur prüfen, wenn nicht schon ein Neustart ansteht (oben).
+  :if ([:len $boot] = 0) do={
+    :local rbCur ""; :local rbUpg ""
+    # /system/routerboard fehlt auf Geräten ohne RouterBOARD (CHR/x86) komplett - in fester
+    # Slash-Schreibweise wäre das schon ein Parse-Fehler, den :onerror nicht abfängt. Deshalb per
+    # :parse zur Laufzeit auflösen (wie $cfmRun es für alle dynamischen Menüs tut).
+    :onerror e in={
+      :local fc [:parse ":return [/system/routerboard/get current-firmware]"]
+      :set rbCur [$fc]
+      :local fu [:parse ":return [/system/routerboard/get upgrade-firmware]"]
+      :set rbUpg [$fu]
+    } do={}
+    :if ([:len $rbUpg] > 0 and $rbUpg != $rbCur) do={
+      :log warning ("cfm: RouterBOARD-Firmware " . $rbUpg . " geflasht (aktuell " . $rbCur . ") - Neustart zum Aktivieren")
+      :set boot "/system/reboot"
+    }
+  }
+
   # --- Bericht ---
   :local exp ($applied or ($now - [:tonum ($st->"et")]) > 86400)
   :if ($exp) do={ :set ($st->"et") $now }

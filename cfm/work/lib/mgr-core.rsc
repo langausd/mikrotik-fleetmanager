@@ -42,7 +42,8 @@
 #   $cfmRegister name=<n> serial=<s> ip=<ip> [role=..] [ring=..] [pw=<Aufkleber-Passwort>]
 #   $cfmOnboard sw=<switch> port=<port> [name=<n>]   Port temporär ins Onboarding-VLAN
 #   $cfmOnboardStatus | $cfmOnboardAbort | $cfmPending | $cfmApprove serial=.. name=.. ip=..
-# Automatisch jede Minute (Scheduler cfm-mgr-tick): $cfmTick
+# Automatisch: $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick", Default 10m),
+# $cfmOnbTickRun (Scheduler cfm-mgr-onb-tick, fest 1m, nur fürs Onboarding)
 # ============================================================
 
 :global cfmMB do={
@@ -112,7 +113,7 @@
   :if ([:len [:tostr $v]] = 0) do={ :set v ([$cfmRings]->"latest") }
   :local d ($b . "/archive/v" . $v)
   :if ($v = 0) do={ :set d ($b . "/work") }
-  :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc"} do={ /import file-name=($d . "/" . $f) verbose=no }
+  :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ /import file-name=($d . "/" . $f) verbose=no }
   :return $v
 }
 
@@ -202,7 +203,9 @@
       :if ($rl ~ ",manager") do={
         :foreach p,h in=$fx do={ :if ($p ~ "^lib/mgr-") do={ :set ($want->[:len $want]) ({$p;0;1}) } }
       }
-      :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc"} do={ :set ($want->[:len $want]) ({$f;1;1}) }
+      :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ :set ($want->[:len $want]) ({$f;1;1}) }
+      # authorized_keys (D35, persönliche Admin-SSH-Keys): optional, kein /import (kein RouterOS-Skript)
+      :set ($want->[:len $want]) ({"authorized_keys";0;0})
       :set ($want->[:len $want]) ({("hosts/" . $name . ".rsc");1;0})
       :set ($want->[:len $want]) ({"roles/base.rsc";1;1})
       :if ($rl ~ ",manager-backup,") do={ :set ($want->[:len $want]) ({"roles/manager.rsc";0;1}) }

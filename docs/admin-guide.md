@@ -180,6 +180,7 @@ irgendetwas ausgerollt wird.
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
 | `domain`, `tz`, `ntp`, `dns`, `syslog` | Domain für DHCP, Zeitzone, NTP/DNS für Nicht-Router, Syslog-Ziel | |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
+| `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
 | `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `10` |
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
@@ -189,7 +190,7 @@ irgendetwas ausgerollt wird.
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
-| `services` | aktive IP-Dienste mit Port, alle anderen werden abgeschaltet | `ssh`, `winbox` |
+| `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet | `ssh`, `winbox` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
 
 ### `vlans.rsc`
@@ -234,6 +235,40 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
   `$cfmSecret key=ppsk.iot.kameras value=…`.
+
+### `wireguard.rsc`
+
+Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`.
+
+* `listenPort`: UDP-Port des Routers (auf dem WAN-Interface offen, Quelle nicht beschränkt).
+* `net`: eigenes Subnetz für Router (Host `.1`) und Peers, darf sich nicht mit einem VLAN aus
+  `vlans.rsc` überschneiden (`$cfmCheck` prüft das) – so legt RouterOS die Route fürs ganze
+  Subnetz automatisch über die WireGuard-Schnittstelle an, ohne Proxy-ARP-Tricks.
+* `peers`: Key = Name; `pubkey` = Public Key des Peers; `addr` = Host-Anteil der Tunnel-IP in
+  `net`. Leere `peers={}` = WireGuard-Interface bleibt aus. Der private Schlüssel des Routers
+  wird lokal erzeugt (wie SSH-Host-Keys), steht nirgends in den Daten.
+
+### `authorized_keys` (optional)
+
+Persönliche Admin-SSH-Keys, **OpenSSH-Format** (kein RouterOS-Datenformat): eine Zeile je Key,
+`<typ> <base64> [kommentar]`, z.B. `ssh-ed25519 AAAAC3... admin@laptop`. OpenSSH-Optionen vor dem
+Typ (`command=...`, `no-port-forwarding`, …) werden nicht unterstützt; `#`-Zeilen und Leerzeilen
+werden ignoriert.
+
+Die Rolle `base` wendet die Datei auf **jedem** Gerät für **alle** Admin-User aus `global.rsc`
+`users` an. Fehlt die Datei, bleiben `ssh-keys` unangetastet (Feature nicht genutzt). Existiert
+sie, ist sie der vollständige Sollzustand: Keys, die nicht (mehr) drinstehen, werden bei jedem
+Apply entfernt – auch von Hand hinzugefügte, denn `/user/ssh-keys` hat kein `comment`-Feld für
+eine feinere Reconciliation. Revocation = Zeile löschen + `$cfmRelease`.
+
+Das ist eine **Zusatzoption**, kein Ersatz für das Passwort-Login: `$cfmSecret key=user.<name>
+value=…` funktioniert unabhängig davon immer, ein kaputter oder fehlender Key sperrt also nicht
+aus. Auch kein Ersatz für die Geräteschlüssel der Rolle `manager` (`cfm`/`cfmd-<name>`) – die sind
+Maschinen-Identität für Push/Pull, hier geht es um menschliche Admins.
+
+`$cfmCheck` prüft grob das Zeilenformat (Typ-Präfix, mindestens ein Leerzeichen), nicht die
+Gültigkeit des Base64-Teils. `tools/upload-seed.sh` lädt die Datei aus einem Overlay wie die
+übrigen Top-Level-`.rsc`-Dateien mit hoch, obwohl sie selbst keine ist.
 
 ### `meta/inventory.rsc`
 
@@ -551,6 +586,51 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
 * `$cfmChannels` zeigt die Kanäle der APs und warnt, wenn zwei APs am selben Switch denselben
   Kanal nutzen. Die Kanäle wählen die APs selbst aus den Pools in `wifi.rsc` (`reselect`).
 
+### 8.8 WireGuard-Fernzugang
+
+Für Admins, die Geräte ohne direkten Laptop-Zugriff erreichen müssen (kein Agent-Forwarding im
+RouterOS-SSH-Client, daher kein Sprung über einen Manager möglich): ein WireGuard-Tunnel zum
+Primary-Manager, dessen Peers als Zone `mgmt` zählen – volle Rechte wie ein Gerät im MGMT-VLAN.
+Nur auf dem Router (Rolle `router`) aktiv, siehe `wireguard.rsc`.
+
+**Server (einmalig pro Peer):**
+
+1. Public Key des Admin-Laptops besorgen (siehe Client unten, Schritt 1).
+2. Einmalig ein eigenes Subnetz in `wireguard.rsc` → `net` festlegen (darf keins von `vlans.rsc`
+   sein, `$cfmCheck` prüft das). Dann je Peer eintragen: `"peers"={"<name>"={"pubkey"="<PUBKEY>";
+   "addr"=<Host-Teil in net, frei>}}` → `$cfmRelease` + `$cfmPromote` bis zum Ring des Routers.
+3. Der private Schlüssel des Routers wird beim ersten Anlegen der Schnittstelle automatisch
+   erzeugt (wie SSH-Host-Keys) und bleibt auf dem Gerät – kein Vault-Eintrag. Öffentlichen
+   Schlüssel abrufen: `/interface/wireguard/print`.
+4. Firewall/Routing laufen automatisch mit: eigene Adresse (Host `.1`) auf der
+   WireGuard-Schnittstelle (die verbundene Route fürs ganze Subnetz entsteht daraus von selbst,
+   kein Proxy-ARP, keine Route je Peer nötig), das Subnetz in `cfm-mgmt` (Zugriff auf die eigenen
+   Dienste des Routers) und eine offene Eingangsregel für den `listenPort` (UDP, von überall –
+   Sicherheit kommt aus der Kryptografie, nicht aus einer Quell-IP-Beschränkung).
+
+**Client (Linux mit NetworkManager, `tools/wg-client-setup.sh` statt GNOME-Panel):**
+
+```
+# 1) Einmalig: Schlüsselpaar erzeugen, Public Key für wireguard.rsc ausgeben
+tools/wg-client-setup.sh genkey
+
+# 2) Sobald der Router den Peer kennt (siehe oben) und dessen Public Key bekannt ist:
+tools/wg-client-setup.sh connect --name cfm-mgmt \
+  --endpoint <WAN-Adresse-des-Routers>:<listenPort> --server-pubkey <PUBKEY-ROUTER> \
+  --address <peer-addr-aus-wireguard.rsc>/32 --allowed-ips <WG-Subnetz aus wireguard.rsc "net", z.B. 192.168.250.0/24>,192.168.142.0/24,...
+nmcli connection up cfm-mgmt
+```
+
+`allowed-ips` braucht sowohl das WG-Subnetz selbst (um den Router unter seiner `.1`-Adresse zu
+erreichen) als auch die Netze, die man über den Router routen will (z.B. das MGMT-VLAN, um andere
+Geräte zu erreichen).
+
+`--allowed-ips` bewusst eng auf die tatsächlich benötigten Subnetze fassen (nicht `192.168.0.0/16`
+o.ä.) – sonst überlagert die Route das eigene lokale Netz des Laptops, falls es zufällig auch im
+`192.168.0.0/16`-Bereich liegt, und bricht die normale Internetverbindung während der Tunnel aktiv
+ist. Bei mehreren WireGuard-Verbindungen (z.B. weitere Standorte) auf sich nicht überschneidende
+`allowed-ips` achten.
+
 ---
 
 ## 9. Sicherheitsnetze und Notfälle
@@ -607,6 +687,10 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   keine Host-Schlüssel. Sorge deshalb dafür, dass niemand anderes im Onboarding-VLAN hängt.
 * **`vaultpw`** gehört offline in einen Passwortmanager, nicht auf den Manager allein.
 * **Git-Host:** nur Forced Command für den Manager-Schlüssel, der Lese-User `cfm-git` am Manager.
+* **Persönliche Admin-SSH-Keys:** optional über `authorized_keys` (siehe Datenmodell), Passwort
+  bleibt immer zusätzlich gültig. Existiert die Datei, entfernt jeder Apply Keys, die nicht mehr
+  drinstehen – auch von Hand hinzugefügte, `/user/ssh-keys` hat kein Feld für eine feinere
+  Unterscheidung. Leg die Datei also nur an, wenn du sie auch pflegst.
 
 ---
 

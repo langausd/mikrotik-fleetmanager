@@ -57,6 +57,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/vlans.rsc` | VLAN-Tabelle (Zone, Subnetz, Gateway, DHCP) |
 | `cfm/work/profiles.rsc` | Port-Profile (`trunk`, `trunk-ap`, `access:<vid>`, …) |
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
+| `cfm/work/authorized_keys` | optional: persönliche Admin-SSH-Keys (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
 | `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
@@ -166,6 +167,12 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Status-Dateien der Geräte werden am Manager nur als JSON gelesen, nie ausgeführt.
 * Der Werks-User `admin` wird abgeschaltet, sobald auf einem Gerät ein eigener Admin-User aktiv ist
   (`adminUser` in `global.rsc`, Ausnahmen pro Gerät im Hostfile).
+* **Menschen** melden sich mit **Passwort** an (`$cfmSecret key=user.<name> value=…`, Push wie
+  oben, nie als Datei). Optional zusätzlich eigene SSH-Keys über `cfm/work/authorized_keys`
+  (OpenSSH-Format, eine Zeile je Key, für alle Admin-User aus `users`): existiert die Datei, ist
+  sie der vollständige Sollzustand – nicht mehr gelistete Keys verschwinden beim nächsten Apply,
+  auch von Hand hinzugefügte. Revocation = Zeile löschen + `$cfmRelease`. Das Passwort-Login bleibt
+  davon unberührt.
 * Vor jedem Secret-Push beweist das Gerät per **Challenge-Response**, dass es seinen Geräteschlüssel
   kennt. Ein Gerät, das sich nur unter der IP ausgibt, bekommt keine Secrets.
 * **Minimale Firewall** auf Switches, APs und Managern: nur Antworten, ICMP und Management-Netze

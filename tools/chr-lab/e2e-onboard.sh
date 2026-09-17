@@ -36,7 +36,7 @@ for i in 1 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Primary-Manager cm1"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" >/dev/null && ok "Seed hochgeladen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen"
 # hier der Weg ohne Reset (clean="no"), den Reset testet e2e.sh
 sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' -e 's/^:local clean "yes"/:local clean "no" /' \
     "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm.rsc"
@@ -73,11 +73,14 @@ for _ in $(seq 1 70); do
 done
 mgr ':foreach l in=[/log/find where message~"Onboarding"] do={:put [/log/get $l message]}' | tail -3 | sed 's/^/   log: /'
 mgr ':put [:len [/log/find where message~"beendet: erfolgreich: ob1"]]' | tail -1 | grep -qx 1 && ok "Onboarding erfolgreich beendet" || bad "Onboarding nicht erfolgreich"
+# den Status holt der allgemeine Manager-Tick ab, der parallel zum Onboarding-Tick läuft: kurz warten
+for _ in $(seq 1 24); do [ "$(stat ob1 res)" = ok ] && break; sleep 5; done
 [ "$(stat ob1 res)" = ok ] && ok "ob1 meldet Apply ok (v$(stat ob1 v))" || bad "ob1 Status: $(stat ob1 res)"
 [ $mode = dhcp ] && expect 1 '[:len [/ip/dhcp-server/lease/find where server=dhcp88 and mac-address="52:54:00:00:03:02"]] = 1' "cm1: ob1 hat seine Adresse per DHCP im Onboarding-VLAN bekommen (CAPs-Modus)"
 
 step "5. Port zurück auf sein Profil, Gerät vollständig aufgenommen"
-sleep 20
+# die Rückstellung kommt mit dem angestoßenen Apply auf cm1 (im Labor ca. 25 s): bis 2 min warten
+for _ in $(seq 1 24); do r 1 ':put [/interface/bridge/port/get [find interface=ether3] pvid]' | tail -1 | grep -qx 1 && break; sleep 5; done
 expect 1 '[/interface/bridge/port/get [find interface=ether3] pvid] = 1' "cm1/ether3: PVID wieder 1"
 expect 1 '[/interface/bridge/port/get [find interface=ether3] frame-types] = "admit-only-vlan-tagged"' "cm1/ether3: wieder reiner Trunk"
 expect 1 '[:len [/system/scheduler/find where name=cfm-onboard-revert]] = 0' "cm1: Fail-safe-Timer entfernt"

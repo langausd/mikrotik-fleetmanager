@@ -41,6 +41,10 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 
 ## Noch nicht mit echter Hardware getestet
 
+Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und CAPsMAN
+(`router,manager`) und ein hAP ax² als AP. Die gefundenen Fehler sind behoben
+([DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten)). Offen bleiben:
+
 * Onboarding-Push gegen echte Werks-Configs: Router (ether1 = WAN mit Firewall), CRS-Switches,
   APs im CAPs-Modus, Geräte mit Aufkleber-Passwort und `flash/`-Verzeichnis
 * Onboarding eines hAP per PoE an ether1 im CAPs-Modus (Reset-Taster, LED-Verhalten je Modell)
@@ -49,11 +53,17 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
-* echte Funkteile (CAPs), VRRP mit zwei Routern, CAPsMAN-Übernahme durch den Backup-Manager
+* mehrere APs und PPSK-VLANs (im Pilot nur ein hAP ax² als AP), VRRP mit mehreren Routern,
+  CAPsMAN-Übernahme durch den Backup-Manager
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
 
 ## Bekannte Fehler
 
+* **Manager-Ticks starten gleichzeitig:** `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (jede
+  Minute) haben beide `start-time=startup` und laufen deshalb zur selben Sekunde los, im Labor mit
+  `mgrTick=1m` jede Minute. Bisher nur als Zeitversatz beobachtet (Onboarding-Test: Status von ob1
+  und Rückstellung des Onboarding-Ports einige Sekunden später, einmal ein leerer Status beim Lesen).
+  Vorschlag: Start des Onboarding-Ticks versetzen oder beide Ticks gegenseitig ausschließen.
 * ~~**WireGuard-Fernzugang: Rückweg zu cm1 selbst startet nicht zuverlässig ohne Anstoß.**~~ –
   *vermutlich behoben, noch nicht erneut getestet:* Ursache war wahrscheinlich, dass die
   WireGuard-Peers ursprünglich Adressen aus dem **bereits verbundenen** MGMT-Subnetz bekamen
@@ -72,6 +82,8 @@ Reihenfolge: 0 → 1 → 2, 3, 4 → 6, 7 → Rest nach Bedarf.
 
 **0. Pilotbetrieb mit echter Hardware** – ein Gerät je Typ (Router, Switch, AP, Manager); deckt
 die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem neuen Feature.
+*Begonnen 2026-09-17* mit CRS418 (Router + Manager) und hAP ax² (AP), siehe oben; Switch- und
+Backup-Manager-Rolle fehlen noch.
 
 ### Kurzfristig (großer Nutzen, wenig Aufwand)
 

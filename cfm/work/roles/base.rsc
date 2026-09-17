@@ -106,7 +106,7 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
   }
 }
 :foreach x in=($cfmG->"mgmtExtra") do={ :set ($an->$x) 1 }
-# WireGuard-Peers (D-WG) zählen überall als mgmt, nicht nur beim Forwarding über den Router -
+# WireGuard-Peers (D36) zählen überall als mgmt, nicht nur beim Forwarding über den Router -
 # sonst lässt zwar die Firewall SSH/Winbox-Pakete durch, aber der Dienst selbst (eigene
 # Adressliste, unabhängig von der Firewall) weist sie zurück.
 :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={

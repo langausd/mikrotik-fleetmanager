@@ -155,11 +155,14 @@ Angelegt am {heute} mit `tools/new-site.py` aus den neutralen Beispieldaten. `CH
 - [ ] **Hostfiles** in `hosts/`: je Gerät eins, Uplink immer mit Trunk-Profil, nur Ports, die es auf
       dem Gerät gibt. `hosts/{name}.rsc` enthält nur den Uplink `{a.uplink}`.
 - [ ] **WLAN** in `wifi.rsc`: Land, SSIDs (im Test eigene Namen), Kanäle.
+- [ ] **Optional:** `wireguard.rsc` (Fernzugang, nur mit Rolle `router`, Admin-Guide 8.8) und
+      `authorized_keys` (persönliche SSH-Keys, Admin-Guide Kapitel 4).
 - [ ] **Prüfen:** `tools/rsc-check.py {rel}` ohne Fund.
 
 ## Manager aufsetzen
 
-- [ ] Seed hochladen: `tools/upload-seed.sh admin@<aktuelle-IP> --overlay {rel}`
+- [ ] Seed hochladen (beim ersten Mal mit Inventar):
+      `tools/upload-seed.sh admin@<aktuelle-IP> --overlay {rel} --seed-inventory`
 - [ ] `{rel}/bootstrap-manager.rsc` als `bootstrap-manager.rsc` ins Wurzelverzeichnis des Managers
       laden, Kopf kontrollieren, `/import bootstrap-manager.rsc` (Reset auf leere Config, danach
       im Log `cfm: Primary-Manager bereit`)

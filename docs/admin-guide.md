@@ -7,11 +7,15 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 > **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (77 Prüfungen, darunter
 > Manager-Bootstrap mit Reset, Probelauf, Firewall, Schlüsselwechsel, Netzplan, PPSK und ein
 > RouterOS-Downgrade auf 7.24.1) und der Onboarding-Test (14 Prüfungen mit Werks-IP,
-> 15 im CAPs-Modus per DHCP) fehlerfrei. **Nicht** mit echter Hardware erprobt sind Funk (CAPs),
-> VRRP mit zwei Routern, die CAPsMAN-Übernahme, das automatische Onboarding gegen reale
-> Werks-Configs, RouterOS-Updates mit Zusatzpaketen auf mehreren Architekturen sowie PPSK-VLANs
-> und der Kanalbericht (CHR hat keine Radios). Plane dafür
-> einen Pilotbetrieb mit einem Testgerät je Gerätetyp ein.
+> 15 im CAPs-Modus per DHCP) fehlerfrei. Ein **erster Hardware-Pilot** lief mit zwei Geräten: einem
+> CRS418 als Router, Primary-Manager und CAPsMAN (Rolle `router,manager`) und einem hAP ax² als AP.
+> Die dabei gefundenen Fehler sind behoben (dynamische Bridge-VLAN-Einträge des Switch-Chips,
+> Syslog-Einträge auf dem hAP ax², Aktivierung neuer RouterBOARD-Firmware, Seed-Upload), siehe
+> [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten). **Noch nicht** mit
+> echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager samt
+> CAPsMAN-Übernahme, das automatische Onboarding gegen reale Werks-Configs, RouterOS-Updates mit
+> Zusatzpaketen auf mehreren Architekturen, PPSK-VLANs und der Kanalbericht; offene Punkte stehen in
+> [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
 [3 Planung](#3-planung) · [4 Datenmodell](#4-datenmodell) · [5 Rollen](#5-rollen) ·
@@ -71,7 +75,8 @@ sofort bei einem Push vom Manager:
    per `/system backup load` zurück.
 5. Steht im Manifest ein RouterOS-Auftrag (`$cfmUpgrade`): Pakete vom Manager laden und sofort
    oder im Wartungsfenster neu starten.
-6. Status und Export nach `cfm/out/` legen. Der Manager holt beides jede Minute ab.
+6. Status und Export nach `cfm/out/` legen. Der Manager holt beides in seinem Tick ab (`mgrTick`,
+   Standard alle 10 Minuten).
 
 ### Was cfm verwaltet und was nicht
 
@@ -156,7 +161,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
 
 **Hardware und Software:**
-* RouterOS ≥ `rosMin` (7.20), getestet mit 7.24.2.
+* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, dazu ein Hardware-Pilot (CRS418,
+  hAP ax²).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
   Internetzugang für die Paket-Downloads, idealerweise mit Funk, falls er selbst auch AP sein soll
@@ -186,7 +192,7 @@ irgendetwas ausgerollt wird.
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
 | `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server) | |
-| `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.20` |
+| `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.22` |
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
@@ -296,11 +302,11 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade; Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (neue RouterBOARD-Firmware aktiviert der Agent mit einem weiteren Neustart); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; NAT nur Richtung Internet; DNS; NTP-Server; Update-Server-Adressliste |
-| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK und Kanal-Neuwahl |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; NAT nur Richtung Internet; DNS; NTP-Server; Update-Server-Adressliste; WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK und Kanal-Neuwahl; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute) |
 | `manager-backup` | wie `manager`, aber CAPsMAN passiv (Netwatch übernimmt, wenn der Primary ~3 min weg ist), spiegelt den Primary, Releases gesperrt |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
@@ -325,16 +331,20 @@ tools/new-site.py site --name cm1 --uplink ether1 --user <dein-user> --mgmt-extr
 Die mitgelieferten Beispiele sind ein fiktives Netz (VLAN 10, 192.168.10.0/24), keine fertige
 Konfiguration: Arbeite die Checkliste ab (Adressen, Inventar, Hostfiles, WLAN). So bleiben deine
 Daten aus dem Repo, und neue Versionen des Frameworks lassen sich einfach übernehmen.
-`tools/upload-seed.sh` lädt aus dem Overlay nur die Daten (`*.rsc`, `hosts/`, `meta/` …); Notizen
-wie die Checkliste oder eigene CSV-Listen bleiben lokal.
+`tools/upload-seed.sh` lädt aus dem Overlay nur die Daten (`*.rsc`, `authorized_keys`, `hosts/`,
+`meta/` …); Notizen wie die Checkliste oder eigene CSV-Listen bleiben lokal.
 
 ### 6.2 Primary-Manager
 
 1. Den Manager mit einem Port an einen Trunk hängen, der das MGMT-VLAN tagged führt.
-2. Die Vorlage hochladen:
+2. Die Vorlage hochladen, beim ersten Mal mit dem Inventar:
    ```bash
-   tools/upload-seed.sh admin@<aktuelle-IP-des-Managers> --overlay site
+   tools/upload-seed.sh admin@<aktuelle-IP-des-Managers> --overlay site --seed-inventory
    ```
+   Danach lebt das Inventar auf dem Manager (`$cfmRegister` und `$cfmEnroll` pflegen es). Spätere
+   Uploads ohne `--seed-inventory` lassen es unangetastet, damit echte Seriennummern und Ringe nicht
+   auf die lokale Vorlage zurückfallen. Jede Datei geht einzeln mit bis zu drei Versuchen hinüber;
+   scheitert eine, bricht das Skript mit einer Meldung ab.
 3. In `bootstrap/bootstrap-manager.rsc` den Kopf anpassen (`myname`, `ip` = `managers[0]`,
    `uplink`, `mv`, `gw`, `admin`, `role`), die Datei als `bootstrap-manager.rsc` ins
    Wurzelverzeichnis hochladen und im Terminal ausführen:
@@ -617,7 +627,7 @@ tools/wg-client-setup.sh genkey
 # 2) Sobald der Router den Peer kennt (siehe oben) und dessen Public Key bekannt ist:
 tools/wg-client-setup.sh connect --name cfm-mgmt \
   --endpoint <WAN-Adresse-des-Routers>:<listenPort> --server-pubkey <PUBKEY-ROUTER> \
-  --address <peer-addr-aus-wireguard.rsc>/32 --allowed-ips <WG-Subnetz aus wireguard.rsc "net", z.B. 192.168.250.0/24>,192.168.142.0/24,...
+  --address <peer-addr-aus-wireguard.rsc>/32 --allowed-ips <WG-Subnetz aus wireguard.rsc "net", z.B. 192.168.250.0/24>,<MGMT-Netz, z.B. 192.168.10.0/24>
 nmcli connection up cfm-mgmt
 ```
 
@@ -732,7 +742,9 @@ Diese Fallen zeigen sich erst beim echten Laden per `/import`, nicht beim Syntax
 * Geräteabhängige Menüs (z.B. `/system routerboard`) in Leerzeichen-Schreibweise, sonst ist das
   Fehlen auf CHR/x86 ein nicht abfangbarer Syntaxfehler.
 
-Die vollständige Liste steht in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifizierte-routeros-eigenheiten-7242).
+Die vollständige Liste steht in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifizierte-routeros-eigenheiten-7242),
+die auf Hardware gefundenen Eigenheiten (z.B. `find` liefert auch dynamische Einträge)
+[gleich darunter](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 
 **Prüfskript:** `tools/rsc-check.py` findet diese Fallen ohne Gerät, dazu unausgeglichene
 Klammern, zu große Dateien und Dotfiles unter `work/`:
@@ -858,6 +870,11 @@ Wurzelverzeichnis.
 | Secrets-Version (SV) bleibt alt | Gerät per SSH nicht erreichbar oder Objekt fehlt noch | `$cfmSecretPush host=<n>`, Ausgabe prüfen |
 | Kein Winbox/SSH mehr vom Admin-PC | Dienste nur aus `mgmtAccess`/`mgmtExtra` | Admin-PC in `mgmtExtra`, releasen |
 | Anmeldung als `admin` geht nicht mehr | gewollt: `adminUser="disable"`, ein eigener Benutzer ist aktiv | mit dem eigenen Benutzer anmelden; Ausnahme per `adminUser="keep"` im Hostfile |
+| Apply: „can not change dynamic“ | eine eigene Suche per `find` ohne `!dynamic` trifft einen dynamischen Eintrag (z.B. vom Switch-Chip angelegte Bridge-VLANs) | `$cfmEnsure`/`$cfmFind` verwenden oder `!dynamic` in die Suche aufnehmen |
+| Log `cfm: RouterBOARD-Firmware … geflasht … Neustart zum Aktivieren` | gewollt: neue Firmware wird nach einem RouterOS-Update erst mit einem weiteren Neustart aktiv | nichts zu tun, der Agent startet einmal neu |
+| `upload-seed.sh`: „Seed unvollständig hochgeladen“ | einzelne Dateien auch nach drei Versuchen nicht übertragen | erneut aufrufen; Verbindung und freien Platz am Manager prüfen |
+| Über WireGuard kein SSH/Winbox | Peer fehlt in `wireguard.rsc` oder ist noch nicht ausgerollt; Client-`allowed-ips` ohne das WireGuard-Subnetz | `$cfmCheck`, am Router `/interface/wireguard/peers/print`, Client-Konfiguration prüfen |
+| Webfig o.ä. bleibt aus, obwohl in `services` eingetragen | falscher Dienstname (`http` statt `www`) | RouterOS-Namen verwenden (Kapitel 4, `services`) |
 | Onboarding bleibt in `wait` | Gerät nicht erreichbar: Kabel, Router an `ether1`, falsches Aufkleber-Passwort | `$cfmOnboardStatus`, Log am Manager, Registrierung prüfen |
 | Onboarding: „Seriennummer passt nicht“ | anderes Gerät am Port | Registrierung oder Gerät prüfen |
 | Onboarding: „RouterOS … älter als …“ | kein Update möglich (Internet über den Router?) | Router-Rolle/`policy` `onboard`, notfalls von Hand updaten |

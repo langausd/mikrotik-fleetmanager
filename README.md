@@ -47,7 +47,7 @@ Inbetriebnahme, tägliche Arbeit, Notfälle, eigene Templates, Befehlsreferenz).
 Ablauf pro Gerät (`cfm-agent`, beim Boot, alle 15 min, per Push):
 Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512 prüfen → `backup save`
 → Watchdog scharf → `lib` + Daten + Hostfile + Rollen importieren → verwaiste Objekte entfernen
-→ Erreichbarkeit bestätigen → Status/Export nach `cfm/out/` (der Manager holt sie jede Minute ab).
+→ Erreichbarkeit bestätigen → Status/Export nach `cfm/out/` (der Manager holt sie in seinem Tick ab, `mgrTick`, Standard 10 min).
 
 ## Verzeichnisse
 
@@ -57,6 +57,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/vlans.rsc` | VLAN-Tabelle (Zone, Subnetz, Gateway, DHCP) |
 | `cfm/work/profiles.rsc` | Port-Profile (`trunk`, `trunk-ap`, `access:<vid>`, …) |
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
+| `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/authorized_keys` | optional: persönliche Admin-SSH-Keys (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
@@ -67,6 +68,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `tools/upload-seed.sh` | Vorlage einmalig auf den Manager laden |
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit Checkliste und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
+| `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
 | `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Lab-Overlay `seed/` |
 
@@ -76,25 +78,27 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 
 | Rolle | Inhalt |
 |---|---|
-| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User, Agent |
+| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys`), Firmware-Aktivierung, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (beide Manager als Adressen), Radios → `configuration.manager=capsman` |
-| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master), Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT, DNS, NTP-Server |
-| `manager` | Manager-Funktionen, SFTP-Gruppe, CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering, Kanäle, Provisioning) |
+| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master), Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT, DNS, NTP-Server, WireGuard-Fernzugang (optional) |
+| `manager` | Manager-Funktionen, SFTP-Gruppe, CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering, Kanäle, Provisioning); Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, CAPsMAN passiv (Netwatch übernimmt nach ~3 min), spiegelt den Primary, read-only |
 
 Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 
 ## Schnellstart
 
-1. **Eigene Daten anlegen:** als privates Overlay `site/` (von Git ignoriert, gleiche Struktur wie
-   `cfm/work` plus `meta/`): `global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`,
-   `hosts/` und `meta/inventory.rsc`. Vorlage sind die Dateien in `cfm/work/` und `cfm/meta/`; die
-   Beispiele dort sind ein fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast,
-   Demo-Event, Demo-IoT).
-2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site`, dann `bootstrap/bootstrap-manager.rsc`
-   anpassen, hochladen, `/import bootstrap-manager.rsc`. Das Gerät setzt sich dabei zuerst auf eine
-   leere Config zurück (`clean`), erzeugt danach Release v1 und enrollt cm1 selbst.
+1. **Eigene Daten anlegen:** `tools/new-site.py site --name cm1 --user <admin> --mgmt-extra <admin-pc>/32`
+   legt das private Overlay `site/` an (von Git ignoriert, gleiche Struktur wie `cfm/work` plus
+   `meta/`), samt `CHECKLISTE.md` und ausgefülltem `bootstrap-manager.rsc`. Die Beispieldaten sind ein
+   fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
+   `global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`, `hosts/`,
+   `meta/inventory.rsc`, optional `wireguard.rsc` und `authorized_keys`.
+2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory` (das Inventar
+   nur beim ersten Mal), dann `site/bootstrap-manager.rsc` hochladen und `/import bootstrap-manager.rsc`.
+   Das Gerät setzt sich dabei zuerst auf eine leere Config zurück (`clean`), erzeugt danach Release v1
+   und enrollt cm1 selbst.
 3. **Secrets:**
    `$cfmSecret key=user.netadmin value=…`, `$cfmSecret key=psk.main value=…` (je SSID-Key), `$cfmSecret key=vaultpw value=…`
 4. **Weitere Geräte:** `$cfmBootstrap` erzeugt `cfm/cfm-bootstrap.rsc`. Datei aufs neue Gerät
@@ -115,7 +119,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 | Ring vorziehen | `$cfmPromote` (bzw. automatisch nach `ringSoak`) |
 | Zurück auf alten Stand | `$cfmRollback ver=12 all=yes` |
 | Sofort anwenden | `$cfmPush` / `$cfmPush host=sw1 force=yes` |
-| Rückmeldungen sofort abholen | `$cfmCollect host=sw1` (sonst automatisch jede Minute) |
+| Rückmeldungen sofort abholen | `$cfmCollect host=sw1` (sonst automatisch im Manager-Tick) |
 | Manager-Schlüssel neu verteilen | `$cfmTrust` (läuft beim Enroll automatisch) |
 | Hand-Objekte finden | `$cfmAudit host=sw1` → `$cfmAudit host=sw1 op=mark sel=A2` / `op=purge sel=A5` |
 | Gerät tauschen | Ersatz bootstrappen → `$cfmEnroll name=sw1 ip=…` (neue Seriennummer wird übernommen) |
@@ -136,7 +140,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
    Der Port bekommt vorübergehend das Onboarding-VLAN 88 untagged, die normalen VLANs bleiben tagged.
 3. **Gerät im Werkszustand** (oder nach einem Reset) dort einstecken bzw. einschalten.
 
-Danach läuft alles im Manager-Tick (jede Minute):
+Danach läuft alles im Onboarding-Tick (jede Minute):
 Probe per `*.auto.rsc` mit dem Aufkleber-Passwort → Seriennummer prüfen → RouterOS-Update aus dem
 Internet (das Onboarding-VLAN erreicht nur die MikroTik-Update-Server) → gerätespezifischer Bootstrap
 per `reset-configuration no-defaults run-after-reset` → `$cfmEnroll` → erster Apply → der Port fällt
@@ -150,7 +154,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Geräte mit PoE-Eingang nur an ether1 (hAP): im **CAPs-Modus** starten (Reset-Taster beim Einstecken
   des PoE-Kabels halten, bis die LED nach ~10 s dauerhaft leuchtet). Dann ist ether1 ohne Firewall
   per DHCP erreichbar, und das Onboarding läuft über den PoE-Port.
-* Mit echter Hardware noch nicht getestet, siehe [docs/TODO.md](docs/TODO.md).
+* Das automatische Onboarding ist mit echter Hardware noch nicht getestet, siehe [docs/TODO.md](docs/TODO.md).
 
 ## Sicherheitsmodell (Kurzfassung)
 
@@ -187,7 +191,8 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.21 empfohlen (getestet mit 7.24.2 CHR). Ab 7.24 brauchen Skripte, die aus Winbox
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, dazu ein Hardware-Pilot mit CRS418
+  (Router, Manager) und hAP ax² (AP). Ab 7.24 brauchen Skripte, die aus Winbox
   gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.
 * Das CHR-Labor testet alles außer echten Funkteilen (CAPsMAN-Config ja, Radios nein).
 * `$cfmPlan` überspringt `hosts/*.post.rsc` (dort sind beliebige Befehle erlaubt). Direkte Befehle in

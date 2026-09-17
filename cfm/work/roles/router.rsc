@@ -97,7 +97,7 @@ $cfmSet m="/ip/dns" p=({"allow-remote-requests"="yes";"servers"=$wdns})
 $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntpSrv})
 $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 
-# --- WireGuard-Fernzugang (D-WG): eigenes, nicht überlappendes Subnetz (wireguard.rsc "net") -
+# --- WireGuard-Fernzugang (D36): eigenes, nicht überlappendes Subnetz (wireguard.rsc "net") -
 #     RouterOS legt sonst keine Route für "allowed-address" an, wenn sie in einem bereits
 #     verbundenen Subnetz (z.B. MGMT) liegt, und ohne eigenes Subnetz bräuchte es zusätzlich
 #     Proxy-ARP (frühere Version, siehe docs/TODO.md "Bekannte Fehler" zur Vorgeschichte). Peers

@@ -41,7 +41,7 @@ for i in 1 2 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" >/dev/null && ok "Seed hochgeladen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen"
 # clean="yes" (Standard): Reset auf leere Config, danach läuft der Bootstrap selbst weiter.
 # post sichert den Host-Zugang über ether1 per DHCP-Client (CHR legt ihn nach dem Reset meist
 # selbst wieder an, deshalb nur, wenn er fehlt).

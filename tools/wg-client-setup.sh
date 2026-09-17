@@ -10,12 +10,13 @@
 #   2) Sobald der Router (cm1) die Rolle angewendet hat, dessen Public Key holen
 #      (auf cm1: /interface/wireguard/print) und die NetworkManager-Verbindung anlegen:
 #        tools/wg-client-setup.sh connect --name cfm-mgmt \
-#          --endpoint 192.168.2.2:13231 --server-pubkey <PUBKEY-CM1> \
-#          --address 192.168.142.240/32 --allowed-ips 192.168.142.0/24 \
+#          --endpoint 203.0.113.10:13231 --server-pubkey <PUBKEY-CM1> \
+#          --address 192.168.250.2/32 --allowed-ips 192.168.250.0/24,192.168.10.0/24 \
 #          [--keyfile ~/.config/wireguard/cfm-mgmt.key] [--keepalive 25]
 #
-# Adresse/allowed-ips passend zur peers.<name>.addr in wireguard.rsc wählen (Host-Anteil im
-# MGMT-Subnetz, z.B. 240 -> 192.168.142.240/32). Die Verbindung wird per
+# Adresse passend zu peers.<name>.addr in wireguard.rsc wählen (Host-Anteil im eigenen
+# WireGuard-Subnetz "net", z.B. addr=2 -> 192.168.250.2/32); allowed-ips = dieses Subnetz plus die
+# Netze, die über den Router erreichbar sein sollen (z.B. das MGMT-VLAN). Die Verbindung wird per
 # `nmcli connection import type wireguard file ...` angelegt (Standard-wg-quick-Format), nicht
 # aktiv geschaltet (autoconnect no) – aktivieren mit `nmcli connection up <name>`.
 set -euo pipefail

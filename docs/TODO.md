@@ -56,6 +56,8 @@ Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und C
 * mehrere APs und PPSK-VLANs (im Pilot nur ein hAP ax² als AP), VRRP mit mehreren Routern,
   CAPsMAN-Übernahme durch den Backup-Manager
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
+* Rolle `router` auf einem CRS mit L3-Hardware-Offloading (D37): schaltet sie `l3-hw-offloading` ab,
+  läuft VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
 
 ## Bekannte Fehler
 

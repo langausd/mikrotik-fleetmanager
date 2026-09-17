@@ -8,10 +8,24 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
+:global cfmFind; :global cfmRun
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
 :local mv [:tostr ($cfmG->"mgmtVlan")]
+
+# --- Switch-Chip (D37): Routing in der CPU. Mit l3-hw-offloading routet der Switch-Chip (CRS3xx/5xx)
+#     an der Zonen-Firewall vorbei, und VRRP funktioniert laut MikroTik nur mit l3-hw-offloading=no.
+#     Geräte ohne Switch-Menü (CHR) oder ohne die Eigenschaft bleiben unberührt. Nach Entfernen der
+#     Rolle bleibt es aus (von Hand wieder einschalten). ---
+:local sws ({})
+:onerror e in={ :set sws [$cfmFind "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
+:foreach sw in=$sws do={
+  :local sc [$cfmRun "/interface/ethernet/switch/get" I=$sw]
+  :if ([:typeof ($sc->"l3-hw-offloading")] != "nothing") do={
+    $cfmSet m="/interface/ethernet/switch" n=({"name"=($sc->"name")}) p=({"l3-hw-offloading"="no"})
+  }
+}
 
 # --- Zonen (Interface-Listen) ---
 :local zones ({})

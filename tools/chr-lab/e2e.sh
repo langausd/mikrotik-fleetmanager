@@ -135,6 +135,14 @@ expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw"]] > 15' "sw1: 
 expect 2 '[:len [/interface/vrrp/find where comment~"^cfm:vrrp"]] >= 4' "sw1: VRRP je VLAN"
 expect 2 '[:len [/ip/dhcp-server/find where comment~"^cfm:dhcp"]] = 2' "sw1: DHCP für IoT + Gast"
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 0' "sw1: minimale Firewall durch Router-Firewall ersetzt"
+# NAT je Policy-Ziel (D38): Beispiel-policy mgmt/lan/iot/onboard mit *, Gäste per Hostfile wan@10.0.2.99
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="masquerade"]] = 4' "sw1: masquerade nur für gekennzeichnete Ziele (4)"
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="src-nat" and src-address-list="cfm-z-guest"]] = 1 and [:tostr [/ip/firewall/nat/get [find where comment~"^cfm:nat" and action="src-nat"] to-addresses]] = "10.0.2.99"' "sw1: feste NAT-Adresse für Gäste (wan@)"
+expect 2 '[:len [/ip/address/find where address="10.0.2.99/32" and interface="ether1" and comment~"^cfm:"]] = 1' "sw1: NAT-Adresse am WAN"
+expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-z-guest" and address="192.168.40.0/24"]] = 1' "sw1: Quellnetz-Liste der NAT-Zone"
+# Freigabeliste (D39) und DNS-Umleitung für Zonen ohne Internet (iot, onboard: je udp+tcp)
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-address-list="cfm-allow-iot-cloud"]] = 1 and [:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud" and comment~"^cfm:"]] = 2' "sw1: Freigabeliste als Policy-Ziel"
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and dst-port="53"]] = 4' "sw1: DNS-Umleitung für Zonen ohne Internet"
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Router-Rolle idempotent" || bad "Router idempotent: $(stat sw1 stats)"

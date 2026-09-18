@@ -192,7 +192,8 @@ irgendetwas ausgerollt wird.
 | `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `10` |
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
-| `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server) | |
+| `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server), `allow:<Liste>` (nur die Ziele der Liste). **NAT nur mit Kennzeichen:** `*wan` = masquerade, `wan@<Adresse>` = feste NAT-Adresse (bei VRRP wandert sie mit dem Master); gilt auch für `mtupdate` und `allow:…`. `wan` ohne Kennzeichen wird geroutet, der Upstream braucht eine Route zurück. Zonen ohne `*`/`wan`: DNS an externe Server wird auf den Router umgeleitet | |
+| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}` | `{}` |
 | `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.22` |
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
@@ -306,7 +307,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (neue RouterBOARD-Firmware aktiviert der Agent mit einem weiteren Neustart); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; NAT nur Richtung Internet; DNS; NTP-Server; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK und Kanal-Neuwahl; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute) |
 | `manager-backup` | wie `manager`, aber CAPsMAN passiv (Netwatch übernimmt, wenn der Primary ~3 min weg ist), spiegelt den Primary, Releases gesperrt |
 
@@ -524,6 +525,8 @@ Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 | PSK wechseln | `$cfmSecret key=psk.<key> value=…` (kein Release nötig) |
 | Admin-Benutzer | `users` in `global.rsc` → Release, dann `$cfmSecret key=user.<name> value=…` |
 | Firewall-Freigabe zwischen Zonen | `policy` in `global.rsc` → Release |
+| Internet für eine Zone | `policy`: `wan` (geroutet, Upstream kennt das Netz), `*wan` (masquerade) oder `wan@<Adresse>` (feste NAT-Adresse im WAN-Netz) → Release |
+| Zone nur zu bestimmten Internet-Zielen (z.B. IoT-Cloud) | Liste in `allow` anlegen, `policy` z.B. `"iot"="allow:tuya"` (mit NAT `*allow:tuya`) → Release. Feiner als je Zone geht es über kleinere Zonen (eigenes VLAN je Gerätegruppe) |
 | Eigene Firewall-Regel | Chain `local-input`/`local-forward` per `hosts/<router>.post.rsc` |
 | Gerät sofort aktualisieren | `$cfmPush host=<name>`; Voll-Apply trotz gleicher Version: `force=yes` |
 | Ring eines Geräts ändern | Inventar editieren (wirkt sofort) |

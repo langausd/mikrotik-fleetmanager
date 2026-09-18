@@ -239,7 +239,7 @@
       }
     }
   }
-  :if ([:len $old] = [:len $l] and $oldSig = $sig) do={
+  :if (([:len $old] = [:len $l] and $oldSig = $sig) or ([:len $old] = 0 and [:len $l] = 0)) do={
     :foreach kk,id in=$old do={ :set ($cfmSeen->$m->$kk) 1 }
     :return false
   }
@@ -310,6 +310,20 @@
   :local g ($v->"gw")
   :if ([:len $g] = 0) do={ :set g 1 }
   :return {"net"=$net;"addr"=$a;"pfx"=[:pick $net ($s + 1) [:len $net]];"gw"=($a + [:tonum $g])}
+}
+
+# Policy-Ziel zerlegen (D38): "*wan" = mit masquerade, "wan@192.0.2.5" = src-nat auf feste Adresse,
+# "wan" = geroutet ohne NAT -> {"t"=Ziel;"nat"=""|"masq"|Adresse|"invalid" (beides angegeben)}
+:global cfmTarget do={
+  :local t [:tostr $1]
+  :local nat ""
+  :if ([:len $t] > 1 and [:pick $t 0 1] = "*") do={ :set nat "masq"; :set t [:pick $t 1 [:len $t]] }
+  :local at [:find $t "@"]
+  :if ([:typeof $at] != "nil") do={
+    :if ($nat = "masq") do={ :set nat "invalid" } else={ :set nat [:pick $t ($at + 1) [:len $t]] }
+    :set t [:pick $t 0 $at]
+  }
+  :return {"t"=$t;"nat"=$nat}
 }
 
 # VLAN-Menge aus Spezifikation ("*", Zonen, VIDs, "!x" = ohne) -> {vid=1|0}

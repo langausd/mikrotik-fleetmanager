@@ -58,6 +58,9 @@ Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und C
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
 * Rolle `router` auf einem CRS mit L3-Hardware-Offloading (D37): schaltet sie `l3-hw-offloading` ab,
   läuft VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
+* Feste NAT-Adresse (`wan@<Adresse>`, D38) bei VRRP: Wandert die Adresse mit dem Master, und
+  übernimmt der neue Master den ausgehenden Verkehr ohne Hand-Eingriff (bestehende Verbindungen
+  brechen ab, conntrack wird nicht abgeglichen)?
 
 ## Bekannte Fehler
 
@@ -140,3 +143,8 @@ Backup-Manager-Rolle fehlen noch.
     `authorized_keys`-Datei für ALLE User aus `global.rsc` `users`; bei mehreren Admins sollte
     jeder Benutzer nur seine eigenen Keys bekommen (z.B. `authorized_keys.<user>` oder Zuordnung
     innerhalb der Datei), inkl. Revocation pro Person statt nur global.
+20. **IoT-Isolation ausbauen** (nach D38/D39): gerätespezifische Freigaben über kleinere Zonen
+    erproben (eigenes VLAN/PPSK-Gruppe je Gerätegruppe); Freigaben nur für bestimmte Ports;
+    Proxy als Ziel (transparent, Filter nach Domain) für Geräte, deren Cloud-Adressen häufig
+    wechseln. WLAN-Client-Isolation trennt laut MikroTik nur Clients am selben AP – für
+    isolierte Zonen über mehrere APs zusätzlich einen Bridge-Filter auf den APs (nur zum Gateway).

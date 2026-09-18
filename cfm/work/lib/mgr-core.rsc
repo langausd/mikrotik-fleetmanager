@@ -113,6 +113,11 @@
   :if ([:len [:tostr $v]] = 0) do={ :set v ([$cfmRings]->"latest") }
   :local d ($b . "/archive/v" . $v)
   :if ($v = 0) do={ :set d ($b . "/work") }
+  # Zur Version gehörende Gerätebibliothek mitladen: Manager-Funktionen nutzen ihre Helfer
+  # ($cfmNet, $cfmTarget). Global sind sie sonst erst nach einem Apply des Agents - direkt nach
+  # Bootstrap oder Neustart fehlen sie, und RouterOS meldet den Aufruf einer unbekannten Funktion
+  # nicht, sondern liefert stillschweigend "nothing" (siehe DECISIONS.md).
+  :onerror e in={ /import file-name=($d . "/lib/lib.rsc") verbose=no } do={}
   :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ /import file-name=($d . "/" . $f) verbose=no }
   :return $v
 }

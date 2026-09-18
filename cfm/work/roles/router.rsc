@@ -1,5 +1,8 @@
 # ============================================================
 # Rolle router – Inter-VLAN-Routing, DHCP, Zonen-Firewall, NAT, VRRP
+#  NAT nur, wo die policy es kennzeichnet (D38): "*wan" = masquerade, "wan@a.b.c.d" = src-nat auf
+#  diese Adresse (liegt bei VRRP auf vrrp<VID> des WAN-VLANs und wandert mit dem Master).
+#  Freigabelisten (D39): policy-Ziel "allow:<Liste>" aus global.rsc "allow".
 #  Hostfile-Parameter:
 #   routerId=1..4   VRRP aktiv: reale IP .250+id, VIP .gw, Prio 210-10*id
 #                   (weglassen = Einzelrouter, bekommt .gw direkt)
@@ -8,7 +11,7 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
-:global cfmFind; :global cfmRun
+:global cfmFind; :global cfmRun; :global cfmTarget
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -151,6 +154,12 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :foreach h in=($cfmG->"onboard"->"mtHosts") do={
   $cfmEnsure m="/ip/firewall/address-list" k=("al:mt:" . $h) p=({"list"="cfm-mtupdate";"address"=$h})
 }
+# Freigabelisten (D39): Hostnamen löst RouterOS dynamisch auf, IPs/Netze gelten direkt
+:foreach ln,lst in=($cfmG->"allow") do={
+  :foreach h in=$lst do={
+    $cfmEnsure m="/ip/firewall/address-list" k=("al:allow:" . $ln . ":" . $h) p=({"list"=("cfm-allow-" . $ln);"address"=$h})
+  }
+}
 :foreach n in=($cfmG->"mgmtExtra") do={
   $cfmEnsure m="/ip/firewall/address-list" k=("al:mgmt:" . $n) p=({"list"="cfm-mgmt";"address"=$n})
 }
@@ -177,13 +186,45 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="fasttrack-connection";"connection-state"="established,related"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related,untracked"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="drop";"connection-state"="invalid"})
+:local natR ({})
+:local natZ ({})
+:local natA ({})
+:local inet ({})
 :foreach from,to in=($cfmG->"policy") do={
   :if (($zones->$from) = 1) do={
-    :foreach t in=[:toarray $to] do={
-      :if ($t = "*") do={ :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from)}) }
-      :if ($t = "wan") do={ :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"="WAN";"dst-address-list"="!cfm-private"}) }
-      :if ($t = "mtupdate") do={ :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"="WAN";"dst-address-list"="cfm-mtupdate"}) }
+    :foreach t0 in=[:toarray $to] do={
+      :local pt [$cfmTarget $t0]
+      :local t ($pt->"t")
+      :local dl ""
+      :if ($t = "*") do={
+        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from)})
+        :set ($inet->$from) 1
+      }
+      :if ($t = "wan") do={
+        :set dl "!cfm-private"
+        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$dl})
+        :set ($inet->$from) 1
+      }
+      :if ($t = "mtupdate") do={
+        :set dl "cfm-mtupdate"
+        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$dl})
+      }
+      # Freigabeliste: Ziele überall (Internet oder z.B. ein Proxy in einer anderen Zone)
+      :if ([:pick $t 0 6] = "allow:") do={
+        :set dl ("cfm-allow-" . [:pick $t 6 [:len $t]])
+        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"dst-address-list"=$dl})
+      }
       :if (($zones->$t) = 1) do={ :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"=("Z-" . $t)}) }
+      # NAT nur Richtung WAN und nur, wenn gekennzeichnet
+      :local nat [:tostr ($pt->"nat")]
+      :if ([:len $nat] > 0 and [:len $dl] > 0) do={
+        :set ($natZ->$from) 1
+        :local nr ({"chain"="srcnat";"src-address-list"=("cfm-z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$dl})
+        :if ($nat = "masq") do={ :set ($nr->"action") "masquerade" } else={
+          :set ($nr->"action") "src-nat"; :set ($nr->"to-addresses") $nat; :set ($natA->$nat) 1
+        }
+        :set ($natR->[:len $natR]) $nr
+      }
     }
   }
 }
@@ -192,6 +233,38 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="drop"})
 $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
 
-:local nr ({})
-:set ($nr->0) ({"chain"="srcnat";"action"="masquerade";"out-interface-list"="WAN";"dst-address-list"="!cfm-private"})
-$cfmBlock m="/ip/firewall/nat" k="nat" l=$nr
+# --- NAT (D38) ---
+# Quellnetze je Zone mit NAT als Adressliste für die srcnat-Regeln
+:foreach vid,v in=$cfmVlans do={
+  :local z [:tostr ($v->"zone")]
+  :if ([:tostr ($v->"l3")] != "no" and ($natZ->$z) = 1) do={
+    :local nn [$cfmNet $vid]
+    :if ([:len ($nn->"net")] > 0) do={
+      $cfmEnsure m="/ip/firewall/address-list" k=("al:z:" . $z . ":" . $vid) p=({"list"=("cfm-z-" . $z);"address"=($nn->"net")})
+    }
+  }
+}
+:if ([:len $wgIf] > 0 and ($natZ->"mgmt") = 1) do={
+  $cfmEnsure m="/ip/firewall/address-list" k="al:z:mgmt:wg" p=({"list"="cfm-z-mgmt";"address"=($cfmWg->"net")})
+}
+# Feste NAT-Adressen: bei VRRP auf vrrp<VID> des WAN-VLANs (nur auf dem Master aktiv), sonst am WAN
+:foreach na,x in=$natA do={
+  :local nif [:tostr ($wan->"if")]
+  :if ($vr and [:pick $nif 0 4] = "vlan") do={
+    :local wv [:pick $nif 4 [:len $nif]]
+    :if ([:typeof ($cfmVlans->$wv)] = "array" and [:tostr ($cfmVlans->$wv->"l3")] != "no") do={ :set nif ("vrrp" . $wv) }
+  }
+  :if ([:len $nif] > 0) do={
+    $cfmEnsure m="/ip/address" k=("ip:nat:" . $na) n=({"interface"=$nif;"address"=($na . "/32")}) p=({"address"=($na . "/32");"interface"=$nif})
+  }
+}
+# DNS-Umleitung (D39) für Zonen ohne allgemeinen Internetzugang: fest eingebaute externe
+# DNS-Server landen beim Router, der dieselben Antworten wie für die Freigabelisten nutzt
+:foreach z,x in=$zones do={
+  :if ([:typeof ($inet->$z)] = "nothing") do={
+    :foreach pr in={"udp";"tcp"} do={
+      :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="redirect";"to-ports"="53";"in-interface-list"=("Z-" . $z);"protocol"=$pr;"dst-port"="53";"dst-address-list"="!cfm-private"})
+    }
+  }
+}
+$cfmBlock m="/ip/firewall/nat" k="nat" l=$natR

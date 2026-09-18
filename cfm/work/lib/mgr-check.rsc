@@ -12,12 +12,17 @@
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
-  :global cfmNet
+  :global cfmNet; :global cfmTarget
   :local b [$cfmMB]
   :local w ($b . "/work")
   :local err ({}); :local warn ({})
   :local le ""
   :onerror e in={ $cfmLoadData ver=0 } do={ :set le $e }
+  # Helfer aus lib/lib.rsc (lädt $cfmLoadData mit): fehlen sie, liefern Aufrufe stillschweigend
+  # nichts und die Prüfung liefe halb blind
+  :if ([:typeof $cfmNet] = "nothing" or [:typeof $cfmTarget] = "nothing") do={
+    :set ($err->[:len $err]) "lib/lib.rsc nicht geladen: Prüfung von VLAN-Netzen und Policy-Zielen nicht möglich"
+  }
   :if ([:len $le] > 0) do={ :set ($err->0) ("Daten in work/ nicht ladbar: " . $le); :return ({"err"=$err;"warn"=$warn}) }
   :local zones ({})
   :foreach vid,v in=$cfmVlans do={ :set ($zones->[:tostr ($v->"zone")]) 1 }
@@ -95,9 +100,25 @@
   # Zonen-Matrix, Management-Zugang, MGMT-VLAN
   :foreach z,to in=($cfmG->"policy") do={
     :if ([:typeof ($zones->$z)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy nennt Zone " . $z . ", kein VLAN hat diese Zone") }
-    :foreach t in=[:toarray $to] do={
-      :if ($t != "*" and $t != "wan" and $t != "mtupdate" and [:typeof ($zones->$t)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> unbekannte Zone " . $t) }
+    :foreach t0 in=[:toarray $to] do={
+      :local pt [$cfmTarget $t0]
+      :local t ($pt->"t")
+      :local al ([:pick $t 0 6] = "allow:")
+      :if ($al) do={
+        :if ([:typeof ($cfmG->"allow"->[:pick $t 6 [:len $t]])] != "array") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> " . $t0 . ": Liste fehlt in allow") }
+      } else={
+        :if ($t != "*" and $t != "wan" and $t != "mtupdate" and [:typeof ($zones->$t)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> unbekannte Zone " . $t) }
+      }
+      # NAT-Kennzeichen (D38): nur für Ziele ins Internet bzw. Freigabelisten, Adresse gültig
+      :local nat [:tostr ($pt->"nat")]
+      :if ([:len $nat] > 0) do={
+        :if ($t != "wan" and $t != "mtupdate" and !$al) do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> " . $t0 . ": NAT nur für wan, mtupdate und allow:<Liste>") }
+        :if ($nat != "masq" and [:typeof [:toip $nat]] != "ip") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> " . $t0 . ": ungültiges NAT-Kennzeichen (*ziel oder ziel@Adresse)") }
+      }
     }
+  }
+  :foreach ln,lst in=($cfmG->"allow") do={
+    :if ([:typeof $lst] != "array") do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . " ist keine Liste") }
   }
   :foreach z in=[:toarray ($cfmG->"mgmtAccess")] do={
     :if ([:typeof ($zones->$z)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: mgmtAccess nennt unbekannte Zone " . $z) }

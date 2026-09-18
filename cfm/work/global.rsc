@@ -21,12 +21,13 @@
   "mgmtAccess"="mgmt";
   "mgmtExtra"={};
   "policy"={
-    "mgmt"="*";
-    "lan"="iot,guest,wan";
-    "iot"="wan";
-    "guest"="wan";
-    "onboard"="mtupdate"
+    "mgmt"="*,*wan";
+    "lan"="iot,guest,*wan";
+    "iot"="*allow:iot-cloud";
+    "guest"="*wan";
+    "onboard"="*mtupdate"
   };
+  "allow"={"iot-cloud"={"cloud.example.com";"203.0.113.10"}};
   "rosChannel"="stable";
   "rosMin"="7.22";
   "onboard"={"timeout"="60m";"mtHosts"={"upgrade.mikrotik.com";"download.mikrotik.com";"cdn.mikrotik.com"}};
@@ -44,8 +45,16 @@
 #  archiveKeep  so viele Versionen bleiben im Archiv (plus alle, die Ringe/Geräte nutzen).
 #  pkgPath    Ablage der RouterOS-Pakete für $cfmUpgrade, leer = <cfm>/pkg. Bei kleinem Flash
 #             auf USB/NVMe legen, z.B. "usb1/cfm-pkg" (ca. 20 MB pro Architektur und Version).
-#  policy     Zonen-Matrix: von-Zone = erlaubte Ziel-Zonen ("wan" = Internet, "*" = alles,
-#             "mtupdate" = nur die MikroTik-Update-Server aus onboard.mtHosts).
+#  policy     Zonen-Matrix: von-Zone = erlaubte Ziele: Zonen, "wan" = Internet, "*" = alles,
+#             "mtupdate" = nur die MikroTik-Update-Server aus onboard.mtHosts,
+#             "allow:<Liste>" = nur die Ziele einer Liste aus allow.
+#             NAT nur mit Kennzeichen (D38): "*wan" = masquerade, "wan@192.0.2.5" = feste
+#             NAT-Adresse (bei VRRP wandert sie mit dem Master); "wan" ohne Kennzeichen wird
+#             geroutet, der Upstream-Router braucht dann eine Route zurück. Gilt auch für
+#             "mtupdate" und "allow:…". Internet für eine Zone mit "*" per "*,*wan".
+#             Zonen ohne "*" oder "wan": DNS-Anfragen an externe Server gehen an den Router.
+#  allow      Freigabelisten für policy "allow:<Name>": Hostnamen (RouterOS löst sie
+#             regelmäßig auf), IPs oder Netze.
 #  rosChannel Update-Kanal beim Onboarding; rosMin = Mindestversion (sonst Abbruch).
 #  onboard    timeout = maximale Dauer einer Onboarding-Sitzung (Port fällt danach zurück).
 #  mgmtAccess Zonen, aus denen Geräte-Management (SSH/Winbox) erlaubt ist.

@@ -42,14 +42,18 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 ## Noch nicht mit echter Hardware getestet
 
 Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und CAPsMAN
-(`router,manager`) und ein hAP ax² als AP. Die gefundenen Fehler sind behoben
+(`router,manager`) und ein hAP ax² als AP. Zweiter Einsatz (2026-09-20): Primary-Manager als CHR in
+einem PVE-Cluster, Karte je VLAN – dabei kamen D40 (`stp="none"`, Profil `vport`), die
+Namensprüfung im Bootstrap, der Host-Key-Typ nach Reset und der Schutz des Inventars dazu. Die
+gefundenen Fehler sind behoben
 ([DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten)). Offen bleiben:
 
 * Onboarding-Push gegen echte Werks-Configs: Router (ether1 = WAN mit Firewall), CRS-Switches,
   APs im CAPs-Modus, Geräte mit Aufkleber-Passwort und `flash/`-Verzeichnis
 * Onboarding eines hAP per PoE an ether1 im CAPs-Modus (Reset-Taster, LED-Verhalten je Modell)
-* Manager-Bootstrap mit Reset (`clean="yes"`) auf Hardware, besonders die Übergabe an cfm per
-  SFTP-`.auto.rsc` nach dem Hochfahren und Geräte mit `flash/`
+* ~~Manager-Bootstrap mit Reset (`clean="yes"`)~~ – am 2026-09-20 auf einem CHR in PVE gelaufen
+  (Stufen 2 und 3 samt Übergabe per SFTP-`.auto.rsc`). Offen bleibt derselbe Weg auf einem Gerät
+  mit `flash/`-Verzeichnis
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.

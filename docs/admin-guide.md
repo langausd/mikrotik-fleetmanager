@@ -350,8 +350,17 @@ Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad di
    ```
    Danach lebt das Inventar auf dem Manager (`$cfmRegister` und `$cfmEnroll` pflegen es). Spätere
    Uploads ohne `--seed-inventory` lassen es unangetastet, damit echte Seriennummern und Ringe nicht
-   auf die lokale Vorlage zurückfallen. Jede Datei geht einzeln mit bis zu drei Versuchen hinüber;
+   auf die lokale Vorlage zurückfallen; mit `--seed-inventory` bricht das Skript ab, sobald auf dem
+   Gerät echte Seriennummern stehen (`--force` überschreibt trotzdem). Geht das Inventar doch
+   verloren, holt `$cfmEnroll name=<name> ip=<ip> role=<rolle> ring=<n>` die Seriennummer vom Gerät
+   zurück – sonst findet es sein Manifest nicht mehr, das unter der Seriennummer liegt. Jede Datei geht einzeln mit bis zu drei Versuchen hinüber;
    scheitert eine, bricht das Skript mit einer Meldung ab.
+**Manager in einer VM:** Eine Karte je VLAN (`vport:<vid>`) und `stp="none"` im Hostfile (D40).
+Der Reset im Bootstrap nummeriert die Karten neu – die Zuordnung danach über die MAC-Adressen
+prüfen, nicht über die Reihenfolge. Das MGMT-VLAN kommt an einer solchen Karte ungetaggt an, der
+Bootstrap legt es aber getaggt auf den Uplink: Der Manager ist über seine MGMT-IP deshalb erst
+nach dem ersten Apply erreichbar, bis dahin über die Konsole des Hosts.
+
 3. In `bootstrap/bootstrap-manager.rsc` den Kopf anpassen (`myname`, `ip` = `managers[0]`,
    `uplink`, `mv`, `gw`, `admin`, `role`), die Datei als `bootstrap-manager.rsc` ins
    Wurzelverzeichnis hochladen (oder gleich mit dem Seed: eine Kopie im Overlay und
@@ -882,6 +891,8 @@ Wurzelverzeichnis.
 | Anmeldung als `admin` geht nicht mehr | gewollt: `adminUser="disable"`, ein eigener Benutzer ist aktiv | mit dem eigenen Benutzer anmelden; Ausnahme per `adminUser="keep"` im Hostfile |
 | Apply: „can not change dynamic“ | eine eigene Suche per `find` ohne `!dynamic` trifft einen dynamischen Eintrag (z.B. vom Switch-Chip angelegte Bridge-VLANs) | `$cfmEnsure`/`$cfmFind` verwenden oder `!dynamic` in die Suche aufnehmen |
 | Log `cfm: RouterBOARD-Firmware … geflasht … Neustart zum Aktivieren` | gewollt: neue Firmware wird nach einem RouterOS-Update erst mit einem weiteren Neustart aktiv | nichts zu tun, der Agent startet einmal neu |
+| `upload-seed.sh`: „ABBRUCH: … enthält echte Seriennummern“ | `--seed-inventory` auf einen Manager mit aufgenommenen Geräten | ohne `--seed-inventory` hochladen; nur mit `--force`, wenn das Inventar wirklich ersetzt werden soll |
+| Bridge-Port inaktiv, Log „BPDU guard changed port role to disabled“ | Edge-Port (`access`) bekommt BPDUs, z.B. von der Bridge eines Virtualisierungshosts | Profil `vport:<vid>` verwenden, Port einmal `disabled=yes` und wieder `no` setzen |
 | `upload-seed.sh`: „Seed unvollständig hochgeladen“ | einzelne Dateien auch nach drei Versuchen nicht übertragen | erneut aufrufen; Verbindung und freien Platz am Manager prüfen |
 | Über WireGuard kein SSH/Winbox | Peer fehlt in `wireguard.rsc` oder ist noch nicht ausgerollt; Client-`allowed-ips` ohne das WireGuard-Subnetz | `$cfmCheck`, am Router `/interface/wireguard/peers/print`, Client-Konfiguration prüfen |
 | Webfig o.ä. bleibt aus, obwohl in `services` eingetragen | falscher Dienstname (`http` statt `www`) | RouterOS-Namen verwenden (Kapitel 4, `services`) |

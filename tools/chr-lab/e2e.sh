@@ -41,7 +41,7 @@ for i in 1 2 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
 # clean="yes" (Standard): Reset auf leere Config, danach läuft der Bootstrap selbst weiter.
 # post sichert den Host-Zugang über ether1 per DHCP-Client (CHR legt ihn nach dem Reset meist
 # selbst wieder an, deshalb nur, wenn er fehlt).
@@ -123,6 +123,8 @@ r 3 '/import cfm-bootstrap.rsc verbose=no' >/dev/null
 mgr '$cfmEnroll name=cm2 ip=192.168.10.3 role=manager-backup ring=0' | grep -q Enrolled && ok "Enroll cm2" || bad "Enroll cm2"
 agentwait 3 4 cm2 && ok "cm2 hat v4 angewendet" || bad "cm2 Apply"
 expect 3 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: CAPsMAN passiv"
+expect 3 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "none"' "cm2: Bridge ohne RSTP (stp=none)"
+expect 2 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "rstp"' "sw1: Bridge weiter mit RSTP"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: CAPsMAN aktiv"
 expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2' "cm1: Provisioning-Regeln gerendert"
 

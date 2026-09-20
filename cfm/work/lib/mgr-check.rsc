@@ -143,6 +143,12 @@
       :local he ""
       :onerror e in={ /import file-name=$hf verbose=no } do={ :set he $e }
       :if ([:len $he] > 0) do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . $he) } else={
+        # stp="none" (Bridge ohne RSTP, D40): Dann faengt niemand eine Schleife ab. Zwei Ports im
+        # selben VLAN oder mehrere Trunks sind dort ein Fehler - auf einem normalen Switch dagegen
+        # ueblich, deshalb nur bei stp="none" pruefen.
+        :local nostp ([:tostr ($cfmHost->"stp")] = "none")
+        :local uvid ({})
+        :local trunks ({})
         :local specs ({})
         :foreach p,sp in=($cfmHost->"ports") do={ :set ($specs->[:len $specs]) ({$p;$sp}) }
         :if ([:len [:tostr ($cfmHost->"portDefault")]] > 0) do={ :set ($specs->[:len $specs]) ({"portDefault";($cfmHost->"portDefault")}) }
@@ -154,7 +160,18 @@
           :local pr ($cfmProfiles->$pn)
           :if ([:typeof $pr] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": unbekanntes Port-Profil " . $sp) } else={
             :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": VLAN " . $arg . " fehlt in vlans.rsc") }
+            :if ($nostp) do={
+              :if ([:tostr ($pr->"untag")] = "arg") do={
+                :if ([:typeof ($uvid->$arg)] != "nothing") do={
+                  :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: " . ($uvid->$arg) . " und " . ($ps->0) . " liegen beide untagged in VLAN " . $arg . "; mit stp=none faengt keine Bridge die Schleife ab")
+                } else={ :set ($uvid->$arg) ($ps->0) }
+              }
+              :if ([:len [:tostr ($pr->"tag")]] > 0) do={ :set ($trunks->($ps->0)) 1 }
+            }
           }
+        }
+        :if ([:len $trunks] > 1) do={
+          :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: mehrere Ports mit getaggten VLANs bei stp=none; mit stp=none faengt keine Bridge die Schleife ab")
         }
         # erwartete Verkabelung ("links", D33): Gegenstelle sollte im Inventar stehen
         :foreach lp,lw in=($cfmHost->"links") do={

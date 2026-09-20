@@ -36,6 +36,8 @@ REGELN = {
                     "ein Syntaxfehler, den :onerror nicht fängt. Leerzeichen-Schreibweise "
                     "(/system routerboard …) oder :parse verwenden.",
     "array-klammern": "Array-Literal als Funktionsargument ohne runde Klammern: p=({…}) schreiben.",
+    "kommentar-im-array": "Kommentarzeile innerhalb eines Array-Literals: /import scheitert mit "
+                          "\"syntax error\". Kommentar über das Array setzen.",
     "import-verbose": "/import … verbose=yes führt Zeilen einzeln aus, Locals gehen verloren: "
                       "verbose=no verwenden.",
     "syntax": "Klammern oder Anführungszeichen nicht ausgeglichen.",
@@ -115,9 +117,10 @@ def tokenize(text):
 class Frame:
     """Eine offene Klammer: block {…} (Anweisungen), paren (…), bracket […]."""
 
-    def __init__(self, kind, line, onerr):
+    def __init__(self, kind, line, onerr, data=False):
         self.kind, self.line = kind, line
         self.onerr = onerr     # liegt in :onerror … in={} (bis zu einem Funktionsrumpf)
+        self.data = data       # Array-Literal (Ausdruck), kein Anweisungsblock
         self.call = False      # bracket: [$f …]
         self.new_stmt()
 
@@ -138,6 +141,7 @@ def check_rsc(path, text):
     for line in unclosed:
         add(line, "syntax")
     stack = [Frame("block", 1, False)]
+    daten = []                 # Zeilenbereiche offener Array-Literale
     line_start = True
     for kind, val, line, esc in toks:
         fr = stack[-1]
@@ -173,6 +177,7 @@ def check_rsc(path, text):
             if kind == "[" and fr.kind == "block" and fr.first and at_line_start:
                 add(line, "klammer-anfang")
             onerr = fr.onerr
+            data = False
             if kind == "{":
                 pw = fr.prev[1] if fr.prev and fr.prev[0] == "W" else ""
                 if direct and pw.endswith("="):
@@ -181,8 +186,13 @@ def check_rsc(path, text):
                     onerr = True
                 elif pw == "do=" and fr.words[:1] in ([":global"], [":local"]):
                     onerr = False                   # Funktionsrumpf
+                # Anweisungen stehen in do={…}, else={…}, :onerror … in={…} und in einem Block
+                # am Anweisungsanfang; alles andere ist ein Array-Literal, und darin verträgt
+                # RouterOS keine Kommentarzeilen.
+                stmt = pw in ("do=", "else=") or (pw == "in=" and fr.words[:1] == [":onerror"])
+                data = not (stmt or (fr.kind == "block" and fr.first))
             fr.first, fr.prev = False, (kind, val)
-            stack.append(Frame({"(": "paren", "[": "bracket", "{": "block"}[kind], line, onerr))
+            stack.append(Frame({"(": "paren", "[": "bracket", "{": "block"}[kind], line, onerr, data))
             continue
         else:                                   # ) ] }
             want = {")": "paren", "]": "bracket", "}": "block"}[kind]
@@ -192,11 +202,19 @@ def check_rsc(path, text):
                     continue                    # überzählige Klammer ignorieren
                 while stack[-1].kind != want:
                     stack.pop()
+            if stack[-1].data:
+                daten.append((stack[-1].line, line))
             stack.pop()
             fr = stack[-1]
         fr.first, fr.prev = False, (kind, val)
+    letzte = toks[-1][2] if toks else 1
     for fr in stack[1:]:
         add(fr.line, "syntax")
+        if fr.data:
+            daten.append((fr.line, letzte))
+    for line, _txt in comments:
+        if any(a <= line < e for a, e in daten):
+            add(line, "kommentar-im-array")
 
     erlaubt = {}
     for line, txt in comments:

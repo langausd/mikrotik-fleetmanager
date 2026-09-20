@@ -29,6 +29,20 @@ class KlammerAnfang(unittest.TestCase):
         self.assertEqual(rules('# [$f] im Kommentar\n'), [])
 
 
+class KommentarImArray(unittest.TestCase):
+    def test_fund(self):
+        self.assertEqual(lines(':global p {\n  "a"={"x"=1};\n  # Kommentar\n  "b"={"x"=2}\n}\n'),
+                         [(3, "kommentar-im-array")])
+        self.assertEqual(rules(':local v {\n  "a"=1;\n  # dazu\n  "b"=2\n}\n'), ["kommentar-im-array"])
+
+    def test_kein_fund(self):
+        self.assertEqual(rules('# davor\n:global p {\n  "a"=1\n}\n# danach\n'), [])
+        self.assertEqual(rules(':global f do={\n  # im Funktionsrumpf\n  :return 1\n}\n'), [])
+        self.assertEqual(rules(':onerror e in={\n  # im Fehlerblock\n  :put 1\n} do={ :put 2 }\n'), [])
+        self.assertEqual(rules(':if (true) do={\n  :put 1\n} else={\n  # im else-Zweig\n  :put 2\n}\n'), [])
+        self.assertEqual(rules(':foreach a in={"x";"y"} do={\n  # im Schleifenrumpf\n  :put $a\n}\n'), [])
+
+
 class EscapeArgument(unittest.TestCase):
     def test_fund(self):
         self.assertEqual(rules('$cfmLog msg="a \\"b\\""\n'), ["escape-argument"])

@@ -223,6 +223,7 @@ Im Hostfile als `"<port>"="<profil>[:<arg>]"`, zum Beispiel `"ether5"="access:40
 | `trunk` | alle VLANs tagged (inkl. Onboarding-VLAN für den Transport) |
 | `trunk-ap` | nur MGMT und WLAN-Zonen tagged – für AP-Uplinks |
 | `access:<vid>` | ein VLAN untagged, Edge-Port mit BPDU-Guard |
+| `vport:<vid>` | wie `access`, aber ohne Edge und BPDU-Guard – für Karten virtueller Maschinen |
 | `hybrid:<vid>` | ein VLAN untagged, alle anderen tagged |
 | `wan` | nicht in der Bridge (WAN eines Routers) |
 | `off` | nicht in der Bridge und abgeschaltet |
@@ -290,6 +291,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `ports` | Port → Profil |
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
+| `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe D40). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
 | `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` |

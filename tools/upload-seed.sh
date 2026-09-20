@@ -2,7 +2,7 @@
 # Lädt die Vorlage (cfm/work + cfm/meta) einmalig auf den Primary-Manager.
 # Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz.
 #   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm]
-#                        [--seed-inventory] [--bootstrap DATEI]
+#                        [--seed-inventory [--force]] [--bootstrap DATEI]
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
 #            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert, anlegen mit
 #            tools/new-site.py) oder tools/chr-lab/seed für das Testlabor. Hochgeladen werden
@@ -12,16 +12,19 @@
 #            work/ - dort landet nur, was an die Flotte verteilt wird). Ohne Pfad wird
 #            <overlay>/bootstrap-manager.rsc genommen. Danach auf dem Gerät: /import <datei>.
 # --seed-inventory: meta/inventory.rsc mit hochladen (nur beim allerersten Aufsetzen sinnvoll).
+#            Enthält das Inventar auf dem Gerät schon echte Seriennummern (also aufgenommene
+#            Geräte), bricht das Skript ab - mit --force trotzdem überschreiben.
 #            Ohne dieses Flag bleibt inventory.rsc auf dem Gerät unangetastet, weil es laut
 #            eigenem Kopfkommentar "nicht versioniert, wirkt sofort" ist und von $cfmRegister/
 #            $cfmEnroll live gepflegt wird – ein erneuter Upload würde echte Seriennummern/
 #            Ringe wieder auf die lokale Vorlage zurücksetzen.
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
-port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""
+port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""
 while [ $# -gt 0 ]; do case $1 in
   --port) port=$2; shift 2;; --overlay) overlay=$2; shift 2;; --base) base=$2; shift 2;;
   --seed-inventory) seed_inventory=1; shift;;
+  --force) force=1; shift;;
   # --bootstrap ohne Pfad: Datei aus dem Overlay nehmen (erst nach dem Parsen auflösbar)
   --bootstrap) if [ $# -ge 2 ] && [ -f "$2" ]; then bootstrap=$2; shift 2; else bootstrap="-"; shift; fi;;
   *) echo "unbekannt: $1"; exit 1;; esac; done
@@ -49,6 +52,23 @@ if [ -n "$overlay" ]; then
     esac
   done
   [ -n "$skipped" ] && echo "nicht hochgeladen (nur lokal):$skipped"
+fi
+# Vorlage über ein gepflegtes Inventar zu legen wirft echte Seriennummern weg; die Geräte finden
+# ihr Manifest dann nicht mehr (es liegt unter der Seriennummer).
+if [ -n "$seed_inventory" ] && [ -z "$force" ]; then
+  remote=$(mktemp)
+  if printf 'get %s/meta/inventory.rsc %s\n' "$base" "$remote" | sftp -P "$port" ${SFTP_OPTS:-} "$dest" >/dev/null 2>&1 && [ -s "$remote" ]; then
+    # "|| true": ohne Treffer liefert grep 1, und set -e/pipefail bräche das Skript sonst ab
+    echte=$(grep -o '"serial"="[^"]*"' "$remote" | sed 's/.*="\(.*\)"/\1/' | grep -vE '^(SERIAL-.*)?$' | head -3 | tr '\n' ' ' || true)
+    if [ -n "$echte" ]; then
+      rm -f "$remote"
+      echo "ABBRUCH: $dest:$base/meta/inventory.rsc enthält echte Seriennummern ($echte...)." >&2
+      echo "Ein Upload der Vorlage würde sie überschreiben, die Geräte fänden ihr Manifest nicht mehr." >&2
+      echo "Ohne --seed-inventory hochladen (Inventar bleibt unangetastet) oder --force erzwingen." >&2
+      exit 1
+    fi
+  fi
+  rm -f "$remote"
 fi
 if [ -z "$seed_inventory" ] && [ -f "$stage/meta/inventory.rsc" ]; then
   rm -f "$stage/meta/inventory.rsc"

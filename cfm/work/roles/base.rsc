@@ -17,9 +17,16 @@
 $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 
 # --- Bridge (VLAN-Filtering wird erst am Ende aktiviert) ---
+#     stp="none" (Hostfile) schaltet RSTP ab. Gedacht für Router/Manager in einer VM mit einer Karte
+#     je VLAN: Deren Ports führen alle zum selben Netz, RSTP hielte das für eine Schleife und würde
+#     Ports blockieren; die VM streute außerdem BPDUs in jedes dieser VLANs. Die Trennung leistet
+#     dort das VLAN-Filtering. $cfmCheck warnt, wenn zwei Ports desselben Geräts im selben VLAN
+#     liegen - dann wäre die Schleife echt (D40).
 :local stp [:tostr ($cfmHost->"stpPrio")]
 :if ([:len $stp] = 0) do={ :set stp "0x8000" }
-$cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=({"name"=$br;"protocol-mode"="rstp";"priority"=$stp}) a=({"vlan-filtering"="no"})
+:local proto "rstp"
+:if ([:tostr ($cfmHost->"stp")] = "none") do={ :set proto "none" }
+$cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=({"name"=$br;"protocol-mode"=$proto;"priority"=$stp}) a=({"vlan-filtering"="no"})
 
 # --- Ports nach Profil (portDefault gilt für alle nicht genannten Ethernet-Ports) ---
 :local ports ({})

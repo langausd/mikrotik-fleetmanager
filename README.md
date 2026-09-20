@@ -55,7 +55,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 |---|---|
 | `cfm/work/global.rsc` | globale Parameter, Zonen-Policy, Admin-User, Hook |
 | `cfm/work/vlans.rsc` | VLAN-Tabelle (Zone, Subnetz, Gateway, DHCP) |
-| `cfm/work/profiles.rsc` | Port-Profile (`trunk`, `trunk-ap`, `access:<vid>`, …) |
+| `cfm/work/profiles.rsc` | Port-Profile (`trunk`, `trunk-ap`, `access:<vid>`, `vport:<vid>`, …) |
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/authorized_keys` | optional: persönliche Admin-SSH-Keys (OpenSSH-Format), siehe Sicherheitsmodell |

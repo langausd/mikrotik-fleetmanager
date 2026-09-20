@@ -334,7 +334,10 @@ Die mitgelieferten Beispiele sind ein fiktives Netz (VLAN 10, 192.168.10.0/24), 
 Konfiguration: Arbeite die Checkliste ab (Adressen, Inventar, Hostfiles, WLAN). So bleiben deine
 Daten aus dem Repo, und neue Versionen des Frameworks lassen sich einfach übernehmen.
 `tools/upload-seed.sh` lädt aus dem Overlay nur die Daten (`*.rsc`, `authorized_keys`, `hosts/`,
-`meta/` …); Notizen wie die Checkliste oder eigene CSV-Listen bleiben lokal.
+`meta/` …); Notizen wie die Checkliste oder eigene CSV-Listen bleiben lokal. Die Bootstrap-Datei
+gehört nicht nach `work/` (das wird an die Flotte verteilt), sondern ins Wurzelverzeichnis des
+Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad die
+`bootstrap-manager.rsc` aus dem Overlay.
 
 ### 6.2 Primary-Manager
 
@@ -349,7 +352,8 @@ Daten aus dem Repo, und neue Versionen des Frameworks lassen sich einfach übern
    scheitert eine, bricht das Skript mit einer Meldung ab.
 3. In `bootstrap/bootstrap-manager.rsc` den Kopf anpassen (`myname`, `ip` = `managers[0]`,
    `uplink`, `mv`, `gw`, `admin`, `role`), die Datei als `bootstrap-manager.rsc` ins
-   Wurzelverzeichnis hochladen und im Terminal ausführen:
+   Wurzelverzeichnis hochladen (oder gleich mit dem Seed: eine Kopie im Overlay und
+   `tools/upload-seed.sh … --bootstrap`) und im Terminal ausführen:
    ```
    /import bootstrap-manager.rsc
    ```

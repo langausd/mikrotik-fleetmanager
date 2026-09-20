@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # Lädt die Vorlage (cfm/work + cfm/meta) einmalig auf den Primary-Manager.
 # Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz.
-#   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm] [--seed-inventory]
+#   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm]
+#                        [--seed-inventory] [--bootstrap DATEI]
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
 #            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert, anlegen mit
 #            tools/new-site.py) oder tools/chr-lab/seed für das Testlabor. Hochgeladen werden
 #            nur *.rsc (außer bootstrap*.rsc), authorized_keys und die Verzeichnisse
 #            hosts/ roles/ lib/ meta/; Notizen wie CHECKLISTE.md oder CSV-Listen bleiben lokal.
+# --bootstrap: zusätzlich diese Bootstrap-Datei ins Wurzelverzeichnis des Geräts legen (nicht nach
+#            work/ - dort landet nur, was an die Flotte verteilt wird). Ohne Pfad wird
+#            <overlay>/bootstrap-manager.rsc genommen. Danach auf dem Gerät: /import <datei>.
 # --seed-inventory: meta/inventory.rsc mit hochladen (nur beim allerersten Aufsetzen sinnvoll).
 #            Ohne dieses Flag bleibt inventory.rsc auf dem Gerät unangetastet, weil es laut
 #            eigenem Kopfkommentar "nicht versioniert, wirkt sofort" ist und von $cfmRegister/
@@ -14,11 +18,18 @@
 #            Ringe wieder auf die lokale Vorlage zurücksetzen.
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
-port=22; overlay=""; base=cfm; seed_inventory=""
+port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""
 while [ $# -gt 0 ]; do case $1 in
   --port) port=$2; shift 2;; --overlay) overlay=$2; shift 2;; --base) base=$2; shift 2;;
   --seed-inventory) seed_inventory=1; shift;;
+  # --bootstrap ohne Pfad: Datei aus dem Overlay nehmen (erst nach dem Parsen auflösbar)
+  --bootstrap) if [ $# -ge 2 ] && [ -f "$2" ]; then bootstrap=$2; shift 2; else bootstrap="-"; shift; fi;;
   *) echo "unbekannt: $1"; exit 1;; esac; done
+if [ "$bootstrap" = "-" ]; then
+  [ -n "$overlay" ] || { echo "--bootstrap ohne Pfad braucht --overlay"; exit 1; }
+  bootstrap="$overlay/bootstrap-manager.rsc"
+fi
+if [ -n "$bootstrap" ] && [ ! -f "$bootstrap" ]; then echo "Bootstrap-Datei fehlt: $bootstrap"; exit 1; fi
 root=$(cd "$(dirname "$0")/.." && pwd)
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/work" "$stage/meta"
@@ -31,7 +42,8 @@ if [ -n "$overlay" ]; then
     case $n in
       meta) ;;
       hosts|roles|lib) [ -d "$d" ] && cp -r "$d" "$stage/work/" ;;
-      bootstrap*.rsc) skipped="$skipped $n" ;;
+      # die per --bootstrap gewählte Datei geht separat ins Wurzelverzeichnis, nicht nach work/
+      bootstrap*.rsc) { [ -n "$bootstrap" ] && cmp -s "$d" "$bootstrap"; } || skipped="$skipped $n" ;;
       *.rsc|authorized_keys) [ -f "$d" ] && cp "$d" "$stage/work/" ;;
       *) skipped="$skipped $n" ;;
     esac
@@ -76,4 +88,20 @@ if [ -n "$failed" ]; then
   exit 1
 fi
 echo "Seed hochgeladen nach $dest:$base/ ($total Dateien)"
-echo "Nächster Schritt am Manager: bootstrap/bootstrap-manager.rsc anpassen, hochladen, /import"
+if [ -n "$bootstrap" ]; then
+  bn=$(basename "$bootstrap")
+  case $bn in
+    *.auto.rsc) echo "FEHLER: $bn würde beim Hochladen sofort ausgeführt - umbenennen" >&2; exit 1;;
+  esac
+  ok=0
+  for attempt in 1 2 3; do
+    if printf 'put %s %s\n' "$bootstrap" "$bn" | sftp -P "$port" ${SFTP_OPTS:-} "$dest" >/dev/null 2>&1; then
+      ok=1; break
+    fi
+  done
+  [ "$ok" = 1 ] || { echo "FEHLER beim Hochladen (3 Versuche): $bn" >&2; exit 1; }
+  echo "Bootstrap hochgeladen: $bn (Wurzelverzeichnis)"
+  echo "Nächster Schritt auf dem Gerät: Kopf prüfen, dann /import $bn"
+else
+  echo "Nächster Schritt am Manager: bootstrap/bootstrap-manager.rsc anpassen, hochladen, /import"
+fi

@@ -24,6 +24,23 @@
 :local b "cfm"
 :if ([:len [/file/find where name="flash" and type="directory"]] > 0) do={ :set b "flash/cfm" }
 :if ([:len [/file/find where name=($b . "/work/lib/mgr-core.rsc")]] = 0) do={ :error ("Seed fehlt: " . $b . "/work/ hochladen (tools/upload-seed.sh)") }
+# myname gegen das mitgelieferte Inventar prüfen: Ein Tippfehler - auch nur in der
+# Groß-/Kleinschreibung - legt beim Selbst-Enroll einen zweiten Eintrag an, und das Hostfile
+# hosts/<myname>.rsc greift nicht (fehlendes Hostfile ist nur eine Warnung, der Apply läuft durch).
+:local invf ($b . "/meta/inventory.rsc")
+:if ([:len [/file/find where name=$invf]] > 0) do={
+  :global cfmInv
+  :set cfmInv ({})
+  :onerror e in={ /import file-name=$invf verbose=no } do={ :error ("inventory.rsc nicht lesbar: " . $e) }
+  :if ([:typeof ($cfmInv->$myname)] != "array") do={
+    :local known ""
+    :foreach n,d in=$cfmInv do={ :set known ($known . " " . $n) }
+    :error ("myname \"" . $myname . "\" steht nicht im Inventar (" . $invf . "). Bekannt:" . $known)
+  }
+}
+:if ([:len [/file/find where name=($b . "/work/hosts/" . $myname . ".rsc")]] = 0) do={
+  :put ("WARNUNG: " . $b . "/work/hosts/" . $myname . ".rsc fehlt - dieses Gerät bekommt keine Ports/Parameter")
+}
 
 # Ablauf mit clean="yes" in Stufen, erkannt an Markierungsdateien unter cfm/:
 #   1 (du, per /import): Prüfungen, Reset mit run-after-reset=diese Datei.
@@ -126,19 +143,33 @@
       /user/add name=cfm group=full comment="cfm-sys:user" password=[:rndstr length=40 from=$pwc]
     }
     :if ([:len [/user/group/find where name="cfm-dev"]] = 0) do={ /user/group/add name=cfm-dev policy=ssh,ftp,read comment="cfm-sys:grp" }
-    :if ([:len [/user/ssh-keys/private/find where user=cfm]] = 0) do={
+    # Der Manager-Schlüssel ist der ed25519-Host-Key. Nach einem Reset steht der Typ wieder auf
+    # rsa. Hängt die Umstellung am Vorhandensein privater Benutzerschlüssel (die ein Reset mit
+    # keep-users behält), exportiert RouterOS den rsa-Key, die erwartete ed25519-Datei fehlt und
+    # der nächste Zugriff scheitert mit "no such item" (2026-09-20 mit clean="no" aufgelaufen).
+    # Deshalb zuerst den Typ prüfen; ein neuer Host-Key macht alte private Schlüssel ohnehin
+    # wertlos, sie werden dann ersetzt.
+    :local newkey false
+    :if ([:tostr [/ip/ssh/get host-key-type]] != "ed25519") do={
       /ip/ssh/set host-key-type=ed25519
       /ip/ssh/regenerate-host-key
       :delay 1s
+      :set newkey true
+    }
+    :if ($newkey or [:len [/user/ssh-keys/private/find where user=cfm]] = 0) do={
       :foreach u in={"cfm";$admin} do={
         /ip/ssh/export-host-key key-file-prefix=cfm-id
         :delay 1s
+        /user/ssh-keys/private/remove [find where user=$u]
         /user/ssh-keys/private/import user=$u private-key-file=cfm-id_ed25519.pem
         :delay 500ms
       }
     }
     /ip/ssh/export-host-key key-file-prefix=cfm-id
     :delay 1s
+    :if ([:len [/file/find where name="cfm-id_ed25519_pub.pem"]] = 0) do={
+      :error "Host-Key-Export ohne ed25519-Datei - /ip/ssh/print prüfen (host-key-type)"
+    }
     :local pub [/file/get cfm-id_ed25519_pub.pem contents]
     /user/ssh-keys/remove [find where user=cfm]
     /user/ssh-keys/import user=cfm public-key-file=cfm-id_ed25519_pub.pem

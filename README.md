@@ -95,8 +95,9 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
    fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
    `global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`, `hosts/`,
    `meta/inventory.rsc`, optional `wireguard.rsc` und `authorized_keys`.
-2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory` (das Inventar
-   nur beim ersten Mal), dann `site/bootstrap-manager.rsc` hochladen und `/import bootstrap-manager.rsc`.
+2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory --bootstrap`
+   (das Inventar nur beim ersten Mal; `--bootstrap` nimmt `site/bootstrap-manager.rsc` mit ins
+   Wurzelverzeichnis), dann auf dem Gerät `/import bootstrap-manager.rsc`.
    Das Gerät setzt sich dabei zuerst auf eine leere Config zurück (`clean`), erzeugt danach Release v1
    und enrollt cm1 selbst.
 3. **Secrets:**

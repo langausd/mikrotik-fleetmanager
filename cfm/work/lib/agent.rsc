@@ -420,10 +420,9 @@
     :set ($st->"upf"); :set ($st->"upa"); :set ($st->"upg")
   }
 
-  # --- RouterBOARD-Firmware: auto-upgrade (Rolle base) flasht sie beim Neustart nach einem
-  #     RouterOS-Update automatisch, aktiv wird sie aber erst nach einem WEITEREN Neustart
-  #     (RouterOS-Eigenheit) - ohne diesen Schritt bleibt "upgrade-firmware" dauerhaft anders als
-  #     "current-firmware" stehen. Nur prüfen, wenn nicht schon ein Neustart ansteht (oben).
+  # --- RouterBOARD-Firmware: Nach einem RouterOS-Update passt "current-firmware" nicht mehr zu
+  #     "upgrade-firmware"; eine geflashte Firmware wird erst nach einem WEITEREN Neustart aktiv
+  #     (RouterOS-Eigenheit). Nur prüfen, wenn nicht schon ein Neustart ansteht (oben).
   :if ([:len $boot] = 0) do={
     :local rbCur ""; :local rbUpg ""
     # /system/routerboard fehlt auf Geräten ohne RouterBOARD (CHR/x86) komplett - in fester
@@ -435,10 +434,27 @@
       :local fu [:parse ":return [/system/routerboard/get upgrade-firmware]"]
       :set rbUpg [$fu]
     } do={}
+    # auto-upgrade flasht nur beim Neustart direkt nach einem RouterOS-Update. Lief das Update vor
+    # dem ersten Apply (Onboarding), flasht nie etwas, und ein bloßer Neustart dreht sich im Kreis
+    # (hAP ax², 2026-09-23: Neustart alle 1-2 min). Deshalb selbst flashen und je Firmware-Version
+    # höchstens einmal neu starten; "fw" merkt sich die Version über den Neustart hinweg.
     :if ([:len $rbUpg] > 0 and $rbUpg != $rbCur) do={
-      :log warning ("cfm: RouterBOARD-Firmware " . $rbUpg . " geflasht (aktuell " . $rbCur . ") - Neustart zum Aktivieren")
-      :set boot "/system/reboot"
-    }
+      :if ([:tostr ($st->"fw")] = $rbUpg) do={
+        :if ([:tostr ($st->"fwe")] != $rbUpg) do={
+          :log error ("cfm: RouterBOARD-Firmware " . $rbUpg . " nach dem Neustart nicht aktiv (aktuell " . $rbCur . ") - kein weiterer Neustart, /system/routerboard/upgrade von Hand")
+          :set ($st->"fwe") $rbUpg
+        }
+      } else={
+        :onerror e in={
+          :local fx [:parse "/system/routerboard/upgrade"]
+          $fx
+          :delay 10s
+        } do={ :log error ("cfm: RouterBOARD-Firmware " . $rbUpg . " flashen fehlgeschlagen: " . $e) }
+        :set ($st->"fw") $rbUpg
+        :log warning ("cfm: RouterBOARD-Firmware " . $rbUpg . " geflasht (aktuell " . $rbCur . ") - Neustart zum Aktivieren")
+        :set boot "/system/reboot"
+      }
+    } else={ :set ($st->"fw"); :set ($st->"fwe") }
   }
 
   # --- Bericht ---

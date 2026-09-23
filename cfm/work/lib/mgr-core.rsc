@@ -377,6 +377,7 @@
     :local res [:tostr ($s->"res")]
     :if ([:len [:tostr ($s->"pending")]] > 0) do={ :set res ($res . " pend v" . ($s->"pending")) }
     :if ([:len [:tostr ($s->"bad")]] > 0) do={ :set res ($res . " bad v" . ($s->"bad")) }
+    :if ([:len [:tostr ($s->"fwe")]] > 0) do={ :set res ($res . " fw " . ($s->"fwe") . "!") }
     :put ([$cfmPad $name $nw] . [$cfmPad ($d->"ring") 5] . [$cfmPad ("v" . ($rg->("r" . ($d->"ring")))) 6] . [$cfmPad ("v" . [:tostr ($s->"v")]) 6] . [$cfmPad [:pick $res 0 25] 26] . [$cfmPad $sv 4] . [$cfmPad $ros 16] . $age)
   }
 }

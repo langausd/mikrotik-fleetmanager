@@ -61,6 +61,7 @@
   :foreach k,s in=($cfmWifi->"ssids") do={
     :local vv [:tostr ($s->"vlan")]
     :if ([:len $vv] > 0 and [:typeof ($cfmVlans->$vv)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": VLAN " . $vv . " fehlt in vlans.rsc") }
+    :if ($k = "cap") do={ :set ($err->[:len $err]) "wifi.rsc: SSID-Schlüssel cap ist reserviert (Datapath cfm-cap der APs, D41)" }
   }
   # PPSK (Multi-Passphrase, D32): nur WPA2-PSK, VLAN vorhanden und auf den AP-Uplinks (trunk-ap)
   :local apTag [:tostr ($cfmProfiles->"trunk-ap"->"tag")]

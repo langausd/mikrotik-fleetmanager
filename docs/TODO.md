@@ -73,6 +73,8 @@ gefundenen Fehler sind behoben
   `mgrTick=1m` jede Minute. Bisher nur als Zeitversatz beobachtet (Onboarding-Test: Status von ob1
   und Rückstellung des Onboarding-Ports einige Sekunden später, einmal ein leerer Status beim Lesen).
   Vorschlag: Start des Onboarding-Ticks versetzen oder beide Ticks gegenseitig ausschließen.
+  *Teilweise erledigt (D42):* Jeder Tick überspringt sich, solange sein eigener Vorlauf noch läuft;
+  gegeneinander sind die beiden Ticks weiterhin nicht gesperrt.
 * ~~**WireGuard-Fernzugang: Rückweg zu cm1 selbst startet nicht zuverlässig ohne Anstoß.**~~ –
   *vermutlich behoben, noch nicht erneut getestet:* Ursache war wahrscheinlich, dass die
   WireGuard-Peers ursprünglich Adressen aus dem **bereits verbundenen** MGMT-Subnetz bekamen
@@ -164,9 +166,9 @@ Backup-Manager-Rolle fehlen noch.
     meldet der alte Prüfer auf dem Manager neue Zonenkennzeichen (`*wan`) als Fehler, das erste
     Release braucht dann `force=yes` (Henne-Ei; künftig Prüfer aus dem neuen Archiv laden).
 22. **Fehlgeschlagener Apply löst über den Watchdog einen Reboot aus (Design-Falle, kein Bug)** –
-    Hardware-Befund, 2026-09-22: ein ungültiges RouterOS-Property (ein WLAN-Datapath-Feld, das laut
-    MikroTik-Doku richtig aussah, von dieser RouterOS-Version/Hardware aber als "bad parameter"
-    abgelehnt wurde) ließ `$cfmImportAll` auf
+    Hardware-Befund, 2026-09-22: ein ungültiges RouterOS-Property (`local-forwarding` im
+    WLAN-Datapath – ein Feld des alten CAPsMAN `/caps-man`, das es im wifi-Paket nicht gibt; RouterOS
+    lehnt es als "bad parameter" ab) ließ `$cfmImportAll` auf
     cm1 mit einem Script-Fehler abbrechen; die Standard-Fehlerbehandlung markiert die Version als
     `bad` und rollt per `/system/backup/load` zurück - das lädt IMMER neu (RouterOS-Eigenheit,
     kein Rollback ohne Reboot möglich). Bei einem Manager, der sein eigener Primary ist, heißt
@@ -179,3 +181,11 @@ Backup-Manager-Rolle fehlen noch.
     ("bad parameter local-forwarding") sichtbar. Für produktive Manager erwägen: testweiser Apply
     (`$cfmPlan`) VOR dem echten Release stärker bewerben, oder Disk-Logging für warning/critical
     standardmäßig für Primary-Manager vorsehen (Flash-Verschleiß gegen Abwägen).
+23. **APs mit `wifi-qcom-ac`** (hAP ac², cAP ac u.ä.): Laut MikroTik-Doku übernehmen sie `vlan-id`
+    nicht vom CAPsMAN – der Datapath `cfm-cap` (D41) reicht dort nicht. Die Rolle `ap` müsste je
+    Radio bzw. virtuellem AP einen statischen Bridge-Port mit der PVID der SSID anlegen, und der
+    CAPsMAN dürfte solchen CAPs keinen Datapath mit `vlan-id` schicken. Erst mit einem solchen
+    Gerät umsetzen und testen; bis dahin erkennt cfm das Paket nicht und warnt auch nicht.
+24. **Eigene Radios des Managers** (z.B. CRS418-…-5axQ2axQ): Die Rolle `manager` rendert nur den
+    CAPsMAN, die eingebauten Radios bleiben unkonfiguriert. Klären: Rolle `ap` zusätzlich auf dem
+    Manager (lokaler CAP des eigenen CAPsMAN) oder bewusst aus.

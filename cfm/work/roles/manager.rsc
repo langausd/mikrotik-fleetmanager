@@ -125,6 +125,8 @@ $cfmEnsure m="/interface/wifi/steering" k="wst" n=({"name"="cfm-steer"}) p=({"na
       }
     } do={}
   }
+  # An die CAPs gehen davon vlan-id und client-isolation; "bridge" gilt nur für eigene Radios des
+  # CAPsMAN, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, Datapath cfm-cap, D41)
   $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
   $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
 }

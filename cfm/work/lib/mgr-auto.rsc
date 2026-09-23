@@ -134,15 +134,23 @@
   :global cfmHookState; :global cfmVaultBackup; :global cfmJson; :global cfmMB; :global cfmVaultGet
   :onerror e in={
     :if ([$cfmIsPrimary]) do={
+      # Schrittmarken im Log: bleibt ein Lauf hängen, zeigt die letzte Zeile, wo
+      :log info "cfm: tick collect"
       :global cfmCollect; $cfmCollect
+      :log info "cfm: tick promote"
       $cfmAutoPromote
+      :log info "cfm: tick secrets"
       $cfmSecretSync
+      :log info "cfm: tick upgrade"
       :global cfmUpgTick; $cfmUpgTick
+      :log info "cfm: tick net"
       :global cfmNetTick; $cfmNetTick
+      :log info "cfm: tick hook"
       $cfmHookState
       :local vj [$cfmJson ([$cfmMB] . "/meta/vault.dat")]
       # als String vergleichen: [:tonum nothing] ist nil, und "3 != nil" ist weder wahr noch falsch
       :if ([:tostr ($vj->"ver")] != [:tostr ($vj->"bver")] and [:len [$cfmVaultGet "vaultpw"]] > 0) do={ $cfmVaultBackup }
+      :log info "cfm: tick ende"
     } else={ $cfmMirror }
   } do={ :log warning ("cfm: tick: " . $e) }
 }

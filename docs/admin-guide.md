@@ -437,6 +437,12 @@ Voraussetzung: Router und Switches bis zum Zielport sind bereits aufgenommen.
    $cfmRegister name=ap3 serial=HG1234567 role=ap ring=1 ip=192.168.10.33 pw="…"
    ```
    Dazu `cfm/work/hosts/ap3.rsc` mit dem Uplink-Port anlegen und `$cfmRelease`.
+
+   > **Tipp:** Die Seriennummer nicht abtippen, sondern den **Datamatrix-Code** auf dem
+   > Aufkleber mit dem Handy scannen und per Copy & Paste einfügen. Ein Zahlen- oder
+   > Buchstabendreher fällt sonst erst spät auf: Der Schlüssel `mac.<Seriennummer>` passt dann
+   > nicht, das Framework erzeugt für das Gerät kein Manifest, und es bleibt still auf dem
+   > Stand ohne Konfiguration.
 2. **Port am Zielort freischalten:**
    ```
    $cfmOnboard sw=sw1 port=ether5 name=ap3

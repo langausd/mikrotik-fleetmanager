@@ -152,3 +152,30 @@ Backup-Manager-Rolle fehlen noch.
     Proxy als Ziel (transparent, Filter nach Domain) für Geräte, deren Cloud-Adressen häufig
     wechseln. WLAN-Client-Isolation trennt laut MikroTik nur Clients am selben AP – für
     isolierte Zonen über mehrere APs zusätzlich einen Bridge-Filter auf den APs (nur zum Gateway).
+21. **Weniger `/file/find` im Manager-Tick** – Hardware-Befund (CRS418, RouterOS 7.22.2): eine
+    `/file/find`-Suche kostet ca. 0,23 ms je Datei in `/file` (624 Dateien: 120 ms, 351: 80 ms).
+    Fast jede Funktion (`cfmMB`, `cfmWrite`, `cfmRead`, `cfmJson`) sucht sich ihre Datei so;
+    ein Tick lief mit 624 Dateien 87 s, nach dem Aufräumen (`archiveKeep` 3, Supout weg) 33 s.
+    Überlappende minütliche Läufe führten zu `action timed out` und aufgestauten Scheduler-Jobs
+    (Abhilfe: Job-Sperre je Scheduler, Onboarding-Tick lädt im Leerlauf nichts,
+    Schrittmarken `cfm: tick …` im Log). Offen: `cfmMB` einmal zwischenspeichern, Dateisuchen
+    bündeln, `archiveKeep` als Default niedriger; auf Geräten mit USB-Stick prüfen, ob er die
+    Dateiliste bremst. Auch `$cfmRelease` gegen den eigenen Prüfer: nach einem Framework-Update
+    meldet der alte Prüfer auf dem Manager neue Zonenkennzeichen (`*wan`) als Fehler, das erste
+    Release braucht dann `force=yes` (Henne-Ei; künftig Prüfer aus dem neuen Archiv laden).
+22. **Fehlgeschlagener Apply löst über den Watchdog einen Reboot aus (Design-Falle, kein Bug)** –
+    Hardware-Befund, 2026-09-22: ein ungültiges RouterOS-Property (ein WLAN-Datapath-Feld, das laut
+    MikroTik-Doku richtig aussah, von dieser RouterOS-Version/Hardware aber als "bad parameter"
+    abgelehnt wurde) ließ `$cfmImportAll` auf
+    cm1 mit einem Script-Fehler abbrechen; die Standard-Fehlerbehandlung markiert die Version als
+    `bad` und rollt per `/system/backup/load` zurück - das lädt IMMER neu (RouterOS-Eigenheit,
+    kein Rollback ohne Reboot möglich). Bei einem Manager, der sein eigener Primary ist, heißt
+    das: ein einziges kaputtes Property in `roles/manager.rsc` bringt cm1 bei JEDEM Release in
+    eine Reboot-Schleife, bis der Fehler im Quelltext behoben ist - `$cfmRelease`/`force=yes`
+    verhindert das nicht, weil der interne Prüfer (`mgr-check`) RouterOS-Property-Namen nicht
+    kennt. Zusätzlich: RouterOS löscht sein Log beim Reboot (RAM-Puffer) - die entscheidende
+    Fehlerzeile war beim ersten und zweiten Reboot bereits weg, erst nach Einrichten von
+    Disk-Logging (`/system/logging/action/add target=disk ...`) wurde die eigentliche Meldung
+    ("bad parameter local-forwarding") sichtbar. Für produktive Manager erwägen: testweiser Apply
+    (`$cfmPlan`) VOR dem echten Release stärker bewerben, oder Disk-Logging für warning/critical
+    standardmäßig für Primary-Manager vorsehen (Flash-Verschleiß gegen Abwägen).

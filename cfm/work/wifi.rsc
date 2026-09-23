@@ -2,7 +2,9 @@
 # cfm – WLAN (gerendert vom CAPsMAN auf den Config-Managern)
 #  ssids     Key = interner Name. vlan = Datapath-VLAN, bands = "2,5",
 #            sec/ft/pmf/isolation überschreiben die defaults.
-#            Passphrase NUR im Vault: cfm:psk.<key>  ($cfmSecret key=psk.main value=...)
+#            Passphrase NUR im Vault: cfm:psk.<key> - <key> ist der SSID-Schlüssel unten in
+#            "ssids" (in dieser Vorlage z.B. "main", "guest" …), NICHT der SSID-Name selbst:
+#            $cfmSecret key=psk.main value=...   (bei eigenen Sites den eigenen Schlüssel nehmen!)
 #  master    SSID, die das physische Radio trägt (die übrigen werden virtuelle APs)
 #  channels  Kanal-Pools je Band; RouterOS wählt daraus den passendsten Kanal.
 #            skipDfs = "10min-cac" (Wetterradar-Kanäle meiden) | "all" | "disabled"

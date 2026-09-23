@@ -36,8 +36,13 @@ $cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm
 # langsamer voranschreiten, sobald "mgrTick" größer als 1m ist.
 :local mgrTick [:tostr ($cfmG->"mgrTick")]
 :if ([:len $mgrTick] = 0) do={ :set mgrTick "10m" }
-$cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"="/system script run cfm-mgr; :global cfmTick; \$cfmTick"})
-$cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-tick"}) p=({"name"="cfm-mgr-onb-tick";"start-time"="startup";"interval"="1m";"on-event"="/system script run cfm-mgr; :global cfmOnbTickRun; \$cfmOnbTickRun"})
+$cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] < 2) do={ /system script run cfm-mgr; :global cfmTick; \$cfmTick } else={ :log warning \"cfm: mgr-tick uebersprungen (Vorlauf haengt)\" }"})
+# \\\$ statt \$ vor dem schließenden Anführungszeichen: der on-event-String wird zweimal geparst
+# (einmal jetzt beim Erzeugen des Scheduler-Werts, einmal später bei jeder Ausführung durch den
+# Scheduler) - für ein wörtliches "$" im AUSGEFÜHRTEN Ergebnis (Regex-Endanker) muss auf dieser
+# Ebene "\$" im Wert selbst stehen, sonst "syntax error" beim Scheduler-Lauf (real auf Hardware
+# erlebt, 2026-09-22: cfm-mgr-onb-tick lief tagelang minütlich in einen Syntaxfehler statt zu ticken).
+$cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-tick"}) p=({"name"="cfm-mgr-onb-tick";"start-time"="startup";"interval"="1m";"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] < 2) do={ :if ([:len [/file/find where name~\"meta/onboard.dat\\\$\" and size>2]] > 0) do={ /system script run cfm-mgr; :global cfmOnbTickRun; \$cfmOnbTickRun } } else={ :log warning \"cfm: mgr-onb-tick uebersprungen (Vorlauf haengt)\" }"})
 
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---
 $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-dev";"policy"="ssh,ftp,read"})

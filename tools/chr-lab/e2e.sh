@@ -91,6 +91,9 @@ expect 2 '[:len [/interface/bridge/vlan/find where comment~"^cfm:bv:1[01][0-9]\$
 step "5. Audit: Hand-Objekt anzeigen und markieren"
 r 2 '/ip/dns/static/add name=hand.lan address=192.168.10.99' >/dev/null
 mgr '$cfmAudit host=sw1' | grep -q "hand.lan" && ok "Audit zeigt hand.lan" || bad "Audit report"
+# $cfmLoadData importiert lib/lib.rsc: der Manager-Befehl $cfmAudit muss das überstehen
+r 1 '/system script run cfm-mgr; :global cfmLoadData; $cfmLoadData; :global cfmAudit; $cfmAudit host=sw1' | grep -q "hand.lan" && ok "Audit nach \$cfmLoadData (kein Namenskonflikt mit lib.rsc)" || bad "Audit nach \$cfmLoadData liefert nichts"
+mgr '$cfmAudit host=sw1' | grep -qE "/user name=admin|action=cfmremote" && bad "Audit meldet von base verwaltete Objekte (admin, Syslog)" || ok "Audit ohne Fehlalarme (admin, Syslog)"
 ref=$(mgr '$cfmAudit host=sw1' | grep "hand.lan" | awk '{print $1}')
 mgr "\$cfmAudit host=sw1 op=mark sel=$ref" >/dev/null
 expect 2 '[/ip/dns/static/get [find name=hand.lan] comment] ~ "^cfm-override"' "Audit mark -> cfm-override"

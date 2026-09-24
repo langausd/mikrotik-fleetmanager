@@ -57,8 +57,9 @@ gefundenen Fehler sind behoben
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
-* mehrere APs und PPSK-VLANs (im Pilot nur ein hAP ax² als AP), VRRP mit mehreren Routern,
-  CAPsMAN-Übernahme durch den Backup-Manager
+* PPSK-VLANs, VRRP mit mehreren Routern, CAPsMAN-Übernahme durch den Backup-Manager. Zwei APs
+  (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (D41), WPA2/WPA3 + FT und Clients
+  mit `ft-wpa3-psk` laufen seit 2026-09-24; Roaming zwischen den APs ist noch nicht gezielt geprüft
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
 * Rolle `router` auf einem CRS mit L3-Hardware-Offloading (D37): schaltet sie `l3-hw-offloading` ab,
   läuft VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
@@ -76,16 +77,11 @@ gefundenen Fehler sind behoben
   *Teilweise erledigt (D42):* Jeder Tick überspringt sich, solange sein eigener Vorlauf noch läuft;
   gegeneinander sind die beiden Ticks weiterhin nicht gesperrt.
 * ~~**WireGuard-Fernzugang: Rückweg zu cm1 selbst startet nicht zuverlässig ohne Anstoß.**~~ –
-  *vermutlich behoben, noch nicht erneut getestet:* Ursache war wahrscheinlich, dass die
-  WireGuard-Peers ursprünglich Adressen aus dem **bereits verbundenen** MGMT-Subnetz bekamen
-  (RouterOS legt dafür keine automatische Route an, dazu Proxy-ARP nötig – beides zusammen offenbar
-  fragil beim allerersten Verbindungsaufbau). Umgebaut auf ein eigenes, nicht überlappendes
-  WireGuard-Subnetz (`wireguard.rsc` → `net`, Router bekommt Host `.1`); Proxy-ARP und die
-  explizite Peer-Route sind damit entfallen, die verbundene Route fürs ganze Subnetz entsteht
-  automatisch. Nach dem Umbau erneut testen, insbesondere den Rückweg zu cm1 selbst direkt nach
-  einem frischen `nmcli connection up`, bevor `mgmtExtra` gehärtet wird (siehe CHECKLISTE) – falls
-  es dann wieder hakt, war die Vorgeschichte mit `mgmtExtra` doch nicht die Erklärung und die
-  eigentliche Ursache liegt woanders.
+  *erledigt, am 2026-09-24 auf Hardware bestätigt:* Nach frischem `nmcli connection up` läuft der
+  Verkehr zum MGMT-Netz sofort durch den Tunnel (Quelle ist die Tunnel-Adresse), SSH zu cm1 klappt
+  auf Anhieb. Ursache war das früher überlappende
+  Peer-Subnetz im MGMT-Netz (RouterOS legt dafür keine Route an, dazu Proxy-ARP); seit dem eigenen
+  WireGuard-Subnetz (`wireguard.rsc` → `net`) ist das behoben.
 
 ## Verbesserungsplan (Stand 2026-09-12)
 

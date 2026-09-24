@@ -215,8 +215,8 @@
     # --- Audit-Modus (vom Manager per $cfmAudit ausgelöst) ---
     :if (($arg->"mode") = "audit") do={
       /import file-name=($cfmDl . "/lib/lib.rsc") verbose=no
-      :global cfmAudit
-      :local rep [$cfmAudit op=($arg->"op") sel=($arg->"sel")]
+      :global cfmAuditDev
+      :local rep [$cfmAuditDev op=($arg->"op") sel=($arg->"sel")]
       $cfmWrite ($dir . "/out/audit.txt") $rep
       :put $rep
       :error "cfm-done"
@@ -467,5 +467,5 @@
     :delay 2s
     :execute $boot
   }
-} do={ :if ($err != "cfm-done") do={ :log error ("cfm: " . $err) } }
+} do={ :if (!($err ~ "^cfm-done")) do={ :log error ("cfm: " . $err) } }
 }

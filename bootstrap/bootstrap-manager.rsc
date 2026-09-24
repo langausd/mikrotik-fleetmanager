@@ -14,7 +14,7 @@
 :local ip "192.168.10.2/24"      ;# MGMT-IP = managers[0] aus global.rsc
 :local uplink "ether1"           ;# Port, über den das MGMT-VLAN (tagged) kommt
 :local mv 10                     ;# MGMT-VLAN
-:local gw "192.168.10.1"         ;# Gateway im MGMT-VLAN
+:local gw "192.168.10.1"         ;# Gateway im MGMT-VLAN (= ip bei router,manager: dann keine Route)
 :local admin "admin"             ;# dein Admin-User (bekommt den Manager-Key für ssh-exec)
 :local role "manager"            ;# ggf. "switch,manager" oder "router,manager"
 :local clean "yes"               ;# "yes" = vorher auf leere Config zurücksetzen (empfohlen),
@@ -71,7 +71,8 @@
   :if ([:len [/interface/vlan/find where name=$vif]] = 0) do={ /interface/vlan/add name=$vif interface=$br vlan-id=$mv }
   :if ([:len [/interface/bridge/vlan/find where vlan-ids=$mv]] = 0) do={ /interface/bridge/vlan/add bridge=$br vlan-ids=$mv tagged=($br . "," . $uplink) }
   :if ([:len [/ip/address/find where interface=$vif]] = 0) do={ /ip/address/add address=$ip interface=$vif }
-  :if ([:len [/ip/route/find where dst-address="0.0.0.0/0" and gateway=$gw]] = 0) do={ /ip/route/add dst-address=0.0.0.0/0 gateway=$gw }
+  # Ist der Manager selbst das Gateway (Rolle router,manager), zeigte die Route auf ihn selbst
+  :if ($gw != [:pick $ip 0 [:find $ip "/"]] and [:len [/ip/route/find where dst-address="0.0.0.0/0" and gateway=$gw]] = 0) do={ /ip/route/add dst-address=0.0.0.0/0 gateway=$gw }
 }
 
 :if ($stage = "1") do={

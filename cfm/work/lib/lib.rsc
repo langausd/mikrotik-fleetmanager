@@ -25,6 +25,10 @@
 #  * /import ... verbose=yes führt Zeilen einzeln aus -> Locals gehen verloren.
 #  * :return innerhalb von :onerror ... in={} verlässt die Funktion nicht –
 #    Ergebnis in ein Flag schreiben und am Ende zurückgeben.
+#  * Fehlertexte aus :onerror nie per = vergleichen: RouterOS 7.24.4 hängt an
+#    :error "x" noch " (:error; line N)" an -> per ~ "^x" prüfen.
+#  * Globale Namen hier nicht doppelt zu mgr-*.rsc vergeben: Der Manager importiert
+#    diese Datei ebenfalls und überschreibt damit gleichnamige Manager-Befehle.
 #  * Weitere Eigenheiten (Dateiendungen, Vergleiche): docs/DECISIONS.md
 # ============================================================
 
@@ -365,20 +369,25 @@
 
 # ---------- Audit: von Hand angelegte Objekte ----------
 # op=report|mark|purge  sel="all" oder "A1,A7"  -> Report-Text
-:global cfmAudit do={
+# Eigener Name, nicht $cfmAudit: Den Manager-Befehl gleichen Namens (mgr-core) würde jeder Import
+# dieser Datei überschreiben, und $cfmLoadData importiert sie bei fast jedem Manager-Befehl.
+:global cfmAuditDev do={
   :global cfmMenus; :global cfmRun; :global cfmLog
   :local sa ({})
   :foreach s in=[:toarray $sel] do={ :set ($sa->$s) 1 }
   :local all ($sel = "all")
   :local out ""; :local n 0
   :local skipNames {"read"=1;"write"=1;"full"=1}
+  # von base verwaltet, aber ohne cfm-Tag: Syslog-Einträge (hAP lehnt dort "comment" ab) und der
+  # Werks-User admin (abgeschaltet oder bewusst behalten, D25) - keine Fehlalarme
+  :local skipLog "cfmremote"
   :foreach m in=$cfmMenus do={
     :onerror e in={
       :local ff [:parse (":return [" . $m . "/find]")]
       :foreach id in=[$ff] do={
         :local g [$cfmRun ($m . "/get") I=$id]
         :local c [:tostr ($g->"comment")]
-        :if (!($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1)) do={
+        :if (!($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1) and !($m = "/system/logging" and [:tostr ($g->"action")] = $skipLog) and !($m = "/user" and ($g->"name") = "admin")) do={
           :set n ($n + 1)
           :local ref ("A" . $n)
           :local sum ""

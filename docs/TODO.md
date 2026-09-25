@@ -59,7 +59,7 @@ gefundenen Fehler sind behoben
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
 * PPSK-VLANs, VRRP mit mehreren Routern, CAPsMAN-Übernahme durch den Backup-Manager. Zwei APs
   (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (D41), WPA2/WPA3 + FT und Clients
-  mit `ft-wpa3-psk` laufen seit 2026-09-24; Roaming zwischen den APs ist noch nicht gezielt geprüft
+  mit `ft-wpa3-psk` laufen seit 2026-09-24, Roaming zwischen den beiden APs klappt (2026-09-25)
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
 * Rolle `router` auf einem CRS mit L3-Hardware-Offloading (D37): schaltet sie `l3-hw-offloading` ab,
   läuft VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
@@ -183,5 +183,9 @@ Backup-Manager-Rolle fehlen noch.
     CAPsMAN dürfte solchen CAPs keinen Datapath mit `vlan-id` schicken. Erst mit einem solchen
     Gerät umsetzen und testen; bis dahin erkennt cfm das Paket nicht und warnt auch nicht.
 24. **Eigene Radios des Managers** (z.B. CRS418-…-5axQ2axQ): Die Rolle `manager` rendert nur den
-    CAPsMAN, die eingebauten Radios bleiben unkonfiguriert. Klären: Rolle `ap` zusätzlich auf dem
-    Manager (lokaler CAP des eigenen CAPsMAN) oder bewusst aus.
+    CAPsMAN, die eingebauten Radios bleiben unkonfiguriert. *Entschieden 2026-09-25: Sie sollen
+    mitfunken.* Offen ist das Wie, vor der Umsetzung als Designfrage vorlegen: Rolle `ap` zusätzlich
+    auf dem Manager (lokaler CAP des eigenen CAPsMAN – in der MikroTik-Doku prüfen, wie ein CAP den
+    CAPsMAN auf demselben Gerät findet) oder die Rolle `manager` stellt die lokalen Radios direkt
+    auf `configuration.manager=capsman`. Beide müssen im selben FT-Verbund wie die übrigen APs
+    landen. Test nur auf der Hardware des Pilots möglich.

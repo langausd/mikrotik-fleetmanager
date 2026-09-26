@@ -189,3 +189,77 @@ Backup-Manager-Rolle fehlen noch.
     CAPsMAN auf demselben Gerät findet) oder die Rolle `manager` stellt die lokalen Radios direkt
     auf `configuration.manager=capsman`. Beide müssen im selben FT-Verbund wie die übrigen APs
     landen. Test nur auf der Hardware des Pilots möglich.
+25. **WebFig per HTTPS** – `services` kennt `www-ssl`, die Rolle `base` setzt aber nur Port und
+    Adressen; ohne Zertifikat lauscht RouterOS dort nicht. Bis dahin geht das Web-Interface nur
+    per `www` (HTTP, Passwort unverschlüsselt, auf die Management-Netze begrenzt). Umsetzung:
+    je Gerät ein selbstsigniertes Zertifikat (oder von einer CA auf dem Manager signiert) anlegen,
+    an `www-ssl` hängen und bei Namens-/Adressänderung erneuern; danach `www` abschalten.
+26. **Fremder CAPsMAN im MGMT-VLAN** – Hardware-Befund: Läuft im MGMT-VLAN noch ein anderer
+    wifi-CAPsMAN (z.B. auf dem bisherigen Core-Switch), meldet sich ein frisch aufgenommener CAP per
+    Discovery dort an, obwohl `caps-man-addresses` auf die cfm-Manager zeigt, und übernimmt dessen
+    CA und Zertifikat. Danach scheitert die Verbindung zum cfm-Manager an
+    `ssl: no trusted CA certificate found` bzw. `missing key`. Abhilfe von Hand: `caps-man-names`
+    auf die Identities der Manager setzen, die fremden Zertifikate löschen und `certificate` einmal
+    auf `none` und zurück auf `request` setzen. Die Rolle `ap` sollte `caps-man-names` selbst aus dem
+    Inventar setzen (Rollen `manager`/`manager-backup`) und Zertifikate einer fremden CA entfernen.
+27. **Unnötige Änderungen bei jedem Apply** – `geändert: /interface/bridge br: priority` auf einer
+    Bridge mit `protocol-mode=none` und `gesetzt: /user: disabled` auf dem Manager erscheinen bei
+    jedem Apply, obwohl sich nichts ändert. Harmlos, verrauscht aber Log und Probelauf.
+    Behoben: `al:mgmt:<ip>/32` (RouterOS speichert Adresslisten-Einträge ohne `/32`) – `cfmSame`
+    vergleicht Hostadressen jetzt ohne Präfix.
+28. **`$cfmPush` an nicht aufgenommene Geräte** – `$cfmRelease all=yes` stößt jeden
+    Inventar-Eintrag an, auch Platzhalter ohne Seriennummer. Das erzeugt Fehlerzeilen und trifft im
+    Zweifel ein fremdes Gerät, das gerade die geplante Adresse hat. Einträge ohne echte
+    Seriennummer überspringen.
+29. **Zugang und Upload** – `tools/upload-seed.sh` nutzt `sftp -b`: Ohne SSH-Key bricht es nur mit
+    `Connection closed` ab. Klare Meldung ausgeben (Key nötig, Batch-SFTP fragt kein Passwort ab).
+    Admin-Guide (`authorized_keys`): Hat ein User einen Key, lehnt RouterOS dessen SSH-Login per
+    Passwort ab (`/ip/ssh always-allow-password-login=no`); nur Winbox geht weiter mit Passwort.
+30. **Dienst `reverse-proxy`** (neu in RouterOS 7.2x, Port 443) fehlt in der Dienstliste der Rolle
+    `base`: Er bleibt aktiv und ohne Adressbeschränkung. In die Liste aufnehmen (aus, sofern nicht
+    in `services`).
+31. **Onboarding an einem nicht verwalteten Switch** – `$cfmOnboard sw= port=` setzt voraus, dass
+    der Switch aufgenommen ist, sonst lässt sich der Port nicht schalten. Beim ersten Gerät hinter
+    einem noch nicht übernommenen Core-Switch (Hardware-Befund) musste der Port von Hand in das
+    Onboarding-VLAN (PVID) und die Sitzung von Hand in `meta/onboard.dat` angelegt werden; der
+    Manager versuchte dabei in jedem Tick, sich am Switch anzumelden. Vorschlag: `$cfmOnboard
+    port=manual` (bzw. `sw=-`): kein Umschalten, kein Fail-safe, am Ende kein Push – der Admin
+    schaltet den Port selbst hin und zurück.
+32. **6 GHz und Wi-Fi 7 (MLO)** – Hardware-Befund mit einem Tri-Band-AP (`wifi-qcom-be`): Das
+    dritte Radio (6 GHz, `6ghz-ax`/`6ghz-be`) bleibt deaktiviert, weil `wifi.rsc` nur die Bänder
+    2 und 5 kennt; der CAPsMAN legt außerdem dynamisch ein MLO-Interface (`mld*`) an. Offen:
+    Kanal-Pool für Band `6` in `channels`, Provisioning-Regel dafür, 6 GHz verlangt WPA3-SAE mit
+    PMF (kein WPA2-Übergang), Umgang mit MLO. `vlan-id` aus dem Datapath funktioniert mit
+    `wifi-qcom-be` (`max-vlans=4095`).
+    MLO-Befund: Der CAPsMAN fasst die Radios eines Wi-Fi-7-CAP bei gleicher SSID zu einem
+    MLD-Interface zusammen; dafür kommen Bridge und `vlan-id` ebenfalls nicht vom CAPsMAN (wie D41).
+    Behoben in der Rolle `ap` per `/interface/wifi/cap mld-datapath` mit eigenem Datapath im VLAN der
+    Master-SSID. Offen: Da es nur ein `mld-datapath` je CAP gibt, bräuchten weitere SSIDs mit MLO
+    eigene Lösungen (MLO für Slave-SSIDs abschalten oder `mld-static` + eigene Datapaths).
+33. **Bestandsgeräte, die noch selbst routen** (Hardware-Befund, Core-Switch mit L3 im Switch-Chip):
+    Neu in der Rolle `base` (Release-Stand, noch ohne Labortest und Admin-Guide): Hostfile-Schlüssel
+    `cpuVlans` (Bridge bleibt in VLANs mit eigenen VLAN-Interfaces getaggt), `gw`/`dns`/`ntp` (statt
+    MGMT-Gateway bzw. globaler Werte – sonst zeigt ein Gerät, das selbst das MGMT-Gateway ist, auf
+    sich selbst), `bridgeFrames` (Bridge nimmt weiter ungetaggte Frames an, z.B. eine Adresse in VLAN 1);
+    der Agent-Scheduler wird immer eingeschaltet; `$cfmEnroll … noapply=yes` nimmt ein Gerät ohne
+    ersten Apply auf, damit vorher `$cfmPlan` läuft. Offen: Admin-Guide 7.3 um den Ablauf ergänzen
+    (User `cfm` + Manager-Key von Hand, cfm-Tags vorab setzen, wenn mehrere Objekte auf ein
+    `n=`-Muster passen, z.B. zwei Adressen am MGMT-Interface), Labortest (e2e) für die neuen Schlüssel.
+34. **Bootstrap-Default-Route ohne cfm-Tag** – Mit `gw=` im Hostfile legte die Rolle `base` eine
+    zweite Default-Route an, die Bootstrap-Route blieb stehen → ECMP über zwei Gateways. Behoben in
+    `lib/bootstrap-body.rsc` (Route mit Tag `cfm:rt:default`); Labortest offen.
+35. **Agent aus einer Admin-Sitzung gestartet** – `/system script run cfm-agent` aus einer SSH-Sitzung
+    eines Admin-Users scheitert mit „kein Manager erreichbar“: `/tool/fetch` (SFTP) nimmt den privaten
+    Schlüssel des aufrufenden Users, den nur `cfm` hat. Im Admin-Guide erwähnen (immer
+    `$cfmPush host=…`) oder im Agent eine klare Meldung ausgeben.
+36. **Vorabversionen in `$cfmUpgrade`** – `$cfmVerGe` las „7.25beta5“ als 7.0 (`[:tonum "25beta5"]`
+    ist `nil`) und stufte ein Update von 7.24.4 als Downgrade ein (`/system/package/downgrade`).
+    Hardware-Befund: hAP be³ Media, dessen Switch-Ports erst ab 7.25beta4 funktionieren, dort von
+    Hand aktualisiert. Behoben in `lib/mgr-onboard.rsc` (alpha < beta < rc < fertig), auf RouterOS
+    7.24.4 mit 16 Fällen geprüft; Labortest (e2e) offen.
+36. **Beta-/RC-Versionen in `$cfmVerGe`** – Die Zerlegung liest „7.25beta5“ als 7 / 0 (Teil
+    „25beta5“ ist keine Zahl) und stuft einen Auftrag auf eine Beta damit als Downgrade ein
+    (`/system/package/downgrade`). Hardware-Anlass: hAP be³ Media, dessen Kabel-Ports unter RouterOS
+    7.24.2–7.24.4 nicht funktionieren (Weg CPU ↔ Switch-Chip), erst mit 7.25beta. Suffixe
+    beta/rc erkennen und ordnen (7.25beta5 < 7.25rc1 < 7.25), `$cfmUpgrade` für Beta-Versionen zulassen
+    (Paketnamen/URL prüfen) und `rosMin`-Vergleich entsprechend.

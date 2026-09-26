@@ -16,6 +16,19 @@
 $cfmEnsure m="/interface/wifi/datapath" k="wdp-cap" n=({"name"=$dp}) p=({"name"=$dp;"bridge"="bridge"})
 $cfmSet m="/interface/wifi/cap" p=({"enabled"="yes";"caps-man-addresses"=($cfmG->"managers");"discovery-interfaces"=("vlan" . $mv);"lock-to-caps-man"="no";"certificate"="request";"slaves-datapath"=$dp})
 
+# MLO (Wi-Fi 7, z.B. hAP be³): Der CAPsMAN fasst Radios mit gleicher SSID zu einem MLD-Interface
+# zusammen, über das der Verkehr läuft. Auch dafür kommen Bridge und vlan-id nicht vom CAPsMAN an
+# (Hardware-Befund: MLD ohne Datapath kein Bridge-Port -> kein DHCP; mit dem Profil cfm-cap PVID 1).
+# Eigener Datapath mit dem VLAN der Master-SSID; ein mld-datapath gilt für alle MLDs des CAP, weitere
+# SSIDs mit MLO bräuchten eigene VLANs (TODO 32). Ohne Wi-Fi 7 wirkungslos.
+:global cfmWifi
+:local mdp "cfm-mld"
+:local mdpp ({"name"=$mdp;"bridge"="bridge"})
+:local mvl [:tostr ($cfmWifi->"ssids"->[:tostr ($cfmWifi->"master")]->"vlan")]
+:if ([:len $mvl] > 0) do={ :set ($mdpp->"vlan-id") [:tonum $mvl] }
+$cfmEnsure m="/interface/wifi/datapath" k="wdp-mld" n=({"name"=$mdp}) p=$mdpp
+:onerror e in={ $cfmSet m="/interface/wifi/cap" p=({"mld-datapath"=$mdp}) } do={ $cfmLog ("mld-datapath nicht gesetzt: " . $e) }
+
 # Lokale Radios dem CAPsMAN übergeben
 :foreach i in=[/interface/wifi/find where default-name~"^wifi"] do={
   :local rn [/interface/wifi/get $i name]

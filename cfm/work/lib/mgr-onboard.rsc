@@ -6,20 +6,42 @@
 # ---------- Onboarding: Push in die Werks-Config ----------
 # $cfmRegister -> $cfmOnboard sw=.. port=.. -> Gerät einstecken -> $cfmOnbTick (im Tick)
 
-# Versionsvergleich: $1 >= $2  (z.B. "7.24.2 (stable)" gegen "7.20")
+# Versionsvergleich: $1 >= $2  (z.B. "7.24.2 (stable)" gegen "7.20", "7.25beta5" gegen "7.24.4").
+# Vorabversionen liegen vor der fertigen Version: 7.25beta5 < 7.25rc1 < 7.25 < 7.25.1
 :global cfmVerGe do={
+  # "7.25beta5" -> {7;25;0;1;5}: drei Zahlen, Stufe (alpha 0, beta 1, rc 2, fertig 3), Vorabnummer
   :local sp do={
+    :local s [:tostr $1]
+    :set s [:pick $s 0 [:find ($s . " ") " "]]
+    # Vorabkennung beginnt beim ersten Zeichen, das weder Ziffer noch Punkt ist
+    :local p -1
+    :for i from=0 to=([:len $s] - 1) do={ :if ($p < 0 and !([:pick $s $i] ~ "[0-9.]")) do={ :set p $i } }
+    :local pre ""
+    :if ($p >= 0) do={ :set pre [:pick $s $p [:len $s]]; :set s [:pick $s 0 $p] }
     :local r ({})
-    :local s ([:tostr $1] . ".")
+    :set s ($s . ".")
     :local st 0
     :for i from=0 to=([:len $s] - 1) do={
       :if ([:pick $s $i] = ".") do={ :set ($r->[:len $r]) [:tonum [:pick $s $st $i]]; :set st ($i + 1) }
     }
+    :while ([:len $r] < 3) do={ :set ($r->[:len $r]) 0 }
+    :local stg 3
+    :local pn 0
+    :if ([:len $pre] > 0) do={
+      :set stg 0
+      :if ($pre ~ "^beta") do={ :set stg 1 }
+      :if ($pre ~ "^rc") do={ :set stg 2 }
+      :local q 0
+      :while ($q < [:len $pre] and !([:pick $pre $q] ~ "[0-9]")) do={ :set q ($q + 1) }
+      :set pn [:tonum [:pick $pre $q [:len $pre]]]
+    }
+    :set ($r->3) $stg
+    :set ($r->4) $pn
     :return $r
   }
-  :local a [$sp [:pick $1 0 [:find ($1 . " ") " "]]]
+  :local a [$sp $1]
   :local b [$sp $2]
-  :for i from=0 to=2 do={
+  :for i from=0 to=4 do={
     :local x ($a->$i)
     :local y ($b->$i)
     :if ([:typeof $x] != "num") do={ :set x 0 }

@@ -148,9 +148,13 @@
 
 # lib + Daten + Host + Rollen aus d= importieren (Reihenfolge laut Manifest mf=), danach
 # verwaiste Objekte entfernen. skip="post": *.post.rsc überspringen (Probelauf).
+# Die cfm-Objekte, die eine *.post.rsc anlegt, merkt sich der echte Lauf in <cfm>/post.json.
+# Der Probelauf behält genau diese, statt sie als verwaist zu melden (D29).
 # Rückgabe: "" oder "<datei>: <fehler>"
 :global cfmImportAll do={
   :global cfmHost; :set cfmHost ({})
+  :global cfmSeen; :global cfmDir; :global cfmWrite; :global cfmLog
+  :local pf ($cfmDir . "/post.json")
   :local cur ""
   :local err ""
   :onerror e in={
@@ -158,10 +162,38 @@
       :if (($fe->2) = 1) do={
         :set cur ($fe->0)
         :if ($skip = "post" and $cur ~ "\\.post\\.rsc\$") do={
-          :global cfmLog; $cfmLog ("(" . $cur . " im Probelauf übersprungen)")
+          :local pk ({})
+          :onerror e2 in={ :set pk [:deserialize from=json [/file/get $pf contents]] } do={}
+          :local n 0
+          :if ([:tostr ($pk->"file")] = $cur) do={
+            :foreach m,ks in=($pk->"keys") do={
+              :if ([:typeof ($cfmSeen->$m)] = "array") do={
+                :foreach k,x in=$ks do={ :set ($cfmSeen->$m->$k) 1; :set n ($n + 1) }
+              }
+            }
+          }
+          $cfmLog ("(" . $cur . " im Probelauf übersprungen, " . $n . " Objekte daraus beibehalten)")
         } else={
+          :local pre ({})
+          :if ($cur ~ "\\.post\\.rsc\$") do={
+            :foreach m,ks in=$cfmSeen do={ :foreach k,x in=$ks do={ :set ($pre->($m . "|" . $k)) 1 } }
+          }
           /import file-name=($d . "/" . $cur) verbose=no
           :if ($cur = "lib/lib.rsc") do={ :global cfmBegin; $cfmBegin }
+          :if ($cur ~ "\\.post\\.rsc\$") do={
+            # Schlüssel, die erst diese Datei gesehen hat = ihre Objekte
+            :local keys ({})
+            :foreach m,ks in=$cfmSeen do={
+              :foreach k,x in=$ks do={
+                :if ([:typeof ($pre->($m . "|" . $k))] = "nothing") do={
+                  :if ([:typeof ($keys->$m)] = "nothing") do={ :set ($keys->$m) ({}) }
+                  :set ($keys->$m->$k) 1
+                }
+              }
+            }
+            # nur für den Probelauf: ein Schreibfehler darf den Apply nicht zurückrollen
+            :onerror e3 in={ $cfmWrite $pf [:serialize to=json ({"file"=$cur;"keys"=$keys})] } do={ $cfmLog ("post.json nicht geschrieben: " . $e3) }
+          }
         }
       }
     }

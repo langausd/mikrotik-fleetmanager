@@ -77,10 +77,15 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
 }
 
 # --- Bridge-VLAN-Tabelle: aus Profilen abgeleitet ---
+#     Hostfile cpuVlans={177;...}: die Bridge (CPU) bleibt in diesen VLANs getaggt, obwohl das Gerät
+#     kein Router ist - für eigene VLAN-Interfaces aus der post.rsc oder von Hand (Bestandsgerät,
+#     das heute noch routet). Ohne den Eintrag verlören diese Interfaces beim ersten Apply ihr VLAN.
+:local cpuV ({})
+:foreach x in=($cfmHost->"cpuVlans") do={ :set ($cpuV->[:tostr $x]) 1 }
 :foreach vid,v in=$cfmVlans do={
   :local tg ({})
   :if ([:typeof ($tagged->$vid)] = "array") do={ :set tg ($tagged->$vid) }
-  :if ($vid = $mv or ($isRouter and [:tostr ($v->"l3")] != "no") or ($isMgr and [:tostr ($v->"onboard")] = "yes")) do={ :set ($tg->$br) 1 }
+  :if ($vid = $mv or ($isRouter and [:tostr ($v->"l3")] != "no") or ($isMgr and [:tostr ($v->"onboard")] = "yes") or [:typeof ($cpuV->$vid)] != "nothing") do={ :set ($tg->$br) 1 }
   :local ut ({})
   :if ([:typeof ($untagged->$vid)] = "array") do={ :set ut ($untagged->$vid) }
   :if (([:len $tg] + [:len $ut]) > 0) do={
@@ -92,10 +97,19 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
 :local mn [$cfmNet $mv]
 $cfmEnsure m="/interface/vlan" k=("vlan:" . $mv) n=({"name"=$mif}) p=({"name"=$mif;"interface"=$br;"vlan-id"=[:tonum $mv]}) x=($cfmVlans->$mv->"name")
 $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($cfmMf->"ip") . "/" . ($mn->"pfx"));"interface"=$mif})
+# Hostfile gw/dns/ntp ersetzen MGMT-Gateway bzw. globale Werte - für Geräte, die selbst das
+# MGMT-Gateway sind (sonst Default-Route, DNS und NTP auf sich selbst) oder einen eigenen Ausgang
+# brauchen (z.B. ein Käfig-Netz, das direkt über den Internet-Router ins Internet geht).
 :if (!$isRouter) do={
-  $cfmEnsure m="/ip/route" k="rt:default" n=({"dst-address"="0.0.0.0/0";"gateway"=[:tostr ($mn->"gw")]}) p=({"dst-address"="0.0.0.0/0";"gateway"=[:tostr ($mn->"gw")]})
-  $cfmSet m="/ip/dns" p=({"servers"=($cfmG->"dns")})
-  $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=($cfmG->"ntp")})
+  :local gw [:tostr ($mn->"gw")]
+  :if ([:len [:tostr ($cfmHost->"gw")]] > 0) do={ :set gw [:tostr ($cfmHost->"gw")] }
+  :local dns ($cfmG->"dns")
+  :if ([:len [:tostr ($cfmHost->"dns")]] > 0) do={ :set dns ($cfmHost->"dns") }
+  :local ntp ($cfmG->"ntp")
+  :if ([:len [:tostr ($cfmHost->"ntp")]] > 0) do={ :set ntp ($cfmHost->"ntp") }
+  $cfmEnsure m="/ip/route" k="rt:default" n=({"dst-address"="0.0.0.0/0";"gateway"=$gw}) p=({"dst-address"="0.0.0.0/0";"gateway"=$gw})
+  $cfmSet m="/ip/dns" p=({"servers"=$dns})
+  $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntp})
 }
 $cfmEnsure m="/interface/list" k="il:MGMT" n=({"name"="MGMT"}) p=({"name"="MGMT"})
 $cfmEnsure m="/interface/list/member" k="ilm:MGMT" n=({"list"="MGMT";"interface"=$mif}) p=({"list"="MGMT";"interface"=$mif})
@@ -234,7 +248,7 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
 :local conf (":global cfmConf {\"mgrs\"={" . [:pick $ms 1 [:len $ms]] . "};\"path\"=\"" . ($cfmG->"mgrPath") . "\";\"user\"=\"cfmd-" . ($cfmMf->"name") . "\"}")
 $cfmEnsure m="/system/script" k="sys:conf" n=({"name"="cfm-conf"}) p=({"name"="cfm-conf";"source"=$conf;"policy"="read"})
 $cfmEnsure m="/system/script" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"="cfm-agent";"source"=[/file get ($cfmDl . "/lib/agent.rsc") contents];"policy"="ftp,reboot,read,write,policy,test,password,sensitive"})
-$cfmEnsure m="/system/scheduler" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"="cfm-agent";"start-time"="startup";"interval"=($cfmG->"interval");"on-event"="/system script run cfm-agent"})
+$cfmEnsure m="/system/scheduler" k="sys:agent" n=({"name"="cfm-agent"}) p=({"name"="cfm-agent";"start-time"="startup";"interval"=($cfmG->"interval");"on-event"="/system script run cfm-agent";"disabled"="no"})
 # Mit Intervall läuft "startup" erst nach dem ersten Intervall (7.24). Eigener Boot-Scheduler,
 # damit ein Gerät nach jedem Neustart (Update, Rollback, Stromausfall) gleich Status meldet.
 # Der Boot-Lauf ist als "boot" gekennzeichnet: findet er keinen Manager, startet der Agent
@@ -257,4 +271,8 @@ $cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}
 :onerror e in={ $cfmSet m="/system/routerboard/settings" p=({"auto-upgrade"="yes"}) } do={}
 
 # --- zuletzt: VLAN-Filtering scharf schalten ---
-$cfmSet m="/interface/bridge" n=({"name"=$br}) p=({"vlan-filtering"="yes";"frame-types"="admit-only-vlan-tagged"})
+#     Hostfile bridgeFrames="admit-all": die Bridge (CPU) nimmt weiter ungetaggte Frames an - nur für
+#     Bestandsgeräte mit einer Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll.
+:local bfr "admit-only-vlan-tagged"
+:if ([:len [:tostr ($cfmHost->"bridgeFrames")]] > 0) do={ :set bfr [:tostr ($cfmHost->"bridgeFrames")] }
+$cfmSet m="/interface/bridge" n=({"name"=$br}) p=({"vlan-filtering"="yes";"frame-types"=$bfr})

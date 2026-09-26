@@ -533,6 +533,9 @@ zeigt, was ein Release des aktuellen `work/` auf diesem Gerät ändern würde, o
 anzuwenden: je Änderung eine Zeile (`neu: …`, `geändert: … feld=wert`, `entfernt: …`,
 `Regelblock … neu aufgebaut`), am Ende die Summe. Fehler der inhaltlichen Prüfung erscheinen
 vorab. Der Probelauf überspringt `hosts/*.post.rsc`, weil dort beliebige Befehle stehen dürfen.
+Die cfm-Objekte, die diese Datei beim letzten echten Apply angelegt hat, behält er trotzdem
+(`… im Probelauf übersprungen, N Objekte daraus beibehalten`); Änderungen an der `.post.rsc`
+selbst zeigt er nicht.
 Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 
 ### 8.4 Rezepte
@@ -588,6 +591,9 @@ $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
   Zeitpunkt `at` neu. RouterOS prüft die Signatur der Pakete beim Installieren.
 * Eine ältere Zielversion bedeutet **Downgrade** (`/system/package/downgrade`); die Konfiguration
   bleibt erhalten.
+* Vorabversionen gehen genauso (`ver=7.25beta5`, `ver=7.25rc1`). Sie zählen als älter als die fertige
+  Version: 7.25beta5 < 7.25rc1 < 7.25 < 7.25.1. Von 7.24.4 auf 7.25beta5 ist also ein Update,
+  von 7.25beta5 zurück auf 7.24.4 ein Downgrade.
 * Die Geräte laden die Pakete sofort, nur der Neustart wartet auf das Fenster. Ist das Fenster
   schon vorbei, wenn die Pakete da sind (Gerät war offline, Download zu langsam), startet das
   Gerät nicht und meldet „Fenster verpasst“. Erteile dann einen neuen Auftrag.
@@ -866,7 +872,8 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 **Auf jedem Gerät:** User `cfm` (Manager-Schlüssel), Skripte `cfm-agent` und `cfm-conf`, Scheduler
 `cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
-`cfm/dl/`, `cfm/pre.backup`, beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
+`cfm/dl/`, `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
+den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
 `cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); während eines Applys der Scheduler
 `cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im

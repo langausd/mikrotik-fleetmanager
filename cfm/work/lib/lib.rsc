@@ -110,7 +110,11 @@
     :foreach e in=[:toarray $2] do={ :if ([:pick [:tostr $e] 0 1] != "!") do={ :set ($b->[:tostr $e]) 1 } }
     :return ([:tostr $a] = [:tostr $b])
   }
-  :return ([:tostr $1] = [:tostr $2])
+  :local a [:tostr $1]
+  :local b [:tostr $2]
+  # Hostadresse: Adresslisten und Firewall-Regeln speichern x.x.x.x/32 (IPv6 /128) ohne Präfix
+  :if ($a != $b and [:typeof [:find $a "/"]] = "nil" and $b ~ "/(32|128)\$") do={ :set b [:pick $b 0 [:find $b "/"]] }
+  :return ($a = $b)
 }
 
 # Mitglieder einer Menge {key=1|0} als Liste

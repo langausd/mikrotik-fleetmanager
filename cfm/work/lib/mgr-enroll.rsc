@@ -37,7 +37,7 @@
 :global cfmEnroll do={
   :global cfmMB; :global cfmExec; :global cfmInvLoad; :global cfmInvSave; :global cfmVaultSet
   :global cfmVaultGet; :global cfmManifests; :global cfmWrite; :global cfmRings; :global cfmG; :global cfmLoadData
-  :if ([:len $name] = 0 or [:len $ip] = 0) do={ :error "Aufruf: \$cfmEnroll name=<identity> ip=<erreichbare IP> [role=..] [ring=..] [rekey=yes]" }
+  :if ([:len $name] = 0 or [:len $ip] = 0) do={ :error "Aufruf: \$cfmEnroll name=<identity> ip=<erreichbare IP> [role=..] [ring=..] [rekey=yes] [noapply=yes]" }
   :local b [$cfmMB]
   $cfmLoadData
   # 1) Seriennummer
@@ -90,12 +90,20 @@
   :set c ($c . "/system/script/remove [find where name=\"cfm-conf\"]; /system/script/add name=cfm-conf policy=read comment=\"cfm-sys:conf\" source=\"" . $conf . "\";")
   :set c ($c . "/tool/fetch url=\"sftp://" . $p0 . "/" . ($cfmG->"mgrPath") . "/archive/v" . $v . "/lib/agent.rsc\" user=" . $du . " dst-path=cfm/agent-init.rsc as-value; :delay 1s;")
   :set c ($c . "/system/script/remove [find where name=\"cfm-agent\"]; /system/script/add name=cfm-agent comment=\"cfm-sys:agent\" policy=ftp,reboot,read,write,policy,test,password,sensitive source=[/file/get cfm/agent-init.rsc contents];")
-  :set c ($c . "/system/scheduler/remove [find where name=\"cfm-agent\"]; /system/scheduler/add name=cfm-agent comment=\"cfm-sys:agent\" start-time=startup interval=" . ($cfmG->"interval") . " on-event=\"/system script run cfm-agent\"; :put ok")
+  # noapply=yes: Bestandsgerät erst prüfen - Scheduler aus, kein erster Lauf. Danach $cfmPlan host=<n>,
+  # anwenden mit $cfmExec ip=<ip> cmd="/system/scheduler/enable [find name=cfm-agent]" + $cfmPush host=<n>
+  :local sdis "no"; :if ($noapply = "yes") do={ :set sdis "yes" }
+  :set c ($c . "/system/scheduler/remove [find where name=\"cfm-agent\"]; /system/scheduler/add name=cfm-agent comment=\"cfm-sys:agent\" start-time=startup interval=" . ($cfmG->"interval") . " disabled=" . $sdis . " on-event=\"/system script run cfm-agent\"; :put ok")
   :set r [$cfmExec ip=$ip cmd=$c]
   :if (!(($r->"output") ~ "ok")) do={ :error ("Agent-Installation fehlgeschlagen: " . ($r->"output")) }
   # 6) Vertrauen: neues Gerät kennt alle Manager; neuer Manager wird allen Geräten bekannt
   :global cfmTrust
   :if (("," . ($d->"role") . ",") ~ ",manager") do={ $cfmTrust } else={ $cfmTrust host=$name }
+  :if ($noapply = "yes") do={
+    :put ("Enrolled ohne Apply: " . $name . " (" . $serial . ", " . ($d->"role") . ", Ring " . ($d->"ring") . ") – Scheduler aus. Jetzt \$cfmPlan host=" . $name)
+    :log info ("cfm: enrolled (noapply) " . $name . " " . $serial)
+    :return ""
+  }
   :local ex ":execute \"/system script run cfm-agent\""
   $cfmExec ip=$ip cmd=$ex
   :put ("Enrolled: " . $name . " (" . $serial . ", " . ($d->"role") . ", Ring " . ($d->"ring") . ") – erster Pull läuft. Secrets folgen automatisch nach dem ersten Apply.")

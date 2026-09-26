@@ -240,6 +240,10 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 * `channels`: Kanal-Pools je Band; `radios`: optional feste Kanäle je AP (`{"ap1"={"5"="5180"}}`).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (Standard `03:00`); je Band `skipDfs`
   (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
+* Wi-Fi 7 (`wifi-qcom-be`, z.B. hAP be³): Der CAPsMAN fasst die Radios eines CAP mit gleicher SSID zu
+  einem MLD-Interface (MLO) zusammen, über das der Verkehr läuft. Auch dafür schickt er weder Bridge
+  noch VLAN mit (D41); die Rolle `ap` legt deshalb den Datapath `cfm-mld` im VLAN der `master`-SSID an
+  und setzt ihn als `mld-datapath` (D44). Weitere SSIDs mit MLO und 6 GHz sind noch offen (TODO 32).
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
@@ -296,6 +300,9 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
 | `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` |
 | `links` | erwartete Verkabelung für `$cfmLinks`: `{"ether1"="rtr1:ether2";"ether8"="-"}` (Gerät:Port, nur Gerät oder `-` für „hier hängt nichts“) |
+| `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
+| `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste |
+| `bridgeFrames` | `"admit-all"`: die Bridge (CPU) nimmt weiter ungetaggte Frames an, statt nur getaggte – für eine Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll |
 
 Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 `:global cfmVlans; :set ($cfmVlans->"119"->"l3") "no"`.
@@ -308,7 +315,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 |---|---|
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben |
+| `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben; lokale Datapaths `cfm-cap` (Radios, virtuelle APs) und `cfm-mld` (MLO bei Wi-Fi 7) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK und Kanal-Neuwahl; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute) |
 | `manager-backup` | wie `manager`, aber CAPsMAN passiv (Netwatch übernimmt, wenn der Primary ~3 min weg ist), spiegelt den Primary, Releases gesperrt |
@@ -481,12 +488,43 @@ ersten Apply seinen MGMT-Zugang (der Watchdog rollt dann zurück).
 
 ### 7.3 Bestandsgeräte übernehmen
 
-Ein Gerät mit gewachsener Konfiguration lässt sich per Bootstrap und Enroll übernehmen. Vorher:
+Zuerst sichern (`/export terse`, `/system/backup/save`) und das Hostfile aus dem echten Export
+bauen – vor allem die Ports: Uplinks mit dem Profil, das die Gegenseite heute liefert (z.B.
+`hybrid:<vid>`), Ports, hinter denen ein Switch hängen kann, mit `vport:<vid>` statt `access:<vid>`
+(ohne BPDU-Guard, wie bisher).
+Die Umstellung auf VLAN-Filtering ist ein Eingriff; am besten zuerst ein Gerät in Ring 0.
 
-* `$cfmAudit host=<name>` zeigt alles, was cfm nicht verwaltet.
-* Kollisionen entfernen, vor allem **Bridge-VLAN-Einträge mit mehreren VLAN-IDs**
-  (`$cfmAudit host=<name> op=purge sel=A3`). Was bleiben soll, als Override markieren (`op=mark`).
-* Die Umstellung auf VLAN-Filtering ist ein Eingriff. Am besten zuerst ein Gerät in Ring 0.
+**Mit Reset** (nichts Eigenes muss bleiben): gerätespezifischer Bootstrap (`$cfmBootstrap
+name=<n>`) aufs Gerät, `/system/reset-configuration no-defaults=yes keep-users=yes
+skip-backup=yes run-after-reset=<n>-bootstrap.rsc`, danach `$cfmEnroll`. Eigene Funktionen (z.B.
+ein NAT-Käfig, Freigaben) vorher in `hosts/<n>.post.rsc` übernehmen, sonst sind sie weg.
+
+**Ohne Reset** (Skripte, Dienste o.ä. sollen bleiben – cfm lässt Objekte ohne cfm-Tag stehen):
+
+1. Auf dem Gerät von Hand, was sonst der Bootstrap macht: User `cfm` (Gruppe `full`) mit dem
+   Manager-Schlüssel (Inhalt wie `keys` in der Bootstrap-Datei), das MGMT-VLAN-Interface
+   `vlan<mgmtVlan>` auf der Bridge `bridge` und die MGMT-Adresse. Heißen Bridge oder MGMT-Interface
+   anders, vorab umbenennen oder mit dem cfm-Tag versehen (`comment="cfm:vlan:<vid> …"`).
+   Passen mehrere Objekte auf dasselbe Suchmuster – etwa zwei Adressen am MGMT-Interface –, die
+   richtige vorab taggen (`comment="cfm:ip:mgmt"`), sonst übernimmt die Rolle die erste gefundene.
+2. `$cfmEnroll name=<n> ip=<ip> role=<rolle> ring=<0-2> noapply=yes` – Agent und Schlüssel werden
+   installiert, der Agent-Scheduler bleibt aus.
+3. `$cfmPlan host=<n>` zeigt jede Änderung des ersten Applys. Die Objekte aus `hosts/<n>.post.rsc`
+   fehlen darin (Probelauf überspringt sie).
+4. Anwenden mit `$cfmPush host=<n> force=yes`; der Apply schaltet den Scheduler ein. **Nicht**
+   `/system script run cfm-agent` aus einer Admin-Sitzung: Der Download läuft mit dem Schlüssel
+   des aufrufenden Users, den nur `cfm` hat („kein Manager erreichbar“).
+5. `$cfmAudit host=<n>` zeigt, was cfm nicht verwaltet: Werks-Reste entfernen (`op=purge`), was
+   bleiben soll, als Override markieren (`op=mark`) – vor allem **Bridge-VLAN-Einträge mit
+   mehreren VLAN-IDs** (Kollision).
+
+**Gerät routet noch selbst** (z.B. ein Core-Switch mit L3 im Switch-Chip vor dem Router-Umzug):
+Rolle `switch` reicht, die L3-Objekte bleiben unverwaltet. Damit der erste Apply sie nicht
+beschädigt (D43): im Hostfile `cpuVlans` (die Bridge bleibt in den VLANs der eigenen
+VLAN-Interfaces getaggt), `gw`/`dns`/`ntp` (sonst zeigen Route, DNS und NTP auf das Gerät selbst),
+ggf. `bridgeFrames="admit-all"`; in der `post.rsc` Freigaben in `local-input` für die Dienste, die
+das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – der input-Block der Rolle
+`base` verwirft sonst alles außer MGMT.
 
 ### 7.4 Gerätetausch und Reset
 
@@ -603,6 +641,13 @@ $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
 * Nutze die Ringe: erst Ring 0, prüfen, dann die anderen.
 * Der Manager braucht Internetzugang, die Geräte nicht. Die Pakete werden nicht auf den
   Backup-Manager gespiegelt, offene Aufträge brauchen den Primary.
+* **Manager ohne Internet:** alle installierten Pakete der betroffenen Geräte (je Architektur, z.B.
+  `routeros`, `wifi-qcom`, `container`, `iot` …) vorab nach `<pkgPath>/<ver>/` legen
+  (`<paket>-<ver>-<arch>.npk`, bei x86 ohne Architektur). Welche ein Gerät hat, steht in dessen
+  Status (`pkgs`). Fehlt eines, bricht `$cfmUpgrade` mit „Download fehlgeschlagen“ ab. Platz auf
+  dem Manager beachten; nicht mehr gebrauchte Pakete einer laufenden Version darfst du von Hand löschen.
+* **Geräte mit 16 MB Flash** (hEX, CRS328 …) haben oft nur 2–3 MB frei, `routeros` braucht ~12 MB:
+  Dort geht `$cfmUpgrade` nicht (TODO 38); das eingebaute Update braucht Internet am Gerät.
 
 ### 8.7 Verkabelung und Netzplan
 
@@ -802,7 +847,8 @@ aus. Auf GitHub prüft die Action `rsc-check` jeden Push. Das Skript ersetzt wed
 cd tools/chr-lab
 ./lab.sh start 3          # CHR-Image chr-<version>.img in ~/.cache/cfm-chr-lab
 ./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
-                          # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade, Netzplan, PPSK …
+                          # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade, Netzplan, PPSK,
+                          # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply) …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./lab.sh stop
@@ -846,7 +892,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmPending` · `$cfmApprove serial= name= ip= [role=] [ring=]` | unbekannte Geräte |
 | `$cfmBootstrap` | Bootstrap-Datei für die manuelle Aufnahme |
-| `$cfmEnroll name= ip= [role=] [ring=] [rekey=yes]` | Gerät aufnehmen (manuell) |
+| `$cfmEnroll name= ip= [role=] [ring=] [rekey=yes] [noapply=yes]` | Gerät aufnehmen (manuell); `noapply=yes`: ohne ersten Apply, Scheduler aus (7.3) |
 | `$cfmTrust [host=<n>]` | Manager-Schlüssel an Geräte verteilen |
 | `$cfmPromoteManager` | auf dem Backup: zum Primary befördern |
 
@@ -892,6 +938,9 @@ Wurzelverzeichnis.
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
+| Agent meldet „kein Manager erreichbar“, SFTP „authentication failure“, nur nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
+| Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |
+| `$cfmUpgrade`: „Download fehlgeschlagen“ | Manager ohne Internet, Paket fehlt in `<pkgPath>/<ver>/` | Paket von Hand ablegen (8.6) |
 | `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
 | Log `cfm: Netz: fehlt …` | Kabel gezogen, umgesteckt oder Gerät aus | Verkabelung prüfen; gewollte Änderung: `$cfmLinks accept=yes` |
 | PPSK-Client landet nicht im richtigen VLAN | VLAN fehlt auf dem AP-Uplink (`trunk-ap`) oder AP ohne wifi-qcom | Warnung von `$cfmCheck` beachten, Profil erweitern |

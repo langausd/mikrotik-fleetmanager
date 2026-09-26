@@ -48,7 +48,9 @@
     :delay 1s
   }
   :local sz [/file/get [find where name=$lp] size]
-  :if ($sz < 100000) do={
+  # Grenze für einen offensichtlich kaputten Download (Fehlerseite o.ä.): echte Zusatzpakete sind klein,
+  # ups-<ver>-arm.npk hat nur ~45 KB (Hardware-Befund 2026-09-26, vorher 100 KB = Fehlalarm)
+  :if ($sz < 20000) do={
     /file/remove [find where name=$lp]
     :error ("Paket unvollständig oder ungültig: " . $fn)
   }

@@ -235,6 +235,31 @@ echo "$out" | grep -q "PPSK auf SSID main braucht sec=wpa2-psk" && ok "Prüfung:
 echo "$out" | grep -q "cap ist reserviert" && ok "Prüfung: SSID-Schlüssel cap reserviert (D41)" || { bad "SSID-Schlüssel cap nicht erkannt"; echo "$out" | tail -3; }
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 
+step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enroll ohne Apply (sw1)"
+# cm2 ist kein Router und per Bootstrap aufgenommen: prüft zugleich, dass die Rolle base die
+# Bootstrap-Route übernimmt (Tag cfm:rt:default) statt eine zweite Default-Route anzulegen
+mgr ':global e2eC [/file/get [/file/find name="cfm/work/hosts/cm2.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/cm2.rsc"] contents=($e2eC . ":global cfmHost; :set (\$cfmHost->\"gw\") \"192.168.10.254\"; :set (\$cfmHost->\"dns\") \"192.168.10.253\"; :set (\$cfmHost->\"ntp\") {\"192.168.10.252\"}; :set (\$cfmHost->\"cpuVlans\") {20}; :set (\$cfmHost->\"bridgeFrames\") \"admit-all\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" Hostfile-Overrides" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 3 "$rv" cm2 && [ "$(stat cm2 res)" = ok ] && ok "cm2 hat v$rv (Hostfile-Overrides) angewendet" || bad "cm2 Apply v$rv: $(stat cm2 res)"
+expect 3 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and static]] = 1 and [:tostr [/ip/route/get [find where comment="cfm:rt:default"] gateway]] = "192.168.10.254"' "cm2: genau eine Default-Route, Gateway aus dem Hostfile (Bootstrap-Route übernommen)"
+expect 3 '[:tostr [/ip/dns/get servers]] = "192.168.10.253" and [:tostr [/system/ntp/client/get servers]] ~ "192.168.10.252"' "cm2: DNS und NTP aus dem Hostfile"
+expect 3 '[:tostr [/interface/bridge/vlan/get [find where comment="cfm:bv:20"] tagged]] ~ "bridge" and [/interface/bridge/get bridge frame-types] = "admit-all"' "cm2: cpuVlans (Bridge in VLAN 20 getaggt) und bridgeFrames"
+mgr ':global e2eC; /file/set [/file/find name="cfm/work/hosts/cm2.rsc"] contents=$e2eC' >/dev/null
+rv=$(mgr '$cfmRelease msg=" Overrides zurück" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 3 "$rv" cm2 && ok "cm2 hat v$rv (ohne Overrides) angewendet" || bad "cm2 Apply v$rv"
+agentwait 2 "$rv" sw1 || true   # sw1 bekommt das Release auch (all=yes): erst abwarten, sonst fällt sein Lauf in die Messung unten
+expect 3 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and static]] = 1 and [:tostr [/ip/route/get [find where comment="cfm:rt:default"] gateway]] = "192.168.10.1" and [/interface/bridge/get bridge frame-types] = "admit-only-vlan-tagged" and !([:tostr [/interface/bridge/vlan/get [find where comment="cfm:bv:20"] tagged]] ~ "bridge")' "cm2: ohne Overrides wieder MGMT-Gateway, nur getaggt, VLAN 20 ohne Bridge"
+# Enroll ohne ersten Apply: Scheduler aus, kein Agent-Lauf, Probelauf möglich; ein Apply schaltet ihn ein
+t0=$(stat sw1 t)
+mgr '$cfmEnroll name=sw1 ip=192.168.10.21 noapply=yes' | grep -q "Enrolled ohne Apply" && ok "sw1: Enroll mit noapply" || bad "sw1: Enroll mit noapply"
+expect 2 '[/system/scheduler/get [find name="cfm-agent"] disabled]' "sw1: Agent-Scheduler nach noapply aus"
+sleep 20
+[ "$(stat sw1 t)" = "$t0" ] && ok "sw1: kein Agent-Lauf nach noapply" || bad "sw1: Agent lief trotz noapply"
+mgr '$cfmPlan host=sw1' | grep -q "# Plan sw1" && ok "sw1: Probelauf nach noapply" || bad "sw1: Probelauf nach noapply"
+t1=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t1" ] && break; sleep 3; done
+expect 2 '![/system/scheduler/get [find name="cfm-agent"] disabled]' "sw1: Apply schaltet den Agent-Scheduler wieder ein"
+
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)
 chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ("RES=" . ($r->"output"))' | sed -n 's/^RES=//p' | head -1; }

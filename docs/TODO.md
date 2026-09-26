@@ -242,24 +242,31 @@ Backup-Manager-Rolle fehlen noch.
     MGMT-Gateway bzw. globaler Werte – sonst zeigt ein Gerät, das selbst das MGMT-Gateway ist, auf
     sich selbst), `bridgeFrames` (Bridge nimmt weiter ungetaggte Frames an, z.B. eine Adresse in VLAN 1);
     der Agent-Scheduler wird immer eingeschaltet; `$cfmEnroll … noapply=yes` nimmt ein Gerät ohne
-    ersten Apply auf, damit vorher `$cfmPlan` läuft. Offen: Admin-Guide 7.3 um den Ablauf ergänzen
-    (User `cfm` + Manager-Key von Hand, cfm-Tags vorab setzen, wenn mehrere Objekte auf ein
-    `n=`-Muster passen, z.B. zwei Adressen am MGMT-Interface), Labortest (e2e) für die neuen Schlüssel.
+    ersten Apply auf, damit vorher `$cfmPlan` läuft. *Erledigt (D43):* Admin-Guide 7.3 (Ablauf ohne
+    Reset, cfm-Tags vorab, Freigaben in `local-input`), Labortest `e2e.sh` Schritt 14b (cm2: Overrides
+    und zurück, sw1: Enroll ohne Apply). Hardware: Core-Switch und hEX so übernommen.
 34. **Bootstrap-Default-Route ohne cfm-Tag** – Mit `gw=` im Hostfile legte die Rolle `base` eine
     zweite Default-Route an, die Bootstrap-Route blieb stehen → ECMP über zwei Gateways. Behoben in
-    `lib/bootstrap-body.rsc` (Route mit Tag `cfm:rt:default`); Labortest offen.
+    `lib/bootstrap-body.rsc` (Route mit Tag `cfm:rt:default`). *Erledigt:* Labortest `e2e.sh` Schritt
+    14b (cm2 per Bootstrap aufgenommen, mit `gw=` genau eine Default-Route).
 35. **Agent aus einer Admin-Sitzung gestartet** – `/system script run cfm-agent` aus einer SSH-Sitzung
     eines Admin-Users scheitert mit „kein Manager erreichbar“: `/tool/fetch` (SFTP) nimmt den privaten
-    Schlüssel des aufrufenden Users, den nur `cfm` hat. Im Admin-Guide erwähnen (immer
-    `$cfmPush host=…`) oder im Agent eine klare Meldung ausgeben.
+    Schlüssel des aufrufenden Users, den nur `cfm` hat. *Doku erledigt* (Admin-Guide 7.3 und
+    Fehlersuche: immer `$cfmPush host=…`); offen: im Agent eine klare Meldung ausgeben.
 36. **Vorabversionen in `$cfmUpgrade`** – `$cfmVerGe` las „7.25beta5“ als 7.0 (`[:tonum "25beta5"]`
     ist `nil`) und stufte ein Update von 7.24.4 als Downgrade ein (`/system/package/downgrade`).
     Hardware-Befund: hAP be³ Media, dessen Switch-Ports erst ab 7.25beta4 funktionieren, dort von
     Hand aktualisiert. Behoben in `lib/mgr-onboard.rsc` (alpha < beta < rc < fertig), auf RouterOS
     7.24.4 mit 16 Fällen geprüft; Labortest (e2e) offen.
-36. **Beta-/RC-Versionen in `$cfmVerGe`** – Die Zerlegung liest „7.25beta5“ als 7 / 0 (Teil
-    „25beta5“ ist keine Zahl) und stuft einen Auftrag auf eine Beta damit als Downgrade ein
-    (`/system/package/downgrade`). Hardware-Anlass: hAP be³ Media, dessen Kabel-Ports unter RouterOS
-    7.24.2–7.24.4 nicht funktionieren (Weg CPU ↔ Switch-Chip), erst mit 7.25beta. Suffixe
-    beta/rc erkennen und ordnen (7.25beta5 < 7.25rc1 < 7.25), `$cfmUpgrade` für Beta-Versionen zulassen
-    (Paketnamen/URL prüfen) und `rosMin`-Vergleich entsprechend.
+37. **Mindestgröße in `$cfmPkgFetch`** – Pakete unter 100 KB galten als kaputter Download und wurden
+    gelöscht; echte Zusatzpakete sind kleiner (`ups` für `arm` ~45 KB). Grenze auf 20 KB gesenkt
+    (Admin-Guide 8.6: Pakete für einen Manager ohne Internet von Hand ablegen).
+    Besser: echte Prüfung (NPK-Kennung am Dateianfang oder Größe aus einer Prüfsummenliste von
+    MikroTik). Außerdem: Ohne Internet am Manager müssen alle installierten Pakete eines Geräts vorab
+    in `<pkgPath>/<ver>/` liegen – `$cfmUpgrade` könnte die fehlenden vor dem Auftrag auflisten.
+38. **RouterOS-Update auf Geräten mit 16 MB Flash** (hEX RB750Gr3, CRS328 u.ä.) – `$cfmUpgrade` lädt
+    die Pakete per SFTP in den Flash des Geräts; dort sind oft nur 2–3 MB frei, `routeros` braucht
+    ~12 MB. Das eingebaute Update (`/system/package/update`) kommt damit zurecht, braucht aber Internet
+    am Gerät. Optionen: Pakete in eine tmpfs-Disk (`/disk add type=tmpfs`) laden und von dort
+    installieren, falls RouterOS das zulässt; oder für solche Geräte das eingebaute Update über einen
+    Proxy/Update-Pfad des Managers. `$cfmUpgrade` sollte vorab den freien Platz prüfen und klar abbrechen.

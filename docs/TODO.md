@@ -270,3 +270,12 @@ Backup-Manager-Rolle fehlen noch.
     am Gerät. Optionen: Pakete in eine tmpfs-Disk (`/disk add type=tmpfs`) laden und von dort
     installieren, falls RouterOS das zulässt; oder für solche Geräte das eingebaute Update über einen
     Proxy/Update-Pfad des Managers. `$cfmUpgrade` sollte vorab den freien Platz prüfen und klar abbrechen.
+39. **Mindestsignal für Clients** (Entscheidung offen) – Hardware-Befund Roaming-Test mit FT: Die
+    Wechsel selbst dauern meist unter 1 s, aber Clients bleiben lange an einem schwachen AP hängen
+    (z.B. −79 dBm auf 2,4 GHz, viele kurze Aussetzer), obwohl ein stärkerer AP in Reichweite ist; ein
+    Client verlor sogar erst die Verbindung, bevor er wechselte. FT beschleunigt nur den Wechsel, nicht
+    die Entscheidung dazu. Idee: `/interface/wifi/access-list` mit `signal-range` aus `wifi.rsc`
+    rendern (z.B. Clients unter −75 dBm abweisen bzw. trennen), optional je Band oder AP; dazu prüfen,
+    ob die Steering-Einstellungen (`rrm`/`wnm`, BSS Transition) aktiv zum Wechsel auffordern.
+    Risiko: In Randbereichen ohne besseren AP verliert ein Client dann ganz die Verbindung – vorher
+    die Abdeckung prüfen (Löcher zwischen APs).

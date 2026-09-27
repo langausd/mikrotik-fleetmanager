@@ -250,7 +250,10 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   und setzt ihn als `mld-datapath` (D44). Weitere SSIDs mit MLO und 6 GHz sind noch offen (TODO 32).
 * Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, D47)
   statt `cap-wifiN`; neu vergeben erst beim nächsten Provisionieren eines Radios
-  (`/interface/wifi/radio/provision [find]` am CAPsMAN, kurzer Radio-Neustart).
+  (`/interface/wifi/radio/provision [find where !local]` am CAPsMAN, alle APs ~3 s weg). Nur die
+  Radios der CAPs: `[find]` träfe auch die eigenen Radios des CAPsMAN (Flag `L`), die Regeln ohne
+  `identity-regexp` würden sie als APs einschalten. Das MLD eines Wi-Fi-7-CAP heißt danach
+  `mld-<Identity>-2g`; Radios ohne passende Regel (6 GHz, TODO 32) behalten `cap-wifiN`.
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:

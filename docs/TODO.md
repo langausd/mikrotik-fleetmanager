@@ -310,3 +310,15 @@ Backup-Manager-Rolle fehlen noch.
     Release bricht nach dem Archiv ab. RouterBOARD-Seriennummern sind alphanumerisch (nicht
     betroffen). Lösung: Seriennummer für Dateinamen einheitlich umsetzen (z.B. `/`→`_`), auf Agent-
     und Manager-Seite gleich; `$cfmEnroll` sollte solche Zeichen melden.
+43. **`/ip/service address` ist ab RouterOS 7.24 veraltet** – Befund 2026-09-27 (hAP be³, 7.25beta):
+    Setzt die Rolle `base` `address`, meldet RouterOS „deprecation warning: address … will be
+    removed in future versions“ und übernimmt den Wert nach `available-from`. `get` liefert beide
+    Felder, der Vergleich bleibt deshalb idempotent. Vor dem Wegfall auf `available-from` umstellen,
+    ältere Versionen kennen nur `address` → Feldname nach der Version wählen (oder nach dem
+    Eigenschafts-Array von `get`).
+44. **Agent auf einem Backup-Manager fragt sich selbst** – Labor-Befund 2026-09-27: Erreicht der
+    Agent von cm2 (`manager-backup`) den Primary nicht (Timeout, während cm2 seinen Spiegel
+    synchronisiert), versucht er die nächste Manager-Adresse – seine eigene – mit dem Geräte-User
+    `cfmd-<name>`, den es dort nicht gibt („login failure … critical“ im Log, danach „kein Manager
+    erreichbar“). Der nächste Lauf holt es nach. Eigene Adresse aus der Liste nehmen oder dort lokal
+    aus dem Spiegel lesen; ein einmaliger Timeout sollte einen kurzen Wiederholversuch auslösen.

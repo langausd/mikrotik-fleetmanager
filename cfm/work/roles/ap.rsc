@@ -86,6 +86,17 @@ $cfmPskMissing
 # wifi.rsc (z.B. 6 GHz, TODO 32) bleiben reine CAPs. Datapath des Radios = Datapath der Master-SSID
 # (Bridge + VLAN), gilt so im CAPsMAN-Betrieb (dieselbe vlan-id) wie im Fallback.
 :local mdpn ("cfm-" . [:tostr ($cfmWifi->"master")])
+# Wi-Fi 7 (hAP be³): Ab Werk hängen die Radios am statischen, abgeschalteten MLD mld1. Im
+# CAPsMAN-Betrieb stört das nicht (der CAPsMAN legt sein MLD dynamisch an), im Fallback blieben die
+# Radios damit aus ("mld-interface not enabled"). Deshalb lösen – lokal senden sie dann ohne MLO.
+# Im CAPsMAN-Betrieb zeigt mld-interface das dynamische MLD, der statische Wert ist nicht lesbar;
+# das unset leert ihn trotzdem und stört das dynamische MLD nicht (Hardware-Test) -> bei jedem Apply
+# still, sofern das Gerät ein statisches MLD hat. Über das Eigenschafts-Array: Radios ohne MLO
+# kennen mld-name nicht.
+:local smld false
+:foreach x in=[/interface/wifi/find where !dynamic] do={
+  :if ([:len [:tostr ([/interface/wifi/get $x]->"mld-name")]] > 0) do={ :set smld true }
+}
 :foreach i in=[/interface/wifi/find where default-name~"^wifi"] do={
   :local rn [/interface/wifi/get $i name]
   :local b ""
@@ -104,6 +115,7 @@ $cfmPskMissing
       :if ($cfmDry != true) do={ /interface/wifi/set $i configuration=$cfg configuration.manager=capsman-or-local datapath=$mdpn disabled=no }
       $cfmLog ("Radio " . $rn . ": CAPsMAN mit lokalem Fallback " . $cfg . ", Datapath " . $mdpn)
     }
+    :if ($smld and $cfmDry != true) do={ /interface/wifi/unset $i value-name=mld-interface }
   } else={
     :if ($curM != "capsman" or $curD != $dp) do={
       :if ($cfmDry != true) do={ /interface/wifi/set $i configuration.manager=capsman datapath=$dp }

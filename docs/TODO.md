@@ -288,9 +288,10 @@ Backup-Manager-Rolle fehlen noch.
     virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
     APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven
     SSID auf Hardware testen; bis dahin fallen Gast/IoT im Fallback aus. (b) Client im Fallback
-    (landet er im VLAN der SSID, DHCP?). (c) MLO (hAP be³): Bildet der AP im Fallback selbst ein
-    MLD, und nimmt es `mld-datapath`? (d) Benachrichtigung, wenn ein AP im Fallback läuft
-    (Status-Feld, `$cfmStatus`).
+    (landet er im VLAN der SSID, DHCP? Die Radios stehen im Fallback als Bridge-Ports mit der PVID
+    der SSID, geprüft). (c) ~~MLO~~ – geklärt: im Fallback ohne MLO (Radios vom Werks-MLD `mld1`
+    gelöst, D46); lokales MLO wäre ein eigener Ausbau. (d) Benachrichtigung, wenn ein AP im
+    Fallback läuft (Status-Feld, `$cfmStatus`).
 41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) –
     Manager-Befehl `$cfmWifiScan`: über den CAPsMAN von jedem AP aus scannen
     (`/interface/wifi/scan cap-wifiN duration=…`, nur Radios ohne Clients oder mit Hinweis), fremde

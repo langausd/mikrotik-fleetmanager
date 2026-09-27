@@ -59,6 +59,14 @@
   :if ($cfmDry = true) do={ :set cfmPlanOut ($cfmPlanOut . "WARNUNG " . $1 . "\n") } else={ :log warning ("cfm: " . $1) }
 }
 
+# Wert für die Probelauf-Ausgabe kürzen: Skript-Quelltexte (z.B. neue Manager-Module) sprengten
+# sonst plan.txt – /file/set scheitert mit "maximum message size exceeded"
+:global cfmShort do={
+  :local v [:tostr $1]
+  :if ([:len $v] > 120) do={ :return ([:pick $v 0 80] . "... (" . [:len $v] . " Zeichen)") }
+  :return $v
+}
+
 # Kommando auf Menüpfad ausführen. $1="/menu/verb", P=Props-Array, I=Item-ID
 # Werte werden als Variablen übergeben -> kein Quoting/Escaping nötig.
 :global cfmRun do={
@@ -243,7 +251,9 @@
     :foreach k,s in=($w->"ssids") do={
       :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
     }
-    :local pr ({"action"="create-dynamic-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl})
+    # Interface-Namen aus Identity und Band (z.B. ap1-2g) statt cap-wifiN, das sich bei jeder
+    # Neuverbindung verschiebt - so ist in Registration-Tabelle und Monitoring der AP erkennbar (D47)
+    :local pr ({"action"="create-dynamic-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl;"name-format"=("%I-" . $b . "g")})
     :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
     :set ($pl->[:len $pl]) $pr
   }
@@ -276,7 +286,7 @@
 # kann – deshalb erst einschalten, wenn der Secret-Push sie gesetzt hat (er schaltet ihn dann selbst
 # ein). Bis dahin senden die APs mit ihrer lokalen Kopie weiter (D46).
 :global cfmCapsmanOn do={
-  :global cfmG; :global cfmWifiRender; :global cfmBlock; :global cfmSet; :global cfmPskMissing; :global cfmWarn
+  :global cfmG; :global cfmWifiRender; :global cfmBlock; :global cfmSet; :global cfmPskMissing; :global cfmWarn; :global cfmEnsure
   :local pl [$cfmWifiRender]
   $cfmBlock m="/interface/wifi/provisioning" k="wprov" l=$pl
   :local en "yes"
@@ -285,6 +295,23 @@
     $cfmWarn "CAPsMAN bleibt aus, bis der Secret-Push die WLAN-Passphrasen gesetzt hat"
   }
   $cfmSet m="/interface/wifi/capsman" p=({"enabled"=$en;"interfaces"=("vlan" . [:tostr ($cfmG->"mgmtVlan")]);"certificate"="auto";"ca-certificate"="auto";"require-peer-certificate"="no";"upgrade-policy"="none"})
+  # Lese-Zugang per API (D47): Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault,
+  # user.<name>; bis dahin abgeschaltet), Freigabe in local-input nur für capsmanApi.from. Den
+  # Dienst selbst öffnet base. Zieht der CAPsMAN um, räumt die GC das alte Gerät auf.
+  :local capi ($cfmG->"capsmanApi")
+  :if ([:typeof $capi] = "array") do={
+    :if ([:len ($capi->"from")] > 0) do={
+      :local au [:tostr ($capi->"user")]
+      :if ([:len $au] = 0) do={ :set au "homeassistant" }
+      :local ap [:tostr ($capi->"port")]
+      :if ([:len $ap] = 0) do={ :set ap "8728" }
+      $cfmEnsure m="/user/group" k="grp:api" n=({"name"="cfm-api"}) p=({"name"="cfm-api";"policy"="read,api,test"})
+      $cfmEnsure m="/user" k=("user:" . $au) n=({"name"=$au}) p=({"name"=$au;"group"="cfm-api"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
+      :local fl ({})
+      :foreach a in=($capi->"from") do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=$ap;"src-address"=$a}) }
+      $cfmBlock m="/ip/firewall/filter" k="capi" l=$fl
+    }
+  }
   :return true
 }
 
@@ -317,7 +344,7 @@
 #  a=Props nur beim Anlegen (optional)  x=Kommentar-Zusatztext (optional)
 :global cfmEnsure do={
   :global cfmIndex; :global cfmIdx; :global cfmSeen; :global cfmRun; :global cfmFind
-  :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry
+  :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
   $cfmIndex $m
   :local tag ("cfm:" . $k)
   :if ([:len $x] > 0) do={ :set tag ($tag . " " . $x) }
@@ -355,7 +382,7 @@
     $cfmRun ($m . "/set") I=$id P=$ch
     :set ($cfmStat->"set") (($cfmStat->"set") + 1)
     :local s ""
-    :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [:tostr $vv]) } }
+    :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [$cfmShort $vv]) } }
     $cfmLog ("geändert: " . $m . " " . $k . ":" . $s)
   }
   :set ($cfmIdx->$m->$k) $id
@@ -365,7 +392,7 @@
 # Props setzen ohne Tagging: Singleton-Menü (ohne n) oder alle Treffer von n.
 # Für eingebaute Objekte (Identity, DNS, IP-Services, Ethernet-Ports, ...)
 :global cfmSet do={
-  :global cfmRun; :global cfmFind; :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry
+  :global cfmRun; :global cfmFind; :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
   :local ids ({"-"})
   :if ([:typeof $n] = "array") do={ :set ids [$cfmFind $m N=$n] }
   :foreach id in=$ids do={
@@ -377,7 +404,7 @@
       :if ([:typeof $id] = "str") do={ $cfmRun ($m . "/set") P=$ch } else={ $cfmRun ($m . "/set") I=$id P=$ch }
       :set ($cfmStat->"set") (($cfmStat->"set") + 1)
       :local s ""
-      :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [:tostr $vv]) } }
+      :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [$cfmShort $vv]) } }
       $cfmLog ("gesetzt: " . $m . ":" . $s)
     }
   }

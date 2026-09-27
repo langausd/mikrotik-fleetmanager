@@ -193,6 +193,21 @@
     :if ([:len $cmn] = 0) do={ :set ($warn->[:len $warn]) "inventory: kein Gerät mit Rolle capsman – CAPsMAN bleibt übergangsweise auf dem Primary-Manager (D45)" }
     :if ([:len $cmn] > 1) do={ :set ($err->[:len $err]) ("inventory: Rolle capsman mehrfach vergeben (" . [:tostr $cmn] . ") – nur ein CAPsMAN vorgesehen (D45)") }
   }
+  # API-Zugang auf dem CAPsMAN (D47): Adressen gültig, Passwort im Vault
+  :local capi ($cfmG->"capsmanApi")
+  :if ([:typeof $capi] = "array") do={
+    :if ([:len ($capi->"from")] > 0) do={
+      :foreach a in=($capi->"from") do={
+        :local ip [:tostr $a]
+        :if ([:typeof [:find $ip "/"]] != "nil") do={ :set ip [:pick $ip 0 [:find $ip "/"]] }
+        :if ([:typeof [:toip $ip]] != "ip") do={ :set ($err->[:len $err]) ("global.rsc: capsmanApi from: " . $a . " ist keine IPv4-Adresse/kein Netz") }
+      }
+      :local au [:tostr ($capi->"user")]
+      :if ([:len $au] = 0) do={ :set au "homeassistant" }
+      :if ([:typeof ($cfmG->"users"->$au)] != "nothing") do={ :set ($err->[:len $err]) ("global.rsc: capsmanApi user " . $au . " steht auch in users (Admin) - eigenen Namen wählen") }
+      :if ([:len [$cfmVaultGet ("user." . $au)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: Passwort des API-Users fehlt, \$cfmSecret key=user." . $au . " value=...") }
+    }
+  }
   # Kanal-Pinning (radios): bekannte APs, bekannte Bänder
   :foreach apn,pins in=($cfmWifi->"radios") do={
     :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . ", nicht im Inventar") } else={

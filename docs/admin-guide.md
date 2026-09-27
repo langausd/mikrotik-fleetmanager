@@ -248,6 +248,9 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   einem MLD-Interface (MLO) zusammen, über das der Verkehr läuft. Auch dafür schickt er weder Bridge
   noch VLAN mit (D41); die Rolle `ap` legt deshalb den Datapath `cfm-mld` im VLAN der `master`-SSID an
   und setzt ihn als `mld-datapath` (D44). Weitere SSIDs mit MLO und 6 GHz sind noch offen (TODO 32).
+* Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, D47)
+  statt `cap-wifiN`; neu vergeben erst beim nächsten Provisionieren eines Radios
+  (`/interface/wifi/radio/provision [find]` am CAPsMAN, kurzer Radio-Neustart).
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
@@ -458,6 +461,19 @@ Command für den Manager-Schlüssel, am Manager ein Lese-User `cfm-git` mit dem 
 Git-Hosts, in `global.rsc` `hook` setzen und die Host-IP in `mgmtExtra` aufnehmen. Gesichert
 werden Arbeitsstand, Metadaten, Archiv, Geräte-Exporte und das verschlüsselte Vault-Backup
 (`vault/*.bak`), bei jedem Release, Rollback, Onboarding und bei neuen Exporten.
+
+### 6.7 Clients je AP in Home Assistant (D47)
+
+Die Registration-Tabelle des CAPsMAN zeigt alle Clients aller APs. Für einen Monitoring-Host (z.B.
+Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für dessen Adresse:
+
+1. `global.rsc`: `"capsmanApi"={"from"={"<ip-des-HA>/32"};"user"="homeassistant"}`, Passwort in den
+   Vault: `$cfmSecret key=user.homeassistant value=…`, `$cfmRelease` (bzw. Ringe durchlaufen lassen).
+   Der CAPsMAN bekommt Dienst `api` (8728, nur diese Adresse), Gruppe `cfm-api` (`read,api,test`),
+   den User und eine Freigabe in `local-input`; der Secret-Push setzt das Passwort und schaltet ihn ein.
+2. Liegt HA außerhalb des MGMT-VLANs: am Router davor den Weg auf TCP 8728 ins MGMT-Netz freigeben.
+3. In HA die Integration einrichten: Host = MGMT-IP des CAPsMAN, Port 8728, ohne SSL, User/Passwort
+   wie oben. Zieht der CAPsMAN um, dort die Adresse ändern.
 
 ---
 

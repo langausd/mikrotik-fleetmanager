@@ -34,6 +34,7 @@
   "users"={"netadmin"="full"};
   "adminUser"="disable";
   "services"={"ssh"=22;"winbox"=8291};
+  "capsmanApi"={};
   "hook"={"host"="";"user"="cfm"}
 }
 # Erläuterungen:
@@ -65,3 +66,8 @@
 #             aktiv ist (Passwort angekommen); "keep" = admin nicht anfassen.
 #  services   aktive IP-Services, alle anderen werden deaktiviert.
 #  hook       Git-Host für externe Sicherung (leer = aus).
+#  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (D47), z.B. für Home Assistant (welcher
+#             Client an welchem AP). {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}
+#             öffnet dort den Dienst api nur für from, legt den User (Gruppe cfm-api: read,api,test) an,
+#             Passwort NUR im Vault: $cfmSecret key=user.homeassistant value=... (Secret-Push). {} = aus.
+#             Unverschlüsselt (api) – das Passwort geht im Klartext durchs Netz.

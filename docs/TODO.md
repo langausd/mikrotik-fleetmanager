@@ -288,10 +288,13 @@ Backup-Manager-Rolle fehlen noch.
     virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
     APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven
     SSID auf Hardware testen; bis dahin fallen Gast/IoT im Fallback aus. (b) Client im Fallback
-    (landet er im VLAN der SSID, DHCP? Die Radios stehen im Fallback als Bridge-Ports mit der PVID
-    der SSID, geprüft). (c) ~~MLO~~ – geklärt: im Fallback ohne MLO (Radios vom Werks-MLD `mld1`
+    – ~~geprüft~~ 2026-09-27: bei einem CAPsMAN-Ausfall aller APs meldete sich ein Handy nach 2 s
+    lokal an und blieb im VLAN der SSID erreichbar. (c) ~~MLO~~ – geklärt: im Fallback ohne MLO (Radios vom Werks-MLD `mld1`
     gelöst, D46); lokales MLO wäre ein eigener Ausbau. (d) Benachrichtigung, wenn ein AP im
-    Fallback läuft (Status-Feld, `$cfmStatus`).
+    Fallback läuft (Status-Feld, `$cfmStatus`). (e) Dynamisches MLD eines Wi-Fi-7-CAP legte ein
+    CAPsMAN auf einem hAP be³ abgeschaltet an (siehe Hardware-Eigenheiten) – nach einem Neustart
+    des CAPsMAN prüfen; bleibt es aus, die Rolle `capsman` dynamische MLDs einschalten lassen
+    (Scheduler, weil nach einem Neustart kein Apply läuft).
 41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) –
     Manager-Befehl `$cfmWifiScan`: über den CAPsMAN von jedem AP aus scannen
     (`/interface/wifi/scan cap-wifiN duration=…`, nur Radios ohne Clients oder mit Hinweis), fremde
@@ -300,3 +303,10 @@ Backup-Manager-Rolle fehlen noch.
     Signalstärke) und ausgeben. Ob 3 oder 4 Kanäle besser sind, im Betrieb mit beiden Plänen
     vergleichen (Paketverlust der Clients auf 2,4 GHz). Ohne Pins wählt der CAPsMAN die Kanäle bei
     jeder Neuverbindung neu – nach einem Aussetzer also womöglich andere.
+42. **Seriennummern mit `/` (CHR)** – Labor-Befund 2026-09-27: Die System-ID einer frischen CHR-VM
+    begann mit `/` (`/G9Di3fN32A`). Der Manifest-Pfad `live/m/<serial>.mf` wird dann zu
+    `live/m//….mf`; RouterOS legt die Datei beim ersten Mal an, `/file/find` findet sie unter diesem
+    Namen aber nicht wieder, jedes weitere `$cfmWrite` scheitert mit „file already exists“ – jedes
+    Release bricht nach dem Archiv ab. RouterBOARD-Seriennummern sind alphanumerisch (nicht
+    betroffen). Lösung: Seriennummer für Dateinamen einheitlich umsetzen (z.B. `/`→`_`), auf Agent-
+    und Manager-Seite gleich; `$cfmEnroll` sollte solche Zeichen melden.

@@ -265,11 +265,29 @@ step "14c. CAPsMAN als eigene Rolle (D45), AP mit lokalem Fallback ohne Radios (
 invrole() { # invrole <alt> <neu>: Rolle im Inventar ersetzen (Wert muss eindeutig sein), Manifeste neu bauen
   local o="\\\"role\\\"=\\\"$1\\\"" n="\\\"role\\\"=\\\"$2\\\"" l=$(( ${#1} + 9 ))
   mgr ':local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "'"$o"'"]; /file/set $f contents=([:pick $c 0 $p] . "'"$n"'" . [:pick $c ($p + '"$l"') [:len $c]]); :global cfmManifests; $cfmManifests' >/dev/null; }
-applied() { # applied <name>: Lauf erzwingen und abwarten, true bei res=ok
-  local t0; t0=$(stat "$1" t); mgr "\$cfmPush host=$1 force=yes" >/dev/null
-  for _ in $(seq 1 40); do [ "$(stat "$1" t)" != "$t0" ] && break; sleep 3; done
+applied() { # applied <name>: Lauf erzwingen und abwarten, true bei res=ok. Vorher warten, bis kein
+  # Agent-Lauf mehr läuft (sonst "Agent läuft bereits", der erzwungene Lauf kommt erst per Retry).
+  # Bis zu 3 Versuche: Synchronisiert cm2 als Backup gerade seinen Spiegel, läuft der Abruf des
+  # Agenten vom Primary gelegentlich in einen Timeout ("kein Manager erreichbar", kein Report).
+  local vm t0 n; case $1 in cm1) vm=1;; sw1) vm=2;; cm2) vm=3;; esac
+  for n in 1 2 3; do
+    for _ in $(seq 1 40); do r "$vm" ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+    t0=$(stat "$1" t); mgr "\$cfmPush host=$1 force=yes" >/dev/null
+    for _ in $(seq 1 60); do [ "$(stat "$1" t)" != "$t0" ] && break; sleep 4; done
+    [ "$(stat "$1" t)" != "$t0" ] && break
+    echo "    ($1: kein Report nach dem Push, Versuch $n)"
+  done
   [ "$(stat "$1" t)" != "$t0" ] && [ "$(stat "$1" res)" = ok ]; }
 mgr ':global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put $e }' | grep -q "kein Gerät mit Rolle capsman" && ok "Prüfung: Übergang ohne Rolle capsman gemeldet (cm1 bleibt CAPsMAN)" || bad "Übergangswarnung fehlt"
+# API-Lesezugang auf dem CAPsMAN (D47): erst auf cm1 (Übergangsregel), wandert mit der Rolle capsman
+mgr ':global e2eG [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"capsmanApi\") {\"from\"={\"10.0.2.2/32\"};\"user\"=\"hatest\"}\n")' >/dev/null
+mgr '$cfmSecret key=user.hatest value="Api-Lab-2026"' >/dev/null
+rv=$(mgr '$cfmRelease msg=" capsmanApi" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (capsmanApi) angewendet" || bad "cm1 Apply v$rv"
+agentwait 2 "$rv" sw1 || true; agentwait 3 "$rv" cm2 || true
+expect 1 '![/ip/service/get [find name=api] disabled] and [:tostr [/ip/service/get [find name=api] available-from]] ~ "10.0.2.2" and [/user/get [find name=hatest] group] = "cfm-api" and [:len [/ip/firewall/filter/find where comment~"^cfm:capi" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "cm1: API nur für capsmanApi.from, User hatest (cfm-api), Freigabe in local-input"
+expect 2 '[/ip/service/get [find name=api] disabled]' "sw1: API aus (kein CAPsMAN)"
+expect 1 '[/interface/wifi/provisioning/get [find where comment~"^cfm:wprov:00"] name-format] = "%I-2g"' "cm1: Interface-Namen aus Identity und Band (name-format)"
 # CAPsMAN auf sw1, cm2 zusätzlich AP (CHR ohne Radios: CAP-Einstellungen, Profile, Passphrasen)
 invrole "switch,router" "switch,router,capsman"
 invrole "manager-backup" "manager-backup,ap"
@@ -281,13 +299,14 @@ mgr '$cfmSecretPush host=sw1' >/dev/null
 expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "sw1: Secret-Push setzt die PSK und schaltet den CAPsMAN ein"
 applied cm1 && ok "cm1 nach dem Umzug angewendet" || bad "cm1: $(stat cm1 res)"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm1: CAPsMAN aus, Profile abgeräumt"
+expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0 and [:len [/ip/firewall/filter/find where comment~"^cfm:capi"]] = 0' "cm1: API, User und Freigabe mit der Rolle capsman abgeräumt"
+expect 2 '![/ip/service/get [find name=api] disabled] and [/user/get [find name=hatest] group] = "cfm-api" and ![/user/get [find name=hatest] disabled]' "sw1: API-Zugang umgezogen, User nach dem Secret-Push aktiv"
 applied cm2 && ok "cm2 als manager-backup,ap angewendet" || bad "cm2 ap: $(stat cm2 res)"
 expect 3 '[:tostr [/interface/wifi/cap/get caps-man-addresses]] = "192.168.10.21" and [:tostr [/interface/wifi/cap/get caps-man-names]] = "sw1" and [/interface/wifi/datapath/get [find name="cfm-cap"] comment] = "cfm:wdp-cap cm=sw1"' "cm2: CAP zeigt auf sw1 (Adresse und Name aus dem Manifest, im Datapath gemerkt)"
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf:l"]] = 2 and [/interface/wifi/datapath/get [find name="cfm-main"] vlan-id] = 20 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: lokale Fallback-Konfiguration je Band, Datapath mit VLAN, kein CAPsMAN"
 mgr '$cfmSecretPush host=cm2' >/dev/null
 expect 3 '[/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "cm2: PSK für den lokalen Fallback per Secret-Push"
-t0=$(stat cm2 t); mgr '$cfmPush host=cm2 force=yes' >/dev/null
-for _ in $(seq 1 40); do [ "$(stat cm2 t)" != "$t0" ] && break; sleep 3; done
+applied cm2 || true
 stat cm2 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Rolle ap idempotent" || bad "ap idempotent: $(stat cm2 stats)"
 # CAPsMAN zurück auf cm1 (ohne Rolle capsman übernimmt der Primary): cm2 folgt, erneuert Zertifikate
 nc=$(r 3 ':put [:len [/certificate/find where trust-store=capsman]]' | tail -1 | tr -dc 0-9)
@@ -304,6 +323,11 @@ if [ "${nc:-0}" -gt 0 ]; then
 else echo "  - cm2 hatte keine CAPsMAN-Zertifikate (CAP ohne Radios), Erneuerung nicht prüfbar"; fi
 invrole "manager-backup,ap" "manager-backup"
 applied cm2 && ok "cm2 wieder nur manager-backup" || bad "cm2: $(stat cm2 res)"
+mgr ':global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG' >/dev/null
+rv=$(mgr '$cfmRelease msg=" capsmanApi aus" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (ohne capsmanApi) angewendet" || bad "cm1 Apply v$rv"
+agentwait 2 "$rv" sw1 || true; agentwait 3 "$rv" cm2 || true
+expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0' "cm1: ohne capsmanApi kein API-Zugang"
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm2: WLAN-Profile ohne Rolle ap abgeräumt"
 r 3 '/interface/wifi/cap/set enabled=no' >/dev/null
 

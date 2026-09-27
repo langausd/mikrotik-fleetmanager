@@ -137,10 +137,22 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
   :set ($an->[:tostr ($cfmWg->"net")]) 1
 }
+# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN und nur für capsmanApi.from (D47, z.B. Home
+# Assistant: welcher Client an welchem AP) - unabhängig von services und den Management-Netzen
+:global cfmIsCapsman
+:local capi ($cfmG->"capsmanApi")
+:local capiOn false
+:if ([:typeof $capi] = "array") do={ :if ([:len ($capi->"from")] > 0 and [$cfmIsCapsman]) do={ :set capiOn true } }
 :foreach s in={"telnet";"ftp";"www";"www-ssl";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
+  :local addr [$cfmKeys $an]
+  :if ($s = "api" and $capiOn and [:len $port] = 0) do={
+    :set port ($capi->"port")
+    :if ([:len [:tostr $port]] = 0) do={ :set port 8728 }
+    :set addr ($capi->"from")
+  }
   :if ([:len $port] > 0) do={
-    $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=({"disabled"="no";"port"=$port;"address"=[$cfmKeys $an]})
+    $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=({"disabled"="no";"port"=$port;"address"=$addr})
   } else={
     $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=({"disabled"="yes"})
   }

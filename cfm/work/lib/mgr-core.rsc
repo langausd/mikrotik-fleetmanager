@@ -501,6 +501,18 @@
           :set c ($c . "/ppp/secret/remove [find where name=\"" . $n . "\"]; /ppp/secret/add name=\"" . $n . "\" password=\"" . [$cfmEsc [/ppp/secret/get $i password]] . "\" disabled=yes service=any comment=\"cfm-sys:vault\";")
         }
       }
+      # Lese-User der API auf dem CAPsMAN (D47)
+      :local capi ($cfmG->"capsmanApi")
+      :if ($iscm and [:typeof $capi] = "array") do={
+        :if ([:len ($capi->"from")] > 0) do={
+          :local au [:tostr ($capi->"user")]
+          :if ([:len $au] = 0) do={ :set au "homeassistant" }
+          :local apw [$cfmVaultGet ("user." . $au)]
+          :if ([:len $apw] > 0) do={
+            :set c ($c . ":if ([:len [/user/find where name=\"" . $au . "\"]] > 0) do={ /user/set [find where name=\"" . $au . "\"] password=\"" . [$cfmEsc $apw] . "\" disabled=no } else={ :set ok false };")
+          }
+        }
+      }
       # Ein neuer CAPsMAN wartet mit dem Einschalten auf die Passphrasen (cfmCapsmanOn)
       :if ($iscm) do={ :set c ($c . ":if (\$ok) do={ :onerror e in={ /interface/wifi/capsman/set enabled=yes } do={} };") }
       :set c ($c . ":if (\$ok) do={ /ppp/secret/set [find where name=\"cfm:key\"] comment=\"cfm-sys:key sv=" . $vv . "\" }; :put \$ok")

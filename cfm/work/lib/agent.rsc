@@ -490,6 +490,9 @@
   }
 
   # --- Bericht ---
+  # Vault-Stand neu lesen: Eine Rolle kann beim Apply einen Secret-Push anfordern (sv=0, z.B. neue
+  # WLAN-Profile ohne Passphrase, D46) – so sieht der Manager das schon beim nächsten Collect
+  :onerror e in={ :set sv [/ppp/secret/get [find where name="cfm:key"] comment] } do={}
   :local exp ($applied or ($now - [:tonum ($st->"et")]) > 86400)
   :if ($exp) do={ :set ($st->"et") $now }
   $cfmWrite ($dir . "/state.json") [:serialize to=json $st]

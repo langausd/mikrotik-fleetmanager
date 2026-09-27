@@ -130,6 +130,164 @@
   :return ((("," . ($cfmMf->"role") . ",") ~ ("," . $1 . ",")) or ($1 = "base"))
 }
 
+# Ist dieses Gerät CAPsMAN? (D45) Rolle capsman oder im Manifest-Feld cm genannt – das setzt der
+# Manager: alle Geräte mit Rolle capsman, ohne solche übergangsweise der Primary-Manager. Fehlt cm
+# (Manifest von einem Manager vor D45), gilt die alte Regel: Rolle manager = CAPsMAN.
+:global cfmIsCapsman do={
+  :global cfmMf
+  :local rl ("," . [:tostr ($cfmMf->"role")] . ",")
+  :if ($rl ~ ",capsman,") do={ :return true }
+  :if ([:typeof ($cfmMf->"cm")] != "array") do={ :return ($rl ~ ",manager,") }
+  :local r false
+  :foreach c in=($cfmMf->"cm") do={ :if ([:tostr ($c->"n")] = [:tostr ($cfmMf->"name")]) do={ :set r true } }
+  :return $r
+}
+
+# WLAN-Profile aus wifi.rsc (D45/D46), gemeinsam für den CAPsMAN und den lokalen Fallback der APs:
+# Steering, Kanal-Pools, je SSID Security (Passphrase nur per Secret-Push), Datapath (Bridge + VLAN)
+# und Konfiguration, PPSK-Einträge, dazu je Band die Master-Konfiguration mit dem Kanal.
+#  ohne ap    CAPsMAN: cfm-m<Band>, je gepinntem AP cfm-m<Band>-<AP> -> Liste der Provisioning-Regeln
+#  ap=<Name>  lokal auf dem AP: cfm-l<Band> mit dem Pin dieses APs bzw. dem Pool -> {Band=Konfiguration}
+:global cfmWifiRender do={
+  :global cfmWifi; :global cfmEnsure; :global cfmLog; :global cfmDry
+  :local w $cfmWifi
+  :local d ($w->"defaults")
+  :local mk ($w->"master")
+  :local loc ([:len $ap] > 0)
+  $cfmEnsure m="/interface/wifi/steering" k="wst" n=({"name"="cfm-steer"}) p=({"name"="cfm-steer";"rrm"=($d->"rrm");"wnm"=($d->"wnm")})
+  # Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, D32), DFS-Kanäle optional meiden
+  :foreach b,c in=($w->"channels") do={
+    :local cp ({"name"=("cfm-" . $b . "g");"band"=($c->"band");"frequency"=($c->"freq");"width"=($c->"width")})
+    # als HH:MM:SS angeben: "03:00" liest RouterOS als 3 Minuten, der Vergleich schlüge jedes Mal fehl
+    :local rs [:tostr ($w->"reselect")]
+    :if ([:len $rs] = 5) do={ :set rs ($rs . ":00") }
+    :if ([:len $rs] > 0) do={ :set ($cp->"reselect-time") $rs }
+    :if ([:len [:tostr ($c->"skipDfs")]] > 0) do={ :set ($cp->"skip-dfs-channels") ($c->"skipDfs") }
+    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b) n=({"name"=("cfm-" . $b . "g")}) p=$cp
+  }
+  :foreach k,s in=($w->"ssids") do={
+    :local o ({})
+    :foreach f in={"sec";"ft";"ftOverDs";"pmf";"isolation"} do={
+      :set ($o->$f) ($d->$f)
+      :if ([:len [:tostr ($s->$f)]] > 0) do={ :set ($o->$f) ($s->$f) }
+    }
+    :local nm ("cfm-" . $k)
+    :local sp ({"name"=$nm;"authentication-types"=($o->"sec");"ft"=($o->"ft");"ft-over-ds"=($o->"ftOverDs");"management-protection"=($o->"pmf")})
+    # PPSK (D32): Multi-Passphrase-Gruppe = Name des Profils; entfällt PPSK, wird sie gelöst
+    :local pp ([:typeof ($w->"ppsk"->$k)] = "array")
+    :if ($pp) do={ :set ($sp->"multi-passphrase-group") $nm }
+    $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k) n=({"name"=$nm}) p=$sp
+    :if (!$pp and $cfmDry != true) do={
+      :onerror e in={
+        :if ([:len [:tostr [/interface/wifi/security/get [find where name=$nm] multi-passphrase-group]]] > 0) do={
+          /interface/wifi/security/unset [find where name=$nm] multi-passphrase-group
+          $cfmLog ("PPSK-Gruppe an " . $nm . " entfernt")
+        }
+      } do={}
+    }
+    # Beim CAPsMAN gehen davon vlan-id und client-isolation an die CAPs; "bridge" gilt nur für
+    # eigene Radios, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, D41)
+    $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
+    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
+  }
+  # PPSK-Einträge: je Passphrase ein VLAN. Angelegt mit Zufallswert, die echte Passphrase kommt per
+  # Secret-Push aus dem Vault (ppsk.<ssid>.<name>) – sie steht nie in Daten, Log oder Probelauf.
+  :foreach k,ents in=($w->"ppsk") do={
+    :foreach e,o in=$ents do={
+      :local mp ({"group"=("cfm-" . $k);"vlan-id"=($o->"vlan");"isolation"="no"})
+      :if ([:len [:tostr ($o->"isolation")]] > 0) do={ :set ($mp->"isolation") ($o->"isolation") }
+      :if ([:len [:tostr ($o->"expires")]] > 0) do={ :set ($mp->"expires") ($o->"expires") }
+      $cfmEnsure m="/interface/wifi/security/multi-passphrase" k=("mpp:" . $k . "." . $e) p=$mp a=({"passphrase"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
+    }
+  }
+  # Master-Konfiguration je Band (trägt den Kanal)
+  :local ms ($w->"ssids"->$mk)
+  :local mcfg do={
+    :global cfmEnsure
+    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=("cfm-" . $mk);"datapath"=("cfm-" . $mk);"steering"="cfm-steer";"channel"=$ch})
+  }
+  :local pinch do={
+    :global cfmEnsure
+    :local chn ("cfm-" . $b . "g-" . $apn)
+    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $apn) n=({"name"=$chn}) p=({"name"=$chn;"band"=($c->"band");"frequency"=$f;"width"=($c->"width")})
+    :return $chn
+  }
+  :if ($loc) do={
+    :local cf ({})
+    :foreach b,c in=($w->"channels") do={
+      :local chn ("cfm-" . $b . "g")
+      :local f [:tostr ($w->"radios"->$ap->$b)]
+      :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
+      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn
+      :set ($cf->$b) ("cfm-l" . $b)
+    }
+    :return $cf
+  }
+  # CAPsMAN: gepinnte APs vor den generischen Regeln
+  :local rules ({})
+  :foreach apn,pins in=($w->"radios") do={
+    :foreach b,f in=$pins do={
+      :local chn [$pinch b=$b apn=$apn c=($w->"channels"->$b) f=$f]
+      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn
+      :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
+    }
+  }
+  :foreach b,c in=($w->"channels") do={
+    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g")
+    :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b);"re"=""})
+  }
+  :local pl ({})
+  :foreach r in=$rules do={
+    :local b ($r->"b")
+    :local sl ({})
+    :foreach k,s in=($w->"ssids") do={
+      :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
+    }
+    :local pr ({"action"="create-dynamic-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl})
+    :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
+    :set ($pl->[:len $pl]) $pr
+  }
+  :return $pl
+}
+
+# Master-SSID ohne Passphrase (Profil neu angelegt: CAPsMAN nach einem Umzug, lokaler Fallback der
+# APs)? Dann die Secrets als veraltet markieren – der Manager schiebt beim nächsten Tick alle PSKs aus
+# dem Vault nach ($cfmSecretSync vergleicht die gemeldete Vault-Version). Nur die Master-SSID zählt:
+# Fehlt für eine andere SSID die PSK im Vault, meldet das $cfmCheck. Liefert true, wenn sie fehlt.
+:global cfmPskMissing do={
+  :global cfmDry; :global cfmLog; :global cfmWifi
+  :if ($cfmDry = true) do={ :return false }
+  :local nm ("cfm-" . [:tostr ($cfmWifi->"master")])
+  :local miss false
+  :onerror e in={
+    :foreach i in=[/interface/wifi/security/find where name=$nm] do={
+      :if ([:len [:tostr [/interface/wifi/security/get $i passphrase]]] = 0) do={ :set miss true }
+    }
+  } do={}
+  :if ($miss) do={
+    :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={}
+    $cfmLog ("WLAN-Passphrase fehlt (" . $nm . ") - Secret-Push angefordert")
+  }
+  :return $miss
+}
+
+# CAPsMAN rendern und einschalten (Rolle capsman bzw. übergangsweise der Primary-Manager, D45).
+# Ohne Passphrasen bliebe der Dienst an, die APs verteilten aber SSIDs, an denen sich niemand anmelden
+# kann – deshalb erst einschalten, wenn der Secret-Push sie gesetzt hat (er schaltet ihn dann selbst
+# ein). Bis dahin senden die APs mit ihrer lokalen Kopie weiter (D46).
+:global cfmCapsmanOn do={
+  :global cfmG; :global cfmWifiRender; :global cfmBlock; :global cfmSet; :global cfmPskMissing; :global cfmWarn
+  :local pl [$cfmWifiRender]
+  $cfmBlock m="/interface/wifi/provisioning" k="wprov" l=$pl
+  :local en "yes"
+  :if ([$cfmPskMissing]) do={
+    :set en "no"
+    $cfmWarn "CAPsMAN bleibt aus, bis der Secret-Push die WLAN-Passphrasen gesetzt hat"
+  }
+  $cfmSet m="/interface/wifi/capsman" p=({"enabled"=$en;"interfaces"=("vlan" . [:tostr ($cfmG->"mgmtVlan")]);"certificate"="auto";"ca-certificate"="auto";"require-peer-certificate"="no";"upgrade-policy"="none"})
+  :return true
+}
+
 # Index "key -> id" aller cfm-getaggten Objekte eines Menüs (einmal pro Lauf)
 :global cfmIndex do={
   :global cfmIdx; :global cfmSeen; :global cfmMenus; :global cfmDry

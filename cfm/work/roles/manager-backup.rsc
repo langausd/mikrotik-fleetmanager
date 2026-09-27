@@ -1,7 +1,7 @@
 # ============================================================
 # Rolle manager-backup – Backup-Config-Manager
 #  Identisch zur Rolle manager, aber:
-#   * CAPsMAN passiv (Netwatch auf den Primary übernimmt nach ~3 min)
+#   * kein CAPsMAN (D45: eigene Rolle capsman, bei Ausfall auf ein anderes Gerät verschieben)
 #   * cfm-mgr spiegelt den Primary (live/, archive/, meta/, state/) und
 #     verweigert Releases, bis er per $cfmPromoteManager befördert wurde.
 # ============================================================

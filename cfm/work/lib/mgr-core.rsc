@@ -9,7 +9,7 @@
 #   mgr-onboard  Onboarding per Push in die Werks-Config
 #   mgr-ros      RouterOS-Pakete und -Updates ($cfmUpgrade)
 #   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels)
-#   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel und Übernahme durch den Backup
+#   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
 # Die Module hängen nur beim Aufruf voneinander ab (:global in den Funktionen), die
 # Ladereihenfolge ist daher egal.
 #
@@ -97,13 +97,27 @@
 }
 :global cfmInvSave do={
   :global cfmWrite; :global cfmMB
-  :local s "# cfm – Inventar (Manager-Metadaten, wirkt sofort). Auch von \$cfmEnroll geschrieben.\n# Key = Identity; serial, role (base immer; router,switch,ap,manager,manager-backup), ring 0-2, ip (MGMT)\n:global cfmInv {\n"
+  :local s "# cfm – Inventar (Manager-Metadaten, wirkt sofort). Auch von \$cfmEnroll geschrieben.\n# Key = Identity; serial, role (base immer; router,switch,ap,capsman,manager,manager-backup), ring 0-2, ip (MGMT)\n:global cfmInv {\n"
   :local sep ""
   :foreach n,d in=$1 do={
     :set s ($s . $sep . "  \"" . $n . "\"={\"serial\"=\"" . ($d->"serial") . "\";\"role\"=\"" . ($d->"role") . "\";\"ring\"=" . ($d->"ring") . ";\"ip\"=\"" . ($d->"ip") . "\"}")
     :set sep ";\n"
   }
   $cfmWrite ([$cfmMB] . "/meta/inventory.rsc") ($s . "\n}\n")
+}
+# CAPsMAN-Geräte (D45): alle mit Rolle capsman, ohne solche übergangsweise der Primary-Manager
+# (Rolle manager) -> Liste {"n"=Name;"ip"=MGMT-IP}. Steht als Feld cm in jedem Manifest: Die Rolle
+# ap setzt daraus caps-man-addresses/-names, cfmIsCapsman entscheidet damit über den Dienst.
+:global cfmCapsmen do={
+  :local r ({})
+  :foreach rr in={",capsman,";",manager,"} do={
+    :if ([:len $r] = 0) do={
+      :foreach n,d in=$1 do={
+        :if ((("," . [:tostr ($d->"role")] . ",") ~ $rr) and [:len [:tostr ($d->"ip")]] > 0) do={ :set ($r->[:len $r]) ({"n"=$n;"ip"=[:tostr ($d->"ip")]}) }
+      }
+    }
+  }
+  :return $r
 }
 # globale Daten (cfmG, cfmVlans, cfmWifi …) der Version ver (Default: neueste; 0 = work/)
 :global cfmLoadData do={
@@ -180,13 +194,14 @@
 # plan=<host>: nur für diesen Host ein Plan-Manifest aus dem Schnappschuss plan/ ($cfmPlan)
 :global cfmManifests do={
   :global cfmMB; :global cfmRings; :global cfmInvLoad; :global cfmVaultGet; :global cfmWrite
-  :global cfmJson; :global cfmG; :global cfmLoadData
+  :global cfmJson; :global cfmG; :global cfmLoadData; :global cfmCapsmen
   :local b [$cfmMB]
   :local rg [$cfmRings]
   :local pl [:len $plan]
   :if ($pl > 0) do={ $cfmLoadData ver=0 } else={ $cfmLoadData }
   :local reap ([:tonsec [:totime ($cfmG->"reapply")]] / 1000000000)
   :local inv [$cfmInvLoad]
+  :local cms [$cfmCapsmen $inv]
   :local ord [$cfmJson ($b . "/meta/upgrade.dat")]
   :local cnt 0
   :foreach name,d in=$inv do={
@@ -225,7 +240,7 @@
         }
       }
       :if ($ok) do={
-        :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=($d->"role");"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"files"=$fl})
+        :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=($d->"role");"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"cm"=$cms;"files"=$fl})
         # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
         :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
         :local body [:serialize to=json $m]
@@ -431,11 +446,13 @@
 # ---------- Secret-Push ----------
 :global cfmSecretPush do={
   :global cfmInvLoad; :global cfmVaultGet; :global cfmExec; :global cfmEsc; :global cfmJson
-  :global cfmMB; :global cfmG; :global cfmWifi; :global cfmLoadData; :global cfmChallenge
+  :global cfmMB; :global cfmG; :global cfmWifi; :global cfmLoadData; :global cfmChallenge; :global cfmCapsmen
   $cfmLoadData
   :local vv [:tonum ([$cfmJson ([$cfmMB] . "/meta/vault.dat")]->"ver")]
   :local done 0
-  :foreach name,d in=[$cfmInvLoad] do={
+  :local inv [$cfmInvLoad]
+  :local cms [$cfmCapsmen $inv]
+  :foreach name,d in=$inv do={
    :if ([:len $host] = 0 or $host = $name) do={
     # Identitätsprüfung: Secrets nur an ein Gerät, das seinen Geräteschlüssel kennt
     :if (![$cfmChallenge ip=($d->"ip") serial=($d->"serial")]) do={
@@ -457,14 +474,17 @@
         :set c ($c . ":if (\$ok) do={ /user/set [find where name=\"admin\"] disabled=yes };")
       }
       :local rl ("," . ($d->"role") . ",")
-      :if ($rl ~ ",manager") do={
+      # WLAN-Passphrasen: an den CAPsMAN (D45) und an die APs für ihren lokalen Fallback (D46)
+      :local iscm false
+      :foreach cm in=$cms do={ :if ([:tostr ($cm->"n")] = $name) do={ :set iscm true } }
+      :if ($iscm or $rl ~ ",ap,") do={
         :foreach k,s in=($cfmWifi->"ssids") do={
           :local psk [$cfmVaultGet ("psk." . $k)]
           :if ([:len $psk] > 0) do={
             :set c ($c . ":if ([:len [/interface/wifi/security/find where name=\"cfm-" . $k . "\"]] > 0) do={ /interface/wifi/security/set [find where name=\"cfm-" . $k . "\"] passphrase=\"" . [$cfmEsc $psk] . "\" } else={ :set ok false };")
           }
         }
-        # PPSK-Passphrasen (die Rolle manager legt die Multi-Passphrase-Einträge mit Zufallswert an)
+        # PPSK-Passphrasen (CAPsMAN bzw. Fallback legen die Multi-Passphrase-Einträge mit Zufallswert an)
         :foreach k,ents in=($cfmWifi->"ppsk") do={
           :foreach e,o in=$ents do={
             :local pp [$cfmVaultGet ("ppsk." . $k . "." . $e)]
@@ -481,6 +501,8 @@
           :set c ($c . "/ppp/secret/remove [find where name=\"" . $n . "\"]; /ppp/secret/add name=\"" . $n . "\" password=\"" . [$cfmEsc [/ppp/secret/get $i password]] . "\" disabled=yes service=any comment=\"cfm-sys:vault\";")
         }
       }
+      # Ein neuer CAPsMAN wartet mit dem Einschalten auf die Passphrasen (cfmCapsmanOn)
+      :if ($iscm) do={ :set c ($c . ":if (\$ok) do={ :onerror e in={ /interface/wifi/capsman/set enabled=yes } do={} };") }
       :set c ($c . ":if (\$ok) do={ /ppp/secret/set [find where name=\"cfm:key\"] comment=\"cfm-sys:key sv=" . $vv . "\" }; :put \$ok")
       :local r [$cfmExec ip=($d->"ip") cmd=$c]
       :if (($r->"output") ~ "true") do={ :set done ($done + 1); :log info ("cfm: Secrets v" . $vv . " -> " . $name) } else={

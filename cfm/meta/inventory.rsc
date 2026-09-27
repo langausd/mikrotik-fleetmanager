@@ -3,7 +3,7 @@
 # Key = Identity (= Name des Hostfiles hosts/<name>.rsc)
 #  serial  RouterBoard-Seriennummer (CHR/x86: Software-ID). Gerätetausch = hier ändern
 #          + $cfmEnroll name=<name> ip=<aktuelle IP> auf dem Manager.
-#  role    base ist immer aktiv; weitere: router, switch, ap, manager, manager-backup
+#  role    base ist immer aktiv; weitere: router, switch, ap, capsman, manager, manager-backup
 #          (Kombinationen per Komma, z.B. "router,manager")
 #  ring    Rollout-Ring 0 (Canary) .. 2
 #  ip      MGMT-IP (VLAN mgmtVlan), /24

@@ -1,8 +1,8 @@
 # ============================================================
-# Rolle manager – Config-Manager (Primary) + wifi-CAPsMAN
+# Rolle manager – Config-Manager (Primary)
 #  * installiert/aktualisiert die Manager-Funktionen (Module lib/mgr-*.rsc, Lader cfm-mgr)
 #  * SFTP-Gruppe für Geräte, Verzeichnisstruktur
-#  * rendert die komplette CAPsMAN-Konfiguration aus wifi.rsc
+#  * CAPsMAN nur übergangsweise, solange kein Gerät die Rolle capsman hat (D45)
 # Wird von manager-backup.rsc mit cfmIsBackup=true wiederverwendet.
 # ============================================================
 :global cfmG; :global cfmWifi; :global cfmMf; :global cfmDl
@@ -90,106 +90,10 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
   }
 }
 
-# --- CAPsMAN aus wifi.rsc ---
-:local w $cfmWifi
-:local d ($w->"defaults")
-:local mk ($w->"master")
-$cfmEnsure m="/interface/wifi/steering" k="wst" n=({"name"="cfm-steer"}) p=({"name"="cfm-steer";"rrm"=($d->"rrm");"wnm"=($d->"wnm")})
-# Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, D32), DFS-Kanäle optional meiden
-:foreach b,c in=($w->"channels") do={
-  :local cp ({"name"=("cfm-" . $b . "g");"band"=($c->"band");"frequency"=($c->"freq");"width"=($c->"width")})
-  # als HH:MM:SS angeben: "03:00" liest RouterOS als 3 Minuten, der Vergleich schlüge jedes Mal fehl
-  :local rs [:tostr ($w->"reselect")]
-  :if ([:len $rs] = 5) do={ :set rs ($rs . ":00") }
-  :if ([:len $rs] > 0) do={ :set ($cp->"reselect-time") $rs }
-  :if ([:len [:tostr ($c->"skipDfs")]] > 0) do={ :set ($cp->"skip-dfs-channels") ($c->"skipDfs") }
-  $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b) n=({"name"=("cfm-" . $b . "g")}) p=$cp
-}
-:foreach k,s in=($w->"ssids") do={
-  :local o ({})
-  :foreach f in={"sec";"ft";"ftOverDs";"pmf";"isolation"} do={
-    :set ($o->$f) ($d->$f)
-    :if ([:len [:tostr ($s->$f)]] > 0) do={ :set ($o->$f) ($s->$f) }
-  }
-  :local nm ("cfm-" . $k)
-  :local sp ({"name"=$nm;"authentication-types"=($o->"sec");"ft"=($o->"ft");"ft-over-ds"=($o->"ftOverDs");"management-protection"=($o->"pmf")})
-  # PPSK (D32): Multi-Passphrase-Gruppe = Name des Profils; entfällt PPSK, wird sie gelöst
-  :local pp ([:typeof ($w->"ppsk"->$k)] = "array")
-  :if ($pp) do={ :set ($sp->"multi-passphrase-group") $nm }
-  $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k) n=({"name"=$nm}) p=$sp
-  :if (!$pp and $cfmDry != true) do={
-    :onerror e in={
-      :if ([:len [:tostr [/interface/wifi/security/get [find where name=$nm] multi-passphrase-group]]] > 0) do={
-        /interface/wifi/security/unset [find where name=$nm] multi-passphrase-group
-        $cfmLog ("PPSK-Gruppe an " . $nm . " entfernt")
-      }
-    } do={}
-  }
-  # An die CAPs gehen davon vlan-id und client-isolation; "bridge" gilt nur für eigene Radios des
-  # CAPsMAN, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, Datapath cfm-cap, D41)
-  $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
-  $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
-}
-
-# PPSK-Einträge: je Passphrase ein VLAN. Angelegt mit Zufallswert, die echte Passphrase kommt per
-# Secret-Push aus dem Vault (ppsk.<ssid>.<name>) – sie steht nie in Daten, Log oder Probelauf.
-:foreach k,ents in=($w->"ppsk") do={
-  :foreach e,o in=$ents do={
-    :local mp ({"group"=("cfm-" . $k);"vlan-id"=($o->"vlan");"isolation"="no"})
-    :if ([:len [:tostr ($o->"isolation")]] > 0) do={ :set ($mp->"isolation") ($o->"isolation") }
-    :if ([:len [:tostr ($o->"expires")]] > 0) do={ :set ($mp->"expires") ($o->"expires") }
-    $cfmEnsure m="/interface/wifi/security/multi-passphrase" k=("mpp:" . $k . "." . $e) p=$mp a=({"passphrase"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
-  }
-}
-
-# Master-Konfiguration je Band (trägt den Kanal) + optionales Pinning pro AP
-:local ms ($w->"ssids"->$mk)
-:local mcfg do={
-  :global cfmEnsure
-  $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=("cfm-" . $mk);"datapath"=("cfm-" . $mk);"steering"="cfm-steer";"channel"=$ch})
-}
-:local rules ({})
-:foreach ap,pins in=($w->"radios") do={
-  :foreach b,f in=$pins do={
-    :local c ($w->"channels"->$b)
-    :local chn ("cfm-" . $b . "g-" . $ap)
-    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $ap) n=({"name"=$chn}) p=({"name"=$chn;"band"=($c->"band");"frequency"=$f;"width"=($c->"width")})
-    $mcfg key=("m" . $b . "-" . $ap) name=("cfm-m" . $b . "-" . $ap) s=$ms mk=$mk country=($w->"country") ch=$chn
-    :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $ap);"re"=("^" . $ap . "\$")})
-  }
-}
-:foreach b,c in=($w->"channels") do={
-  $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g")
-  :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b);"re"=""})
-}
-
-# Provisioning (Reihenfolge: gepinnte APs vor generischen Regeln)
-:local pl ({})
-:foreach r in=$rules do={
-  :local b ($r->"b")
-  :local sl ({})
-  :foreach k,s in=($w->"ssids") do={
-    :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
-  }
-  :local pr ({"action"="create-dynamic-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl})
-  :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
-  :set ($pl->[:len $pl]) $pr
-}
-$cfmBlock m="/interface/wifi/provisioning" k="wprov" l=$pl
-
-# CAPsMAN-Dienst: Primary aktiv; Backup passiv – außer der Netwatch meldet
-# den Primary als "down" (dann hat cfm-takeover übernommen und bleibt aktiv)
-:local cp ({"interfaces"=("vlan" . $mv);"certificate"="auto";"ca-certificate"="auto";"require-peer-certificate"="no";"upgrade-policy"="none"})
-:if (!$backup) do={ :set ($cp->"enabled") "yes" } else={
-  :local nws "unknown"
-  :onerror e in={ :set nws [:tostr [/tool/netwatch/get [find where comment~"^cfm:nw:primary"] status]] } do={}
-  :if ($nws != "down") do={ :set ($cp->"enabled") "no" }
-}
-$cfmSet m="/interface/wifi/capsman" p=$cp
-
-:if ($backup) do={
-  :local prim [:pick ($cfmG->"managers") 0]
-  :local down (":if ([:len [/system/scheduler/find name=cfm-takeover]] = 0) do={ /system/scheduler/add name=cfm-takeover interval=1m on-event=\"/system script run cfm-mgr; :global cfmTakeover; \\\$cfmTakeover\" }")
-  :local up ("/system/scheduler/remove [find name=cfm-takeover]; :global cfmTakeCnt 0; :if ([:tostr [/interface/wifi/capsman/get enabled]] ~ \"yes|true\") do={ /interface/wifi/capsman/set enabled=no; :log warning \"cfm: Primary-Manager zurück – CAPsMAN auf Backup deaktiviert\" }")
-  $cfmEnsure m="/tool/netwatch" k="nw:primary" n=({"host"=$prim}) p=({"host"=$prim;"type"="icmp";"interval"="30s";"down-script"=$down;"up-script"=$up})
-}
+# --- CAPsMAN (D45): eigene Rolle capsman. Hat im Inventar noch kein Gerät diese Rolle, bleibt der
+#     Primary übergangsweise CAPsMAN (der Manager nennt ihn dann im Manifest-Feld cm). Der Backup
+#     rendert keinen CAPsMAN mehr – bei einem Ausfall zieht die Rolle capsman auf ein anderes Gerät ---
+:global cfmIsCapsman; :global cfmHas; :global cfmCapsmanOn
+# Rest der früheren Übernahme durch den Backup (Netwatch-Down-Skript), falls noch vorhanden
+:if ($cfmDry != true) do={ :onerror e in={ /system/scheduler/remove [find where name="cfm-takeover"] } do={} }
+:if (!$backup and [$cfmIsCapsman] and ![$cfmHas "capsman"]) do={ $cfmCapsmanOn }

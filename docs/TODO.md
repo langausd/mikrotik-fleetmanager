@@ -57,7 +57,7 @@ gefundenen Fehler sind behoben
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
-* PPSK-VLANs, VRRP mit mehreren Routern, CAPsMAN-Übernahme durch den Backup-Manager. Zwei APs
+* PPSK-VLANs, VRRP mit mehreren Routern, Umzug der Rolle `capsman` (D45). Zwei APs
   (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (D41), WPA2/WPA3 + FT und Clients
   mit `ft-wpa3-psk` laufen seit 2026-09-24, Roaming zwischen den beiden APs klappt (2026-09-25)
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
@@ -98,7 +98,7 @@ Backup-Manager-Rolle fehlen noch.
    `mgr-onboard.rsc`, `mgr-auto.rsc` (je höchstens 21 KB statt 53 KB in einer Datei; RouterOS liest
    per `/file get` nur etwa 60 KB, `$cfmRelease` lehnt größere Dateien ab).
 2. **Benachrichtigungen** (E-Mail oder Push-Dienst wie ntfy/Telegram) bei Fehler/Rollback, stummen
-   Geräten, gescheitertem Onboarding, CAPsMAN-Übernahme durch den Backup-Manager.
+   Geräten, gescheitertem Onboarding, CAPs im lokalen Fallback (D46).
 3. ~~**Archiv aufräumen**~~ – *erledigt (D27):* nach jedem Release und auf dem Backup-Spiegel;
    behalten werden `archiveKeep` (10) plus alle von Ringen/Geräten genutzten Versionen.
 4. ~~**Prüfskript für RouterOS-Fallen**~~ – *erledigt (D34):* `tools/rsc-check.py` (Zeile beginnt
@@ -200,12 +200,16 @@ Backup-Manager-Rolle fehlen noch.
     CA und Zertifikat. Danach scheitert die Verbindung zum cfm-Manager an
     `ssl: no trusted CA certificate found` bzw. `missing key`. Abhilfe von Hand: `caps-man-names`
     auf die Identities der Manager setzen, die fremden Zertifikate löschen und `certificate` einmal
-    auf `none` und zurück auf `request` setzen. Die Rolle `ap` sollte `caps-man-names` selbst aus dem
-    Inventar setzen (Rollen `manager`/`manager-backup`) und Zertifikate einer fremden CA entfernen.
+    auf `none` und zurück auf `request` setzen. *Behoben mit D45:* Die Rolle `ap` setzt
+    `caps-man-names`/`-addresses` aus dem Manifest-Feld `cm` (Rolle `capsman`) und erneuert die
+    CAPsMAN-Zertifikate, wenn der CAP an einem anderen CAPsMAN hängt oder `cm` sich ändert; `base`
+    schaltet auf allen anderen verwalteten Geräten den CAPsMAN-Dienst ab. Ein CAPsMAN auf einem
+    Gerät außerhalb von cfm bleibt möglich – `caps-man-names` hält die CAPs davon fern.
 27. **Unnötige Änderungen bei jedem Apply** – `geändert: /interface/bridge br: priority` auf einer
     Bridge mit `protocol-mode=none` und `gesetzt: /user: disabled` auf dem Manager erscheinen bei
     jedem Apply, obwohl sich nichts ändert. Harmlos, verrauscht aber Log und Probelauf.
-    Behoben: `al:mgmt:<ip>/32` (RouterOS speichert Adresslisten-Einträge ohne `/32`) – `cfmSame`
+    Behoben: `priority` bei `stp="none"` (ohne RSTP liefert RouterOS keinen Wert, `base` setzt sie dann
+    nicht mehr). Behoben: `al:mgmt:<ip>/32` (RouterOS speichert Adresslisten-Einträge ohne `/32`) – `cfmSame`
     vergleicht Hostadressen jetzt ohne Präfix.
 28. **`$cfmPush` an nicht aufgenommene Geräte** – `$cfmRelease all=yes` stößt jeden
     Inventar-Eintrag an, auch Platzhalter ohne Seriennummer. Das erzeugt Fehlerzeilen und trifft im
@@ -279,3 +283,19 @@ Backup-Manager-Rolle fehlen noch.
     ob die Steering-Einstellungen (`rrm`/`wnm`, BSS Transition) aktiv zum Wechsel auffordern.
     Risiko: In Randbereichen ohne besseren AP verliert ein Client dann ganz die Verbindung – vorher
     die Abdeckung prüfen (Löcher zwischen APs).
+40. **Lokaler Fallback der APs (D46), offene Punkte** – Umgesetzt ist die `master`-SSID je Radio
+    (`capsman-or-local`, Hardware-Test mit einem cAP ax). Offen: (a) weitere SSIDs als lokale
+    virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
+    APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven
+    SSID auf Hardware testen; bis dahin fallen Gast/IoT im Fallback aus. (b) Client im Fallback
+    (landet er im VLAN der SSID, DHCP?). (c) MLO (hAP be³): Bildet der AP im Fallback selbst ein
+    MLD, und nimmt es `mld-datapath`? (d) Benachrichtigung, wenn ein AP im Fallback läuft
+    (Status-Feld, `$cfmStatus`).
+41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) –
+    Manager-Befehl `$cfmWifiScan`: über den CAPsMAN von jedem AP aus scannen
+    (`/interface/wifi/scan cap-wifiN duration=…`, nur Radios ohne Clients oder mit Hinweis), fremde
+    Netze und ihre Kanäle je AP sammeln, einen Pin-Vorschlag für `wifi.rsc → radios` berechnen
+    (Kanalsätze 1/6/11 und 1/5/9/13, fremde APs mit festem Kanal als Randbedingung, Gewicht nach
+    Signalstärke) und ausgeben. Ob 3 oder 4 Kanäle besser sind, im Betrieb mit beiden Plänen
+    vergleichen (Paketverlust der Clients auf 2,4 GHz). Ohne Pins wählt der CAPsMAN die Kanäle bei
+    jeder Neuverbindung neu – nach einem Aussetzer also womöglich andere.

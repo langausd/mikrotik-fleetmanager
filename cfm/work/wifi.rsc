@@ -1,5 +1,5 @@
 # ============================================================
-# cfm – WLAN (gerendert vom CAPsMAN auf den Config-Managern)
+# cfm – WLAN (gerendert vom CAPsMAN – Rolle capsman, D45 – und als lokaler Fallback auf den APs, D46)
 #  ssids     Key = interner Name. vlan = Datapath-VLAN, bands = "2,5",
 #            sec/ft/pmf/isolation überschreiben die defaults.
 #            Passphrase NUR im Vault: cfm:psk.<key> - <key> ist der SSID-Schlüssel unten in
@@ -15,6 +15,7 @@
 #            optional "expires"="2026-12-31 23:59:59". Passphrasen NUR im Vault:
 #            $cfmSecret key=ppsk.iot.kameras value=...
 #  radios    optionales Pinning pro AP-Identity: {"ap1"={"5"="5180";"2"="2412"}}
+#            (ohne Pin wählt der CAPsMAN bei jeder Neuverbindung neu; gilt auch für den Fallback)
 # ============================================================
 :global cfmWifi {
   "country"="Germany";

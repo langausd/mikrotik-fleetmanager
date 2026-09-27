@@ -26,7 +26,11 @@ $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 :if ([:len $stp] = 0) do={ :set stp "0x8000" }
 :local proto "rstp"
 :if ([:tostr ($cfmHost->"stp")] = "none") do={ :set proto "none" }
-$cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=({"name"=$br;"protocol-mode"=$proto;"priority"=$stp}) a=({"vlan-filtering"="no"})
+# Ohne RSTP liefert RouterOS keine priority (nil) – sie zu setzen, erschiene bei jedem Apply als
+# Änderung (TODO 27); die Priorität zählt dann ohnehin nicht
+:local brp ({"name"=$br;"protocol-mode"=$proto;"priority"=$stp})
+:if ($proto = "none") do={ :set brp ({"name"=$br;"protocol-mode"=$proto}) }
+$cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=$brp a=({"vlan-filtering"="no"})
 
 # --- Ports nach Profil (portDefault gilt für alle nicht genannten Ethernet-Ports) ---
 :local ports ({})
@@ -265,6 +269,14 @@ $cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}
     :if ([:len [/user/find where name=$u and !disabled]] > 0) do={ :set act ($act + 1) }
   }
   :if ($act > 0) do={ $cfmSet m="/user" n=({"name"="admin"}) p=({"disabled"="yes"}) }
+}
+
+# --- Nur der cfm-CAPsMAN darf im MGMT-VLAN antworten (D45, TODO 26): Ein zweiter CAPsMAN lockt
+#     frische CAPs per Discovery an und verteilt eine fremde CA. Auf Geräten, die nicht CAPsMAN sind
+#     (Manifest-Feld cm), den Dienst abschalten – auch nach einem Umzug der Rolle capsman ---
+:global cfmIsCapsman
+:if (![$cfmIsCapsman]) do={
+  :onerror e in={ $cfmSet m="/interface/wifi/capsman" p=({"enabled"="no"}) } do={}
 }
 
 # --- RouterBOOT-Firmware nach RouterOS-Updates automatisch nachziehen (fehlt auf CHR/x86) ---

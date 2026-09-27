@@ -125,7 +125,8 @@ echo "put $LAB/bs-cm2.rsc cfm-bootstrap.rsc" | put 3
 r 3 '/import cfm-bootstrap.rsc verbose=no' >/dev/null
 mgr '$cfmEnroll name=cm2 ip=192.168.10.3 role=manager-backup ring=0' | grep -q Enrolled && ok "Enroll cm2" || bad "Enroll cm2"
 agentwait 3 4 cm2 && ok "cm2 hat v4 angewendet" || bad "cm2 Apply"
-expect 3 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: CAPsMAN passiv"
+expect 3 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: kein CAPsMAN (Backup ohne CAPsMAN, D45)"
+expect 3 '[:len [/tool/netwatch/find where comment~"^cfm:nw:primary"]] = 0' "cm2: keine Netwatch-Übernahme mehr (D45)"
 expect 3 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "none"' "cm2: Bridge ohne RSTP (stp=none)"
 expect 2 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "rstp"' "sw1: Bridge weiter mit RSTP"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: CAPsMAN aktiv"
@@ -259,6 +260,52 @@ mgr '$cfmPlan host=sw1' | grep -q "# Plan sw1" && ok "sw1: Probelauf nach noappl
 t1=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t1" ] && break; sleep 3; done
 expect 2 '![/system/scheduler/get [find name="cfm-agent"] disabled]' "sw1: Apply schaltet den Agent-Scheduler wieder ein"
+
+step "14c. CAPsMAN als eigene Rolle (D45), AP mit lokalem Fallback ohne Radios (D46)"
+invrole() { # invrole <alt> <neu>: Rolle im Inventar ersetzen (Wert muss eindeutig sein), Manifeste neu bauen
+  local o="\\\"role\\\"=\\\"$1\\\"" n="\\\"role\\\"=\\\"$2\\\"" l=$(( ${#1} + 9 ))
+  mgr ':local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "'"$o"'"]; /file/set $f contents=([:pick $c 0 $p] . "'"$n"'" . [:pick $c ($p + '"$l"') [:len $c]]); :global cfmManifests; $cfmManifests' >/dev/null; }
+applied() { # applied <name>: Lauf erzwingen und abwarten, true bei res=ok
+  local t0; t0=$(stat "$1" t); mgr "\$cfmPush host=$1 force=yes" >/dev/null
+  for _ in $(seq 1 40); do [ "$(stat "$1" t)" != "$t0" ] && break; sleep 3; done
+  [ "$(stat "$1" t)" != "$t0" ] && [ "$(stat "$1" res)" = ok ]; }
+mgr ':global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put $e }' | grep -q "kein Gerät mit Rolle capsman" && ok "Prüfung: Übergang ohne Rolle capsman gemeldet (cm1 bleibt CAPsMAN)" || bad "Übergangswarnung fehlt"
+# CAPsMAN auf sw1, cm2 zusätzlich AP (CHR ohne Radios: CAP-Einstellungen, Profile, Passphrasen)
+invrole "switch,router" "switch,router,capsman"
+invrole "manager-backup" "manager-backup,ap"
+out=$(mgr ':global cfmCheck; /file/add name="cfm/meta/inv2.rsc" contents=[/file/get [/file/find name="cfm/meta/inventory.rsc"] contents]; :local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "\"role\"=\"manager\""]; /file/set $f contents=([:pick $c 0 $p] . "\"role\"=\"manager,capsman\"" . [:pick $c ($p + 16) [:len $c]]); :foreach e in=([$cfmCheck]->"err") do={ :put $e }; /file/set $f contents=[/file/get [/file/find name="cfm/meta/inv2.rsc"] contents]; /file/remove [/file/find name="cfm/meta/inv2.rsc"]')
+echo "$out" | grep -q "Rolle capsman mehrfach vergeben" && ok "Prüfung: nur ein CAPsMAN (Rolle capsman doppelt = Fehler)" || { bad "doppelte Rolle capsman nicht erkannt"; echo "$out" | tail -3; }
+applied sw1 && ok "sw1 als switch,router,capsman angewendet" || bad "sw1 capsman: $(stat sw1 res)"
+expect 2 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [/ppp/secret/get [find name="cfm:key"] comment] ~ "sv=0\$"' "sw1: CAPsMAN gerendert, bleibt aus bis zur PSK (Secret-Push angefordert)"
+mgr '$cfmSecretPush host=sw1' >/dev/null
+expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "sw1: Secret-Push setzt die PSK und schaltet den CAPsMAN ein"
+applied cm1 && ok "cm1 nach dem Umzug angewendet" || bad "cm1: $(stat cm1 res)"
+expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm1: CAPsMAN aus, Profile abgeräumt"
+applied cm2 && ok "cm2 als manager-backup,ap angewendet" || bad "cm2 ap: $(stat cm2 res)"
+expect 3 '[:tostr [/interface/wifi/cap/get caps-man-addresses]] = "192.168.10.21" and [:tostr [/interface/wifi/cap/get caps-man-names]] = "sw1" and [/interface/wifi/datapath/get [find name="cfm-cap"] comment] = "cfm:wdp-cap cm=sw1"' "cm2: CAP zeigt auf sw1 (Adresse und Name aus dem Manifest, im Datapath gemerkt)"
+expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf:l"]] = 2 and [/interface/wifi/datapath/get [find name="cfm-main"] vlan-id] = 20 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: lokale Fallback-Konfiguration je Band, Datapath mit VLAN, kein CAPsMAN"
+mgr '$cfmSecretPush host=cm2' >/dev/null
+expect 3 '[/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "cm2: PSK für den lokalen Fallback per Secret-Push"
+t0=$(stat cm2 t); mgr '$cfmPush host=cm2 force=yes' >/dev/null
+for _ in $(seq 1 40); do [ "$(stat cm2 t)" != "$t0" ] && break; sleep 3; done
+stat cm2 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Rolle ap idempotent" || bad "ap idempotent: $(stat cm2 stats)"
+# CAPsMAN zurück auf cm1 (ohne Rolle capsman übernimmt der Primary): cm2 folgt, erneuert Zertifikate
+nc=$(r 3 ':put [:len [/certificate/find where trust-store=capsman]]' | tail -1 | tr -dc 0-9)
+invrole "switch,router,capsman" "switch,router"
+applied sw1 && ok "sw1 ohne Rolle capsman angewendet" || bad "sw1: $(stat sw1 res)"
+expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0' "sw1: CAPsMAN aus und abgeräumt"
+applied cm1 && ok "cm1 wieder CAPsMAN (Übergangsregel)" || bad "cm1: $(stat cm1 res)"
+mgr '$cfmSecretPush host=cm1' >/dev/null
+expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2' "cm1: CAPsMAN nach dem Secret-Push wieder aktiv"
+applied cm2 && ok "cm2 folgt dem CAPsMAN" || bad "cm2: $(stat cm2 res)"
+expect 3 '[:tostr [/interface/wifi/cap/get caps-man-names]] = "cm1" and [/interface/wifi/datapath/get [find name="cfm-cap"] comment] = "cfm:wdp-cap cm=cm1"' "cm2: CAP zeigt auf cm1"
+if [ "${nc:-0}" -gt 0 ]; then
+  expect 3 '[:len [/log/find where message~"^cfm: CAPsMAN-Zertifikate erneuert"]] >= 1' "cm2: Zertifikate des alten CAPsMAN erneuert ($nc vorher)"
+else echo "  - cm2 hatte keine CAPsMAN-Zertifikate (CAP ohne Radios), Erneuerung nicht prüfbar"; fi
+invrole "manager-backup,ap" "manager-backup"
+applied cm2 && ok "cm2 wieder nur manager-backup" || bad "cm2: $(stat cm2 res)"
+expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm2: WLAN-Profile ohne Rolle ap abgeräumt"
+r 3 '/interface/wifi/cap/set enabled=no' >/dev/null
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

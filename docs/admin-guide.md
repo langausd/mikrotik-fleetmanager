@@ -33,7 +33,9 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
   Port-Profile, Firewall-Zonen, WLAN, Benutzer, Gerätespezifika.
 * Jedes Gerät gleicht sich selbst regelmäßig mit dieser Soll-Konfiguration ab. Änderungen gehen
   in **Canary-Ringen** raus, jedes Gerät sichert sich vorher und rollt bei Problemen selbst zurück.
-* Der Manager ist gleichzeitig **wifi-CAPsMAN** für alle APs (mehrere SSIDs, WPA2/WPA3, 802.11r/k/v).
+* Ein Gerät mit der Rolle `capsman` ist **wifi-CAPsMAN** für alle APs (mehrere SSIDs, WPA2/WPA3,
+  802.11r/k/v); ohne diese Rolle übernimmt das übergangsweise der Manager. Fällt der CAPsMAN aus,
+  senden die APs mit einer lokalen Kopie der Haupt-SSID weiter (D45/D46).
 * Secrets (Passwörter, PSKs) liegen nur im **Vault** des Managers und werden per SSH verteilt.
 * Die aktive Config jedes Geräts liegt zentral auf dem Manager und optional in einem **Git-Repo**.
 * **Neue Geräte** im Werkszustand werden am Zielort weitgehend automatisch aufgenommen.
@@ -238,6 +240,8 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   `$cfmSecret key=psk.<schlüssel> value=…`.
 * `master`: die SSID, die das physische Radio trägt, alle anderen werden virtuelle APs.
 * `channels`: Kanal-Pools je Band; `radios`: optional feste Kanäle je AP (`{"ap1"={"5"="5180"}}`).
+  Ohne Pin wählt der CAPsMAN den Kanal bei jeder Neuverbindung eines APs aus dem Pool neu; der Pin
+  gilt auch für den lokalen Fallback der APs (D46).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (Standard `03:00`); je Band `skipDfs`
   (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
 * Wi-Fi 7 (`wifi-qcom-be`, z.B. hAP be³): Der CAPsMAN fasst die Radios eines CAP mit gleicher SSID zu
@@ -315,10 +319,11 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 |---|---|
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (beide Manager als Adressen), Radios an den CAPsMAN übergeben; lokale Datapaths `cfm-cap` (Radios, virtuelle APs) und `cfm-mld` (MLO bei Wi-Fi 7) |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7) |
+| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
-| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK und Kanal-Neuwahl; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute) |
-| `manager-backup` | wie `manager`, aber CAPsMAN passiv (Netwatch übernimmt, wenn der Primary ~3 min weg ist), spiegelt den Primary, Releases gesperrt |
+| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute) |
+| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
 zusätzlich `local-forward`, zum Beispiel per `hosts/<name>.post.rsc`. Sie greifen vor dem finalen
@@ -420,7 +425,31 @@ funktionieren damit unverändert.
 2. **Switches entlang des Pfads**, damit MGMT- und Onboarding-VLAN überall ankommen.
 3. **Backup-Manager** (Rolle z.B. `switch,manager-backup`), anschließend `managers` in
    `global.rsc` prüfen und releasen.
-4. **APs.**
+4. **CAPsMAN** (Rolle `capsman`, z.B. `switch,capsman`) – am besten ein Gerät ohne VM darunter;
+   ohne übernimmt der Primary-Manager (6.6).
+5. **APs.**
+
+### 6.6 CAPsMAN auf ein eigenes Gerät legen oder umziehen
+
+Der CAPsMAN ist ein eigener Dienst (Rolle `capsman`, D45), unabhängig vom Config-Manager. Die APs
+erfahren über ihr Manifest (Feld `cm`), wo er läuft; wandert die Rolle, folgen sie beim nächsten
+Lauf, erneuern ihre CAPsMAN-Zertifikate und verbinden sich neu. Den kurzen Abriss überbrücken
+sie mit ihrer lokalen Kopie der `master`-SSID (D46).
+
+1. Alle Geräte auf einem Stand mit D45/D46 (Release, alle Ringe). Einträge `caps-man-names` in
+   `hosts/*.post.rsc` entfernen, sie würden die Namen aus dem Manifest überschreiben.
+2. Rolle vergeben: `$cfmEnroll name=<gerät> ip=<mgmt-ip> role=<bisher>,capsman`. Das nimmt das
+   Gerät mit neuer Rolle neu auf (neuer Geräteschlüssel, Agent neu, erster Lauf) und baut die
+   Manifeste aller Geräte neu – ab da zeigen sie auf den neuen CAPsMAN. `$cfmCheck` lehnt zwei
+   CAPsMAN-Geräte ab.
+3. Zuerst den neuen CAPsMAN anwenden lassen: `$cfmPush host=<gerät>`. Er bleibt aus, bis die
+   Passphrasen da sind – sofort nachschieben: `$cfmSecretPush host=<gerät>` (sonst im nächsten Tick).
+4. Die APs und den bisherigen CAPsMAN anstoßen: `$cfmPush host=<ap>` bzw. `$cfmPush ring=…`.
+   Der alte CAPsMAN schaltet sich ab und räumt seine WLAN-Profile weg.
+5. Prüfen: auf dem neuen CAPsMAN `/interface/wifi/print` (je AP dynamische `cap-wifi*`), auf einem
+   AP `/interface/wifi/cap/print` (`current-caps-man-identity`).
+
+Fällt der CAPsMAN länger aus, genauso auf ein anderes Gerät verschieben.
 
 ### 6.5 Git-Sicherung (optional)
 
@@ -727,8 +756,9 @@ ist. Bei mehreren WireGuard-Verbindungen (z.B. weitere Standorte) auf sich nicht
 | Gerät nach dem Apply unerreichbar | Watchdog rollt nach 5 min zurück, Ergebnis `rollback-watchdog` | Ursache (Ports/VLANs) im Hostfile beheben |
 | Fehlerhafte Version schon in Ring 0 | Ringe 1 und 2 bekommen sie nicht | reparieren oder `$cfmRollback ver=<N>` |
 | Zurück auf einen alten Stand | – | `$cfmRollback ver=<N> [all=yes]`. **Achtung:** überschreibt `work/` mit dem alten Stand |
-| Primary-Manager fällt aus | Geräte ziehen vom Backup; der Backup-CAPsMAN übernimmt nach ~3 min | bei längerem Ausfall auf cm2 `$cfmPromoteManager`, dann `managers` tauschen und releasen |
-| Primary kommt zurück | CAPsMAN des Backups schaltet sich ab | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
+| Primary-Manager fällt aus | Geräte ziehen vom Backup; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager`, dann `managers` tauschen und releasen |
+| Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
+| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs noch nicht, TODO 40); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
 | Release stoppt mit „Prüfung“ | nichts wurde ausgerollt | Fehler beheben oder bewusst `force=yes` |
 | RouterOS-Update schlägt fehl | Gerät bleibt auf der alten Version, Status `fehlgeschlagen`, kein weiterer Neustart | Log am Gerät lesen, `$cfmUpgrade cancel=yes host=<name>`, neuen Auftrag erteilen |

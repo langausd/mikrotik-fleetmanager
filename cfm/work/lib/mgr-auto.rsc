@@ -2,7 +2,7 @@
 # cfm lib/mgr-auto.rsc – Manager-Funktionen: Automatik
 #   $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick"), $cfmOnbTickRun (Scheduler
 #   cfm-mgr-onb-tick, fest 1m), $cfmAutoPromote, $cfmSecretSync, $cfmHookState, $cfmMirror,
-#   $cfmPromoteManager, $cfmTakeover
+#   $cfmPromoteManager
 # ============================================================
 # ---------- Automatik (Scheduler cfm-mgr-tick) ----------
 :global cfmAutoPromote do={
@@ -115,18 +115,6 @@
     :if ($rel != "index.dat") do={ $cfmWrite ($b . "/work/" . $rel) [/file/get $f contents] }
   }
   :put ("Befördert: dieser Manager ist jetzt Primary (work/ = v" . $v . "). Reihenfolge in global.rsc managers anpassen und releasen!")
-}
-
-:global cfmTakeCnt
-:global cfmTakeover do={
-  :global cfmG; :global cfmLoadData; :global cfmTakeCnt
-  $cfmLoadData
-  :if ([/ping [:pick ($cfmG->"managers") 0] count=3] = 0) do={ :set cfmTakeCnt ([:tonum $cfmTakeCnt] + 1) } else={ :set cfmTakeCnt 0 }
-  :if ($cfmTakeCnt >= 3) do={
-    /interface/wifi/capsman/set enabled=yes
-    /system/scheduler/remove [find where name="cfm-takeover"]
-    :log warning "cfm: Primary-Manager seit 3 min weg – CAPsMAN auf Backup aktiviert"
-  }
 }
 
 :global cfmTick do={

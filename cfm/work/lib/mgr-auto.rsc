@@ -96,7 +96,10 @@
     }
   }
   :foreach name,d in=[$cfmInvLoad] do={
-    $get s=$src u=$u r=("live/m/" . ($d->"serial") . ".mf") l=($b . "/live/m/" . ($d->"serial") . ".mf")
+    # Dateiname aus der Seriennummer: Die System-ID einer CHR kann "/" enthalten (TODO 42)
+    :local sfn ""
+    :for i from=0 to=([:len ($d->"serial")] - 1) do={ :local c [:pick ($d->"serial") $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
+    $get s=$src u=$u r=("live/m/" . $sfn . ".mf") l=($b . "/live/m/" . $sfn . ".mf")
     :foreach f in={"status.dat";"export.rsc";"audit.txt"} do={ $get s=$src u=$u r=("state/" . $name . "/" . $f) l=($b . "/state/" . $name . "/" . $f) }
   }
   # der Spiegel wächst sonst unbegrenzt (gleiche Regel wie auf dem Primary)

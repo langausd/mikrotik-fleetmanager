@@ -210,8 +210,11 @@
     :if ([:len $ring] = 0) do={ :set ring "2" }
     :local v ($rg->("r" . $ring))
     :local src ("archive/v" . $v)
-    :local out ($b . "/live/m/" . ($d->"serial") . ".mf")
-    :if ($pl > 0) do={ :set v 0; :set src "plan"; :set out ($b . "/plan/m/" . ($d->"serial") . ".mf") }
+    # Dateiname aus der Seriennummer: Die System-ID einer CHR kann "/" enthalten (TODO 42)
+    :local sfn ""
+    :for i from=0 to=([:len ($d->"serial")] - 1) do={ :local c [:pick ($d->"serial") $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
+    :local out ($b . "/live/m/" . $sfn . ".mf")
+    :if ($pl > 0) do={ :set v 0; :set src "plan"; :set out ($b . "/plan/m/" . $sfn . ".mf") }
     :local key [$cfmVaultGet ("mac." . ($d->"serial"))]
     :if ([:len $key] > 0 and [:len [:tostr $v]] > 0) do={
       :local fx ([$cfmJson ($b . "/" . $src . "/index.dat")]->"files")
@@ -482,6 +485,8 @@
           :local psk [$cfmVaultGet ("psk." . $k)]
           :if ([:len $psk] > 0) do={
             :set c ($c . ":if ([:len [/interface/wifi/security/find where name=\"cfm-" . $k . "\"]] > 0) do={ /interface/wifi/security/set [find where name=\"cfm-" . $k . "\"] passphrase=\"" . [$cfmEsc $psk] . "\" } else={ :set ok false };")
+            # Profile je Band (z.B. 6 GHz nur WPA3: cfm-<SSID>-6g) mit derselben Passphrase
+            :set c ($c . ":foreach i in=[/interface/wifi/security/find where name~\"^cfm-" . $k . "-[0-9]+g\\\$\"] do={ /interface/wifi/security/set \$i passphrase=\"" . [$cfmEsc $psk] . "\" };")
           }
         }
         # PPSK-Passphrasen (CAPsMAN bzw. Fallback legen die Multi-Passphrase-Einträge mit Zufallswert an)

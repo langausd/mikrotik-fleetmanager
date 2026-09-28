@@ -8,6 +8,13 @@
 #  master    SSID, die das physische Radio trägt (die übrigen werden virtuelle APs)
 #  channels  Kanal-Pools je Band; RouterOS wählt daraus den passendsten Kanal.
 #            skipDfs = "10min-cac" (Wetterradar-Kanäle meiden) | "all" | "disabled"
+#            sec/ft/ftOverDs/pmf überschreiben die Security aller SSIDs auf diesem Band (eigenes
+#            Profil cfm-<SSID>-<Band>g, gleiche Passphrase). 6 GHz verlangt WPA3 mit PMF:
+#              "6"={"band"="6ghz-ax";"freq"="5955,5975,...";"width"="20/40/80/160mhz";"sec"="wpa3-psk";"pmf"="required"}
+#            Die Master-SSID sendet auf allen Bändern aus channels, weitere SSIDs laut "bands".
+#  mlo       Wi-Fi 7 Multi-Link (multi-link-mode der Provisioning-Regeln): "disabled" (Standard) |
+#            "auto" | "all" | "master". Ein MLD bietet kein FT an, und es gibt nur ein mld-datapath
+#            je CAP (VLAN der Master-SSID) – MLO deshalb nur ohne weitere SSIDs einschalten.
 #  reselect  Uhrzeit der nächtlichen Kanal-Neuwahl (reselect-time), leer = nur beim Start
 #  ppsk      mehrere Passphrasen mit eigenem VLAN je SSID (RouterOS ≥ 7.17, nur WPA2-PSK,
 #            VLAN nur mit wifi-qcom). Beispiel für die IoT-SSID:

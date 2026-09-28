@@ -231,9 +231,27 @@ agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (PPSK) angewendet" || { bad "cm1 Apply
 expect 1 '[:len [/interface/wifi/security/multi-passphrase/find where comment="cfm:mpp:iot.gast" and vlan-id=40]] = 1 and [/interface/wifi/security/get [find name="cfm-iot"] multi-passphrase-group] = "cfm-iot"' "cm1: Multi-Passphrase für VLAN 40 an der IoT-SSID"
 mgr '$cfmSecret key=ppsk.iot.gast value="PPSK-Gast-2026"; :global cfmSecretPush; $cfmSecretPush host=cm1' >/dev/null
 expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot.gast"] passphrase] = "PPSK-Gast-2026"' "PPSK-Passphrase per Secret-Push gesetzt"
-out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ppsk\"->\"main\") {\"x\"={\"vlan\"=20}}\n:set (\$cfmWifi->\"ssids\"->\"cap\") {\"ssid\"=\"x\";\"vlan\"=20}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
+# 6 GHz: Security je Band (nur WPA3, PMF required) für Master und Slave-SSID, MLO aus (TODO 32)
+mgr '/file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5955,5975\";\"width\"=\"20/40/80mhz\";\"sec\"=\"wpa3-psk\";\"pmf\"=\"required\"}\n:set (\$cfmWifi->\"ssids\"->\"guest\"->\"bands\") \"2,5,6\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" 6 GHz" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (6 GHz) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
+expect 1 '[:tostr [/interface/wifi/security/get [find name="cfm-main-6g"] authentication-types]] = "wpa3-psk" and [/interface/wifi/security/get [find name="cfm-main-6g"] management-protection] = "required" and [:tostr [/interface/wifi/security/get [find name="cfm-main"] authentication-types]] ~ "wpa2-psk"' "cm1: eigenes Security-Profil für 6 GHz (WPA3, PMF required), 2,4/5 GHz unverändert"
+expect 1 '[/interface/wifi/configuration/get [find name="cfm-m6"] security] = "cfm-main-6g" and [/interface/wifi/configuration/get [find name="cfm-guest-6g"] security] = "cfm-guest-6g" and [:tostr [/interface/wifi/provisioning/get [find where supported-bands=6ghz-ax] slave-configurations]] ~ "cfm-guest-6g"' "cm1: Master- und Slave-Konfiguration auf 6 GHz mit dem Band-Profil"
+expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and multi-link-mode=disabled]] = [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]]' "cm1: MLO in allen Provisioning-Regeln aus"
+mgr ':global cfmSecretPush; $cfmSecretPush host=cm1' >/dev/null
+expect 1 '[/interface/wifi/security/get [find name="cfm-main-6g"] passphrase] = [/interface/wifi/security/get [find name="cfm-main"] passphrase] and [:len [/interface/wifi/security/get [find name="cfm-main"] passphrase]] > 0' "cm1: Secret-Push setzt die Passphrase auch im 6-GHz-Profil"
+# stpPrio in Großbuchstaben: RouterOS meldet "0xa000" - kein erneutes Setzen bei jedem Apply (TODO 27)
+mgr ':global e2eP [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eP . ":set (\$cfmHost->\"stpPrio\") \"0xA000\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" stpPrio" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (stpPrio 0xA000) angewendet" || bad "sw1 Apply v$rv"
+expect 2 '[/interface/bridge/get [find comment~"^cfm:br( |\$)"] priority] = "0xa000"' "sw1: Bridge-Priorität 0xa000"
+out=$(mgr '$cfmPlan host=sw1')
+echo "$out" | grep -q "priority" && { bad "stpPrio 0xA000 erscheint im Probelauf als Änderung"; echo "$out" | grep priority; } || ok "stpPrio in Großbuchstaben ohne Scheinänderung"
+mgr ':global e2eP; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eP' >/dev/null
+out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ppsk\"->\"main\") {\"x\"={\"vlan\"=20}}\n:set (\$cfmWifi->\"ssids\"->\"cap\") {\"ssid\"=\"x\";\"vlan\"=20}\n:set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5955\";\"width\"=\"20mhz\"}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
 echo "$out" | grep -q "PPSK auf SSID main braucht sec=wpa2-psk" && ok "Prüfung: PPSK nur mit WPA2-PSK" || { bad "PPSK/WPA3 nicht erkannt"; echo "$out" | tail -3; }
 echo "$out" | grep -q "cap ist reserviert" && ok "Prüfung: SSID-Schlüssel cap reserviert (D41)" || { bad "SSID-Schlüssel cap nicht erkannt"; echo "$out" | tail -3; }
+echo "$out" | grep -q "(6 GHz) braucht" && ok "Prüfung: 6 GHz nur mit WPA3 und PMF required" || { bad "6 GHz mit WPA2 nicht erkannt"; echo "$out" | tail -3; }
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 
 step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enroll ohne Apply (sw1)"
@@ -333,6 +351,8 @@ expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and dst-port="8728"]] = 0' "sw1 (router): ohne capsmanApi keine Forward-Freigabe"
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm2: WLAN-Profile ohne Rolle ap abgeräumt"
 r 3 '/interface/wifi/cap/set enabled=no' >/dev/null
+
+expect 3 '[:len [/log/find where message~"login failure for user cfmd-cm2 from 192.168.10.3"]] = 0' "cm2: Agent fragt nie sich selbst (TODO 44)"
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

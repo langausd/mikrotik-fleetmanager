@@ -122,6 +122,10 @@
   :local b [:tostr $2]
   # Hostadresse: Adresslisten und Firewall-Regeln speichern x.x.x.x/32 (IPv6 /128) ohne Präfix
   :if ($a != $b and [:typeof [:find $a "/"]] = "nil" and $b ~ "/(32|128)\$") do={ :set b [:pick $b 0 [:find $b "/"]] }
+  # Zahl als Text: RouterOS liefert z.B. die Bridge-Priorität als "0xe000" - "0xE000" oder 57344 im
+  # Hostfile sind derselbe Wert (TODO 27)
+  :local nre "^(0[xX][0-9a-fA-F]+|[0-9]+)\$"
+  :if ($a != $b and $a ~ $nre and $b ~ $nre) do={ :return ([:tonum $a] = [:tonum $b]) }
   :return ($a = $b)
 }
 
@@ -173,6 +177,13 @@
     :if ([:len [:tostr ($c->"skipDfs")]] > 0) do={ :set ($cp->"skip-dfs-channels") ($c->"skipDfs") }
     $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b) n=({"name"=("cfm-" . $b . "g")}) p=$cp
   }
+  # Security je Band (z.B. 6 GHz: nur WPA3 mit PMF required): Ein Kanal-Eintrag mit sec/ft/ftOverDs/pmf
+  # überschreibt die Werte der SSIDs auf diesem Band -> eigenes Profil cfm-<SSID>-<Band>g (gleiche
+  # Passphrase per Secret-Push), für Slave-SSIDs dazu eine eigene Konfiguration gleichen Namens
+  :local bov ({})
+  :foreach b,c in=($w->"channels") do={
+    :foreach f in={"sec";"ft";"ftOverDs";"pmf"} do={ :if ([:len [:tostr ($c->$f)]] > 0) do={ :set ($bov->$b) 1 } }
+  }
   :foreach k,s in=($w->"ssids") do={
     :local o ({})
     :foreach f in={"sec";"ft";"ftOverDs";"pmf";"isolation"} do={
@@ -197,6 +208,19 @@
     # eigene Radios, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, D41)
     $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
     $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
+    :foreach b,c in=($w->"channels") do={
+      :if ([:typeof ($bov->$b)] != "nothing" and ($k = $mk or (("," . ($s->"bands") . ",") ~ ("," . $b . ",")))) do={
+        :local bn ($nm . "-" . $b . "g")
+        :local bp ({"name"=$bn;"authentication-types"=($o->"sec");"ft"=($o->"ft");"ft-over-ds"=($o->"ftOverDs");"management-protection"=($o->"pmf")})
+        :foreach f,pn in={"sec"="authentication-types";"ft"="ft";"ftOverDs"="ft-over-ds";"pmf"="management-protection"} do={
+          :if ([:len [:tostr ($c->$f)]] > 0) do={ :set ($bp->$pn) ($c->$f) }
+        }
+        $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k . "-" . $b) n=({"name"=$bn}) p=$bp
+        :if ($k != $mk) do={
+          $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k . "-" . $b) n=({"name"=$bn}) p=({"name"=$bn;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$bn;"datapath"=$nm;"steering"="cfm-steer"})
+        }
+      }
+    }
   }
   # PPSK-Einträge: je Passphrase ein VLAN. Angelegt mit Zufallswert, die echte Passphrase kommt per
   # Secret-Push aus dem Vault (ppsk.<ssid>.<name>) – sie steht nie in Daten, Log oder Probelauf.
@@ -208,11 +232,16 @@
       $cfmEnsure m="/interface/wifi/security/multi-passphrase" k=("mpp:" . $k . "." . $e) p=$mp a=({"passphrase"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
     }
   }
-  # Master-Konfiguration je Band (trägt den Kanal)
+  # Master-Konfiguration je Band (trägt den Kanal; Security des Bands, s.o.)
   :local ms ($w->"ssids"->$mk)
+  :local msec ({})
+  :foreach b,c in=($w->"channels") do={
+    :set ($msec->$b) ("cfm-" . $mk)
+    :if ([:typeof ($bov->$b)] != "nothing") do={ :set ($msec->$b) ("cfm-" . $mk . "-" . $b . "g") }
+  }
   :local mcfg do={
     :global cfmEnsure
-    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=("cfm-" . $mk);"datapath"=("cfm-" . $mk);"steering"="cfm-steer";"channel"=$ch})
+    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=("cfm-" . $mk);"steering"="cfm-steer";"channel"=$ch})
   }
   :local pinch do={
     :global cfmEnsure
@@ -226,7 +255,7 @@
       :local chn ("cfm-" . $b . "g")
       :local f [:tostr ($w->"radios"->$ap->$b)]
       :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
-      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn
+      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b)
       :set ($cf->$b) ("cfm-l" . $b)
     }
     :return $cf
@@ -236,24 +265,38 @@
   :foreach apn,pins in=($w->"radios") do={
     :foreach b,f in=$pins do={
       :local chn [$pinch b=$b apn=$apn c=($w->"channels"->$b) f=$f]
-      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn
+      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b)
       :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
     }
   }
   :foreach b,c in=($w->"channels") do={
-    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g")
+    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g") sec=($msec->$b)
     :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b);"re"=""})
   }
+  # MLO (Wi-Fi 7): Standard aus - ein MLD bietet kein FT an ("MLO does not support Fast Transition"),
+  # Clients im FT-Verbund mieden deshalb die Wi-Fi-7-APs; außerdem gibt es nur ein mld-datapath je CAP
+  # (VLAN der Master-SSID), weitere SSIDs landeten per MLO dort. multi-link-mode kennt nicht jede
+  # RouterOS-Version: Probe gegen eine Regel, die es nicht gibt ("no such item" = Parameter bekannt).
+  :local mlm [:tostr ($w->"mlo")]
+  :if ([:len $mlm] = 0) do={ :set mlm "disabled" }
+  :local mlOk true
+  :onerror e in={
+    :local f [:parse ("/interface/wifi/provisioning/set *FFFFFF multi-link-mode=" . $mlm)]
+    $f
+  } do={ :if ($e ~ "bad parameter") do={ :set mlOk false } }
   :local pl ({})
   :foreach r in=$rules do={
     :local b ($r->"b")
     :local sl ({})
     :foreach k,s in=($w->"ssids") do={
-      :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
+      :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={
+        :if ([:typeof ($bov->$b)] != "nothing") do={ :set ($sl->[:len $sl]) ("cfm-" . $k . "-" . $b . "g") } else={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
+      }
     }
     # Interface-Namen aus Identity und Band (z.B. ap1-2g) statt cap-wifiN, das sich bei jeder
     # Neuverbindung verschiebt - so ist in Registration-Tabelle und Monitoring der AP erkennbar (D47)
     :local pr ({"action"="create-dynamic-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl;"name-format"=("%I-" . $b . "g")})
+    :if ($mlOk) do={ :set ($pr->"multi-link-mode") $mlm }
     :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
     :set ($pl->[:len $pl]) $pr
   }
@@ -270,7 +313,8 @@
   :local nm ("cfm-" . [:tostr ($cfmWifi->"master")])
   :local miss false
   :onerror e in={
-    :foreach i in=[/interface/wifi/security/find where name=$nm] do={
+    # samt der Profile je Band (cfm-<SSID>-<Band>g, z.B. 6 GHz)
+    :foreach i in=[/interface/wifi/security/find where (name=$nm or name~("^" . $nm . "-[0-9]+g\$"))] do={
       :if ([:len [:tostr [/interface/wifi/security/get $i passphrase]]] = 0) do={ :set miss true }
     }
   } do={}

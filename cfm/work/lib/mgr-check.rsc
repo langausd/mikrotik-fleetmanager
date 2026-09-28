@@ -64,6 +64,18 @@
     :if ($k = "cap") do={ :set ($err->[:len $err]) "wifi.rsc: SSID-Schlüssel cap ist reserviert (Datapath cfm-cap der APs, D41)" }
     :if ([:len [$cfmVaultGet ("psk." . $k)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: WLAN-Passphrase fehlt, \$cfmSecret key=psk." . $k . " value=...") }
   }
+  # 6 GHz verlangt WPA3 mit PMF (kein WPA2-Übergang): Security je Band im Kanal-Eintrag (sec/pmf)
+  :foreach b,c in=($cfmWifi->"channels") do={
+    :if ([:tostr ($c->"band")] ~ "^6ghz") do={
+      :local sec [:tostr ($c->"sec")]
+      :if ([:len $sec] = 0) do={ :set sec [:tostr ($cfmWifi->"defaults"->"sec")] }
+      :local pmf [:tostr ($c->"pmf")]
+      :if ([:len $pmf] = 0) do={ :set pmf [:tostr ($cfmWifi->"defaults"->"pmf")] }
+      :if ($sec ~ "wpa2" or !($sec ~ "wpa3") or $pmf != "required") do={ :set ($err->[:len $err]) ("wifi.rsc: Kanal " . $b . " (6 GHz) braucht \"sec\"=\"wpa3-psk\" und \"pmf\"=\"required\"") }
+    }
+  }
+  :local mlo [:tostr ($cfmWifi->"mlo")]
+  :if ([:len $mlo] > 0 and $mlo != "disabled" and $mlo != "auto" and $mlo != "all" and $mlo != "master") do={ :set ($err->[:len $err]) ("wifi.rsc: mlo=" . $mlo . " unbekannt (disabled|auto|all|master)") }
   # PPSK (Multi-Passphrase, D32): nur WPA2-PSK, VLAN vorhanden und auf den AP-Uplinks (trunk-ap)
   :local apTag [:tostr ($cfmProfiles->"trunk-ap"->"tag")]
   :foreach k,ents in=($cfmWifi->"ppsk") do={

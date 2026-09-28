@@ -211,10 +211,9 @@ Backup-Manager-Rolle fehlen noch.
     Behoben: `priority` bei `stp="none"` (ohne RSTP liefert RouterOS keinen Wert, `base` setzt sie dann
     nicht mehr). Behoben: `al:mgmt:<ip>/32` (RouterOS speichert Adresslisten-Einträge ohne `/32`) – `cfmSame`
     vergleicht Hostadressen jetzt ohne Präfix.
-    Offen (Befund 2026-09-28): `stpPrio` in Großbuchstaben (`"0xE000"`) – RouterOS liefert `0xe000`,
-    der Textvergleich schlägt fehl, `priority` wird bei jedem Apply neu gesetzt (set=1). Abhilfe im
-    Hostfile: klein schreiben. Dauerhaft: `base` wandelt `stpPrio` mit `:tonum` in eine Zahl, dann
-    vergleicht `cfmSame` numerisch (RouterOS nimmt die Zahl an und zeigt sie hexadezimal) – Labortest.
+    Behoben (Befund 2026-09-28): `stpPrio` in Großbuchstaben (`"0xE000"`) – RouterOS liefert `0xe000`
+    (als Text), der Textvergleich schlug fehl, `priority` wurde bei jedem Apply neu gesetzt (set=1).
+    `cfmSame` vergleicht Zahlen in Textform (dezimal oder `0x…`) jetzt numerisch.
 28. **`$cfmPush` an nicht aufgenommene Geräte** – `$cfmRelease all=yes` stößt jeden
     Inventar-Eintrag an, auch Platzhalter ohne Seriennummer. Das erzeugt Fehlerzeilen und trifft im
     Zweifel ein fremdes Gerät, das gerade die geplante Adresse hat. Einträge ohne echte
@@ -233,7 +232,9 @@ Backup-Manager-Rolle fehlen noch.
     Manager versuchte dabei in jedem Tick, sich am Switch anzumelden. Vorschlag: `$cfmOnboard
     port=manual` (bzw. `sw=-`): kein Umschalten, kein Fail-safe, am Ende kein Push – der Admin
     schaltet den Port selbst hin und zurück.
-32. **6 GHz und Wi-Fi 7 (MLO)** – Hardware-Befund mit einem Tri-Band-AP (`wifi-qcom-be`): Das
+32. ~~**6 GHz und Wi-Fi 7 (MLO)**~~ – *umgesetzt (D48):* MLO standardmäßig aus, 6 GHz mit Security je
+    Band; offen nur noch lokales MLO bzw. MLO mit mehreren SSIDs, falls es je gebraucht wird.
+    Hardware-Befund mit einem Tri-Band-AP (`wifi-qcom-be`): Das
     dritte Radio (6 GHz, `6ghz-ax`/`6ghz-be`) bleibt deaktiviert, weil `wifi.rsc` nur die Bänder
     2 und 5 kennt; der CAPsMAN legt außerdem dynamisch ein MLO-Interface (`mld*`) an. Offen:
     Kanal-Pool für Band `6` in `channels`, Provisioning-Regel dafür, 6 GHz verlangt WPA3-SAE mit
@@ -308,7 +309,9 @@ Backup-Manager-Rolle fehlen noch.
     Signalstärke) und ausgeben. Ob 3 oder 4 Kanäle besser sind, im Betrieb mit beiden Plänen
     vergleichen (Paketverlust der Clients auf 2,4 GHz). Ohne Pins wählt der CAPsMAN die Kanäle bei
     jeder Neuverbindung neu – nach einem Aussetzer also womöglich andere.
-42. **Seriennummern mit `/` (CHR)** – Labor-Befund 2026-09-27: Die System-ID einer frischen CHR-VM
+42. ~~**Seriennummern mit `/` (CHR)**~~ – *behoben:* Manager, Backup-Spiegel und Agent bilden den
+    Manifest-Dateinamen gleich (`/` → `_`); Inventar, Status und Vault behalten die echte Seriennummer.
+    Befund run46: sw1 `d22cZ/i6gUB` verwarf danach jedes Manifest („Manifest-MAC ungültig“). – Labor-Befund 2026-09-27: Die System-ID einer frischen CHR-VM
     begann mit `/` (`/G9Di3fN32A`). Der Manifest-Pfad `live/m/<serial>.mf` wird dann zu
     `live/m//….mf`; RouterOS legt die Datei beim ersten Mal an, `/file/find` findet sie unter diesem
     Namen aber nicht wieder, jedes weitere `$cfmWrite` scheitert mit „file already exists“ – jedes
@@ -321,7 +324,10 @@ Backup-Manager-Rolle fehlen noch.
     Felder, der Vergleich bleibt deshalb idempotent. Vor dem Wegfall auf `available-from` umstellen,
     ältere Versionen kennen nur `address` → Feldname nach der Version wählen (oder nach dem
     Eigenschafts-Array von `get`).
-44. **Agent auf einem Backup-Manager fragt sich selbst** – Labor-Befund 2026-09-27: Erreicht der
+44. ~~**Agent auf einem Backup-Manager fragt sich selbst**~~ – *behoben:* `$cfmFetch` überspringt die
+    eigenen Adressen, wenn es den Geräte-User lokal nicht gibt (der Primary behält seinen SFTP-Weg zu
+    sich selbst); `$cfmGetFiles` wartet vor dem zweiten und dritten Versuch 5 bzw. 10 s. Labor-Befund
+    run45: Das ließ ein Release auf cm2 ausfallen (Hash-Fehler nach drei Fehlversuchen). – Labor-Befund 2026-09-27: Erreicht der
     Agent von cm2 (`manager-backup`) den Primary nicht (Timeout, während cm2 seinen Spiegel
     synchronisiert), versucht er die nächste Manager-Adresse – seine eigene – mit dem Geräte-User
     `cfmd-<name>`, den es dort nicht gibt („login failure … critical“ im Log, danach „kein Manager

@@ -83,7 +83,7 @@ $cfmEnsure m="/interface/wifi/datapath" k="wdp-mld" n=({"name"=$mdp}) p=$mdpp
 $cfmPskMissing
 
 # Lokale Radios: CAPsMAN mit lokalem Fallback. Band über /interface/wifi/radio; Radios ohne Band in
-# wifi.rsc (z.B. 6 GHz, TODO 32) bleiben reine CAPs. Datapath des Radios = Datapath der Master-SSID
+# wifi.rsc bleiben reine CAPs. Datapath des Radios = Datapath der Master-SSID
 # (Bridge + VLAN), gilt so im CAPsMAN-Betrieb (dieselbe vlan-id) wie im Fallback.
 :local mdpn ("cfm-" . [:tostr ($cfmWifi->"master")])
 # Wi-Fi 7 (hAP be³): Ab Werk hängen die Radios am statischen, abgeschalteten MLD mld1. Im
@@ -104,6 +104,7 @@ $cfmPskMissing
     :local bs [:tostr [/interface/wifi/radio/get [find where interface=$rn] bands]]
     :if ($bs ~ "2ghz") do={ :set b "2" }
     :if ($bs ~ "5ghz") do={ :set b "5" }
+    :if ($bs ~ "6ghz") do={ :set b "6" }
   } do={}
   :local cfg [:tostr ($lcf->$b)]
   :local curM [:tostr [/interface/wifi/get $i configuration.manager]]

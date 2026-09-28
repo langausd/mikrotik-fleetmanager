@@ -235,7 +235,7 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 
 ### `wifi.rsc`
 
-* `ssids`: interner Schlüssel → `ssid`, `vlan`, `bands` (`"2,5"`); optional `sec`, `ft`, `pmf`,
+* `ssids`: interner Schlüssel → `ssid`, `vlan`, `bands` (`"2,5"`, mit 6 GHz `"2,5,6"`); optional `sec`, `ft`, `pmf`,
   `isolation` als Abweichung von `defaults`. Die Passphrase kommt **nur** aus dem Vault:
   `$cfmSecret key=psk.<schlüssel> value=…`.
 * `master`: die SSID, die das physische Radio trägt, alle anderen werden virtuelle APs.
@@ -244,16 +244,22 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   gilt auch für den lokalen Fallback der APs (D46).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (Standard `03:00`); je Band `skipDfs`
   (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
-* Wi-Fi 7 (`wifi-qcom-be`, z.B. hAP be³): Der CAPsMAN fasst die Radios eines CAP mit gleicher SSID zu
-  einem MLD-Interface (MLO) zusammen, über das der Verkehr läuft. Auch dafür schickt er weder Bridge
-  noch VLAN mit (D41); die Rolle `ap` legt deshalb den Datapath `cfm-mld` im VLAN der `master`-SSID an
-  und setzt ihn als `mld-datapath` (D44). Weitere SSIDs mit MLO und 6 GHz sind noch offen (TODO 32).
+* 6 GHz: Kanal-Eintrag `"6"` mit `band="6ghz-ax"` und der Security des Bands, z.B.
+  `"sec"="wpa3-psk";"pmf"="required"` (6 GHz erlaubt kein WPA2, `$cfmCheck` meldet das). Solche
+  Angaben im Kanal-Eintrag (`sec`, `ft`, `ftOverDs`, `pmf`) gelten für alle SSIDs auf dem Band und
+  ergeben ein eigenes Profil `cfm-<schlüssel>-6g` mit derselben Passphrase (D48). Die `master`-SSID
+  sendet auf allen Bändern aus `channels`, weitere SSIDs nur laut `bands` (z.B. `"2,5,6"`).
+* `mlo`: Wi-Fi 7 Multi-Link, Standard `"disabled"` (D48). Ein MLD bietet kein FT an, Clients im
+  FT-Verbund meiden den AP dann. Außerdem gibt es nur ein `mld-datapath` je CAP (`cfm-mld`, VLAN der
+  `master`-SSID, D44), weitere SSIDs landeten per MLO dort. Nach dem Umschalten die Radios der
+  Wi-Fi-7-CAPs neu provisionieren (siehe unten).
 * Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, D47)
   statt `cap-wifiN`; neu vergeben erst beim nächsten Provisionieren eines Radios
   (`/interface/wifi/radio/provision [find where !local]` am CAPsMAN, alle APs ~3 s weg). Nur die
   Radios der CAPs: `[find]` träfe auch die eigenen Radios des CAPsMAN (Flag `L`), die Regeln ohne
   `identity-regexp` würden sie als APs einschalten. Das MLD eines Wi-Fi-7-CAP heißt danach
-  `mld-<Identity>-2g`; Radios ohne passende Regel (6 GHz, TODO 32) behalten `cap-wifiN`.
+  `mld-<Identity>-2g` (nur mit MLO); Radios ohne passende Regel (Band nicht in `channels`) behalten
+  `cap-wifiN`.
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:

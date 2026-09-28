@@ -30,11 +30,21 @@
 # SFTP zum Manager (Key-Login als cfmd-<name>). r=Pfad auf dem Manager (relativ zu cfm/, mit
 # abs="yes" relativ zur Wurzel), l=lokale Datei, up="yes" = Upload, prefer=zuerst zu
 # probierender Manager. Rückgabe: benutzter Manager
+# Eigene Adressen überspringen, wenn es den Geräte-User hier nicht gibt: Der Agent eines Backup-Managers
+# stünde sonst selbst in der Liste und scheiterte an der Anmeldung (TODO 44). Der Primary hat den User
+# und holt seine Dateien weiter per SFTP bei sich selbst.
 :global cfmFetch do={
   :global cfmConf
+  :local own ({})
+  :if ([:len [/user/find where name=($cfmConf->"user")]] = 0) do={
+    :foreach i in=[/ip/address/find] do={
+      :local a [:tostr [/ip/address/get $i address]]
+      :set ($own->[:pick $a 0 [:find $a "/"]]) 1
+    }
+  }
   :local order ({})
-  :if ([:len $prefer] > 0) do={ :set ($order->0) $prefer }
-  :foreach m in=($cfmConf->"mgrs") do={ :if ($m != $prefer) do={ :set ($order->[:len $order]) $m } }
+  :if ([:len $prefer] > 0 and [:typeof ($own->$prefer)] = "nothing") do={ :set ($order->0) $prefer }
+  :foreach m in=($cfmConf->"mgrs") do={ :if ($m != $prefer and [:typeof ($own->$m)] = "nothing") do={ :set ($order->[:len $order]) $m } }
   :foreach m in=$order do={
     :local ok false
     :local url ("sftp://" . $m . "/" . ($cfmConf->"path") . "/" . $r)
@@ -129,11 +139,13 @@
   :if ([:len $src] = 0) do={ :set src ("archive/v" . ($mf->"v")) }
   :foreach fe in=($mf->"files") do={
     :local lp ($d . "/" . ($fe->0))
-    # bis zu drei Versuche: ein Download kann unvollständig gelesen werden
+    # bis zu drei Versuche: ein Download kann unvollständig gelesen werden; nach einem Fehlschlag kurz
+    # warten - ein Manager, der gerade beschäftigt ist (z.B. Spiegel-Sync), antwortet sonst nicht (TODO 44)
     :local ok false
     :local info ""
     :for t from=1 to=3 do={
       :if (!$ok) do={
+        :if ($t > 1) do={ :delay (($t - 1) * 5s) }
         :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] != "") do={
           :delay 300ms
           :local c [/file/get $lp contents]
@@ -233,6 +245,9 @@
   :onerror e in={ :set serial [/system routerboard get serial-number] } do={}
   :if ([:len $serial] = 0) do={ :onerror e in={ :set serial [/system/license/get system-id] } do={} }
   :if ([:len $serial] = 0) do={ :onerror e in={ :set serial [/system/license/get software-id] } do={} }
+  # Dateiname des Manifests: "/" (System-ID einer CHR) wie am Manager durch "_" ersetzt (TODO 42)
+  :local sfn ""
+  :for i from=0 to=([:len $serial] - 1) do={ :local c [:pick $serial $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
   :local key ""
   :local sv ""
   :onerror e in={
@@ -255,7 +270,7 @@
     }
     # --- Probelauf (vom Manager per $cfmPlan ausgelöst): nichts anwenden, nur berichten ---
     :if (($arg->"mode") = "plan") do={
-      :local pmgr [$cfmFetch r=("plan/m/" . $serial . ".mf") l=($dir . "/plan.mf") prefer=($st->"mgr")]
+      :local pmgr [$cfmFetch r=("plan/m/" . $sfn . ".mf") l=($dir . "/plan.mf") prefer=($st->"mgr")]
       :if ($pmgr = "") do={ :error "Plan-Manifest nicht abrufbar" }
       :local pm [$cfmMfRead ($dir . "/plan.mf") key=$key]
       :local pd ($dir . "/pl")
@@ -278,7 +293,7 @@
   }
 
   # --- Manifest holen ---
-  :local mgr [$cfmFetch r=("live/m/" . $serial . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+  :local mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
   # RouterOS-Eigenheit (7.24, im CHR-Labor): Nach einem Neustart – besonders nach /system backup
   # load (Rollback) – nimmt die Bridge getaggte Frames ihrer Ports u.U. erst wieder an, wenn die
   # Ports neu starten. Findet der Boot-Lauf keinen Manager, die Ethernet-Ports der Bridge einmal
@@ -294,7 +309,7 @@
     :delay 2s
     :foreach ifn in=$bp do={ /interface/ethernet/enable [find where name=$ifn] }
     :delay 15s
-    :set mgr [$cfmFetch r=("live/m/" . $serial . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+    :set mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
     :if ($mgr != "") do={ :log warning "cfm: Manager nach dem Neustart der Bridge-Ports wieder erreichbar" }
   }
 
@@ -376,7 +391,7 @@
     :set ($st->"au") [:tostr $cfmAU]
     :set applied true
     # Erreichbarkeit direkt bestätigen (sonst entscheidet der Watchdog)
-    :if ([$cfmFetch r=("live/m/" . $serial . ".mf") l=($dir . "/mf2.mf") prefer=$mgr] != "") do={
+    :if ([$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf2.mf") prefer=$mgr] != "") do={
       :set ($st->"pending")
       /system/scheduler/remove [find where name="cfm-watchdog"]
     }

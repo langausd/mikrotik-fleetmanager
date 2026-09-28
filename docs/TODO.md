@@ -211,6 +211,10 @@ Backup-Manager-Rolle fehlen noch.
     Behoben: `priority` bei `stp="none"` (ohne RSTP liefert RouterOS keinen Wert, `base` setzt sie dann
     nicht mehr). Behoben: `al:mgmt:<ip>/32` (RouterOS speichert Adresslisten-Einträge ohne `/32`) – `cfmSame`
     vergleicht Hostadressen jetzt ohne Präfix.
+    Offen (Befund 2026-09-28): `stpPrio` in Großbuchstaben (`"0xE000"`) – RouterOS liefert `0xe000`,
+    der Textvergleich schlägt fehl, `priority` wird bei jedem Apply neu gesetzt (set=1). Abhilfe im
+    Hostfile: klein schreiben. Dauerhaft: `base` wandelt `stpPrio` mit `:tonum` in eine Zahl, dann
+    vergleicht `cfmSame` numerisch (RouterOS nimmt die Zahl an und zeigt sie hexadezimal) – Labortest.
 28. **`$cfmPush` an nicht aufgenommene Geräte** – `$cfmRelease all=yes` stößt jeden
     Inventar-Eintrag an, auch Platzhalter ohne Seriennummer. Das erzeugt Fehlerzeilen und trifft im
     Zweifel ein fremdes Gerät, das gerade die geplante Adresse hat. Einträge ohne echte

@@ -228,6 +228,21 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
     }
   }
 }
+# Monitoring -> RouterOS-API des CAPsMAN (D47): Quellen aus capsmanApi.from, Ziel ist der CAPsMAN aus
+# dem Manifest (cm), die Freigabe zieht also mit ihm um. Ist der Router selbst CAPsMAN, reicht die
+# Freigabe der Rolle capsman in local-input.
+:local capi ($cfmG->"capsmanApi")
+:if ([:typeof $capi] = "array") do={
+  :local cport [:tostr ($capi->"port")]
+  :if ([:len $cport] = 0) do={ :set cport "8728" }
+  :foreach c in=($cfmMf->"cm") do={
+    :if ([:tostr ($c->"n")] != [:tostr ($cfmMf->"name")]) do={
+      :foreach a in=($capi->"from") do={
+        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"protocol"="tcp";"src-address"=$a;"dst-address"=[:tostr ($c->"ip")];"dst-port"=$cport})
+      }
+    }
+  }
+}
 :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-nat-state"="dstnat"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="jump";"jump-target"="local-forward"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="drop"})

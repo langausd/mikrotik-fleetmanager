@@ -287,6 +287,7 @@ agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (capsmanApi) angewendet" || bad "cm1 A
 agentwait 2 "$rv" sw1 || true; agentwait 3 "$rv" cm2 || true
 expect 1 '![/ip/service/get [find name=api] disabled] and [:tostr [/ip/service/get [find name=api] available-from]] ~ "10.0.2.2" and [/user/get [find name=hatest] group] = "cfm-api" and [:len [/ip/firewall/filter/find where comment~"^cfm:capi" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "cm1: API nur für capsmanApi.from, User hatest (cfm-api), Freigabe in local-input"
 expect 2 '[/ip/service/get [find name=api] disabled]' "sw1: API aus (kein CAPsMAN)"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and chain=forward and dst-address~"^192.168.10.2(/32)?\$" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "sw1 (router): Forward-Freigabe zur API des CAPsMAN cm1"
 expect 1 '[/interface/wifi/provisioning/get [find where comment~"^cfm:wprov:00"] name-format] = "%I-2g"' "cm1: Interface-Namen aus Identity und Band (name-format)"
 # CAPsMAN auf sw1, cm2 zusätzlich AP (CHR ohne Radios: CAP-Einstellungen, Profile, Passphrasen)
 invrole "switch,router" "switch,router,capsman"
@@ -301,6 +302,7 @@ applied cm1 && ok "cm1 nach dem Umzug angewendet" || bad "cm1: $(stat cm1 res)"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm1: CAPsMAN aus, Profile abgeräumt"
 expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0 and [:len [/ip/firewall/filter/find where comment~"^cfm:capi"]] = 0' "cm1: API, User und Freigabe mit der Rolle capsman abgeräumt"
 expect 2 '![/ip/service/get [find name=api] disabled] and [/user/get [find name=hatest] group] = "cfm-api" and ![/user/get [find name=hatest] disabled]' "sw1: API-Zugang umgezogen, User nach dem Secret-Push aktiv"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and dst-port="8728"]] = 0' "sw1: als CAPsMAN selbst keine Forward-Freigabe (local-input reicht)"
 applied cm2 && ok "cm2 als manager-backup,ap angewendet" || bad "cm2 ap: $(stat cm2 res)"
 expect 3 '[:tostr [/interface/wifi/cap/get caps-man-addresses]] = "192.168.10.21" and [:tostr [/interface/wifi/cap/get caps-man-names]] = "sw1" and [/interface/wifi/datapath/get [find name="cfm-cap"] comment] = "cfm:wdp-cap cm=sw1"' "cm2: CAP zeigt auf sw1 (Adresse und Name aus dem Manifest, im Datapath gemerkt)"
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf:l"]] = 2 and [/interface/wifi/datapath/get [find name="cfm-main"] vlan-id] = 20 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: lokale Fallback-Konfiguration je Band, Datapath mit VLAN, kein CAPsMAN"
@@ -328,6 +330,7 @@ rv=$(mgr '$cfmRelease msg=" capsmanApi aus" all=yes' | grep -o 'Release v[0-9]*'
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (ohne capsmanApi) angewendet" || bad "cm1 Apply v$rv"
 agentwait 2 "$rv" sw1 || true; agentwait 3 "$rv" cm2 || true
 expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0' "cm1: ohne capsmanApi kein API-Zugang"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and dst-port="8728"]] = 0' "sw1 (router): ohne capsmanApi keine Forward-Freigabe"
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm2: WLAN-Profile ohne Rolle ap abgeräumt"
 r 3 '/interface/wifi/cap/set enabled=no' >/dev/null
 

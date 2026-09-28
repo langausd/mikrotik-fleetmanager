@@ -474,9 +474,24 @@ Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für desse
    Vault: `$cfmSecret key=user.homeassistant value=…`, `$cfmRelease` (bzw. Ringe durchlaufen lassen).
    Der CAPsMAN bekommt Dienst `api` (8728, nur diese Adresse), Gruppe `cfm-api` (`read,api,test`),
    den User und eine Freigabe in `local-input`; der Secret-Push setzt das Passwort und schaltet ihn ein.
-2. Liegt HA außerhalb des MGMT-VLANs: am Router davor den Weg auf TCP 8728 ins MGMT-Netz freigeben.
+2. Liegt HA außerhalb des MGMT-VLANs, gibt die Rolle `router` den Weg von `capsmanApi.from` zum
+   CAPsMAN auf dem API-Port frei (Firewall-Block, Ziel aus dem Manifest). Ein Router ohne Rolle
+   `router` (Bestandsgerät, das noch selbst routet) braucht die Freigabe in seiner `post.rsc`:
+   ```
+   :global cfmG; :global cfmMf; :global cfmBlock
+   :local capi ($cfmG->"capsmanApi")
+   :local fl ({})
+   :if ([:typeof $capi] = "array") do={
+     :local port [:tostr ($capi->"port")]
+     :if ([:len $port] = 0) do={ :set port "8728" }
+     :foreach c in=($cfmMf->"cm") do={ :foreach a in=($capi->"from") do={
+       :set ($fl->[:len $fl]) ({"chain"="forward";"action"="accept";"protocol"="tcp";"src-address"=$a;"dst-address"=[:tostr ($c->"ip")];"dst-port"=$port}) } }
+   }
+   $cfmBlock m="/ip/firewall/filter" k="capifwd" l=$fl
+   ```
+   Ein neuer Regelblock steht ganz oben in `/ip/firewall/filter`, also vor eigenen Sperrregeln.
 3. In HA die Integration einrichten: Host = MGMT-IP des CAPsMAN, Port 8728, ohne SSL, User/Passwort
-   wie oben. Zieht der CAPsMAN um, dort die Adresse ändern.
+   wie oben. Zieht der CAPsMAN um, dort die Adresse ändern (die Freigaben ziehen selbst mit).
 
 ---
 

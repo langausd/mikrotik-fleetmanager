@@ -19,7 +19,7 @@
 :if ($uplink != "*" and [:len [/interface/bridge/vlan/find where vlan-ids=$mv]] = 0) do={ /interface/bridge/vlan/add bridge=$br vlan-ids=$mv tagged=($br . "," . $uplink) }
 :if ([:len [/ip/address/find where interface=$vif]] = 0) do={ /ip/address/add address=$ip interface=$vif }
 # Kommentar = cfm-Tag der Rolle base: Sie übernimmt die Route und setzt ggf. das Gateway aus dem Hostfile
-# (gw=...). Ohne Tag bliebe sie daneben stehen – zwei Default-Routen per ECMP (hap-wz, 2026-09-26).
+# (gw=...). Ohne Tag bliebe sie daneben stehen – zwei Default-Routen per ECMP (Hardware-Befund 2026-09-26).
 :if ([:len [/ip/route/find where dst-address="0.0.0.0/0" and gateway=$gw]] = 0) do={ /ip/route/add dst-address=0.0.0.0/0 gateway=$gw comment="cfm:rt:default" }
 # Werks-Config eines Routers: MGMT-VLAN in die LAN-Liste, sonst blockiert dessen Firewall den Manager
 :if ([:len [/interface/list/find where name="LAN"]] > 0 and [:len [/interface/list/member/find where list="LAN" and interface=$vif]] = 0) do={ /interface/list/member/add list=LAN interface=$vif }

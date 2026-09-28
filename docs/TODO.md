@@ -291,10 +291,11 @@ Backup-Manager-Rolle fehlen noch.
     – ~~geprüft~~ 2026-09-27: bei einem CAPsMAN-Ausfall aller APs meldete sich ein Handy nach 2 s
     lokal an und blieb im VLAN der SSID erreichbar. (c) ~~MLO~~ – geklärt: im Fallback ohne MLO (Radios vom Werks-MLD `mld1`
     gelöst, D46); lokales MLO wäre ein eigener Ausbau. (d) Benachrichtigung, wenn ein AP im
-    Fallback läuft (Status-Feld, `$cfmStatus`). (e) Dynamisches MLD eines Wi-Fi-7-CAP legte ein
-    CAPsMAN auf einem hAP be³ abgeschaltet an (siehe Hardware-Eigenheiten) – nach einem Neustart
-    des CAPsMAN prüfen; bleibt es aus, die Rolle `capsman` dynamische MLDs einschalten lassen
-    (Scheduler, weil nach einem Neustart kein Apply läuft).
+    Fallback läuft (Status-Feld, `$cfmStatus`). (e) ~~Dynamisches MLD~~ – ein
+    CAPsMAN auf einem hAP be³ legte das MLD eines Wi-Fi-7-CAP beim ersten Kontakt abgeschaltet an
+    (siehe Hardware-Eigenheiten); 2026-09-27 geprüft: von Hand eingeschaltet, blieb es nach einem
+    Neustart des CAPsMAN an, und nach einer Neuprovisionierung (neue Namen, D47) legte er es aktiv
+    an. Nur beim allerersten Kontakt eines CAP prüfen.
 41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) –
     Manager-Befehl `$cfmWifiScan`: über den CAPsMAN von jedem AP aus scannen
     (`/interface/wifi/scan cap-wifiN duration=…`, nur Radios ohne Clients oder mit Hinweis), fremde

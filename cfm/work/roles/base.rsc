@@ -232,8 +232,9 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
 #     Leerzeilen werden ignoriert). Optional: Fehlt die Datei, bleiben ssh-keys unangetastet.
 #     Ist sie da, ist sie der VOLLSTÄNDIGE Sollzustand für ALLE Admin-User aus global.rsc users:
 #     Keys, die nicht (mehr) drinstehen, werden bei jedem Apply entfernt (auch von Hand
-#     hinzugefügte) - Revocation = Zeile löschen + $cfmRelease. Passwort-Login (Secret-Push) bleibt
-#     davon unberührt und funktioniert in jedem Fall zusätzlich. Kein Ersatz für die ssh-keys der
+#     hinzugefügte) - Revocation = Zeile löschen + $cfmRelease. Das Passwort (Secret-Push) bleibt
+#     gesetzt, gilt mit Key aber nur noch für Winbox/WebFig: RouterOS lehnt SSH per Passwort ab,
+#     sobald der User einen Key hat (always-allow-password-login=no, TODO 29). Kein Ersatz für die ssh-keys der
 #     Rolle manager (cfm/cfmd-<name>) - die sind Maschinen-Identität, hier geht es um Menschen. ---
 :local akf ($cfmDl . "/authorized_keys")
 :if ([:len [/file/find where name=$akf]] > 0) do={

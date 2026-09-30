@@ -7,7 +7,7 @@
 # ---------- Automatik (Scheduler cfm-mgr-tick) ----------
 :global cfmAutoPromote do={
   :global cfmRings; :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmNow; :global cfmPromote
-  :global cfmG
+  :global cfmG; :global cfmEnrolled
   :local rg [$cfmRings]
   :local b [$cfmMB]
   :local now [$cfmNow]
@@ -17,8 +17,9 @@
       :local soak [:tostr [:pick ($cfmG->"ringSoak") ($r - 1)]]
       :if ($soak != "manual" and ($now - [:tonum ($rg->("t" . ($r - 1)))]) > ([:tonsec [:totime $soak]] / 1000000000)) do={
         :local ok true
+        # nicht aufgenommene Geräte (Platzhalter) melden nie einen Status und hielten den Ring sonst auf
         :foreach name,d in=[$cfmInvLoad] do={
-          :if ([:tonum ($d->"ring")] = ($r - 1)) do={
+          :if ([:tonum ($d->"ring")] = ($r - 1) and [$cfmEnrolled $d]) do={
             :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
             :if (($s->"v") != $prev or ($s->"res") != "ok" or [:len [:tostr ($s->"pending")]] > 0) do={ :set ok false }
           }

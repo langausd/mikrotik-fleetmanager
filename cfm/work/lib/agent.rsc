@@ -81,6 +81,9 @@
     :foreach i in=[/system/package/find where !disabled and !available] do={ :set ($pk->[:len $pk]) [/system/package/get $i name] }
   } do={ :foreach i in=[/system/package/find] do={ :set ($pk->[:len $pk]) [/system/package/get $i name] } }
   :set ($s->"pkgs") $pk
+  # freier Platz für RouterOS-Pakete ($cfmUpgrade, TODO 38). Mit flash/-Verzeichnis liegt die Wurzel
+  # (Ablage der Pakete) im RAM, free-hdd-space beschreibt sie dann nicht -> keine Angabe
+  :if (!($d ~ "^flash/")) do={ :set ($s->"fs") [/system/resource/get free-hdd-space] }
   # Nachbarn je physischem Port ($cfmLinks): {Port;Identität;Port der Gegenseite;"m"MAC;Plattform}
   # (interface ist bei Bridge-Ports eine Liste "ether2;bridge", interface-name z.B. "bridge/ether3")
   :local nb ({})
@@ -344,7 +347,24 @@
     }
     :error "cfm-done"
   }
-  :if ($mgr = "") do={ :error "kein Manager erreichbar" }
+  :if ($mgr = "") do={
+    # Von Hand aus einer Admin-Sitzung gestartet (TODO 35): /tool/fetch nimmt den privaten Schlüssel
+    # des aufrufenden Users, den nur cfm hat
+    :local ow ""
+    :onerror e in={
+      :foreach j in=[/system/script/job/find where script="cfm-agent"] do={
+        :local o [:tostr [/system/script/job/get $j owner]]
+        :if ([:len $o] > 0 and $o != "cfm") do={ :set ow $o }
+      }
+    } do={}
+    :if ([:len $ow] > 0) do={
+      # :put für das Terminal, aus dem der Agent gestartet wurde; der Fehler selbst landet im Log
+      :local m ("kein Manager erreichbar - der Agent läuft als " . $ow . ", der SFTP-Schlüssel gehört cfm: am Manager \$cfmPush host=" . [/system/identity/get name] . " verwenden")
+      :put $m
+      :error $m
+    }
+    :error "kein Manager erreichbar"
+  }
   :set ($st->"mgr") $mgr
 
   # --- Manifest prüfen ---
@@ -427,12 +447,24 @@
       :if (($st->"upa") = $tag) do={
         # Auftrag schon ausgeführt (Neustart oder Fenster verpasst), Gerät trotzdem nicht auf der
         # Zielversion: nicht endlos wiederholen, der Admin erteilt bei Bedarf einen neuen Auftrag
-        :if (!([:tostr ($st->"upg")] ~ "^(fehlgeschlagen|Fenster)")) do={
+        :if (!([:tostr ($st->"upg")] ~ "^(fehlgeschlagen|Fenster|Platz)")) do={
           :log error ("cfm: RouterOS " . $tv . " nicht installiert - Auftrag fehlgeschlagen")
           :set ($st->"upg") ("fehlgeschlagen " . $tv)
         }
         :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
       } else={
+       # Platz vorab prüfen (TODO 38): Ein voller Flash lässt auch Config und Log scheitern. Der Manager
+       # prüft beim Auftrag schon den gemeldeten Wert; 1 MB Reserve wie dort. Kein neuer Versuch - nach
+       # dem Aufräumen einen neuen Auftrag erteilen.
+       :local need 1048576
+       :foreach pf in=($ro->"files") do={ :set need ($need + [:tonum ($pf->1)]) }
+       :local free [/system/resource/get free-hdd-space]
+       :if (!($dir ~ "^flash/") and $free < $need) do={
+        :set ($st->"upa") $tag
+        :set ($st->"upf") ({})
+        :set ($st->"upg") ("Platz fehlt: " . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig")
+        :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig) - nichts geladen")
+       } else={
         # Pakete in die Wurzel laden: dort installiert RouterOS sie beim nächsten Start
         :local fl ({})
         :foreach pf in=($ro->"files") do={
@@ -469,6 +501,7 @@
           :set ($st->"upg") ("Neustart für " . $tv)
           :set boot $act
         }
+       }
       }
     }
   } else={

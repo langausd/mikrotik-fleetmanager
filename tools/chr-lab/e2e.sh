@@ -75,6 +75,7 @@ expect 2 '[:len [/ip/address/find where address="192.168.10.21/24"]] = 1' "sw1: 
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 8 and [/ip/firewall/filter/get [find where comment="cfm:fwb:07"] action] = "drop"' "sw1: minimale Firewall IPv4 (8 Regeln, zuletzt drop)"
 expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 8' "sw1: minimale Firewall IPv6 (8 Regeln)"
 expect 2 '[/ip/neighbor/discovery-settings/get discover-interface-list] = "DISC" and [:len [/interface/list/member/find where list="DISC" and interface="ether2"]] = 1' "sw1: Nachbarsuche auf den Bridge-Ports (Liste DISC)"
+expect 2 '[/ip/service/get [:pick [find where name="reverse-proxy" and !dynamic] 0] disabled]' "sw1: Dienst reverse-proxy aus (ab Werk offen auf 443, TODO 30)"
 
 step "3. Secrets-Push & Idempotenz"
 sleep 70
@@ -82,6 +83,17 @@ expect 2 '[/user/get [find name=netadmin] disabled] = false' "sw1: User netadmin
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 3; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "zweiter Apply ohne Änderungen (idempotent)" || bad "Idempotenz: $(stat sw1 stats)"
+# Platzhalter im Inventar (wie noch nicht aufgenommene Geräte eines Standorts, TODO 28): bleibt bis
+# nach Schritt 13 stehen, damit Release, Trust, Spiegel, Secret-Push und Upgrade ihn überspringen müssen
+mgr '$cfmRegister name=ph1 serial=SERIAL-PH1 ip=192.168.10.98 role=switch ring=0' >/dev/null
+out=$(mgr '$cfmPush')
+echo "$out" | grep -q "kein Push (nicht aufgenommen): ph1" && ! echo "$out" | grep -q "Push -> ph1" && echo "$out" | grep -q "Push -> sw1" && ok "Push lässt den Platzhalter aus (TODO 28)" || { bad "Push an Platzhalter"; echo "$out" | tail -3; }
+mgr '$cfmStatus' | grep "^ph1" | grep -q "nicht aufgenommen" && ok "\$cfmStatus: ph1 nicht aufgenommen" || bad "\$cfmStatus ohne Hinweis auf ph1"
+mgr ':put ("SP=" . [$cfmSecretPush])' >/dev/null
+expect 1 '[:len [/log/find where message~"Secret-Push ph1"]] = 0' "Secret-Push ohne Warnung zum Platzhalter"
+# Agent von Hand aus einer Admin-Sitzung (TODO 35): klare Meldung statt nur "kein Manager erreichbar"
+for _ in 1 2 3; do out=$(r 2 '/system script run cfm-agent'); echo "$out" | grep -q "läuft bereits" || break; sleep 35; done
+echo "$out" | grep -q "der Agent läuft als admin" && ok "Agent aus einer Admin-Sitzung: klare Meldung" || { bad "Agent als admin: $(echo "$out" | tail -1)"; }
 
 step "4. VLAN entfernen -> Reconciler räumt auf"
 mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=[:pick [/file/get $f contents] 0 [:find [/file/get $f contents] ":for i from=101"]]; :global cfmRelease; $cfmRelease msg=" ohne 101-119"' >/dev/null
@@ -109,6 +121,9 @@ expect 2 '[:len [/interface/bridge/vlan/find where comment="cfm:bv:99"]] = 0' "s
 mgr ':global e2eV; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV' >/dev/null
 
 step "7. Kaputte Version -> Prüfung stoppt, mit force: Rollback + bad"
+# unbekannter Dienstname und doppelter Port (www-ssl und reverse-proxy auf 443) sind Fehler (TODO 30)
+out=$(mgr ':global e2eG [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"services\"->\"http\") 80\n:set (\$cfmG->\"services\"->\"www-ssl\") 443\n:set (\$cfmG->\"services\"->\"reverse-proxy\") 443\n"); :global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG')
+echo "$out" | grep -q "ERR global.rsc: services nennt unbekannten Dienst http" && echo "$out" | grep -q "ERR global.rsc: services: Port 443 doppelt" && ok "\$cfmCheck: unbekannter Dienst und doppelter Port" || { bad "\$cfmCheck services"; echo "$out" | tail -3; }
 out=$(mgr ':local f [/file/find name="cfm/work/hosts/sw1.rsc"]; /file/set $f contents=":global cfmHost {\"ports\"={\"ether2\"=\"gibtsnicht\"}}"; :global cfmRelease; $cfmRelease msg=" kaputt"')
 echo "$out" | grep -q "unbekanntes Port-Profil gibtsnicht" && ok "inhaltliche Prüfung stoppt das Release" || { bad "Prüfung hat nicht gestoppt"; echo "$out" | tail -3; }
 mgr '$cfmRelease msg=" kaputt" force=yes' >/dev/null
@@ -133,7 +148,8 @@ expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: CAP
 expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2' "cm1: Provisioning-Regeln gerendert"
 
 step "9. Rolle router auf sw1 (über den echten Agent-Pfad)"
-mgr ':local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "\"role\"=\"switch\""]; /file/set $f contents=([:pick $c 0 $p] . "\"role\"=\"switch,router\"" . [:pick $c ($p + 15) [:len $c]]); :global cfmManifests; $cfmManifests' >/dev/null
+# gezielt sw1 (der Platzhalter ph1 aus Schritt 3 steht alphabetisch davor und hat auch "switch")
+mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"sw1"->"role") "switch,router"; $cfmInvSave $i; :global cfmManifests; $cfmManifests' >/dev/null
 mgr '$cfmPush host=sw1' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 role)" = "switch,router" ] && [ "$(stat sw1 res)" = ok ] && break; sleep 4; done
 [ "$(stat sw1 role)" = "switch,router" ] && [ "$(stat sw1 res)" = ok ] && ok "sw1 als switch,router angewendet" || bad "Router-Apply: $(stat sw1 role) $(stat sw1 res)"
@@ -184,6 +200,12 @@ step "13. RouterOS-Update per Befehl (Pakete vom Manager; im Labor: Downgrade au
 # Labor: cm1 hat zwei gleichwertige Default-Routen, die über das hier fehlende MGMT-Gateway führt
 # ins Leere -> Internet für den Paket-Download über ether1 (Handobjekte, cfm fasst sie nicht an)
 r 1 '/ip/route/add dst-address=0.0.0.0/1 gateway=10.0.2.2 comment=e2e; /ip/route/add dst-address=128.0.0.0/1 gateway=10.0.2.2 comment=e2e' >/dev/null
+# Probe ohne Auftrag (TODO 37): nennt das fehlende Paket samt Ablageort, lädt nichts, überspringt ph1
+out=$(mgr '$cfmUpgrade ver=7.24.1 all=yes check=yes')
+echo "$out" | grep -q "ph1: nicht aufgenommen - übersprungen" && echo "$out" | grep -q "routeros-7.24.1.npk: fehlt" && echo "$out" | grep -q "nach cfm/pkg/7.24.1/ legen" && echo "$out" | grep -q "kein Auftrag erteilt" && ok "check=yes: fehlendes Paket gemeldet, Platzhalter übersprungen" || { bad "check=yes"; echo "$out" | tail -6; }
+# upgrade.dat gibt es vor dem ersten Auftrag noch nicht: $cfmJson liefert dann ein leeres Array
+mgr ':global cfmJson; :put ("C=" . [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] . "/" . [:len [$cfmJson "cfm/meta/upgrade.dat"]])' | grep -q "C=0/0" && ok "check=yes: nichts geladen, kein Auftrag" || bad "check=yes hat geladen oder beauftragt"
+echo "$out" | grep "^sw1 " | grep -q "frei [0-9]" && ok "sw1 meldet den freien Platz (fs)" || bad "sw1 ohne Angabe zum freien Platz: $(echo "$out" | grep '^sw1')"
 # (a) sw1: Wartungsfenster in einer Stunde -> Paket wird sofort geladen, Neustart geplant
 now=$(r 1 ':put ([/system/clock/get date] . " " . [/system/clock/get time])' | head -1)
 at=$(date -d "@$(( $(date -d "$now" +%s) + 3600 ))" '+%Y-%m-%d %H:%M')
@@ -193,6 +215,12 @@ expect 1 '[/file/get [find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"] size
 # SFTP zwischen CHRs ist langsam (~100 KB/s): das 20-MB-Paket braucht einige Minuten
 for _ in $(seq 1 100); do r 2 ':put [:len [/system/scheduler/find where name="cfm-upgrade"]]' | grep -qx 1 && break; sleep 6; done
 expect 2 '[:tostr [/system/scheduler/get [find where name="cfm-upgrade"] start-time]] = "'"${at#* }"':00" and [/file/get [find where name="routeros-7.24.1.npk"] size] > 1000000' "sw1: Paket geladen, Neustart für $at geplant"
+mgr '$cfmUpgrade ver=7.24.1 host=sw1 check=yes' | grep -q "alle Pakete liegen in cfm/pkg/7.24.1/" && ok "check=yes: Paket vorhanden" || bad "check=yes nach dem Download"
+mgr ':global cfmPkgOk; :put ("NPK=" . [$cfmPkgOk "cfm/pkg/7.24.1/routeros-7.24.1.npk"])' | grep -q "NPK=true" && ok "NPK-Kennung des echten Pakets erkannt" || bad "NPK-Kennung nicht erkannt"
+# zu wenig Platz (TODO 38): gemeldeten Wert von cm2 kurz auf 5 MB setzen -> kein Auftrag, Status zurück
+out=$(mgr ':global cfmJson; :global cfmWrite; :global cfmRead; :local f "cfm/state/cm2/status.dat"; :local raw [$cfmRead $f]; :local s [$cfmJson $f]; :set ($s->"fs") 5000000; $cfmWrite $f [:serialize to=json $s]; :onerror e in={ $cfmUpgrade ver=7.24.1 host=cm2 check=yes; $cfmUpgrade ver=7.24.1 host=cm2 } do={ :put ("ERR " . $e) }; $cfmWrite $f $raw')
+echo "$out" | grep "^cm2 " | grep -q "zu wenig Platz" && echo "$out" | grep -q "cm2: zu wenig Platz für die Pakete" && echo "$out" | grep -q "kein Gerät mit genug Platz" && ok "Manager: kein Auftrag bei zu wenig Platz" || { bad "Platzprüfung am Manager"; echo "$out" | tail -4; }
+mgr ':global cfmJson; :put ("N=" . [:len [$cfmJson "cfm/meta/upgrade.dat"]])' | grep -q "N=1" && ok "nur der Auftrag für sw1 offen" || bad "Aufträge nach der Platzprüfung: $(mgr ':global cfmJson; :put [:tostr [$cfmJson "cfm/meta/upgrade.dat"]]' | tail -1 | cut -c1-80)"
 # (b) cm2: sofort -> Download, Neustart, Downgrade, Rückmeldung
 out=$(mgr '$cfmUpgrade ver=7.24.1 host=cm2')
 echo "$out" | grep -q "Auftrag cm2: downgrade auf 7.24.1 (sofort)" && ok "Auftrag cm2 (sofort)" || { bad "Auftrag cm2"; echo "$out" | tail -3; }
@@ -204,9 +232,22 @@ for _ in $(seq 1 30); do r 2 ':put [:len [/system/scheduler/find where name="cfm
 expect 2 '[:len [/system/scheduler/find where name="cfm-upgrade"]] = 0 and [:len [/file/find where name="routeros-7.24.1.npk"]] = 0' "sw1: zurückgezogener Auftrag - Neustart und Paket entfernt"
 for _ in $(seq 1 30); do mgr ':global cfmJson; :put ("N=" . [:len [$cfmJson "cfm/meta/upgrade.dat"]])' | grep -q "N=0" && break; sleep 4; done
 mgr ':global cfmJson; :put ("N=" . [:len [$cfmJson "cfm/meta/upgrade.dat"]])' | grep -q "N=0" && ok "erledigte Aufträge ausgetragen" || bad "Aufträge noch offen"
+# (d) der Agent prüft den Platz selbst (TODO 38): Auftrag mit übergroßer Paketangabe direkt in upgrade.dat
+mgr ':global cfmJson; :global cfmWrite; :global cfmManifests; :global cfmNow; :local o [$cfmJson "cfm/meta/upgrade.dat"]; :set ($o->"sw1") ({"rv"="v7.24.1";"at"="";"id"=("i" . [$cfmNow]);"how"="downgrade";"path"="cfm/pkg/7.24.1";"files"={{"routeros-7.24.1.npk";900000000}}}); $cfmWrite "cfm/meta/upgrade.dat" [:serialize to=json $o]; $cfmManifests; $cfmPush host=sw1' >/dev/null
+for _ in $(seq 1 30); do stat sw1 upg | grep -q "^Platz fehlt" && break; sleep 4; done
+stat sw1 upg | grep -q "^Platz fehlt" && ok "sw1: Agent lädt nichts bei zu wenig Platz ($(stat sw1 upg))" || bad "sw1 Platzprüfung: '$(stat sw1 upg)'"
+expect 2 '[:len [/file/find where name="routeros-7.24.1.npk"]] = 0 and [:len [/system/scheduler/find where name="cfm-upgrade"]] = 0' "sw1: kein Paket geladen, kein Neustart geplant"
+mgr '$cfmUpgrade cancel=yes host=sw1' >/dev/null
+for _ in $(seq 1 30); do [ -z "$(stat sw1 upg)" ] && break; sleep 3; done
+[ -z "$(stat sw1 upg)" ] && ok "sw1: Auftrag zurückgezogen, Meldung weg" || bad "sw1 nach dem Zurückziehen: $(stat sw1 upg)"
 r 1 '/file/add name="cfm/pkg/7.0.0/routeros-7.0.0.npk" contents="x"' >/dev/null
+# keine NPK-Kennung: die Probe meldet das, ohne die Datei anzufassen (TODO 37)
+mgr ':global cfmPkgFetch; :put ("E=" . ([$cfmPkgFetch ver=7.0.0 arch=x86_64 pkg=routeros dl=no]->"err"))' | grep -q "E=kein RouterOS-Paket" && ok "Datei ohne NPK-Kennung erkannt" || bad "NPK-Prüfung der Fälschung"
+expect 1 '[:len [/file/find where name="cfm/pkg/7.0.0/routeros-7.0.0.npk"]] = 1' "Probe lässt die Datei liegen"
 mgr '$cfmPkgPrune' >/dev/null
 expect 1 '[:len [/file/find where name~"^cfm/pkg/7.0.0"]] = 0 and [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] = 1' "Paketversion ohne Einsatz gelöscht, 7.24.1 bleibt"
+
+mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"ph1"); $cfmInvSave $i' >/dev/null
 
 step "14. Verkabelung (LLDP, Netzplan) und WLAN (PPSK, Kanäle)"
 # alle Geräte melden ihre Nachbarn mit dem nächsten Lauf

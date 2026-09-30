@@ -200,7 +200,7 @@ irgendetwas ausgerollt wird.
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
-| `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet | `ssh`, `winbox` |
+| `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `reverse-proxy`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet – auch `reverse-proxy`, den RouterOS 7.2x ab Werk auf Port 443 ohne Adressbeschränkung einschaltet. `$cfmCheck` meldet unbekannte Namen und doppelte Ports als Fehler | `ssh`, `winbox` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
 
 ### `vlans.rsc`
@@ -290,9 +290,11 @@ sie, ist sie der vollständige Sollzustand: Keys, die nicht (mehr) drinstehen, w
 Apply entfernt – auch von Hand hinzugefügte, denn `/user/ssh-keys` hat kein `comment`-Feld für
 eine feinere Reconciliation. Revocation = Zeile löschen + `$cfmRelease`.
 
-Das ist eine **Zusatzoption**, kein Ersatz für das Passwort-Login: `$cfmSecret key=user.<name>
-value=…` funktioniert unabhängig davon immer, ein kaputter oder fehlender Key sperrt also nicht
-aus. Auch kein Ersatz für die Geräteschlüssel der Rolle `manager` (`cfm`/`cfmd-<name>`) – die sind
+Das ist eine **Zusatzoption**, kein Ersatz für das Passwort: `$cfmSecret key=user.<name> value=…`
+gilt unabhängig davon weiter. Aber: Hat ein User einen Key, lehnt RouterOS **SSH**-Anmeldungen
+dieses Users per Passwort ab (`/ip/ssh always-allow-password-login=no`, Werkseinstellung) – nur
+Winbox und WebFig gehen weiter mit Passwort. Ein kaputter Key sperrt also nicht ganz aus, SSH
+aber schon. Auch kein Ersatz für die Geräteschlüssel der Rolle `manager` (`cfm`/`cfmd-<name>`) – die sind
 Maschinen-Identität für Push/Pull, hier geht es um menschliche Admins.
 
 `$cfmCheck` prüft grob das Zeilenformat (Typ-Präfix, mindestens ein Leerzeichen), nicht die
@@ -505,7 +507,8 @@ Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für desse
 
 ### 7.1 Automatisch: Push in die Werks-Config (empfohlen)
 
-Voraussetzung: Router und Switches bis zum Zielport sind bereits aufgenommen.
+Voraussetzung: Router und Switches bis zum Zielport sind bereits aufgenommen (sonst
+`manual=yes`, siehe Ende des Abschnitts).
 
 1. **Registrieren** mit Seriennummer und Passwort vom Aufkleber (Geräte ohne
    Aufkleber-Passwort: `pw` weglassen):
@@ -543,6 +546,18 @@ Das dauert je nach Update 5–15 Minuten. Zu beachten:
 * ein Fail-safe-Timer auf dem Switch setzt den Port spätestens nach `onboard.timeout` + 10 min zurück;
 * ohne `name=` sucht der Manager unter allen registrierten, noch nicht aufgenommenen Geräten;
   unbekannte Seriennummern erscheinen in `$cfmPending` und werden per `$cfmApprove` freigegeben.
+
+**Switch am Zielport noch nicht aufgenommen** (z.B. das erste Gerät hinter einem Bestands-Switch,
+D50): Den Port schaltest du selbst, der Manager erledigt den Rest wie oben.
+```
+$cfmOnboard manual=yes name=ap3 sw=core port=ether7     # sw/port nur als Notiz
+```
+1. Vorher den Port am Switch **von Hand** ins Onboarding-VLAN schalten: untagged, PVID = VID des
+   Onboarding-VLANs (die Meldung nennt sie), `frame-types=admit-all`.
+2. Gerät einstecken; Fortschritt mit `$cfmOnboardStatus` („Sitzung manuell …“).
+3. Nach dem Ende (Erfolg, Fehler, Timeout oder `$cfmOnboardAbort`) steht im Log des Managers
+   „Port jetzt von Hand zurück auf sein Profil stellen“ – cfm fasst den Port nie an, es gibt
+   auch keinen Fail-safe-Timer.
 
 ### 7.2 Manuell: Bootstrap-Datei
 
@@ -674,7 +689,9 @@ Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 
 * `$cfmStatus` zeigt je Gerät Ring, Soll- und Ist-Version, Ergebnis (`ok`, `failed …`,
   `bad vN`, `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
-  sendet nur die lokale Kopie der `master`-SSID, D46), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
+  sendet nur die lokale Kopie der `master`-SSID, D46; `nicht aufgenommen` = Inventar-Eintrag ohne
+  Geräteschlüssel, z.B. Platzhalter oder per `$cfmRegister` vorgemerkt – solche Geräte stößt der
+  Manager nicht an, D49), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
   und das Alter der letzten Meldung.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
@@ -688,13 +705,24 @@ Updates laufen nur per Befehl:
 ```
 $cfmUpgrade ver=7.25.1 host=sw1                         # sofort
 $cfmUpgrade ver=7.25.1 ring=1 at="2026-10-01 02:00"     # einmaliges Wartungsfenster
+$cfmUpgrade ver=7.25.1 all=yes check=yes                # Probe: Pakete, Platz - kein Auftrag
 $cfmUpgrade                                             # offene Aufträge und ihr Stand
 $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
 ```
 
 * Der Manager lädt vorher alle nötigen Pakete (`routeros` und Zusatzpakete wie `wifi-qcom`) für
-  alle Architekturen der betroffenen Geräte von download.mikrotik.com nach `pkgPath`. Fehlt eines,
-  startet nichts. Architektur und Pakete meldet jedes Gerät in seinem Status.
+  alle Architekturen der betroffenen Geräte von download.mikrotik.com nach `pkgPath` und prüft die
+  NPK-Kennung am Dateianfang. Fehlt eines oder ist es ungültig, startet nichts; die Meldung nennt
+  alle fehlenden Dateien auf einmal. Architektur, Pakete und freien Platz meldet jedes Gerät in
+  seinem Status. Nicht aufgenommene Inventar-Einträge überspringt `ring=`/`all=yes` (D49).
+* Vor dem Auftrag zeigt eine Tabelle je Gerät Version, Architektur, Bedarf, freien Platz und
+  Urteil. `check=yes` zeigt nur diese Tabelle und die fehlenden Pakete (mit Download-URL und
+  Ablageort) – ohne Download und ohne Auftrag, auch auf dem Backup-Manager (D52).
+* **Platz:** Passen die Pakete plus 1 MB Reserve nicht in den gemeldeten freien Platz, bekommt das
+  Gerät keinen Auftrag („zu wenig Platz … kein Auftrag“), die übrigen schon. Der Agent prüft vor
+  dem Download noch einmal und lädt dann nichts („Platz fehlt: … KB frei, … KB nötig“ in
+  `$cfmUpgrade`); nach dem Aufräumen einen neuen Auftrag erteilen (D51). Geräte mit
+  `flash/`-Verzeichnis melden keinen Wert (ihre Wurzel liegt im RAM) und werden nicht geprüft.
 * Die Geräte holen die Pakete per SFTP vom Manager, prüfen die Größe und starten sofort bzw. zum
   Zeitpunkt `at` neu. RouterOS prüft die Signatur der Pakete beim Installieren.
 * Eine ältere Zielversion bedeutet **Downgrade** (`/system/package/downgrade`); die Konfiguration
@@ -714,10 +742,11 @@ $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
 * **Manager ohne Internet:** alle installierten Pakete der betroffenen Geräte (je Architektur, z.B.
   `routeros`, `wifi-qcom`, `container`, `iot` …) vorab nach `<pkgPath>/<ver>/` legen
   (`<paket>-<ver>-<arch>.npk`, bei x86 ohne Architektur). Welche ein Gerät hat, steht in dessen
-  Status (`pkgs`). Fehlt eines, bricht `$cfmUpgrade` mit „Download fehlgeschlagen“ ab. Platz auf
-  dem Manager beachten; nicht mehr gebrauchte Pakete einer laufenden Version darfst du von Hand löschen.
+  Status (`pkgs`); am einfachsten vorab `$cfmUpgrade ver=… all=yes check=yes` aufrufen, das listet
+  alle fehlenden Dateien. Platz auf dem Manager beachten; nicht mehr gebrauchte Pakete einer
+  laufenden Version darfst du von Hand löschen.
 * **Geräte mit 16 MB Flash** (hEX, CRS328 …) haben oft nur 2–3 MB frei, `routeros` braucht ~12 MB:
-  Dort geht `$cfmUpgrade` nicht (TODO 38); das eingebaute Update braucht Internet am Gerät.
+  Dort lehnt `$cfmUpgrade` den Auftrag ab (TODO 38); das eingebaute Update braucht Internet am Gerät.
 
 ### 8.7 Verkabelung und Netzplan
 
@@ -844,8 +873,8 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   keine Host-Schlüssel. Sorge deshalb dafür, dass niemand anderes im Onboarding-VLAN hängt.
 * **`vaultpw`** gehört offline in einen Passwortmanager, nicht auf den Manager allein.
 * **Git-Host:** nur Forced Command für den Manager-Schlüssel, der Lese-User `cfm-git` am Manager.
-* **Persönliche Admin-SSH-Keys:** optional über `authorized_keys` (siehe Datenmodell), Passwort
-  bleibt immer zusätzlich gültig. Existiert die Datei, entfernt jeder Apply Keys, die nicht mehr
+* **Persönliche Admin-SSH-Keys:** optional über `authorized_keys` (siehe Datenmodell). Das
+  Passwort gilt danach nur noch für Winbox/WebFig, SSH verlangt den Key. Existiert die Datei, entfernt jeder Apply Keys, die nicht mehr
   drinstehen – auch von Hand hinzugefügte, `/user/ssh-keys` hat kein Feld für eine feinere
   Unterscheidung. Leg die Datei also nur an, wenn du sie auch pflegst.
 
@@ -922,6 +951,7 @@ cd tools/chr-lab
                           # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply) …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
+./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
 ./lab.sh stop
 ```
 
@@ -947,7 +977,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmPromote [ring=1\|2]` | Version des vorigen Rings freigeben |
 | `$cfmRollback ver=<N> [all=yes]` | alten Stand als neue Version freigeben (überschreibt `work/`) |
 | `$cfmStatus` | Flottenübersicht |
-| `$cfmPush [host=<n>\|ring=<r>] [force=yes]` | sofortigen Pull auslösen |
+| `$cfmPush [host=<n>\|ring=<r>] [force=yes]` | sofortigen Pull auslösen (nur aufgenommene Geräte, D49) |
 | `$cfmCollect [host=<n>]` | Status und Export sofort abholen |
 | `$cfmAudit host=<n> [op=report\|mark\|purge] [sel=all\|A1,A3]` | unverwaltete Objekte anzeigen, markieren, entfernen |
 | `$cfmSecret key=<k> value=<v>` | Vault-Eintrag setzen (`user.<name>`, `psk.<ssid>`, `vaultpw`) |
@@ -955,12 +985,14 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmVaultBackup` | verschlüsseltes Manager-Backup nach `vault/` |
 | `$cfmRekey host=<n>\|all=yes` | Geräteschlüssel erneuern |
 | `$cfmUpgrade ver=<x.y.z> host=<n>\|ring=<r>\|all=yes [at="YYYY-MM-DD HH:MM"]` | RouterOS-Update oder -Downgrade, sofort oder im Wartungsfenster |
+| `$cfmUpgrade ver=<x.y.z> host=…\|ring=…\|all=yes check=yes` | Probe ohne Download und Auftrag: Bedarf, freier Platz, fehlende Pakete |
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmChannels` | Kanäle der APs, Warnung bei gleichem Kanal an einem Switch |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
+| `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |
 | `$cfmPending` · `$cfmApprove serial= name= ip= [role=] [ring=]` | unbekannte Geräte |
 | `$cfmBootstrap` | Bootstrap-Datei für die manuelle Aufnahme |
 | `$cfmEnroll name= ip= [role=] [ring=] [rekey=yes] [noapply=yes]` | Gerät aufnehmen (manuell); `noapply=yes`: ohne ersten Apply, Scheduler aus (7.3) |
@@ -1009,7 +1041,7 @@ Wurzelverzeichnis.
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
-| Agent meldet „kein Manager erreichbar“, SFTP „authentication failure“, nur nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
+| Agent meldet „kein Manager erreichbar - der Agent läuft als …“ (bzw. nur „kein Manager erreichbar“ und SFTP „authentication failure“) nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
 | Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |
 | `$cfmUpgrade`: „Download fehlgeschlagen“ | Manager ohne Internet, Paket fehlt in `<pkgPath>/<ver>/` | Paket von Hand ablegen (8.6) |
 | `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
@@ -1028,6 +1060,12 @@ Wurzelverzeichnis.
 | Log `cfm: RouterBOARD-Firmware … nach dem Neustart nicht aktiv`, in `$cfmStatus` `fw X!` | Flashen hat nicht gewirkt; der Agent startet dafür nur einmal neu | auf dem Gerät `/system/routerboard/print` prüfen, `/system/routerboard/upgrade`, dann `/system/reboot` |
 | `upload-seed.sh`: „ABBRUCH: … enthält echte Seriennummern“ | `--seed-inventory` auf einen Manager mit aufgenommenen Geräten | ohne `--seed-inventory` hochladen; nur mit `--force`, wenn das Inventar wirklich ersetzt werden soll |
 | Bridge-Port inaktiv, Log „BPDU guard changed port role to disabled“ | Edge-Port (`access`) bekommt BPDUs, z.B. von der Bridge eines Virtualisierungshosts | Profil `vport:<vid>` verwenden, Port einmal `disabled=yes` und wieder `no` setzen |
+| `$cfmPush`: „kein Push (nicht aufgenommen): …“, `$cfmStatus`: `nicht aufgenommen` | Inventar-Eintrag ohne Geräteschlüssel (Platzhalter oder per `$cfmRegister` vorgemerkt) | gewollt; Gerät aufnehmen (Kapitel 7) oder Eintrag aus `meta/inventory.rsc` löschen |
+| `$cfmUpgrade`: „zu wenig Platz für die Pakete … kein Auftrag“, Agent: „Platz fehlt“ | Pakete + 1 MB Reserve passen nicht in den freien Speicher (16-MB-Geräte) | aufräumen (`/file`), dann neuer Auftrag; sonst das eingebaute Update mit Internet am Gerät (TODO 38) |
+| `$cfmUpgrade`: „Pakete fehlen oder sind ungültig“ | Manager ohne Internet oder Paket ohne NPK-Kennung (z.B. Fehlerseite) | die genannten Dateien von download.mikrotik.com nach `<pkgPath>/<ver>/` legen; vorab `check=yes` |
+| Onboarding `manual=yes` beendet, Gerät hängt weiter im Onboarding-VLAN | gewollt: cfm fasst den Port bei `manual=yes` nicht an | Port am Switch von Hand auf sein Profil zurückstellen (Log-Hinweis) |
+| `upload-seed.sh`: „keine SFTP-Anmeldung per SSH-Key“ (früher nur „Connection closed“) | das Skript nutzt Batch-SFTP, das kein Passwort abfragt | Public Key für den User auf dem Gerät hinterlegen, `ssh-agent` laden oder `SFTP_OPTS="-i <key>"` setzen |
+| SSH-Anmeldung per Passwort wird abgelehnt, Winbox geht | der User hat einen SSH-Key (z.B. aus `authorized_keys`), RouterOS erlaubt dann per SSH nur noch den Key | mit dem Key anmelden; Key-Datei prüfen (Kapitel 4, `authorized_keys`) |
 | `upload-seed.sh`: „Seed unvollständig hochgeladen“ | einzelne Dateien auch nach drei Versuchen nicht übertragen | erneut aufrufen; Verbindung und freien Platz am Manager prüfen |
 | Über WireGuard kein SSH/Winbox | Peer fehlt in `wireguard.rsc` oder ist noch nicht ausgerollt; Client-`allowed-ips` ohne das WireGuard-Subnetz | `$cfmCheck`, am Router `/interface/wireguard/peers/print`, Client-Konfiguration prüfen |
 | Webfig o.ä. bleibt aus, obwohl in `services` eingetragen | falscher Dienstname (`http` statt `www`) | RouterOS-Namen verwenden (Kapitel 4, `services`) |

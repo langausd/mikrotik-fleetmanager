@@ -64,7 +64,8 @@
 #  users      Admin-Benutzer -> Gruppe. Passwörter NUR im Vault (cfm:user.<name>), per Secret-Push.
 #  adminUser  "disable" = Werks-User admin abschalten, sobald auf dem Gerät ein User aus users
 #             aktiv ist (Passwort angekommen); "keep" = admin nicht anfassen.
-#  services   aktive IP-Services, alle anderen werden deaktiviert.
+#  services   aktive IP-Services, alle anderen werden deaktiviert (RouterOS-Namen: telnet, ftp, www,
+#             www-ssl, reverse-proxy, api, api-ssl, ssh, winbox – nicht http/https).
 #  hook       Git-Host für externe Sicherung (leer = aus).
 #  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (D47), z.B. für Home Assistant (welcher
 #             Client an welchem AP). {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}

@@ -7,7 +7,8 @@
 
 # ---------- Inhaltliche Prüfung von work/ -> {"err"={..};"warn"={..}} ----------
 # Fehler: VLANs/Zonen, die Profile, WLAN, policy, mgmtAccess oder Hostfiles nennen, aber nicht
-# existieren; unbekannte Port-Profile; doppelte MGMT-IPs; Rollen ohne Datei.
+# existieren; unbekannte Port-Profile; doppelte MGMT-IPs; Rollen ohne Datei; unbekannte IP-Dienste
+# oder doppelte Ports in services.
 # Warnungen: Inventar-Eintrag ohne Hostfile.
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
@@ -110,6 +111,15 @@
       :if ([:typeof ($wgAddrs->$ad)] != "nothing") do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": addr " . $ad . " doppelt vergeben (" . ($wgAddrs->$ad) . ")") }
       :set ($wgAddrs->$ad) $k
     }
+  }
+  # IP-Dienste: nur RouterOS-Namen (http/https blieben stillschweigend wirkungslos), jeder Port nur
+  # einmal (www-ssl und reverse-proxy stehen ab Werk beide auf 443)
+  :local svp ({})
+  :foreach sn,sp in=($cfmG->"services") do={
+    :if (!($sn ~ "^(telnet|ftp|www|www-ssl|reverse-proxy|api|api-ssl|ssh|winbox)\$")) do={ :set ($err->[:len $err]) ("global.rsc: services nennt unbekannten Dienst " . $sn . " (RouterOS-Namen: telnet, ftp, www, www-ssl, reverse-proxy, api, api-ssl, ssh, winbox)") }
+    :local pk [:tostr $sp]
+    :if ([:typeof ($svp->$pk)] != "nothing") do={ :set ($err->[:len $err]) ("global.rsc: services: Port " . $pk . " doppelt (" . ($svp->$pk) . ", " . $sn . ")") }
+    :set ($svp->$pk) $sn
   }
   # Zonen-Matrix, Management-Zugang, MGMT-VLAN
   :foreach z,to in=($cfmG->"policy") do={

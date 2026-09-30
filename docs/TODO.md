@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-09-29)
+## Übersicht offener Punkte (Stand 2026-09-30)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -8,9 +8,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   vorher die Abdeckung prüfen), 41 (`$cfmWifiScan`, ein Scan unterbricht die Radios), 24 (eigene
   Radios des Managers/CAPsMAN), 38 (RouterOS-Update bei 16 MB Flash) sowie die Punkte unter „Noch
   nicht mit echter Hardware getestet“.
-* **Remote bzw. im Labor machbar:** 28 (Push nur an aufgenommene Geräte), 29 (klare Meldung ohne
-  SSH-Key), 30 (`reverse-proxy` in die Dienstliste), 31 (Onboarding an einem nicht verwalteten
-  Switch), 25 (WebFig per HTTPS), „Manager-Ticks starten gleichzeitig“ (Bekannte Fehler).
+* **Remote bzw. im Labor machbar:** 25 (WebFig per HTTPS), „Manager-Ticks starten gleichzeitig“
+  (Bekannte Fehler), Rest von 44 (Spiegel-Sync und Agent gegeneinander sperren), 21 (weniger
+  `/file/find` im Tick). Erledigt am 2026-09-30: 28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
 * **Größere Ausbauten:** 2 (Benachrichtigungen), 10–15, 18–21 sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -230,19 +230,26 @@ Backup-Manager-Rolle fehlen noch.
     Behoben (Befund 2026-09-28): `stpPrio` in Großbuchstaben (`"0xE000"`) – RouterOS liefert `0xe000`
     (als Text), der Textvergleich schlug fehl, `priority` wurde bei jedem Apply neu gesetzt (set=1).
     `cfmSame` vergleicht Zahlen in Textform (dezimal oder `0x…`) jetzt numerisch.
-28. **`$cfmPush` an nicht aufgenommene Geräte** – `$cfmRelease all=yes` stößt jeden
+28. ~~**`$cfmPush` an nicht aufgenommene Geräte**~~ – *erledigt (D49):* Nur Geräte mit Geräteschlüssel
+    im Vault gelten als aufgenommen; Push, Secret-Push, Trust, Rekey, Collect, Auto-Promote und
+    `$cfmUpgrade` lassen die übrigen aus, `$cfmPush` nennt sie in einer Sammelzeile, `$cfmStatus` zeigt
+    „nicht aufgenommen“. – `$cfmRelease all=yes` stößt jeden
     Inventar-Eintrag an, auch Platzhalter ohne Seriennummer (Befund 2026-09-29: drei noch nicht
     aufgenommene Geräte erzeugen bei jedem Release eine Fehlerzeile, beim Secret-Push eine Warnung). Das erzeugt Fehlerzeilen und trifft im
     Zweifel ein fremdes Gerät, das gerade die geplante Adresse hat. Einträge ohne echte
     Seriennummer überspringen.
-29. **Zugang und Upload** – `tools/upload-seed.sh` nutzt `sftp -b`: Ohne SSH-Key bricht es nur mit
+29. ~~**Zugang und Upload**~~ – *erledigt:* `upload-seed.sh` prüft die Anmeldung vorab und erklärt,
+    dass ein SSH-Key nötig ist; Admin-Guide korrigiert (Kapitel 4 `authorized_keys`, Sicherheit,
+    Fehlersuche). – `tools/upload-seed.sh` nutzt `sftp -b`: Ohne SSH-Key bricht es nur mit
     `Connection closed` ab. Klare Meldung ausgeben (Key nötig, Batch-SFTP fragt kein Passwort ab).
     Admin-Guide (`authorized_keys`): Hat ein User einen Key, lehnt RouterOS dessen SSH-Login per
     Passwort ab (`/ip/ssh always-allow-password-login=no`); nur Winbox geht weiter mit Passwort.
-30. **Dienst `reverse-proxy`** (neu in RouterOS 7.2x, Port 443) fehlt in der Dienstliste der Rolle
-    `base`: Er bleibt aktiv und ohne Adressbeschränkung. In die Liste aufnehmen (aus, sofern nicht
-    in `services`).
-31. **Onboarding an einem nicht verwalteten Switch** – `$cfmOnboard sw= port=` setzt voraus, dass
+30. ~~**Dienst `reverse-proxy`**~~ – *erledigt:* steht in der Dienstliste, aus, sofern nicht in
+    `services`; `$cfmCheck` meldet unbekannte Dienstnamen und doppelte Ports. – Befund: Der Dienst
+    (neu in RouterOS 7.2x, Port 443) fehlte in der Dienstliste der Rolle `base` und blieb aktiv, ohne
+    Adressbeschränkung.
+31. ~~**Onboarding an einem nicht verwalteten Switch**~~ – *erledigt (D50):* `$cfmOnboard manual=yes
+    [name=] [sw= port=]`, Labortest `e2e-onboard.sh manual`. – `$cfmOnboard sw= port=` setzt voraus, dass
     der Switch aufgenommen ist, sonst lässt sich der Port nicht schalten. Beim ersten Gerät hinter
     einem noch nicht übernommenen Core-Switch (Hardware-Befund) musste der Port von Hand in das
     Onboarding-VLAN (PVID) und die Sitzung von Hand in `meta/onboard.dat` angelegt werden; der
@@ -275,22 +282,28 @@ Backup-Manager-Rolle fehlen noch.
     zweite Default-Route an, die Bootstrap-Route blieb stehen → ECMP über zwei Gateways. Behoben in
     `lib/bootstrap-body.rsc` (Route mit Tag `cfm:rt:default`). *Erledigt:* Labortest `e2e.sh` Schritt
     14b (cm2 per Bootstrap aufgenommen, mit `gw=` genau eine Default-Route).
-35. **Agent aus einer Admin-Sitzung gestartet** – `/system script run cfm-agent` aus einer SSH-Sitzung
+35. ~~**Agent aus einer Admin-Sitzung gestartet**~~ – `/system script run cfm-agent` aus einer SSH-Sitzung
     eines Admin-Users scheitert mit „kein Manager erreichbar“: `/tool/fetch` (SFTP) nimmt den privaten
     Schlüssel des aufrufenden Users, den nur `cfm` hat. *Doku erledigt* (Admin-Guide 7.3 und
-    Fehlersuche: immer `$cfmPush host=…`); offen: im Agent eine klare Meldung ausgeben.
+    Fehlersuche: immer `$cfmPush host=…`); *erledigt:* Der Agent erkennt den Besitzer des Jobs und
+    meldet „der Agent läuft als <user> … `$cfmPush host=<n>` verwenden“ (Terminal und Log).
 36. **Vorabversionen in `$cfmUpgrade`** – `$cfmVerGe` las „7.25beta5“ als 7.0 (`[:tonum "25beta5"]`
     ist `nil`) und stufte ein Update von 7.24.4 als Downgrade ein (`/system/package/downgrade`).
     Hardware-Befund: hAP be³ Media, dessen Switch-Ports erst ab 7.25beta4 funktionieren, dort von
     Hand aktualisiert. Behoben in `lib/mgr-onboard.rsc` (alpha < beta < rc < fertig), auf RouterOS
     7.24.4 mit 16 Fällen geprüft; Labortest (e2e) offen.
-37. **Mindestgröße in `$cfmPkgFetch`** – Pakete unter 100 KB galten als kaputter Download und wurden
+37. ~~**Mindestgröße in `$cfmPkgFetch`**~~ – *erledigt (D52):* NPK-Kennung (`1e f1 d0 ba`) statt
+    Mindestgröße, `$cfmUpgrade … check=yes` listet fehlende Pakete samt Ablageort, der Auftrag nennt
+    alle auf einmal. Offen: Prüfsummen von MikroTik (falls es eine Liste gibt). – Pakete unter 100 KB galten als kaputter Download und wurden
     gelöscht; echte Zusatzpakete sind kleiner (`ups` für `arm` ~45 KB). Grenze auf 20 KB gesenkt
     (Admin-Guide 8.6: Pakete für einen Manager ohne Internet von Hand ablegen).
     Besser: echte Prüfung (NPK-Kennung am Dateianfang oder Größe aus einer Prüfsummenliste von
     MikroTik). Außerdem: Ohne Internet am Manager müssen alle installierten Pakete eines Geräts vorab
     in `<pkgPath>/<ver>/` liegen – `$cfmUpgrade` könnte die fehlenden vor dem Auftrag auflisten.
-38. **RouterOS-Update auf Geräten mit 16 MB Flash** (hEX RB750Gr3, CRS328 u.ä.) – `$cfmUpgrade` lädt
+38. **RouterOS-Update auf Geräten mit 16 MB Flash** (hEX RB750Gr3, CRS328 u.ä.) – *Vorab-Prüfung
+    erledigt (D51):* Agent meldet den freien Platz (`fs`), `$cfmUpgrade` erteilt zu vollen Geräten
+    keinen Auftrag, der Agent prüft vor dem Download erneut. Offen bleibt das Update selbst (tmpfs
+    oder eingebautes Update, nur mit Hardware testbar). – `$cfmUpgrade` lädt
     die Pakete per SFTP in den Flash des Geräts; dort sind oft nur 2–3 MB frei, `routeros` braucht
     ~12 MB. Das eingebaute Update (`/system/package/update`) kommt damit zurecht, braucht aber Internet
     am Gerät. Optionen: Pakete in eine tmpfs-Disk (`/disk add type=tmpfs`) laden und von dort

@@ -149,7 +149,9 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 :onerror e in={
   :if ([:typeof ([/ip/service/get [:pick [find where name="ssh" and !dynamic] 0]]->"available-from")] != "nothing") do={ :set saf "available-from" }
 } do={}
-:foreach s in={"telnet";"ftp";"www";"www-ssl";"api";"api-ssl";"ssh";"winbox"} do={
+# reverse-proxy (RouterOS 7.2x) ist ab Werk an, Port 443 ohne Adressbeschränkung (TODO 30); ältere
+# Versionen kennen den Dienst nicht, $cfmSet findet dann nichts
+:foreach s in={"telnet";"ftp";"www";"www-ssl";"reverse-proxy";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
   :local addr [$cfmKeys $an]
   :if ($s = "api" and $capiOn and [:len $port] = 0) do={

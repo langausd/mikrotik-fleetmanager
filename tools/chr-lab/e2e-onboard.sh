@@ -5,9 +5,11 @@
 #   vm3 = neues Gerät "ob1" an cm1/ether3 (Stern-Topologie aus lab.sh)
 # Der Werkszustand wird auf dem frischen CHR simuliert: 192.168.88.1 auf ether2,
 # admin ohne Passwort (echte Geräte: Aufkleber-Passwort per $cfmRegister pw=...).
-#   ./e2e-onboard.sh [fresh] [dhcp]
+#   ./e2e-onboard.sh [fresh] [dhcp] [manual]
 #   dhcp = Werksgerät im CAPs-Modus: DHCP-Client auf dem Uplink statt 192.168.88.1, wie ein hAP,
 #          der per PoE an ether1 hängt (dessen normale Werks-Config dort eine WAN-Firewall hat)
+#   manual = Switch gilt als nicht verwaltet ($cfmOnboard manual=yes, TODO 31): der Test schaltet
+#          cm1/ether3 "von Hand" um und zurück, cfm darf den Port nicht anfassen
 # ------------------------------------------------------------------
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -26,8 +28,8 @@ waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; 
 expect() { if r "$1" ":put ($2)" | grep -q true; then ok "$3"; else bad "$3"; fi; }
 stat() { mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$1"'/status.dat"]->"'"$2"'")]' | tail -1; }
 
-fresh=0; mode=static
-for a in "$@"; do case $a in fresh) fresh=1;; dhcp) mode=dhcp;; esac; done
+fresh=0; mode=static; man=0
+for a in "$@"; do case $a in fresh) fresh=1;; dhcp) mode=dhcp;; manual) man=1;; esac; done
 if [ $fresh = 1 ]; then
   step "VMs neu aufsetzen"
   ./lab.sh stop >/dev/null; rm -f "$LAB"/vm*.qcow2; ./lab.sh start 3
@@ -60,17 +62,27 @@ echo "   Seriennummer vm3: $serial"
 
 step "3. Registrieren + Onboarding-Port cm1/ether3"
 mgr "\$cfmRegister name=ob1 serial=\"$serial\" role=switch,router ring=0 ip=192.168.10.23" | grep -q "Registriert" && ok "ob1 registriert" || bad "Registrierung"
-mgr '$cfmOnboard sw=cm1 port=ether3 name=ob1' | grep -q "ist aktiv" && ok "Onboarding-Port aktiv" || bad "cfmOnboard"
+if [ $man = 1 ]; then
+  # "von Hand": dieselbe Umschaltung wie cfm, aber ohne dessen Fail-safe-Timer
+  mgr '$cfmOnbPort sw=cm1 port=ether3 on=yes' >/dev/null
+  r 1 '/system/scheduler/remove [find where name=cfm-onboard-revert]' >/dev/null
+  mgr '$cfmOnboard manual=yes name=ob1 sw=cm1 port=ether3' | grep -q "Onboarding ohne verwalteten Switch" && ok "Onboarding manuell gestartet" || bad "cfmOnboard manual=yes"
+  mgr '$cfmOnboardStatus' | grep -q "Sitzung manuell cm1/ether3" && ok "Status zeigt die manuelle Sitzung" || bad "Status der manuellen Sitzung"
+else
+  mgr '$cfmOnboard sw=cm1 port=ether3 name=ob1' | grep -q "ist aktiv" && ok "Onboarding-Port aktiv" || bad "cfmOnboard"
+fi
 expect 1 '[/interface/bridge/port/get [find interface=ether3] pvid] = 88' "cm1/ether3: PVID = Onboarding-VLAN"
 
 step "4. Automatischer Ablauf (Probe -> Update-Check -> Bootstrap/Reset -> Enroll -> Apply)"
-last=""
+last=""; fs=0
 for _ in $(seq 1 70); do
   st=$(mgr '$cfmOnboardStatus' | tail -1)
   [ "$st" != "$last" ] && echo "   $st" && last=$st
+  [ $man = 1 ] && r 1 ':put [:len [/system/scheduler/find where name=cfm-onboard-revert]]' | tail -1 | grep -qx 1 && fs=1
   echo "$st" | grep -q "keine Onboarding-Sitzung" && break
   sleep 15
 done
+[ $man = 1 ] && { [ $fs = 0 ] && ok "manuell: kein Fail-safe-Timer am Switch" || bad "manuell: Fail-safe-Timer angelegt"; }
 mgr ':foreach l in=[/log/find where message~"Onboarding"] do={:put [/log/get $l message]}' | tail -3 | sed 's/^/   log: /'
 mgr ':put [:len [/log/find where message~"beendet: erfolgreich: ob1"]]' | tail -1 | grep -qx 1 && ok "Onboarding erfolgreich beendet" || bad "Onboarding nicht erfolgreich"
 # den Status holt der allgemeine Manager-Tick ab, der parallel zum Onboarding-Tick läuft: kurz warten
@@ -79,6 +91,14 @@ for _ in $(seq 1 24); do [ "$(stat ob1 res)" = ok ] && break; sleep 5; done
 [ $mode = dhcp ] && expect 1 '[:len [/ip/dhcp-server/lease/find where server=dhcp88 and mac-address="52:54:00:00:03:02"]] = 1' "cm1: ob1 hat seine Adresse per DHCP im Onboarding-VLAN bekommen (CAPs-Modus)"
 
 step "5. Port zurück auf sein Profil, Gerät vollständig aufgenommen"
+if [ $man = 1 ]; then
+  sleep 30
+  expect 1 '[/interface/bridge/port/get [find interface=ether3] pvid] = 88' "manuell: cfm lässt den Port stehen"
+  # nur die Warnzeile selbst (RouterOS protokolliert auch Datei-Inhalte, die den Text enthalten)
+  mgr ':put [:len [/log/find where message~"^cfm: Onboarding .manuell.: Port jetzt von Hand"]]' | tail -1 | grep -qx 1 && ok "manuell: Log erinnert an das Zurückstellen" || bad "manuell: keine Erinnerung im Log"
+  # der Admin stellt zurück - hier per erzwungenem Apply des (im Labor doch verwalteten) cm1
+  mgr '$cfmPush host=cm1 force=yes' >/dev/null
+fi
 # die Rückstellung kommt mit dem angestoßenen Apply auf cm1 (im Labor ca. 25 s): bis 2 min warten
 for _ in $(seq 1 24); do r 1 ':put [/interface/bridge/port/get [find interface=ether3] pvid]' | tail -1 | grep -qx 1 && break; sleep 5; done
 expect 1 '[/interface/bridge/port/get [find interface=ether3] pvid] = 1' "cm1/ether3: PVID wieder 1"

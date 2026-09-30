@@ -24,7 +24,7 @@
 #   $cfmStatus                         Flottenübersicht
 #   $cfmEnroll name=<n> ip=<ip> [role=<r>] [ring=<0-2>] [rekey=yes]
 #                                      Gerät aufnehmen / Ersatzgerät übernehmen
-#   $cfmPush [host=<n>|ring=<r>] [force=yes]   sofortigen Pull auslösen
+#   $cfmPush [host=<n>|ring=<r>] [force=yes]   sofortigen Pull auslösen (nur aufgenommene Geräte)
 #   $cfmAudit host=<n> [op=report|mark|purge] [sel=all|A1,A3]
 #   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, vaultpw
 #   $cfmSecretPush [host=<n>]          Secrets per SSH direkt in die Geräte schreiben
@@ -33,6 +33,7 @@
 #   $cfmArchivePrune [keep=<n>]        alte Versionen löschen (läuft nach jedem Release)
 #   $cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at="YYYY-MM-DD HH:MM"]
 #                                      RouterOS-Update/-Downgrade, Pakete kommen vom Manager
+#   $cfmUpgrade ver=<x.y.z> host=..|ring=..|all=yes check=yes   Probe: Pakete, fehlende Dateien, Platz
 #   $cfmUpgrade cancel=yes host=..|ring=..|all=yes   Auftrag zurückziehen; ohne ver: Übersicht
 #   $cfmLinks [accept=yes] [export=yes]   Verkabelung (LLDP) prüfen, Netzplan state/netzplan.md
 #   $cfmChannels                       Kanäle der APs, Warnung bei gleichem Kanal an einem Switch
@@ -41,6 +42,7 @@
 #   Onboarding (Push in die Werks-Config):
 #   $cfmRegister name=<n> serial=<s> ip=<ip> [role=..] [ring=..] [pw=<Aufkleber-Passwort>]
 #   $cfmOnboard sw=<switch> port=<port> [name=<n>]   Port temporär ins Onboarding-VLAN
+#   $cfmOnboard manual=yes [name=<n>] [sw=.. port=..]  Switch nicht verwaltet: Port schaltet der Admin
 #   $cfmOnboardStatus | $cfmOnboardAbort | $cfmPending | $cfmApprove serial=.. name=.. ip=..
 # Automatisch: $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick", Default 10m),
 # $cfmOnbTickRun (Scheduler cfm-mgr-onb-tick, fest 1m, nur fürs Onboarding)
@@ -104,6 +106,14 @@
     :set sep ";\n"
   }
   $cfmWrite ([$cfmMB] . "/meta/inventory.rsc") ($s . "\n}\n")
+}
+# Aufgenommen = Geräteschlüssel im Vault (wie bei den Manifesten). Platzhalter (SERIAL-…) und per
+# $cfmRegister eingetragene, noch nicht aufgenommene Geräte haben keinen: Push, Secret-Push, Trust,
+# Rekey, Collect, Auto-Promote und Upgrade lassen sie aus (TODO 28). $1 = Inventar-Eintrag
+:global cfmEnrolled do={
+  :global cfmVaultGet
+  :local s [:tostr ($1->"serial")]
+  :return ([:len $s] > 0 and [:len [$cfmVaultGet ("mac." . $s)]] > 0)
 }
 # CAPsMAN-Geräte (D45): alle mit Rolle capsman, ohne solche übergangsweise der Primary-Manager
 # (Rolle manager) -> Liste {"n"=Name;"ip"=MGMT-IP}. Steht als Feld cm in jedem Manifest: Die Rolle
@@ -356,20 +366,26 @@
 
 # ---------- Push-Trigger ----------
 :global cfmPush do={
-  :global cfmInvLoad; :global cfmExec
+  :global cfmInvLoad; :global cfmExec; :global cfmEnrolled
   :local c ":execute \"/system script run cfm-agent\""
   :if ($force = "yes") do={ :set c ":execute \":global cfmArg \\\"force\\\"; /system script run cfm-agent\"" }
+  # nicht aufgenommene Geräte nie anstoßen: Unter der geplanten Adresse kann ein fremdes Gerät stehen
+  :local skip ""
   :foreach name,d in=[$cfmInvLoad] do={
     :if (([:len $host] = 0 or $host = $name) and ([:len [:tostr $ring]] = 0 or [:tostr $ring] = [:tostr ($d->"ring")])) do={
-      :local r [$cfmExec ip=($d->"ip") cmd=$c]
-      :if (($r->"exit-code") = 0) do={ :put ("Push -> " . $name) } else={ :put ("Push -> " . $name . " FEHLER " . ($r->"output")) }
+      :if ([$cfmEnrolled $d]) do={
+        :local r [$cfmExec ip=($d->"ip") cmd=$c]
+        :if (($r->"exit-code") = 0) do={ :put ("Push -> " . $name) } else={ :put ("Push -> " . $name . " FEHLER " . ($r->"output")) }
+      } else={ :set skip ($skip . " " . $name) }
     }
   }
+  :if ([:len $skip] > 0) do={ :put ("kein Push (nicht aufgenommen):" . $skip) }
 }
 
 # ---------- Status ----------
 :global cfmStatus do={
   :global cfmInvLoad; :global cfmRings; :global cfmJson; :global cfmMB; :global cfmPad; :global cfmNow
+  :global cfmEnrolled
   :global cfmJson
   :local b [$cfmMB]
   :local rg [$cfmRings]
@@ -397,6 +413,7 @@
     :if ([:len [:tostr ($s->"bad")]] > 0) do={ :set res ($res . " bad v" . ($s->"bad")) }
     :if ([:len [:tostr ($s->"fwe")]] > 0) do={ :set res ($res . " fw " . ($s->"fwe") . "!") }
     :if ([:tostr ($s->"wfb")] = "1") do={ :set res ($res . " WLAN lokal") }
+    :if (![$cfmEnrolled $d]) do={ :set res "nicht aufgenommen" }
     :put ([$cfmPad $name $nw] . [$cfmPad ($d->"ring") 5] . [$cfmPad ("v" . ($rg->("r" . ($d->"ring")))) 6] . [$cfmPad ("v" . [:tostr ($s->"v")]) 6] . [$cfmPad [:pick $res 0 25] 26] . [$cfmPad $sv 4] . [$cfmPad $ros 16] . $age)
   }
 }
@@ -420,11 +437,11 @@
 # Geräte haben am Manager nur Lesezugriff; der Manager (User cfm auf dem Gerät)
 # holt cfm/out/status.json und – wenn neu – cfm/out/export.rsc nach state/<name>/.
 :global cfmCollect do={
-  :global cfmInvLoad; :global cfmMB; :global cfmJson
+  :global cfmInvLoad; :global cfmMB; :global cfmJson; :global cfmEnrolled
   :local b [$cfmMB]
   :local n 0
   :foreach name,d in=[$cfmInvLoad] do={
-    :if (([:len $host] = 0 or $host = $name) and [:len [:tostr ($d->"ip")]] > 0) do={
+    :if (([:len $host] = 0 or $host = $name) and [:len [:tostr ($d->"ip")]] > 0 and [$cfmEnrolled $d]) do={
       :if ([/ping ($d->"ip") count=1] > 0) do={
         :local sd ($b . "/state/" . $name)
         :local old [$cfmJson ($sd . "/status.dat")]
@@ -451,13 +468,15 @@
 :global cfmSecretPush do={
   :global cfmInvLoad; :global cfmVaultGet; :global cfmExec; :global cfmEsc; :global cfmJson
   :global cfmMB; :global cfmG; :global cfmWifi; :global cfmLoadData; :global cfmChallenge; :global cfmCapsmen
+  :global cfmEnrolled
   $cfmLoadData
   :local vv [:tonum ([$cfmJson ([$cfmMB] . "/meta/vault.dat")]->"ver")]
   :local done 0
   :local inv [$cfmInvLoad]
   :local cms [$cfmCapsmen $inv]
   :foreach name,d in=$inv do={
-   :if ([:len $host] = 0 or $host = $name) do={
+   # nicht aufgenommene Geräte gar nicht erst prüfen (sonst eine Warnung je Release, TODO 28)
+   :if (([:len $host] = 0 or $host = $name) and [$cfmEnrolled $d]) do={
     # Identitätsprüfung: Secrets nur an ein Gerät, das seinen Geräteschlüssel kennt
     :if (![$cfmChallenge ip=($d->"ip") serial=($d->"serial")]) do={
       :log warning ("cfm: Secret-Push " . $name . ": Identitätsprüfung fehlgeschlagen (Geräteschlüssel falsch oder Gerät nicht erreichbar) - übersprungen")
@@ -603,12 +622,12 @@
 # Nicht während eines Applys: dessen Rollback-Sicherung ist mit dem alten Schlüssel verschlüsselt.
 :global cfmRekey do={
   :global cfmInvLoad; :global cfmChallenge; :global cfmExec; :global cfmVaultSet; :global cfmManifests
-  :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmIsPrimary
+  :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmIsPrimary; :global cfmEnrolled
   :if (![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
   :if ([:len $host] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmRekey host=<name> | all=yes" }
   :local n 0
   :foreach name,d in=[$cfmInvLoad] do={
-    :if ($all = "yes" or $host = $name) do={
+    :if (($all = "yes" and [$cfmEnrolled $d]) or $host = $name) do={
       :if (![$cfmChallenge ip=($d->"ip") serial=($d->"serial")]) do={ :put ("Rekey " . $name . ": Identitätsprüfung fehlgeschlagen - übersprungen") } else={
         :local k [:rndstr length=64 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]
         :local c (":if ([:len [/system/scheduler/find where name=\"cfm-watchdog\"]] = 0 and [:len [/system/script/job/find where script=\"cfm-agent\"]] = 0) do={ /ppp/secret/set [find where name=\"cfm:key\"] password=\"" . $k . "\"; :put rekey-ok } else={ :put busy }")

@@ -5,6 +5,7 @@
 # ============================================================
 # ---------- Onboarding: Push in die Werks-Config ----------
 # $cfmRegister -> $cfmOnboard sw=.. port=.. -> Gerät einstecken -> $cfmOnbTick (im Tick)
+# Switch nicht verwaltet: $cfmOnboard manual=yes, der Admin schaltet den Port selbst (TODO 31)
 
 # Versionsvergleich: $1 >= $2  (z.B. "7.24.2 (stable)" gegen "7.20", "7.25beta5" gegen "7.24.4").
 # Vorabversionen liegen vor der fertigen Version: 7.25beta5 < 7.25rc1 < 7.25 < 7.25.1
@@ -121,11 +122,28 @@
 
 :global cfmOnboard do={
   :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmOnbPort; :global cfmNow; :global cfmInvLoad
-  :if ([:len $sw] = 0 or [:len $port] = 0) do={ :error "Aufruf: \$cfmOnboard sw=<Switch> port=<Port> [name=<registriertes Gerät>]" }
+  :global cfmLoadData; :global cfmOnbVid; :global cfmOnbWhere
+  # manual=yes (TODO 31): Der Port hängt an einem Switch, den cfm nicht verwaltet. Der Admin schaltet
+  # ihn selbst ins Onboarding-VLAN und zurück; kein Fail-safe, kein Push an den Switch. sw/port sind
+  # dann nur eine Notiz für Status und Log.
+  :local man ($manual = "yes")
+  :if (!$man and ([:len $sw] = 0 or [:len $port] = 0)) do={ :error "Aufruf: \$cfmOnboard sw=<Switch> port=<Port> [name=<registriertes Gerät>] | \$cfmOnboard manual=yes [name=..] [sw=.. port=..]" }
   :local f ([$cfmMB] . "/meta/onboard.dat")
   :local ses [$cfmJson $f]
-  :if ([:len [:tostr ($ses->"state")]] > 0) do={ :error ("es läuft bereits eine Sitzung an " . ($ses->"sw") . "/" . ($ses->"port") . " (" . ($ses->"state") . "), ggf. \$cfmOnboardAbort") }
+  :if ([:len [:tostr ($ses->"state")]] > 0) do={ :error ("es läuft bereits eine Sitzung (" . [$cfmOnbWhere $ses] . ", " . ($ses->"state") . "), ggf. \$cfmOnboardAbort") }
   :if ([:len $name] > 0 and [:typeof ([$cfmInvLoad]->$name)] != "array") do={ :error ("Gerät " . $name . " ist nicht registriert (\$cfmRegister)") }
+  :if ($man) do={
+    $cfmLoadData
+    :local ov [$cfmOnbVid]
+    :if ([:len $ov] = 0) do={ :error "kein Onboarding-VLAN in vlans.rsc (onboard=yes)" }
+    :local ns ({"sw"=[:tostr $sw];"port"=[:tostr $port];"man"=1;"name"=[:tostr $name];"t0"=[$cfmNow];"state"="wait";"upd"=0;"msg"="warte auf Gerät"})
+    $cfmWrite $f [:serialize to=json $ns]
+    :local wo "Port"
+    :if ([:len $sw] > 0 or [:len $port] > 0) do={ :set wo ("Port " . [:tostr $sw] . "/" . [:tostr $port]) }
+    :log info ("cfm: Onboarding (manuell) gestartet, " . $wo . " schaltet der Admin")
+    :put ("Onboarding ohne verwalteten Switch: " . $wo . " jetzt von Hand ins Onboarding-VLAN " . $ov . " schalten (untagged, PVID " . $ov . "), dann Gerät einstecken bzw. einschalten. Stand: \$cfmOnboardStatus. Am Ende den Port von Hand zurückstellen.")
+    :return ""
+  }
   :local r [$cfmOnbPort sw=$sw port=$port on="yes"]
   :if (!($r ~ "(^|\n)ok")) do={
     # nichts halb umgeschaltet zurücklassen: Switch per erzwungenem Apply auf sein Profil
@@ -139,31 +157,50 @@
   :put ("Onboarding-Port " . $sw . "/" . $port . " ist aktiv. Gerät jetzt einstecken bzw. einschalten - Stand: \$cfmOnboardStatus")
 }
 
+# Ort der Sitzung für Status und Log: "sw/port", bei manual=yes "manuell" bzw. "manuell sw/port"
+:global cfmOnbWhere do={
+  :local w ""
+  :if ([:len [:tostr ($1->"sw")]] > 0 or [:len [:tostr ($1->"port")]] > 0) do={ :set w ([:tostr ($1->"sw")] . "/" . [:tostr ($1->"port")]) }
+  :if ([:tostr ($1->"man")] = "1") do={
+    :if ([:len $w] > 0) do={ :return ("manuell " . $w) }
+    :return "manuell"
+  }
+  :return $w
+}
+
 :global cfmOnboardStatus do={
-  :global cfmJson; :global cfmMB
+  :global cfmJson; :global cfmMB; :global cfmOnbWhere
   :local s [$cfmJson ([$cfmMB] . "/meta/onboard.dat")]
   :if ([:len [:tostr ($s->"state")]] = 0) do={ :put "keine Onboarding-Sitzung aktiv"; :return "" }
-  :put ("Sitzung " . ($s->"sw") . "/" . ($s->"port") . "  Status: " . ($s->"state") . "  Gerät: " . [:tostr ($s->"name")] . "  " . [:tostr ($s->"msg")])
+  :put ("Sitzung " . [$cfmOnbWhere $s] . "  Status: " . ($s->"state") . "  Gerät: " . [:tostr ($s->"name")] . "  " . [:tostr ($s->"msg")])
   :return ($s->"state")
 }
 
-# Sitzung beenden: Fail-safe weg, Port per erzwungenem Apply zurück auf sein Profil
+# Sitzung beenden: Fail-safe weg, Port per erzwungenem Apply zurück auf sein Profil.
+# manual=yes: nichts am Switch, nur die Erinnerung ins Log, den Port von Hand zurückzustellen.
 :global cfmOnboardEnd do={
-  :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmOnbPort; :global cfmPush
+  :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmOnbPort; :global cfmPush; :global cfmOnbWhere
   :local f ([$cfmMB] . "/meta/onboard.dat")
   :local s [$cfmJson $f]
-  :if ([:len [:tostr ($s->"sw")]] = 0) do={ :return false }
-  $cfmOnbPort sw=($s->"sw") port=($s->"port") on="no"
-  $cfmPush host=($s->"sw") force="yes"
+  :if ([:len [:tostr ($s->"state")]] = 0) do={ :return false }
+  :local man ([:tostr ($s->"man")] = "1")
+  :if (!$man) do={
+    $cfmOnbPort sw=($s->"sw") port=($s->"port") on="no"
+    $cfmPush host=($s->"sw") force="yes"
+  }
   $cfmWrite $f "{}"
-  :log info ("cfm: Onboarding " . ($s->"sw") . "/" . ($s->"port") . " beendet: " . [:tostr $msg])
+  :log info ("cfm: Onboarding " . [$cfmOnbWhere $s] . " beendet: " . [:tostr $msg])
+  :if ($man) do={ :log warning "cfm: Onboarding (manuell): Port jetzt von Hand zurück auf sein Profil stellen" }
   :return true
 }
 
 :global cfmOnboardAbort do={
-  :global cfmOnboardEnd
+  :global cfmOnboardEnd; :global cfmJson; :global cfmMB
+  :local man ([:tostr ([$cfmJson ([$cfmMB] . "/meta/onboard.dat")]->"man")] = "1")
   $cfmOnboardEnd msg="abgebrochen"
-  :put "Onboarding abgebrochen, der Port fällt auf sein Profil zurück"
+  :if ($man) do={ :put "Onboarding abgebrochen - den Port jetzt von Hand zurück auf sein Profil stellen" } else={
+    :put "Onboarding abgebrochen, der Port fällt auf sein Profil zurück"
+  }
 }
 
 # Platzhalter ersetzen: $1 Text, $2 Suchtext, $3 Ersatz
@@ -227,7 +264,7 @@
 
   # wait: Gerät suchen (Werks-IP .1 oder DHCP-Lease) und Probe hochladen
   :if ($st = "wait") do={
-    $cfmOnbPort sw=($s->"sw") port=($s->"port") on="yes"
+    :if ([:tostr ($s->"man")] != "1") do={ $cfmOnbPort sw=($s->"sw") port=($s->"port") on="yes" }
     :local probe [$cfmRead ($b . "/archive/v" . $rv . "/lib/onboard-probe.rsc")]
     :if ([:len $probe] = 0) do={ :set fail ("lib/onboard-probe.rsc fehlt in v" . $rv) } else={
       :set probe [$cfmSub [$cfmSub $probe "@GW@" $gw] "@CH@" [:tostr ($cfmG->"rosChannel")]]

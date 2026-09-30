@@ -34,6 +34,16 @@ if [ "$bootstrap" = "-" ]; then
 fi
 if [ -n "$bootstrap" ] && [ ! -f "$bootstrap" ]; then echo "Bootstrap-Datei fehlt: $bootstrap"; exit 1; fi
 root=$(cd "$(dirname "$0")/.." && pwd)
+# Anmeldung vorab prüfen: Batch-SFTP (-b) fragt kein Passwort ab und meldet ohne passenden SSH-Key nur
+# "Connection closed" (TODO 29)
+probe_err=$(echo "pwd" | sftp -q -b - -P "$port" ${SFTP_OPTS:-} "$dest" 2>&1 >/dev/null) || {
+  echo "FEHLER: keine SFTP-Anmeldung per SSH-Key an $dest (Port $port) möglich." >&2
+  echo "  sftp: $(printf '%s' "$probe_err" | tail -1)" >&2
+  echo "  Das Skript braucht einen SSH-Key (Batch-SFTP fragt kein Passwort ab):" >&2
+  echo "  Public Key auf dem Gerät hinterlegen (/user/ssh-keys/import user=<user> public-key-file=<datei>)," >&2
+  echo "  ssh-agent laden oder den Key per SFTP_OPTS=\"-i <key>\" angeben. Test: ssh -p $port $dest" >&2
+  exit 1
+}
 stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/work" "$stage/meta"
 cp -r "$root/cfm/work/." "$stage/work/"; cp -r "$root/cfm/meta/." "$stage/meta/"

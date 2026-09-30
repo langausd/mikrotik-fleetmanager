@@ -5,7 +5,7 @@
 # ---------- Vertrauen: alle Manager-Schlüssel auf Geräte verteilen ----------
 # (nötig, damit ein später enrollter Backup-Manager im DR-Fall steuern kann)
 :global cfmTrust do={
-  :global cfmInvLoad; :global cfmMB; :global cfmRead; :global cfmExec
+  :global cfmInvLoad; :global cfmMB; :global cfmRead; :global cfmExec; :global cfmEnrolled
   :local b [$cfmMB]
   :local inv [$cfmInvLoad]
   :local c ":local old [/user/ssh-keys/find where user=cfm]; :local ok true;"
@@ -24,7 +24,7 @@
   :set c ($c . ":if (\$ok) do={ /user/ssh-keys/remove \$old }; :put \$ok")
   :local cnt 0
   :foreach n,d in=$inv do={
-    :if ([:len $host] = 0 or $host = $n) do={
+    :if (([:len $host] = 0 or $host = $n) and [$cfmEnrolled $d]) do={
       :local r [$cfmExec ip=($d->"ip") cmd=$c]
       :if (($r->"output") ~ "true") do={ :set cnt ($cnt + 1) } else={ :log warning ("cfm: Trust " . $n . ": " . [:pick ($r->"output") 0 120]) }
     }

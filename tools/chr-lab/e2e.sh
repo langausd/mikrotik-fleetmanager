@@ -326,6 +326,16 @@ expect 3 '[:tostr [/interface/wifi/cap/get caps-man-addresses]] = "192.168.10.21
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf:l"]] = 2 and [/interface/wifi/datapath/get [find name="cfm-main"] vlan-id] = 20 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: lokale Fallback-Konfiguration je Band, Datapath mit VLAN, kein CAPsMAN"
 mgr '$cfmSecretPush host=cm2' >/dev/null
 expect 3 '[/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "cm2: PSK für den lokalen Fallback per Secret-Push"
+# Fallback-Anzeige (TODO 40d): Status-Feld wfb passt zum CAP-Zustand (CHR ohne Radios: verbunden oder nicht)
+conn=$(r 3 ':put [:len [:tostr [/interface/wifi/cap/get current-caps-man-identity]]]' | tail -1 | tr -dc 0-9)
+t0=$(stat cm2 t); mgr '$cfmPush host=cm2 force=yes' >/dev/null
+for _ in $(seq 1 40); do [ "$(stat cm2 t)" != "$t0" ] && break; sleep 3; done
+w=$(stat cm2 wfb | tr -dc 0-9)
+if [ "${conn:-0}" = 0 ]; then
+  [ "$w" = 1 ] && mgr '$cfmStatus' | grep -q "WLAN lokal" && ok "cm2 ohne CAPsMAN-Verbindung: \$cfmStatus zeigt WLAN lokal" || bad "Fallback-Anzeige fehlt (wfb=$w)"
+else
+  [ -z "$w" ] && ok "cm2 mit CAPsMAN verbunden: keine Fallback-Anzeige" || bad "Fallback-Anzeige trotz Verbindung (wfb=$w)"
+fi
 applied cm2 || true
 stat cm2 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Rolle ap idempotent" || bad "ap idempotent: $(stat cm2 stats)"
 # CAPsMAN zurück auf cm1 (ohne Rolle capsman übernimmt der Primary): cm2 folgt, erneuert Zertifikate
@@ -353,6 +363,7 @@ expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf"]] =
 r 3 '/interface/wifi/cap/set enabled=no' >/dev/null
 
 expect 3 '[:len [/log/find where message~"login failure for user cfmd-cm2 from 192.168.10.3"]] = 0' "cm2: Agent fragt nie sich selbst (TODO 44)"
+expect 2 '[:len [/log/find where message~"deprecation warning"]] = 0' "sw1: keine Deprecation-Warnung (/ip/service available-from, TODO 43)"
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

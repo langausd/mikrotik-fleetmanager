@@ -1,5 +1,18 @@
 # TODO – geplante Verbesserungen
 
+## Übersicht offener Punkte (Stand 2026-09-29)
+
+Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
+
+* **Nur mit Hardware vor Ort testbar:** 40a (weitere SSIDs im lokalen Fallback), 39 (Mindestsignal,
+  vorher die Abdeckung prüfen), 41 (`$cfmWifiScan`, ein Scan unterbricht die Radios), 24 (eigene
+  Radios des Managers/CAPsMAN), 38 (RouterOS-Update bei 16 MB Flash) sowie die Punkte unter „Noch
+  nicht mit echter Hardware getestet“.
+* **Remote bzw. im Labor machbar:** 28 (Push nur an aufgenommene Geräte), 29 (klare Meldung ohne
+  SSH-Key), 30 (`reverse-proxy` in die Dienstliste), 31 (Onboarding an einem nicht verwalteten
+  Switch), 25 (WebFig per HTTPS), „Manager-Ticks starten gleichzeitig“ (Bekannte Fehler).
+* **Größere Ausbauten:** 2 (Benachrichtigungen), 10–15, 18–21 sowie Netinstall/Branding (Onboarding).
+
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
 Umgesetzt ist der **Push in die Werks-Config** (siehe README, Abschnitt Onboarding). Zwei weitere
@@ -50,14 +63,17 @@ gefundenen Fehler sind behoben
 
 * Onboarding-Push gegen echte Werks-Configs: Router (ether1 = WAN mit Firewall), CRS-Switches,
   APs im CAPs-Modus, Geräte mit Aufkleber-Passwort und `flash/`-Verzeichnis
-* Onboarding eines hAP per PoE an ether1 im CAPs-Modus (Reset-Taster, LED-Verhalten je Modell)
+* ~~Onboarding eines hAP per PoE an ether1 im CAPs-Modus~~ – am 2026-09-26 mit zwei APs gelaufen
+  (Neustart per `/interface/ethernet/poe/power-cycle` am verwalteten Switch, Lease im
+  Onboarding-VLAN, Probe, Bootstrap, Enroll); offen bleibt das LED-Verhalten je Modell
 * ~~Manager-Bootstrap mit Reset (`clean="yes"`)~~ – am 2026-09-20 auf einem CHR in PVE gelaufen
   (Stufen 2 und 3 samt Übergabe per SFTP-`.auto.rsc`). Offen bleibt derselbe Weg auf einem Gerät
   mit `flash/`-Verzeichnis
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
-* PPSK-VLANs, VRRP mit mehreren Routern, Umzug der Rolle `capsman` (D45). Zwei APs
+* PPSK-VLANs, VRRP mit mehreren Routern. ~~Umzug der Rolle `capsman`~~ (D45) am 2026-09-27 von
+  einer CHR auf einen hAP be³ gelaufen, vier APs folgten samt Zertifikatswechsel. Zwei APs
   (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (D41), WPA2/WPA3 + FT und Clients
   mit `ft-wpa3-psk` laufen seit 2026-09-24, Roaming zwischen den beiden APs klappt (2026-09-25)
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
@@ -215,7 +231,8 @@ Backup-Manager-Rolle fehlen noch.
     (als Text), der Textvergleich schlug fehl, `priority` wurde bei jedem Apply neu gesetzt (set=1).
     `cfmSame` vergleicht Zahlen in Textform (dezimal oder `0x…`) jetzt numerisch.
 28. **`$cfmPush` an nicht aufgenommene Geräte** – `$cfmRelease all=yes` stößt jeden
-    Inventar-Eintrag an, auch Platzhalter ohne Seriennummer. Das erzeugt Fehlerzeilen und trifft im
+    Inventar-Eintrag an, auch Platzhalter ohne Seriennummer (Befund 2026-09-29: drei noch nicht
+    aufgenommene Geräte erzeugen bei jedem Release eine Fehlerzeile, beim Secret-Push eine Warnung). Das erzeugt Fehlerzeilen und trifft im
     Zweifel ein fremdes Gerät, das gerade die geplante Adresse hat. Einträge ohne echte
     Seriennummer überspringen.
 29. **Zugang und Upload** – `tools/upload-seed.sh` nutzt `sftp -b`: Ohne SSH-Key bricht es nur mit
@@ -288,15 +305,16 @@ Backup-Manager-Rolle fehlen noch.
     ob die Steering-Einstellungen (`rrm`/`wnm`, BSS Transition) aktiv zum Wechsel auffordern.
     Risiko: In Randbereichen ohne besseren AP verliert ein Client dann ganz die Verbindung – vorher
     die Abdeckung prüfen (Löcher zwischen APs).
-40. **Lokaler Fallback der APs (D46), offene Punkte** – Umgesetzt ist die `master`-SSID je Radio
+40. **Lokaler Fallback der APs (D46), offene Punkte** (a offen, b/c/d/e erledigt) – Umgesetzt ist die `master`-SSID je Radio
     (`capsman-or-local`, Hardware-Test mit einem cAP ax). Offen: (a) weitere SSIDs als lokale
     virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
     APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven
     SSID auf Hardware testen; bis dahin fallen Gast/IoT im Fallback aus. (b) Client im Fallback
     – ~~geprüft~~ 2026-09-27: bei einem CAPsMAN-Ausfall aller APs meldete sich ein Handy nach 2 s
     lokal an und blieb im VLAN der SSID erreichbar. (c) ~~MLO~~ – geklärt: im Fallback ohne MLO (Radios vom Werks-MLD `mld1`
-    gelöst, D46); lokales MLO wäre ein eigener Ausbau. (d) Benachrichtigung, wenn ein AP im
-    Fallback läuft (Status-Feld, `$cfmStatus`). (e) ~~Dynamisches MLD~~ – ein
+    gelöst, D46); lokales MLO wäre ein eigener Ausbau. ~~(d) Anzeige, wenn ein AP im
+    Fallback läuft~~ – erledigt: Der Agent meldet `wfb` (CAP an, aber kein CAPsMAN verbunden) und
+    schreibt eine Warnung ins Log, `$cfmStatus` zeigt „WLAN lokal“; eine Benachrichtigung hängt an 2. (e) ~~Dynamisches MLD~~ – ein
     CAPsMAN auf einem hAP be³ legte das MLD eines Wi-Fi-7-CAP beim ersten Kontakt abgeschaltet an
     (siehe Hardware-Eigenheiten); 2026-09-27 geprüft: von Hand eingeschaltet, blieb es nach einem
     Neustart des CAPsMAN an, und nach einer Neuprovisionierung (neue Namen, D47) legte er es aktiv
@@ -318,7 +336,8 @@ Backup-Manager-Rolle fehlen noch.
     Release bricht nach dem Archiv ab. RouterBOARD-Seriennummern sind alphanumerisch (nicht
     betroffen). Lösung: Seriennummer für Dateinamen einheitlich umsetzen (z.B. `/`→`_`), auf Agent-
     und Manager-Seite gleich; `$cfmEnroll` sollte solche Zeichen melden.
-43. **`/ip/service address` ist ab RouterOS 7.24 veraltet** – Befund 2026-09-27 (hAP be³, 7.25beta):
+43. ~~**`/ip/service address` ist ab RouterOS 7.24 veraltet**~~ – *behoben:* `base` setzt
+    `available-from`, sofern das Eigenschafts-Array es kennt, sonst `address` (7.23 und älter). – Befund 2026-09-27 (hAP be³, 7.25beta):
     Setzt die Rolle `base` `address`, meldet RouterOS „deprecation warning: address … will be
     removed in future versions“ und übernimmt den Wert nach `available-from`. `get` liefert beide
     Felder, der Vergleich bleibt deshalb idempotent. Vor dem Wegfall auf `available-from` umstellen,
@@ -326,8 +345,13 @@ Backup-Manager-Rolle fehlen noch.
     Eigenschafts-Array von `get`).
 44. ~~**Agent auf einem Backup-Manager fragt sich selbst**~~ – *behoben:* `$cfmFetch` überspringt die
     eigenen Adressen, wenn es den Geräte-User lokal nicht gibt (der Primary behält seinen SFTP-Weg zu
-    sich selbst); `$cfmGetFiles` wartet vor dem zweiten und dritten Versuch 5 bzw. 10 s. Labor-Befund
-    run45: Das ließ ein Release auf cm2 ausfallen (Hash-Fehler nach drei Fehlversuchen). – Labor-Befund 2026-09-27: Erreicht der
+    sich selbst); `$cfmGetFiles` versucht es bis zu fünfmal mit 10/20/30/40 s Pause. Labor-Befund run45/48/49:
+    Solange der Backup-Manager seinen Spiegel zieht (~1 min), beantwortet der SFTP-Server des Primary
+    keine weiteren Downloads – auch nicht den Agent des Primary selbst; drei Versuche in 30 s reichten
+    nicht. Offen: den Spiegel-Sync und die Agent-Läufe gegeneinander sperren statt nur zu warten; der Abruf
+    des Manifests selbst wird noch nicht wiederholt (run50/51: „kein Manager erreichbar“ auf cm2
+    während des Syncs, ein Labortest in 14c scheiterte dadurch einmal). Betrifft nur Standorte mit
+    Backup-Manager. – Labor-Befund 2026-09-27: Erreicht der
     Agent von cm2 (`manager-backup`) den Primary nicht (Timeout, während cm2 seinen Spiegel
     synchronisiert), versucht er die nächste Manager-Adresse – seine eigene – mit dem Geräte-User
     `cfmd-<name>`, den es dort nicht gibt („login failure … critical“ im Log, danach „kein Manager

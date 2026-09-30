@@ -673,7 +673,8 @@ Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 ### 8.5 Überblick
 
 * `$cfmStatus` zeigt je Gerät Ring, Soll- und Ist-Version, Ergebnis (`ok`, `failed …`,
-  `bad vN`, `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
+  `bad vN`, `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
+  sendet nur die lokale Kopie der `master`-SSID, D46), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
   und das Alter der letzten Meldung.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
@@ -1022,6 +1023,7 @@ Wurzelverzeichnis.
 | Kein Winbox/SSH mehr vom Admin-PC | Dienste nur aus `mgmtAccess`/`mgmtExtra` | Admin-PC in `mgmtExtra`, releasen |
 | Anmeldung als `admin` geht nicht mehr | gewollt: `adminUser="disable"`, ein eigener Benutzer ist aktiv | mit dem eigenen Benutzer anmelden; Ausnahme per `adminUser="keep"` im Hostfile |
 | Apply: „can not change dynamic“ | eine eigene Suche per `find` ohne `!dynamic` trifft einen dynamischen Eintrag (z.B. vom Switch-Chip angelegte Bridge-VLANs) | `$cfmEnsure`/`$cfmFind` verwenden oder `!dynamic` in die Suche aufnehmen |
+| Log `cfm: WLAN im lokalen Fallback`, in `$cfmStatus` `WLAN lokal` | AP erreicht den CAPsMAN nicht (CAPsMAN aus, MGMT-Verbindung, Zertifikat) – nur die `master`-SSID läuft weiter | am CAPsMAN `/interface/wifi/capsman/print`, am AP `/interface/wifi/cap/print` (`current-caps-man-identity`) und das Log (`caps`) |
 | Log `cfm: RouterBOARD-Firmware … geflasht … Neustart zum Aktivieren` | gewollt: neue Firmware wird nach einem RouterOS-Update erst mit einem weiteren Neustart aktiv | nichts zu tun, der Agent startet einmal neu |
 | Log `cfm: RouterBOARD-Firmware … nach dem Neustart nicht aktiv`, in `$cfmStatus` `fw X!` | Flashen hat nicht gewirkt; der Agent startet dafür nur einmal neu | auf dem Gerät `/system/routerboard/print` prüfen, `/system/routerboard/upgrade`, dann `/system/reboot` |
 | `upload-seed.sh`: „ABBRUCH: … enthält echte Seriennummern“ | `--seed-inventory` auf einen Manager mit aufgenommenen Geräten | ohne `--seed-inventory` hochladen; nur mit `--force`, wenn das Inventar wirklich ersetzt werden soll |

@@ -143,6 +143,12 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 :local capi ($cfmG->"capsmanApi")
 :local capiOn false
 :if ([:typeof $capi] = "array") do={ :if ([:len ($capi->"from")] > 0 and [$cfmIsCapsman]) do={ :set capiOn true } }
+# Ab RouterOS 7.24 heißt das Feld available-from, address ist veraltet (Warnung beim Setzen, TODO 43);
+# ältere Versionen kennen nur address -> Feldname aus dem Eigenschafts-Array (ssh gibt es auch dynamisch)
+:local saf "address"
+:onerror e in={
+  :if ([:typeof ([/ip/service/get [:pick [find where name="ssh" and !dynamic] 0]]->"available-from")] != "nothing") do={ :set saf "available-from" }
+} do={}
 :foreach s in={"telnet";"ftp";"www";"www-ssl";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
   :local addr [$cfmKeys $an]
@@ -152,7 +158,9 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
     :set addr ($capi->"from")
   }
   :if ([:len $port] > 0) do={
-    $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=({"disabled"="no";"port"=$port;"address"=$addr})
+    :local sp ({"disabled"="no";"port"=$port})
+    :set ($sp->$saf) $addr
+    $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=$sp
   } else={
     $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=({"disabled"="yes"})
   }

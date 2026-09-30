@@ -111,6 +111,16 @@
       }
     } do={}
     :set ($s->"radios") $rd
+    # Lokaler Fallback (D46): CAP eingeschaltet, aber mit keinem CAPsMAN verbunden -> die Radios senden
+    # mit der lokalen Kopie der Master-SSID, weitere SSIDs fehlen ($cfmStatus: "WLAN lokal", TODO 40d)
+    :local fb false
+    :onerror e in={
+      :if ([/interface/wifi/cap/get enabled] and [:len [:tostr [/interface/wifi/cap/get current-caps-man-identity]]] = 0) do={ :set fb true }
+    } do={}
+    :if ($fb) do={
+      :set ($s->"wfb") 1
+      :log warning "cfm: WLAN im lokalen Fallback - kein CAPsMAN verbunden"
+    }
   }
   # status.json zuerst: legt cfm/out/ an (auf frischen Geräten sonst "invalid file name" beim Export)
   $cfmWrite ($d . "/out/status.json") [:serialize to=json $s]
@@ -139,13 +149,14 @@
   :if ([:len $src] = 0) do={ :set src ("archive/v" . ($mf->"v")) }
   :foreach fe in=($mf->"files") do={
     :local lp ($d . "/" . ($fe->0))
-    # bis zu drei Versuche: ein Download kann unvollständig gelesen werden; nach einem Fehlschlag kurz
-    # warten - ein Manager, der gerade beschäftigt ist (z.B. Spiegel-Sync), antwortet sonst nicht (TODO 44)
+    # bis zu fünf Versuche: ein Download kann unvollständig gelesen werden; nach einem Fehlschlag
+    # wachsend warten (10/20/30/40 s) - solange ein Backup-Manager seinen Spiegel zieht (~1 min),
+    # beantwortet der SFTP-Server des Primary keine weiteren Downloads (Labor, TODO 44)
     :local ok false
     :local info ""
-    :for t from=1 to=3 do={
+    :for t from=1 to=5 do={
       :if (!$ok) do={
-        :if ($t > 1) do={ :delay (($t - 1) * 5s) }
+        :if ($t > 1) do={ :delay (($t - 1) * 10s) }
         :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] != "") do={
           :delay 300ms
           :local c [/file/get $lp contents]

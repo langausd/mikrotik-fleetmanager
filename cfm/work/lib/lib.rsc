@@ -27,6 +27,12 @@
 #    Ergebnis in ein Flag schreiben und am Ende zurückgeben.
 #  * Fehlertexte aus :onerror nie per = vergleichen: RouterOS 7.24.4 hängt an
 #    :error "x" noch " (:error; line N)" an -> per ~ "^x" prüfen.
+#  * Kein Operator !~ ("cannot invert string") -> !($x ~ "re") schreiben.
+#  * :parse prüft keine Parameternamen. Ob eine Version einen Parameter kennt, zeigt ein set gegen
+#    eine ID, die es nicht gibt: "no such item" = bekannt, "bad parameter" = unbekannt.
+#  * Neue Felder lieber am Eigenschafts-Array von get erkennen ([:typeof ($a->"feld")] = "nothing"
+#    heißt unbekannt) als an der Versionsnummer. get auf [find name=..] scheitert, wenn es den
+#    Namen auch dynamisch gibt (z.B. /ip/service ssh) -> "and !dynamic" bzw. [:pick .. 0].
 #  * Globale Namen hier nicht doppelt zu mgr-*.rsc vergeben: Der Manager importiert
 #    diese Datei ebenfalls und überschreibt damit gleichnamige Manager-Befehle.
 #  * Weitere Eigenheiten (Dateiendungen, Vergleiche): docs/DECISIONS.md

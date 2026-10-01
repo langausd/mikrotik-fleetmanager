@@ -4,18 +4,21 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (77 Prüfungen, darunter
-> Manager-Bootstrap mit Reset, Probelauf, Firewall, Schlüsselwechsel, Netzplan, PPSK und ein
-> RouterOS-Downgrade auf 7.24.1) und der Onboarding-Test (14 Prüfungen mit Werks-IP,
-> 15 im CAPs-Modus per DHCP) fehlerfrei. Ein **erster Hardware-Pilot** lief mit zwei Geräten: einem
-> CRS418 als Router, Primary-Manager und CAPsMAN (Rolle `router,manager`) und einem hAP ax² als AP.
-> Die dabei gefundenen Fehler sind behoben (dynamische Bridge-VLAN-Einträge des Switch-Chips,
-> Syslog-Einträge auf dem hAP ax², Aktivierung neuer RouterBOARD-Firmware, Seed-Upload), siehe
-> [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten). **Noch nicht** mit
-> echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager samt
-> CAPsMAN-Übernahme, das automatische Onboarding gegen reale Werks-Configs, RouterOS-Updates mit
-> Zusatzpaketen auf mehreren Architekturen, PPSK-VLANs und der Kanalbericht; offene Punkte stehen in
-> [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp einen Pilotbetrieb mit einem Testgerät ein.
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (162 Prüfungen, darunter
+> Manager-Bootstrap mit Reset, Probelauf, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle,
+> Netzplan, PPSK, CAPsMAN-Rolle und ein RouterOS-Downgrade auf 7.24.1) und der Onboarding-Test
+> (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter einem nicht verwalteten Switch)
+> fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
+> und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit neun Geräten – der
+> Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset, routet noch
+> selbst), ein hAP be³ als CAPsMAN, APs (hAP be³, hAP ax³, cAP ax) mit lokalem Fallback, hEX und
+> L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Automatisches Onboarding im CAPs-Modus,
+> CAPsMAN-Umzug und RouterOS-Updates mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen
+> Fehler sind behoben, siehe [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
+> **Noch nicht** mit echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager,
+> das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs und der
+> Kanalbericht; offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
 [3 Planung](#3-planung) · [4 Datenmodell](#4-datenmodell) · [5 Rollen](#5-rollen) ·
@@ -98,7 +101,7 @@ nächsten Apply zurückgesetzt.
 ### Rollen, Hostfile und Inventar
 
 * **Rollen** (`roles/*.rsc`) sind die Templates. `base` gilt immer, dazu kommen `switch`, `ap`,
-  `router`, `manager` oder `manager-backup`, auch kombiniert (`"router,manager"`).
+  `capsman`, `router`, `manager` oder `manager-backup`, auch kombiniert (`"router,manager"`).
 * Das **Hostfile** `hosts/<name>.rsc` enthält die Gerätespezifika (Ports, Router-ID, WAN …).
   Optional kommt `hosts/<name>.post.rsc` mit freien Befehlen nach allen Rollen hinzu.
 * Das **Inventar** `meta/inventory.rsc` ordnet Name ↔ Seriennummer, Rolle, Ring und MGMT-IP zu.
@@ -121,7 +124,7 @@ als Datei existieren sie nie. Geräteschlüssel entstehen beim Aufnehmen des Ger
 ### Überblick
 
 ```
-          ┌────────────── cm1 (Primary-Manager, CAPsMAN) ──────────────┐
+          ┌───────────────────── cm1 (Primary-Manager) ────────────────┐
  Admin ─▶ │ work/ ─$cfmRelease─▶ archive/vN + Manifeste    Vault       │ ─ssh-exec─▶ Git-Host
           │ meta/ (Inventar, Ringe)   state/<gerät>/ (Status, Export)   │
           └───▲ SFTP-Pull (nur lesend)    │ Push, Secrets, Abholen ─────┘
@@ -164,8 +167,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
 
 **Hardware und Software:**
-* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, dazu ein Hardware-Pilot (CRS418,
-  hAP ax²).
+* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, auf Hardware 7.23.1 bis 7.25beta5
+  (siehe Teststand oben).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
   Internetzugang für die Paket-Downloads, idealerweise mit Funk, falls er selbst auch AP sein soll
@@ -351,7 +354,7 @@ Drop.
 
 Lege deine Standortdaten als privates Overlay an; Git ignoriert die Verzeichnisse `site/` und
 `site-*/`. `tools/new-site.py` legt es aus den Beispieldaten an, setzt Manager-Name, Uplink,
-Admin-User und Management-Zugang ein und schreibt dazu eine `CHECKLISTE.md` und einen
+Admin-User und Management-Zugang ein und schreibt dazu eine `STAND.md` und einen
 `bootstrap-manager.rsc` mit ausgefülltem Kopf:
 
 ```bash
@@ -359,10 +362,13 @@ tools/new-site.py site --name cm1 --uplink ether1 --user <dein-user> --mgmt-extr
 ```
 
 Die mitgelieferten Beispiele sind ein fiktives Netz (VLAN 10, 192.168.10.0/24), keine fertige
-Konfiguration: Arbeite die Checkliste ab (Adressen, Inventar, Hostfiles, WLAN). So bleiben deine
-Daten aus dem Repo, und neue Versionen des Frameworks lassen sich einfach übernehmen.
-`tools/upload-seed.sh` lädt aus dem Overlay nur die Daten (`*.rsc`, `authorized_keys`, `hosts/`,
-`meta/` …); Notizen wie die Checkliste oder eigene CSV-Listen bleiben lokal. Die Bootstrap-Datei
+Konfiguration: Arbeite die nächsten Schritte in der `STAND.md` ab (Adressen, Inventar, Hostfiles,
+WLAN). So bleiben deine Daten aus dem Repo, und neue Versionen des Frameworks lassen sich einfach
+übernehmen. Die `STAND.md` begleitet die Site danach weiter: oben der aktuelle Stand, dann ein
+Logbuch (neueste Einträge oben), die nächsten Schritte und offene Punkte; ausführliche Analysen
+gehören in eine `BEFUNDE.md` daneben. `tools/upload-seed.sh` lädt aus dem Overlay nur die Daten
+(`*.rsc`, `authorized_keys`, `hosts/`, `meta/` …); Notizen wie diese oder eigene CSV-Listen bleiben
+lokal. Die Bootstrap-Datei
 gehört nicht nach `work/` (das wird an die Flotte verteilt), sondern ins Wurzelverzeichnis des
 Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad die
 `bootstrap-manager.rsc` aus dem Overlay.
@@ -370,6 +376,12 @@ Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad di
 ### 6.2 Primary-Manager
 
 1. Den Manager mit einem Port an einen Trunk hängen, der das MGMT-VLAN tagged führt.
+
+   **Manager in einer VM:** Eine Karte je VLAN (`vport:<vid>`) und `stp="none"` im Hostfile (D40).
+   Der Reset im Bootstrap nummeriert die Karten neu – die Zuordnung danach über die MAC-Adressen
+   prüfen, nicht über die Reihenfolge. Das MGMT-VLAN kommt an einer solchen Karte ungetaggt an, der
+   Bootstrap legt es aber getaggt auf den Uplink: Der Manager ist über seine MGMT-IP deshalb erst
+   nach dem ersten Apply erreichbar, bis dahin über die Konsole des Hosts.
 2. Die Vorlage hochladen, beim ersten Mal mit dem Inventar:
    ```bash
    tools/upload-seed.sh admin@<aktuelle-IP-des-Managers> --overlay site --seed-inventory
@@ -379,14 +391,9 @@ Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad di
    auf die lokale Vorlage zurückfallen; mit `--seed-inventory` bricht das Skript ab, sobald auf dem
    Gerät echte Seriennummern stehen (`--force` überschreibt trotzdem). Geht das Inventar doch
    verloren, holt `$cfmEnroll name=<name> ip=<ip> role=<rolle> ring=<n>` die Seriennummer vom Gerät
-   zurück – sonst findet es sein Manifest nicht mehr, das unter der Seriennummer liegt. Jede Datei geht einzeln mit bis zu drei Versuchen hinüber;
-   scheitert eine, bricht das Skript mit einer Meldung ab.
-**Manager in einer VM:** Eine Karte je VLAN (`vport:<vid>`) und `stp="none"` im Hostfile (D40).
-Der Reset im Bootstrap nummeriert die Karten neu – die Zuordnung danach über die MAC-Adressen
-prüfen, nicht über die Reihenfolge. Das MGMT-VLAN kommt an einer solchen Karte ungetaggt an, der
-Bootstrap legt es aber getaggt auf den Uplink: Der Manager ist über seine MGMT-IP deshalb erst
-nach dem ersten Apply erreichbar, bis dahin über die Konsole des Hosts.
-
+   zurück – sonst findet es sein Manifest nicht mehr, das unter der Seriennummer liegt. Jede Datei
+   geht einzeln mit bis zu drei Versuchen hinüber; scheitert eine, bricht das Skript mit einer
+   Meldung ab. Das Skript braucht einen SSH-Key (Batch-SFTP fragt kein Passwort ab).
 3. In `bootstrap/bootstrap-manager.rsc` den Kopf anpassen (`myname`, `ip` = `managers[0]`,
    `uplink`, `mv`, `gw`, `admin`, `role`), die Datei als `bootstrap-manager.rsc` ins
    Wurzelverzeichnis hochladen (oder gleich mit dem Seed: eine Kopie im Overlay und
@@ -443,6 +450,14 @@ funktionieren damit unverändert.
    ohne übernimmt der Primary-Manager (6.6).
 5. **APs.**
 
+### 6.5 Git-Sicherung (optional)
+
+Anleitung im Kopf von `tools/git-host/cfm-git-sync`. Kurz: Linux-Host mit User `cfm`, Forced
+Command für den Manager-Schlüssel, am Manager ein Lese-User `cfm-git` mit dem Schlüssel des
+Git-Hosts, in `global.rsc` `hook` setzen und die Host-IP in `mgmtExtra` aufnehmen. Gesichert
+werden Arbeitsstand, Metadaten, Archiv, Geräte-Exporte und das verschlüsselte Vault-Backup
+(`vault/*.bak`), bei jedem Release, Rollback, Onboarding und bei neuen Exporten.
+
 ### 6.6 CAPsMAN auf ein eigenes Gerät legen oder umziehen
 
 Der CAPsMAN ist ein eigener Dienst (Rolle `capsman`, D45), unabhängig vom Config-Manager. Die APs
@@ -464,14 +479,6 @@ sie mit ihrer lokalen Kopie der `master`-SSID (D46).
    AP `/interface/wifi/cap/print` (`current-caps-man-identity`).
 
 Fällt der CAPsMAN länger aus, genauso auf ein anderes Gerät verschieben.
-
-### 6.5 Git-Sicherung (optional)
-
-Anleitung im Kopf von `tools/git-host/cfm-git-sync`. Kurz: Linux-Host mit User `cfm`, Forced
-Command für den Manager-Schlüssel, am Manager ein Lese-User `cfm-git` mit dem Schlüssel des
-Git-Hosts, in `global.rsc` `hook` setzen und die Host-IP in `mgmtExtra` aufnehmen. Gesichert
-werden Arbeitsstand, Metadaten, Archiv, Geräte-Exporte und das verschlüsselte Vault-Backup
-(`vault/*.bak`), bei jedem Release, Rollback, Onboarding und bei neuen Exporten.
 
 ### 6.7 Clients je AP in Home Assistant (D47)
 
@@ -641,7 +648,8 @@ $cfmPromote                # optional: nächsten Ring sofort freigeben
 
 `$cfmRelease` bricht bei Syntaxfehlern oder Dateien über 60 KB ab, bevor irgendetwas
 ausgerollt wird, und ebenso bei inhaltlichen Fehlern (`$cfmCheck`): unbekannte VLANs, Zonen oder
-Port-Profile, doppelte MGMT-IPs, Rollen ohne Datei. Mit `force=yes` releast du bewusst trotzdem.
+Port-Profile, doppelte MGMT-IPs, Rollen ohne Datei, unbekannte IP-Dienste oder doppelte Ports in
+`services`. Mit `force=yes` releast du bewusst trotzdem.
 Ohne `$cfmPromote` rücken die Ringe automatisch auf, sobald alle Geräte des vorigen Rings „ok“
 melden und `ringSoak` abgelaufen ist.
 
@@ -769,14 +777,15 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   wird nur bei Änderungen neu geschrieben und landet mit der Git-Sicherung im Repo.
 * Der Manager prüft alle 15 Minuten selbst und schreibt neue Abweichungen ins Log (`cfm: Netz:`).
 * `$cfmChannels` zeigt die Kanäle der APs und warnt, wenn zwei APs am selben Switch denselben
-  Kanal nutzen. Die Kanäle wählen die APs selbst aus den Pools in `wifi.rsc` (`reselect`).
+  Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
+  feste Kanäle je AP über `radios`.
 
 ### 8.8 WireGuard-Fernzugang
 
 Für Admins, die Geräte ohne direkten Laptop-Zugriff erreichen müssen (kein Agent-Forwarding im
 RouterOS-SSH-Client, daher kein Sprung über einen Manager möglich): ein WireGuard-Tunnel zum
-Primary-Manager, dessen Peers als Zone `mgmt` zählen – volle Rechte wie ein Gerät im MGMT-VLAN.
-Nur auf dem Router (Rolle `router`) aktiv, siehe `wireguard.rsc`.
+Router (Rolle `router`), dessen Peers als Zone `mgmt` zählen – volle Rechte wie ein Gerät im
+MGMT-VLAN. Siehe `wireguard.rsc`.
 
 **Server (einmalig pro Peer):**
 
@@ -913,12 +922,16 @@ Diese Fallen zeigen sich erst beim echten Laden per `/import`, nicht beim Syntax
 * Funktionen **ohne eckige Klammern** aufrufen (`$cfmEnsure …`). Eine Zeile, die mit `[` beginnt,
   liest RouterOS u.U. als Fortsetzung der vorigen Zeile.
 * Array-Literale in Aufrufen in runde Klammern: `p=({…})`.
-* Kein `\"` in String-Argumenten eines Funktionsaufrufs, solche Strings vorher in eine Local legen.
+* Kein `\"\"` (maskiertes leeres Anführungszeichenpaar) in String-Argumenten eines
+  Funktionsaufrufs, solche Strings vorher in eine Local legen.
+* Kein Operator `!~` („cannot invert string“), stattdessen `!($x ~ "re")`.
+* Fehlertexte aus `:onerror` nie per `=` vergleichen: RouterOS 7.24.4 hängt „ (:error; line N)“ an,
+  also per `~ "^text"` prüfen.
 * `:return` innerhalb von `:onerror … in={}` verlässt die Funktion nicht, ein Flag benutzen.
 * Geräteabhängige Menüs (z.B. `/system routerboard`) in Leerzeichen-Schreibweise, sonst ist das
   Fehlen auf CHR/x86 ein nicht abfangbarer Syntaxfehler.
 
-Die vollständige Liste steht in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifizierte-routeros-eigenheiten-7242),
+Die vollständige Liste steht im Kopf von `cfm/work/lib/lib.rsc` und in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifizierte-routeros-eigenheiten-7242),
 die auf Hardware gefundenen Eigenheiten (z.B. `find` liefert auch dynamische Einträge)
 [gleich darunter](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 
@@ -1043,7 +1056,6 @@ Wurzelverzeichnis.
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
 | Agent meldet „kein Manager erreichbar - der Agent läuft als …“ (bzw. nur „kein Manager erreichbar“ und SFTP „authentication failure“) nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
 | Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |
-| `$cfmUpgrade`: „Download fehlgeschlagen“ | Manager ohne Internet, Paket fehlt in `<pkgPath>/<ver>/` | Paket von Hand ablegen (8.6) |
 | `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
 | Log `cfm: Netz: fehlt …` | Kabel gezogen, umgesteckt oder Gerät aus | Verkabelung prüfen; gewollte Änderung: `$cfmLinks accept=yes` |
 | PPSK-Client landet nicht im richtigen VLAN | VLAN fehlt auf dem AP-Uplink (`trunk-ap`) oder AP ohne wifi-qcom | Warnung von `$cfmCheck` beachten, Profil erweitern |

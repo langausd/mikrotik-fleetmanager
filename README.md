@@ -4,8 +4,8 @@ Minimalistisches, **auf MikroTiks selbst gehostetes** Config-Management für 5�
 Ein Template-Satz (Rollen) wird auf allen Geräten aktuell gehalten. Gerätespezifika und
 lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe Abhängigkeit.
 
-* **Source of Truth ist der Config-Manager** (ein MikroTik, z.B. RB5009/hAP ax³). Editiert wird dort
-  in `cfm/work/`. `$cfmRelease` friert eine Version ein.
+* **Source of Truth ist der Config-Manager** (ein MikroTik, z.B. RB5009/hAP ax³, oder ein CHR in
+  einer VM). Editiert wird dort in `cfm/work/`. `$cfmRelease` friert eine Version ein.
 * **Pull + Push-Trigger:** Jedes Gerät holt per SFTP (Geräte-Key, kein Passwort) sein Manifest und
   bei Bedarf die Dateien. Der Manager stößt per `ssh-exec` sofort an.
 * **Reconciler statt Befehlslisten:** Verwaltete Objekte tragen `comment="cfm:<key>"`. Was nicht mehr
@@ -20,8 +20,9 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
 * **Rückkanal:** Der Manager holt von jedem Gerät Status (JSON) und aktive Config (`/export`, ohne
   Secrets) nach `state/<name>/`. Geräte haben am Manager nur Lesezugriff. Ein Hook stößt eine
   externe Git-Sicherung an.
-* **WLAN:** Der wifi-CAPsMAN auf dem Config-Manager rendert alle SSIDs (lokales Forwarding mit VLAN,
-  WPA2/WPA3, 802.11r/k/v). Ein Backup-CAPsMAN übernimmt per Netwatch.
+* **WLAN:** Ein Gerät mit der Rolle `capsman` (ohne sie der Primary-Manager) ist wifi-CAPsMAN für
+  alle SSIDs (lokales Forwarding mit VLAN, WPA2/WPA3, 802.11r/k/v, 6 GHz). Fällt er aus, senden die
+  APs mit einer lokalen Kopie der Haupt-SSID weiter.
 
 Alle Design-Entscheidungen samt verworfener Alternativen stehen in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Für den Einsatz in der eigenen Flotte:** [docs/admin-guide.md](docs/admin-guide.md) (Planung,
@@ -30,7 +31,7 @@ Inbetriebnahme, tägliche Arbeit, Notfälle, eigene Templates, Befehlsreferenz).
 ## Architektur
 
 ```
-                 ┌──────────────── cm1 (Primary-Manager, CAPsMAN aktiv) ─────────────────┐
+                 ┌───────────────────────── cm1 (Primary-Manager) ───────────────────────┐
   Admin ──SSH──▶ │ cfm/work/  ──$cfmRelease──▶ archive/v<N>/  +  live/m/<serial>.mf (MAC)│
                  │ meta/ (Inventar, Ringe, Keys)   state/<gerät>/ (Status, Export, Audit)│
                  │ Vault = /ppp secret cfm:*   Scheduler cfm-mgr-tick (Promote, Secrets) │
@@ -40,7 +41,7 @@ Inbetriebnahme, tägliche Arbeit, Notfälle, eigene Templates, Befehlsreferenz).
      ┌──────────┐  ┌──────────┐  ┌──────────┐        ┌──────────────┐  ┌────────────┐
      │ rtr1     │  │ sw1      │  │ ap1..n   │  ...   │ cm2 (Backup) │  │ Git-Host   │
      │ router   │  │ switch   │  │ ap (CAP) │        │ read-only,   │  │ cfm-git-   │
-     │ cfm-agent│  │ cfm-agent│  │ cfm-agent│        │ CAPsMAN pass.│  │ sync       │
+     │ cfm-agent│  │ cfm-agent│  │ cfm-agent│        │ Spiegel      │  │ sync       │
      └──────────┘  └──────────┘  └──────────┘        └──────────────┘  └────────────┘
 ```
 
@@ -59,14 +60,14 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/authorized_keys` | optional: persönliche Admin-SSH-Keys (OpenSSH-Format), siehe Sicherheitsmodell |
-| `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `router`, `manager`, `manager-backup` |
+| `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
 | `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
 | `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage einmalig auf den Manager laden |
-| `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit Checkliste und ausgefülltem Bootstrap |
+| `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
@@ -80,18 +81,20 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 |---|---|
 | `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys`), Firmware-Aktivierung, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
-| `ap` | CAP des wifi-CAPsMAN (beide Manager als Adressen), Radios → `configuration.manager=capsman` |
+| `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`) |
+| `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering, Kanäle, Provisioning, PPSK); genau ein Gerät |
 | `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master), Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS, NTP-Server, WireGuard-Fernzugang (optional) |
-| `manager` | Manager-Funktionen, SFTP-Gruppe, CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering, Kanäle, Provisioning); Manager-Tick alle `mgrTick`, Onboarding jede Minute |
-| `manager-backup` | wie `manager`, CAPsMAN passiv (Netwatch übernimmt nach ~3 min), spiegelt den Primary, read-only |
+| `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
+| `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only |
 
-Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
+Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsman"`).
 
 ## Schnellstart
 
 1. **Eigene Daten anlegen:** `tools/new-site.py site --name cm1 --user <admin> --mgmt-extra <admin-pc>/32`
    legt das private Overlay `site/` an (von Git ignoriert, gleiche Struktur wie `cfm/work` plus
-   `meta/`), samt `CHECKLISTE.md` und ausgefülltem `bootstrap-manager.rsc`. Die Beispieldaten sind ein
+   `meta/`), samt `STAND.md` (was zu prüfen ist, danach Logbuch der Site) und ausgefülltem
+   `bootstrap-manager.rsc`. Die Beispieldaten sind ein
    fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
    `global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`, `hosts/`,
    `meta/inventory.rsc`, optional `wireguard.rsc` und `authorized_keys`.
@@ -125,7 +128,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
 | Hand-Objekte finden | `$cfmAudit host=sw1` → `$cfmAudit host=sw1 op=mark sel=A2` / `op=purge sel=A5` |
 | Gerät tauschen | Ersatz bootstrappen → `$cfmEnroll name=sw1 ip=…` (neue Seriennummer wird übernommen) |
 | Manager-Ausfall | Geräte ziehen automatisch von cm2. Dauerhaft: `$cfmPromoteManager` auf cm2 |
-| RouterOS aktualisieren | `$cfmUpgrade ver=7.25 ring=0` (sofort) bzw. `host=sw1 at="2026-10-01 02:00"` (einmaliges Wartungsfenster). Der Manager lädt vorher alle Pakete; ältere Zielversion = Downgrade. Übersicht: `$cfmUpgrade`, zurückziehen: `cancel=yes` |
+| RouterOS aktualisieren | `$cfmUpgrade ver=7.25 ring=0` (sofort) bzw. `host=sw1 at="2026-10-01 02:00"` (einmaliges Wartungsfenster). Der Manager lädt vorher alle Pakete und prüft den Platz der Geräte; ältere Zielversion = Downgrade. Probe: `check=yes`, Übersicht: `$cfmUpgrade`, zurückziehen: `cancel=yes` |
 | Geräteschlüssel erneuern | `$cfmRekey host=sw1` bzw. `all=yes` |
 | Archiv verkleinern | automatisch nach jedem Release (`archiveKeep`), von Hand `$cfmArchivePrune keep=5` |
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
@@ -139,6 +142,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`).
    `$cfmRegister name=ap3 serial=HG1234567 role=ap ring=1 ip=192.168.10.33 pw="<Aufkleber-Passwort>"`
 2. **Port am Zielort freischalten:** `$cfmOnboard sw=sw1 port=ether5` (optional `name=ap3`).
    Der Port bekommt vorübergehend das Onboarding-VLAN 88 untagged, die normalen VLANs bleiben tagged.
+   Hängt der Port an einem Switch, den cfm (noch) nicht verwaltet: `$cfmOnboard manual=yes name=ap3`
+   und den Port selbst umschalten.
 3. **Gerät im Werkszustand** (oder nach einem Reset) dort einstecken bzw. einschalten.
 
 Danach läuft alles im Onboarding-Tick (jede Minute):
@@ -155,7 +160,8 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Geräte mit PoE-Eingang nur an ether1 (hAP): im **CAPs-Modus** starten (Reset-Taster beim Einstecken
   des PoE-Kabels halten, bis die LED nach ~10 s dauerhaft leuchtet). Dann ist ether1 ohne Firewall
   per DHCP erreichbar, und das Onboarding läuft über den PoE-Port.
-* Das automatische Onboarding ist mit echter Hardware noch nicht getestet, siehe [docs/TODO.md](docs/TODO.md).
+* Auf Hardware gelaufen mit APs im CAPs-Modus (hAP ax³, hAP be³); Werks-Configs von Routern und
+  CRS-Switches sind noch offen, siehe [docs/TODO.md](docs/TODO.md).
 
 ## Sicherheitsmodell (Kurzfassung)
 
@@ -176,8 +182,8 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   oben, nie als Datei). Optional zusätzlich eigene SSH-Keys über `cfm/work/authorized_keys`
   (OpenSSH-Format, eine Zeile je Key, für alle Admin-User aus `users`): existiert die Datei, ist
   sie der vollständige Sollzustand – nicht mehr gelistete Keys verschwinden beim nächsten Apply,
-  auch von Hand hinzugefügte. Revocation = Zeile löschen + `$cfmRelease`. Das Passwort-Login bleibt
-  davon unberührt.
+  auch von Hand hinzugefügte. Revocation = Zeile löschen + `$cfmRelease`. Das Passwort gilt danach
+  nur noch für Winbox/WebFig: Hat ein User einen Key, lehnt RouterOS SSH per Passwort ab.
 * Vor jedem Secret-Push beweist das Gerät per **Challenge-Response**, dass es seinen Geräteschlüssel
   kennt. Ein Gerät, das sich nur unter der IP ausgibt, bekommt keine Secrets.
 * **Minimale Firewall** auf Switches, APs und Managern: nur Antworten, ICMP und Management-Netze
@@ -192,9 +198,10 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, dazu ein Hardware-Pilot mit CRS418
-  (Router, Manager) und hAP ax² (AP). Ab 7.24 brauchen Skripte, die aus Winbox
-  gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2. Auf Hardware im Einsatz an zwei
+  Standorten (7.23.1 bis 7.25beta5): CRS418 als Router und Manager, Manager als CHR in einer VM,
+  CRS328 als Core-Switch, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX, L009. Ab 7.24
+  brauchen Skripte, die aus Winbox gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.
 * Das CHR-Labor testet alles außer echten Funkteilen (CAPsMAN-Config ja, Radios nein).
 * `$cfmPlan` überspringt `hosts/*.post.rsc` (dort sind beliebige Befehle erlaubt). Direkte Befehle in
   eigenen Rollen nur mit `:if ($cfmDry != true) do={ … }`, sonst würde der Probelauf sie ausführen.

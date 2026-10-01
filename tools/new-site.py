@@ -3,9 +3,10 @@
 
 Kopiert die neutralen Beispieldaten aus cfm/work und cfm/meta in ein neues Verzeichnis, setzt
 Manager-Name, Uplink, Admin-User und mgmtExtra ein und legt dazu an:
-  CHECKLISTE.md          was vor dem Einsatz zu prüfen und zu ergänzen ist
+  STAND.md               Stand der Site: aktueller Stand, Logbuch, nächste Schritte (was vor dem
+                         Einsatz zu prüfen und zu ergänzen ist), offene Punkte
   bootstrap-manager.rsc  bootstrap/bootstrap-manager.rsc mit ausgefülltem Kopf
-Beide lädt tools/upload-seed.sh nicht mit hoch.
+Beide lädt tools/upload-seed.sh nicht mit hoch (ebenso eine BEFUNDE.md für ausführliche Analysen).
 
 Aufruf:
   tools/new-site.py site-lab
@@ -122,16 +123,24 @@ def main(argv=None):
     write(os.path.join(ziel, "bootstrap-manager.rsc"),
           f"# Kopf ausgefüllt von tools/new-site.py für {os.path.basename(ziel)} am {heute}\n" + b)
 
-    # Checkliste
+    # Stand der Site: aktueller Stand, Logbuch (neueste oben), nächste Schritte, offene Punkte
     geraete = re.findall(r'^\s*"([^"]+)"=\{', read(os.path.join(ziel, "meta", "inventory.rsc")), re.M)
     extra = ", ".join(a.mgmt_extra) if a.mgmt_extra else "leer – ohne Eintrag erreichst du die Geräte nur aus dem MGMT-VLAN"
     rel = os.path.relpath(ziel, ROOT) if ziel.startswith(ROOT + os.sep) else ziel
-    write(os.path.join(ziel, "CHECKLISTE.md"), f"""# Checkliste für die Site {os.path.basename(ziel)}
+    write(os.path.join(ziel, "STAND.md"), f"""# Stand – Site {os.path.basename(ziel)}
 
-Angelegt am {heute} mit `tools/new-site.py` aus den neutralen Beispieldaten. `CHECKLISTE.md` und
-`bootstrap-manager.rsc` lädt `tools/upload-seed.sh` nicht mit hoch.
+> Lokale Arbeitsdatei (von Git ignoriert, `tools/upload-seed.sh` lädt sie nicht hoch).
+> Aufbau: **1 Aktueller Stand** · **2 Logbuch** (neueste Einträge oben) · **3 Nächste Schritte** ·
+> **4 Offene Punkte**. Ausführliche Analysen und Messungen bei Bedarf in `BEFUNDE.md` (ebenfalls
+> lokal), im Logbuch darauf verweisen.
 
-## Werte dieser Site
+---
+
+## 1. Aktueller Stand ({heute})
+
+Noch nicht in Betrieb: Beispieldaten angelegt, siehe Nächste Schritte.
+
+### Werte dieser Site
 
 | | |
 |---|---|
@@ -141,7 +150,28 @@ Angelegt am {heute} mit `tools/new-site.py` aus den neutralen Beispieldaten. `CH
 | mgmtExtra | {extra} |
 | Geräte im Inventar | {", ".join(geraete)} |
 
-## Vor dem Einsatz
+### Betrieb und Bedienung
+
+* Hochladen: `tools/upload-seed.sh <user>@<manager> --overlay {rel}` (das Inventar nur beim
+  allerersten Mal mit `--seed-inventory`, danach lebt es auf dem Manager).
+* Vor Änderungen an der Rolle `manager` erst `$cfmPlan host={name}` (ein Apply-Fehler auf dem Manager
+  heißt Rollback mit Neustart).
+* Manager-Befehle nur auf dem Manager nach `/system script run cfm-mgr`; `$cfmStatus` zeigt neue
+  Stände nach dem nächsten Tick, sofort mit `$cfmCollect`.
+
+---
+
+## 2. Logbuch (neueste Einträge oben)
+
+### {heute} – Site angelegt
+Mit `tools/new-site.py` aus den neutralen Beispieldaten angelegt: Manager `{name}`, Uplink
+`{a.uplink}`, Admin-Benutzer `{user}`; `bootstrap-manager.rsc` mit ausgefülltem Kopf.
+
+---
+
+## 3. Nächste Schritte
+
+### Vor dem Einsatz
 
 - [ ] **Adressen:** Passt das Beispielnetz? Sonst in `global.rsc` `mgmtVlan`, `managers`, `ntp`, `dns`,
       `syslog`, in `vlans.rsc` die VLANs und in `meta/inventory.rsc` die `ip`-Werte ändern (und den
@@ -159,7 +189,7 @@ Angelegt am {heute} mit `tools/new-site.py` aus den neutralen Beispieldaten. `CH
       `authorized_keys` (persönliche SSH-Keys, Admin-Guide Kapitel 4).
 - [ ] **Prüfen:** `tools/rsc-check.py {rel}` ohne Fund.
 
-## Manager aufsetzen
+### Manager aufsetzen
 
 - [ ] Seed hochladen (beim ersten Mal mit Inventar):
       `tools/upload-seed.sh admin@<aktuelle-IP> --overlay {rel} --seed-inventory`
@@ -169,12 +199,21 @@ Angelegt am {heute} mit `tools/new-site.py` aus den neutralen Beispieldaten. `CH
 - [ ] Secrets: `$cfmSecret key=user.{user} value=…`, `key=psk.<ssid>` je SSID, `key=vaultpw`
 - [ ] `$cfmStatus`: {name} ok mit v1
 
-## Geräte aufnehmen (Admin-Guide Abschnitt 7)
+### Geräte aufnehmen (Admin-Guide Abschnitt 7)
 
 - [ ] manuell: `$cfmBootstrap`, Datei aufs Gerät, `/import cfm-bootstrap.rsc`, dann
       `$cfmEnroll name=<n> ip=<MGMT-IP> role=<rolle> ring=<r>`
 - [ ] automatisch: `$cfmRegister name=<n> serial=<SN> ip=<MGMT-IP> role=<rolle> ring=<r> pw="<Aufkleber>"`,
-      `$cfmOnboard sw=<switch> port=<port> name=<n>`
+      `$cfmOnboard sw=<switch> port=<port> name=<n>` (Switch noch nicht aufgenommen:
+      `$cfmOnboard manual=yes name=<n>`)
+
+Erledigtes hier abhaken und als Eintrag ins Logbuch übernehmen; den aktuellen Stand oben nachziehen.
+
+---
+
+## 4. Offene Punkte
+
+* (noch keine)
 """)
 
     # Prüfen und Hinweise
@@ -184,7 +223,7 @@ Angelegt am {heute} mit `tools/new-site.py` aus den neutralen Beispieldaten. `CH
         if not ign:
             print(f"new-site: ACHTUNG, {rel} wird von Git nicht ignoriert – Namen site/ oder site-*/ verwenden",
                   file=sys.stderr)
-    print(f"new-site: {rel} angelegt ({len(geraete)} Geräte im Inventar). Weiter mit {rel}/CHECKLISTE.md")
+    print(f"new-site: {rel} angelegt ({len(geraete)} Geräte im Inventar). Weiter mit {rel}/STAND.md")
     return rc.returncode
 
 

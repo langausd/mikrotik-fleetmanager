@@ -7,7 +7,7 @@
 #            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert, anlegen mit
 #            tools/new-site.py) oder tools/chr-lab/seed für das Testlabor. Hochgeladen werden
 #            nur *.rsc (außer bootstrap*.rsc), authorized_keys und die Verzeichnisse
-#            hosts/ roles/ lib/ meta/; Notizen wie CHECKLISTE.md oder CSV-Listen bleiben lokal.
+#            hosts/ roles/ lib/ meta/; Notizen wie STAND.md, BEFUNDE.md oder CSV-Listen bleiben lokal.
 # --bootstrap: zusätzlich diese Bootstrap-Datei ins Wurzelverzeichnis des Geräts legen (nicht nach
 #            work/ - dort landet nur, was an die Flotte verteilt wird). Ohne Pfad wird
 #            <overlay>/bootstrap-manager.rsc genommen. Danach auf dem Gerät: /import <datei>.

@@ -10,7 +10,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   nicht mit echter Hardware getestet“.
 * **Remote bzw. im Labor machbar:** 25 (WebFig per HTTPS), „Manager-Ticks starten gleichzeitig“
   (Bekannte Fehler), Rest von 44 (Spiegel-Sync und Agent gegeneinander sperren), 21 (weniger
-  `/file/find` im Tick). Erledigt am 2026-09-30: 28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
+  `/file/find` im Tick), 36 (Labortest für Vorabversionen). Erledigt am 2026-09-30: 28, 29, 30, 31,
+  35, 37, 38 (Vorab-Prüfung).
 * **Größere Ausbauten:** 2 (Benachrichtigungen), 10–15, 18–21 sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -57,12 +58,16 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und CAPsMAN
 (`router,manager`) und ein hAP ax² als AP. Zweiter Einsatz (2026-09-20): Primary-Manager als CHR in
 einem PVE-Cluster, Karte je VLAN – dabei kamen D40 (`stp="none"`, Profil `vport`), die
-Namensprüfung im Bootstrap, der Host-Key-Typ nach Reset und der Schutz des Inventars dazu. Die
-gefundenen Fehler sind behoben
+Namensprüfung im Bootstrap, der Host-Key-Typ nach Reset und der Schutz des Inventars dazu.
+Rollout an einem zweiten Standort (ab 2026-09-26): neun Geräte – CRS328 als Core-Switch ohne Reset
+übernommen (routet noch selbst, D43), hAP be³ als CAPsMAN (D45) und AP (Wi-Fi 7, D44/D48), hAP ax³,
+cAP ax, hEX und L009 als Switches; Onboarding im CAPs-Modus, CAPsMAN-Umzug, lokaler Fallback (D46)
+und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Fehler sind behoben
 ([DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten)). Offen bleiben:
 
 * Onboarding-Push gegen echte Werks-Configs: Router (ether1 = WAN mit Firewall), CRS-Switches,
-  APs im CAPs-Modus, Geräte mit Aufkleber-Passwort und `flash/`-Verzeichnis
+  Geräte mit `flash/`-Verzeichnis; Aufkleber-Passwort (beim einzigen Versuch, einem hAP ax³ mit
+  RouterOS 7.8, passte es nicht – das Gerät hatte ein leeres Passwort, der Fallback griff)
 * ~~Onboarding eines hAP per PoE an ether1 im CAPs-Modus~~ – am 2026-09-26 mit zwei APs gelaufen
   (Neustart per `/interface/ethernet/poe/power-cycle` am verwalteten Switch, Lease im
   Onboarding-VLAN, Probe, Bootstrap, Enroll); offen bleibt das LED-Verhalten je Modell
@@ -105,8 +110,9 @@ Reihenfolge: 0 → 1 → 2, 3, 4 → 6, 7 → Rest nach Bedarf.
 
 **0. Pilotbetrieb mit echter Hardware** – ein Gerät je Typ (Router, Switch, AP, Manager); deckt
 die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem neuen Feature.
-*Begonnen 2026-09-17* mit CRS418 (Router + Manager) und hAP ax² (AP), siehe oben; Switch- und
-Backup-Manager-Rolle fehlen noch.
+*Begonnen 2026-09-17* mit CRS418 (Router + Manager) und hAP ax² (AP), seit 2026-09-26 ein
+zweiter Standort mit Switches, eigenem CAPsMAN und Manager in einer VM (siehe oben). Auf Hardware
+fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 
 ### Kurzfristig (großer Nutzen, wenig Aufwand)
 
@@ -133,9 +139,9 @@ Backup-Manager-Rolle fehlen noch.
    Wartungsfenster, auch Downgrade), Pakete vom Manager, automatisches Aufräumen. RouterBOOT-Firmware
    nach dem Update *erledigt*: `agent.rsc` erkennt `current-firmware != upgrade-firmware` (auf
    Hardware bestätigt: hAP AX² blieb nach einem RouterOS-Update sonst dauerhaft auf der alten
-   Firmware stehen) und stößt selbst einen weiteren Neustart an. Offen: Pakete auf den
-   Backup-Manager spiegeln; Zusatzpakete (`wifi-qcom` …) und mehrere Architekturen auf echter
-   Hardware testen.
+   Firmware stehen) und stößt selbst einen weiteren Neustart an. Zusatzpakete (`wifi-qcom-be`,
+   `container`, `iot`, `ups` …) auf arm und arm64 auf Hardware gelaufen (2026-09-26). Offen: Pakete
+   auf den Backup-Manager spiegeln; Vorabversionen im Labortest (TODO 36).
 8. ~~**Identitätsprüfung vor dem Secret-Push**~~ – *erledigt (D28):* Challenge-Response mit dem
    Geräteschlüssel; Erneuerung per `$cfmRekey`. Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
    (bisher nur per `$cfmEnroll … rekey=yes`).
@@ -210,7 +216,7 @@ Backup-Manager-Rolle fehlen noch.
     per `www` (HTTP, Passwort unverschlüsselt, auf die Management-Netze begrenzt). Umsetzung:
     je Gerät ein selbstsigniertes Zertifikat (oder von einer CA auf dem Manager signiert) anlegen,
     an `www-ssl` hängen und bei Namens-/Adressänderung erneuern; danach `www` abschalten.
-26. **Fremder CAPsMAN im MGMT-VLAN** – Hardware-Befund: Läuft im MGMT-VLAN noch ein anderer
+26. ~~**Fremder CAPsMAN im MGMT-VLAN**~~ – Hardware-Befund: Läuft im MGMT-VLAN noch ein anderer
     wifi-CAPsMAN (z.B. auf dem bisherigen Core-Switch), meldet sich ein frisch aufgenommener CAP per
     Discovery dort an, obwohl `caps-man-addresses` auf die cfm-Manager zeigt, und übernimmt dessen
     CA und Zertifikat. Danach scheitert die Verbindung zum cfm-Manager an
@@ -221,7 +227,7 @@ Backup-Manager-Rolle fehlen noch.
     CAPsMAN-Zertifikate, wenn der CAP an einem anderen CAPsMAN hängt oder `cm` sich ändert; `base`
     schaltet auf allen anderen verwalteten Geräten den CAPsMAN-Dienst ab. Ein CAPsMAN auf einem
     Gerät außerhalb von cfm bleibt möglich – `caps-man-names` hält die CAPs davon fern.
-27. **Unnötige Änderungen bei jedem Apply** – `geändert: /interface/bridge br: priority` auf einer
+27. ~~**Unnötige Änderungen bei jedem Apply**~~ – *behoben (drei Ursachen, siehe unten)* – `geändert: /interface/bridge br: priority` auf einer
     Bridge mit `protocol-mode=none` und `gesetzt: /user: disabled` auf dem Manager erscheinen bei
     jedem Apply, obwohl sich nichts ändert. Harmlos, verrauscht aber Log und Probelauf.
     Behoben: `priority` bei `stp="none"` (ohne RSTP liefert RouterOS keinen Wert, `base` setzt sie dann
@@ -269,8 +275,8 @@ Backup-Manager-Rolle fehlen noch.
     Behoben in der Rolle `ap` per `/interface/wifi/cap mld-datapath` mit eigenem Datapath im VLAN der
     Master-SSID. Offen: Da es nur ein `mld-datapath` je CAP gibt, bräuchten weitere SSIDs mit MLO
     eigene Lösungen (MLO für Slave-SSIDs abschalten oder `mld-static` + eigene Datapaths).
-33. **Bestandsgeräte, die noch selbst routen** (Hardware-Befund, Core-Switch mit L3 im Switch-Chip):
-    Neu in der Rolle `base` (Release-Stand, noch ohne Labortest und Admin-Guide): Hostfile-Schlüssel
+33. ~~**Bestandsgeräte, die noch selbst routen**~~ (Hardware-Befund, Core-Switch mit L3 im Switch-Chip):
+    Neu in der Rolle `base`: Hostfile-Schlüssel
     `cpuVlans` (Bridge bleibt in VLANs mit eigenen VLAN-Interfaces getaggt), `gw`/`dns`/`ntp` (statt
     MGMT-Gateway bzw. globaler Werte – sonst zeigt ein Gerät, das selbst das MGMT-Gateway ist, auf
     sich selbst), `bridgeFrames` (Bridge nimmt weiter ungetaggte Frames an, z.B. eine Adresse in VLAN 1);
@@ -278,7 +284,7 @@ Backup-Manager-Rolle fehlen noch.
     ersten Apply auf, damit vorher `$cfmPlan` läuft. *Erledigt (D43):* Admin-Guide 7.3 (Ablauf ohne
     Reset, cfm-Tags vorab, Freigaben in `local-input`), Labortest `e2e.sh` Schritt 14b (cm2: Overrides
     und zurück, sw1: Enroll ohne Apply). Hardware: Core-Switch und hEX so übernommen.
-34. **Bootstrap-Default-Route ohne cfm-Tag** – Mit `gw=` im Hostfile legte die Rolle `base` eine
+34. ~~**Bootstrap-Default-Route ohne cfm-Tag**~~ – Mit `gw=` im Hostfile legte die Rolle `base` eine
     zweite Default-Route an, die Bootstrap-Route blieb stehen → ECMP über zwei Gateways. Behoben in
     `lib/bootstrap-body.rsc` (Route mit Tag `cfm:rt:default`). *Erledigt:* Labortest `e2e.sh` Schritt
     14b (cm2 per Bootstrap aufgenommen, mit `gw=` genau eine Default-Route).

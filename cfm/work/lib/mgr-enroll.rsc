@@ -59,7 +59,7 @@
   } else={ /user/set [find where name=$du] comment=("cfm-sys:dev " . $serial) }
   /user/ssh-keys/remove [find where user=$du]
   :delay 500ms
-  /file/add name=("cfm-import-" . $name . ".pem") contents=[/file/get [/file/find where name=$kf] contents]
+  /file/add name=("cfm-import-" . $name . ".pem") contents=[/file/get $kf contents]
   :delay 500ms
   /user/ssh-keys/import user=$du public-key-file=("cfm-import-" . $name . ".pem")
   # 3) Inventar (Ersatzgerät: alte Seriennummer + MAC-Schlüssel entfernen)

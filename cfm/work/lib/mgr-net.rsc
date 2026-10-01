@@ -7,6 +7,7 @@
 #       export=yes zusätzlich state/netzplan.dot (Graphviz) und state/netzplan.csv.
 #   $cfmChannels   Kanäle der APs (Status-Feld radios); Warnung, wenn zwei APs am selben Switch
 #                  denselben Kanal nutzen (Näherung für "benachbart")
+#   $cfmWifiScan [host=] [band=2] [duration=10s] [data=yes]   Kanal-Scan der APs, Pin-Vorschlag (D56)
 #   $cfmNetTick    (aus $cfmTick, alle 15 min) meldet neue oder behobene Abweichungen im Log
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
@@ -43,12 +44,12 @@
 # Angaben "links" aus work/hosts/<name>.rsc gegen die gemeldeten Nachbarn -> Liste von Meldungen.
 # Wert "gerät:port", "gerät" (beliebiger Port) oder "-" (dort darf nichts hängen)
 :global cfmLinkExpect do={
-  :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmHost; :global cfmLoadData
+  :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmHost; :global cfmLoadData; :global cfmFileEx
   :local b [$cfmMB]
   :local out ({})
   :foreach name,d in=[$cfmInvLoad] do={
     :local hf ($b . "/work/hosts/" . $name . ".rsc")
-    :if ([:len [/file/find where name=$hf]] > 0) do={
+    :if ([$cfmFileEx $hf]) do={
       :set cfmHost ({})
       :onerror e in={ /import file-name=$hf verbose=no } do={}
       :local ex ($cfmHost->"links")
@@ -248,6 +249,198 @@
   :put $rows
   :foreach x in=$warn do={ :put ("Warnung: " . $x) }
   :return $warn
+}
+
+# ---------- Kanalplan per Scan (TODO 41, D56) ----------
+# $cfmWifiScan [host=<AP>] [band=2|5|6] [duration=10s] [data=yes]
+# Jeder AP (Rolle ap, aufgenommen) scannt nacheinander auf seinen Radios des Bands (Standard 2,4 GHz)
+# per ssh-exec (/interface/wifi/scan … as-value). Das Radio verlässt dafür den Kanal, verbundene
+# Clients wechseln kurz zum Nachbarn. Die BSSIDs der eigenen APs kennt der CAPsMAN (Interface-Namen
+# <AP>-<Band>g, D47). Ergebnis in state/wifiscan.json; data=yes rechnet nur mit der letzten Messung.
+# Vorschlag (nur 2,4 GHz): Kanalsätze 1/6/11 und 1/5/9/13 durchprobieren, Kosten je AP = Summe über
+# gehörte Netze: Gewicht (Signal + 95 dB) mal Überlappung der Kanäle (gleich 4/4, 1 Kanal daneben
+# 3/4 … ab 4 Kanälen Abstand 0); eigene APs, die sich hören, zählen doppelt. Bis 6 APs alle
+# Kombinationen, darüber schrittweise. wifi.rsc bleibt unverändert - die Zeile "radios" zum
+# Übernehmen steht in der Ausgabe.
+:global cfmScanW do={ :local w ([:tonum $1] + 95); :if ($w < 0) do={ :set w 0 }; :return $w }
+:global cfmScanOv do={
+  # Überlappung zweier 2,4-GHz-Frequenzen in Vierteln (20 MHz breit, 5 MHz Raster)
+  :local d (([:tonum $1] - [:tonum $2]) / 5)
+  :if ($d < 0) do={ :set d (0 - $d) }
+  :if ($d >= 4) do={ :return 0 }
+  :return (4 - $d)
+}
+:global cfmWifiScan do={
+  :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmPad; :global cfmExec; :global cfmEnrolled
+  :global cfmWrite; :global cfmCapsmen; :global cfmLoadData; :global cfmWifi; :global cfmScanW; :global cfmScanOv
+  :local b [$cfmMB]
+  :local f ($b . "/state/wifiscan.json")
+  :local inv [$cfmInvLoad]
+  :local bd [:tostr $band]
+  :if ([:len $bd] = 0) do={ :set bd "2" }
+  :local dur [:tostr $duration]
+  :if ([:len $dur] = 0) do={ :set dur "10s" }
+  :local sc ({})
+  :if ($data = "yes") do={
+    :set sc [$cfmJson $f]
+    :if ([:len ($sc->"aps")] = 0) do={ :put "keine Messung in state/wifiscan.json - erst ohne data=yes scannen"; :return false }
+    :set bd [:tostr ($sc->"band")]
+  } else={
+    :set sc ({"band"=$bd;"t"=([/system/clock/get date] . " " . [/system/clock/get time]);"own"=({});"aps"=({})})
+    # eigene BSSIDs vom CAPsMAN: Interface-Name <AP>-<Band>g[n], MAC = BSSID
+    :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :set (\$o->(\"m\" . [:tostr [/interface/wifi/get \$i mac-address]])) [/interface/wifi/get \$i name] }; :put [:serialize to=json \$o]"
+    :foreach c in=[$cfmCapsmen $inv] do={
+      :local r [$cfmExec ip=($c->"ip") cmd=$oc]
+      :local oj ({})
+      :onerror e in={ :set oj [:deserialize from=json ($r->"output")] } do={}
+      :foreach m,nm in=$oj do={
+        # letztes "-<Band>g" im Namen (Identities dürfen selbst "-" enthalten, virtuelle APs hängen
+        # eine Nummer an)
+        :local p -1
+        :for i from=0 to=([:len $nm] - 3) do={ :if ([:pick $nm $i ($i + 3)] ~ "^-[256]g\$") do={ :set p $i } }
+        :if ($p > 0) do={ :set ($sc->"own"->$m) [:pick $nm 0 $p] }
+      }
+    }
+    :local bre ($bd . "ghz")
+    :foreach name,d in=$inv do={
+      :if (([:len $host] = 0 or $host = $name) and (("," . [:tostr ($d->"role")] . ",") ~ ",ap,") and [$cfmEnrolled $d]) do={
+        :put ("Scan " . $name . " (" . $bd . " GHz, " . $dur . " je Radio) ...")
+        :local cmd (":local r ({}); :foreach i in=[/interface/wifi/find where default-name~\"^wifi\"] do={ :local n [/interface/wifi/get \$i name]; :local bs \"\"; :onerror e in={ :set bs [:tostr [/interface/wifi/radio/get [find where interface=\$n] bands]] } do={}; :if (\$bs ~ \"" . $bre . "\") do={ :onerror e in={ :foreach x in=[/interface/wifi/scan \$i duration=" . $dur . " as-value] do={ :set (\$r->[:len \$r]) \$x } } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) } } }; :put [:serialize to=json \$r]")
+        :local r [$cfmExec ip=($d->"ip") cmd=$cmd]
+        :local lst ({})
+        :onerror e in={ :set lst [:deserialize from=json ($r->"output")] } do={ :put ("  " . $name . ": keine Daten (" . [:pick ($r->"output") 0 120] . ")") }
+        :local nets ({})
+        :foreach x in=$lst do={
+          :if ([:len [:tostr ($x->"err")]] > 0) do={ :put ("  " . $name . ": Scan-Fehler " . ($x->"err")) } else={
+            # Feldnamen tolerant lesen (as-value des Scans auf Hardware noch nicht gesehen)
+            :local bss [:tostr ($x->"address")]; :if ([:len $bss] = 0) do={ :set bss [:tostr ($x->"bssid")] }
+            :local ch [:tostr ($x->"channel")]; :if ([:len $ch] = 0) do={ :set ch [:tostr ($x->"frequency")] }
+            :local sg [:tostr ($x->"sig")]; :if ([:len $sg] = 0) do={ :set sg [:tostr ($x->"signal")] }
+            :local fq [:tonum [:pick $ch 0 [:find ($ch . "/") "/"]]]
+            :if ([:typeof $fq] = "num" and [:len $sg] > 0) do={ :set ($nets->[:len $nets]) ({("m" . $bss);[:tostr ($x->"ssid")];$fq;[:tonum $sg]}) }
+          }
+        }
+        :set ($sc->"aps"->$name) $nets
+        :put ("  " . [:len $nets] . " Netze")
+      }
+    }
+    $cfmWrite $f [:serialize to=json $sc]
+  }
+  # --- Auswertung: je AP fremde Netze nach Kanal, eigene Nachbarn ---
+  :local own ($sc->"own")
+  :local aps ({})
+  :local nb ({})
+  :foreach ap,nets in=($sc->"aps") do={
+    :local byf ({})
+    :foreach n in=$nets do={
+      :local o [:tostr ($own->[:tostr ($n->0)])]
+      :if ([:len $o] > 0) do={
+        :if ($o != $ap) do={
+          :local k ($ap . "|" . $o)
+          :if ([:typeof ($nb->$k)] = "nothing" or ($n->3) > ($nb->$k)) do={ :set ($nb->$k) ($n->3) }
+        }
+      } else={
+        :local fk [:tostr ($n->2)]
+        :if ([:typeof ($byf->$fk)] != "array") do={ :set ($byf->$fk) ({0;-120}) }
+        :set ($byf->$fk->0) (($byf->$fk->0) + 1)
+        :if (($n->3) > ($byf->$fk->1)) do={ :set ($byf->$fk->1) ($n->3) }
+      }
+    }
+    :set ($aps->[:len $aps]) $ap
+    :local row ""
+    :foreach fk,v in=$byf do={ :set row ($row . " " . $fk . ":" . ($v->0) . "/" . ($v->1)) }
+    :put ([$cfmPad $ap 12] . "fremd (MHz:Anzahl/stärkstes dBm):" . $row)
+  }
+  :foreach k,sg in=$nb do={ :put ("eigener Nachbar " . $k . " " . $sg . " dBm") }
+  :if ($bd != "2") do={ :put "Vorschlag nur für 2,4 GHz"; :return true }
+  :local na [:len $aps]
+  :if ($na = 0) do={ :put "keine Scan-Daten"; :return false }
+  # Kosten je AP und Frequenz (fremde Netze) vorab
+  :local fc ({})
+  :foreach ap,nets in=($sc->"aps") do={
+    :foreach cf in={2412;2432;2437;2452;2462;2472} do={
+      :local c 0
+      :foreach n in=$nets do={
+        :if ([:len [:tostr ($own->[:tostr ($n->0)])]] = 0) do={ :set c ($c + ([$cfmScanW ($n->3)] * [$cfmScanOv $cf ($n->2)])) }
+      }
+      :set ($fc->($ap . "|" . $cf)) $c
+    }
+  }
+  # Kosten eines Plans {AP-Index -> Frequenz}
+  :local cost do={
+    :global cfmScanW; :global cfmScanOv
+    :local t 0
+    :for i from=0 to=([:len $aps] - 1) do={
+      :local a ($aps->$i)
+      :set t ($t + ($fc->($a . "|" . ($pl->$i))))
+      :for j from=0 to=([:len $aps] - 1) do={
+        :if ($j != $i) do={
+          :local s ($nb->($a . "|" . ($aps->$j)))
+          :if ([:typeof $s] = "num") do={ :set t ($t + (2 * [$cfmScanW $s] * [$cfmScanOv ($pl->$i) ($pl->$j)])) }
+        }
+      }
+    }
+    :return $t
+  }
+  # aktueller Stand (Status-Feld radios: "c2412/ax/…")
+  :local cur ({})
+  :local curOk true
+  :for i from=0 to=($na - 1) do={
+    :local st [$cfmJson ($b . "/state/" . ($aps->$i) . "/status.dat")]
+    :local cq ""
+    :foreach r in=($st->"radios") do={
+      :local ch [:pick [:tostr ($r->1)] 1 99]
+      :local fq [:tonum [:pick $ch 0 [:find ($ch . "/") "/"]]]
+      :if ([:typeof $fq] = "num" and $fq < 2500) do={ :set cq $fq }
+    }
+    :if ([:len [:tostr $cq]] = 0) do={ :set curOk false } else={ :set ($cur->$i) $cq }
+  }
+  :if ($curOk) do={
+    :local s ""
+    :for i from=0 to=($na - 1) do={ :set s ($s . " " . ($aps->$i) . "=" . ($cur->$i)) }
+    :put ("Aktuell:            Kosten " . [$cost aps=$aps fc=$fc nb=$nb pl=$cur] . " " . $s)
+  }
+  :foreach cs in={{"1/6/11";{2412;2437;2462}};{"1/5/9/13";{2412;2432;2452;2472}}} do={
+    :local fr ($cs->1)
+    :local nk [:len $fr]
+    :local best ({})
+    :local bc -1
+    :if ($na <= 6) do={
+      :local tot 1
+      :for i from=1 to=$na do={ :set tot ($tot * $nk) }
+      :for x from=0 to=($tot - 1) do={
+        :local pl ({})
+        :local y $x
+        :for i from=0 to=($na - 1) do={ :set ($pl->$i) ($fr->($y % $nk)); :set y ($y / $nk) }
+        :local c [$cost aps=$aps fc=$fc nb=$nb pl=$pl]
+        :if ($bc < 0 or $c < $bc) do={ :set bc $c; :set best $pl }
+      }
+    } else={
+      # schrittweise: je AP den besten Kanal bei festen übrigen, drei Runden
+      :for i from=0 to=($na - 1) do={ :set ($best->$i) ($fr->0) }
+      :for rd from=1 to=3 do={
+        :for i from=0 to=($na - 1) do={
+          :foreach cf in=$fr do={
+            :local pl ({})
+            :for k from=0 to=($na - 1) do={ :set ($pl->$k) ($best->$k) }
+            :set ($pl->$i) $cf
+            :local c [$cost aps=$aps fc=$fc nb=$nb pl=$pl]
+            :if ($bc < 0 or $c < $bc) do={ :set bc $c; :set best $pl }
+          }
+        }
+      }
+    }
+    :local s ""
+    :local wr ""
+    :for i from=0 to=($na - 1) do={
+      :set s ($s . " " . ($aps->$i) . "=" . ($best->$i))
+      :set wr ($wr . ";\"" . ($aps->$i) . "\"={\"2\"=\"" . ($best->$i) . "\"}")
+    }
+    :put ("Vorschlag " . [$cfmPad ($cs->0) 9] . "Kosten " . $bc . " " . $s)
+    :put ("  wifi.rsc: \"radios\"={" . [:pick $wr 1 [:len $wr]] . "}")
+  }
+  :put "Pins in wifi.rsc behalten Kanäle anderer Bänder bei - bestehende 5/6-GHz-Pins in die Zeile übernehmen."
+  :return true
 }
 
 # ---------- Automatische Prüfung (aus $cfmTick) ----------

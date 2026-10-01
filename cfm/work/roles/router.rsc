@@ -53,16 +53,28 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
       :local gwIf $ifn
       :if ($vr) do={
         :if ($vid != $mv) do={
-          $cfmEnsure m="/ip/address" k=("ip:" . $vid) n=({"interface"=$ifn}) p=({"address"=([:tostr (($nn->"addr") + 250 + $rid)] . "/" . ($nn->"pfx"));"interface"=$ifn})
+          # natürlicher Schlüssel mit Adresse: Auf einem Router, der zugleich Primary-Manager ist, liegt
+          # im Onboarding-VLAN schon dessen Adresse (Rolle manager) - sie darf nicht übernommen werden
+          # (sonst setzen beide Rollen sie bei jedem Apply hin und her, Laborprobe 2026-10-01)
+          :local ra ([:tostr (($nn->"addr") + 250 + $rid)] . "/" . ($nn->"pfx"))
+          $cfmEnsure m="/ip/address" k=("ip:" . $vid) n=({"interface"=$ifn;"address"=$ra}) p=({"address"=$ra;"interface"=$ifn})
         }
         :local vrid [:tonum $vid]
         :if ($vrid > 255) do={ :set vrid [:tonum ($v->"vrid")] }
         :local om ""; :local ob ""
-        :if ([:len [:tostr ($v->"dhcp")]] > 0 and [:tostr ($v->"dhcp")] != "no") do={
+        # DHCP folgt dem Master - nicht im Onboarding-VLAN: Dort vergibt der Primary-Manager (Rolle
+        # manager), sein Server darf nicht mit dem VRRP-Zustand an- und ausgehen
+        :if ([:len [:tostr ($v->"dhcp")]] > 0 and [:tostr ($v->"dhcp")] != "no" and [:tostr ($v->"onboard")] != "yes") do={
           :set om ("/ip/dhcp-server/enable [find name=dhcp" . $vid . "]")
           :set ob ("/ip/dhcp-server/disable [find name=dhcp" . $vid . "]")
         }
         $cfmEnsure m="/interface/vrrp" k=("vrrp:" . $vid) n=({"name"=("vrrp" . $vid)}) p=({"name"=("vrrp" . $vid);"interface"=$ifn;"vrid"=$vrid;"priority"=(210 - 10 * $rid);"interval"="400ms";"version"=3;"on-master"=$om;"on-backup"=$ob})
+        # Verkehr an die VIP (virtuelle MAC) kommt über vrrp<VID> herein, nicht über vlan<VID>: das
+        # VRRP-Interface gehört deshalb in dieselbe Zone, sonst greift keine in-interface-list-Regel und
+        # der geroutete Verkehr fällt auf das drop am Ende (Laborprobe des Router-Umzugs, 2026-10-01)
+        :if ([:len $z] > 0) do={
+          $cfmEnsure m="/interface/list/member" k=("ilm:vrrp" . $vid) n=({"list"=("Z-" . $z);"interface"=("vrrp" . $vid)}) p=({"list"=("Z-" . $z);"interface"=("vrrp" . $vid)})
+        }
         :set gwIf ("vrrp" . $vid)
         $cfmEnsure m="/ip/address" k=("vip:" . $vid) n=({"interface"=$gwIf}) p=({"address"=([:tostr $gw] . "/32");"interface"=$gwIf})
       } else={
@@ -98,6 +110,14 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 :local wdns ""
 :if ([:typeof $wan] = "array") do={
   $cfmEnsure m="/interface/list/member" k="ilm:wan" n=({"list"="WAN";"interface"=($wan->"if")}) p=({"list"="WAN";"interface"=($wan->"if")})
+  # WAN in einem VLAN mit VRRP (Internet-Router im LAN): auch dessen VRRP-Interface zählt als WAN
+  :local wif [:tostr ($wan->"if")]
+  :if ($vr and $wif ~ "^vlan[0-9]+\$") do={
+    :local wvid [:pick $wif 4 [:len $wif]]
+    :if ([:typeof ($cfmVlans->$wvid)] = "array" and [:tostr ($cfmVlans->$wvid->"l3")] != "no") do={
+      $cfmEnsure m="/interface/list/member" k="ilm:wan-vrrp" n=({"list"="WAN";"interface"=("vrrp" . $wvid)}) p=({"list"="WAN";"interface"=("vrrp" . $wvid)})
+    }
+  }
   :if ([:len [:tostr ($wan->"addr")]] > 0) do={
     $cfmEnsure m="/ip/address" k="ip:wan" p=({"address"=($wan->"addr");"interface"=($wan->"if")})
   }

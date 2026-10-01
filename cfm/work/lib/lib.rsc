@@ -48,7 +48,7 @@
   "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";
-  "/interface/wifi/steering";"/interface/wifi/configuration";"/interface/wifi/provisioning";
+  "/interface/wifi/steering";"/interface/wifi/access-list";"/interface/wifi/configuration";"/interface/wifi/provisioning";
   "/system/logging/action";"/system/logging";"/user/group";"/user";
   "/system/script";"/system/scheduler";"/tool/netwatch"
 }
@@ -173,6 +173,31 @@
   :local mk ($w->"master")
   :local loc ([:len $ap] > 0)
   $cfmEnsure m="/interface/wifi/steering" k="wst" n=({"name"="cfm-steer"}) p=({"name"="cfm-steer";"rrm"=($d->"rrm");"wnm"=($d->"wnm")})
+  # Steering je Band (TODO 39, D55): Liegt ein Client länger als "after" unter "threshold" (dBm), schickt
+  # der AP ihm unaufgefordert BSS-Transition-Requests (802.11v, RouterOS >= 7.21) mit den Nachbar-APs
+  # derselben SSID; "kick" trennt ihn, wenn er danach immer noch bleibt (leer = nie trennen).
+  # Eigenes Profil cfm-steer-<Band>g, die Konfigurationen dieses Bands zeigen darauf.
+  :local stn ({})
+  :foreach b,c in=($w->"channels") do={
+    :local st ($w->"steer"->$b)
+    :set ($stn->$b) "cfm-steer"
+    :if ([:typeof $st] = "array" and [:len [:tostr ($st->"threshold")]] > 0) do={
+      :local sn ("cfm-steer-" . $b . "g")
+      :local sp ({"name"=$sn;"rrm"=($d->"rrm");"wnm"=($d->"wnm");"transition-threshold"=[:tonum ($st->"threshold")];"transition-time"="unlimited"})
+      :if ([:len [:tostr ($st->"after")]] > 0) do={ :set ($sp->"transition-threshold-time") ($st->"after") }
+      :if ([:len [:tostr ($st->"kick")]] > 0) do={ :set ($sp->"transition-time") [:tostr ($st->"kick")] }
+      :if ([:len [:tostr ($st->"count")]] > 0) do={ :set ($sp->"transition-request-count") [:tostr ($st->"count")] }
+      :if ([:len [:tostr ($st->"period")]] > 0) do={ :set ($sp->"transition-request-period") ($st->"period") }
+      $cfmEnsure m="/interface/wifi/steering" k=("wst:" . $b) n=({"name"=$sn}) p=$sp
+      :set ($stn->$b) $sn
+    }
+  }
+  # Mindestsignal bei der Anmeldung (TODO 39): schwächere Clients weist der AP ab. Ein Wert für alle
+  # Bänder - die access-list kennt kein Band, nur Interfaces, und die der CAPs entstehen dynamisch.
+  :local msg [:tostr ($w->"minSignal")]
+  :if ([:len $msg] > 0) do={
+    $cfmEnsure m="/interface/wifi/access-list" k="wacl:min" p=({"signal-range"=("-120.." . ([:tonum $msg] - 1));"action"="reject"})
+  }
   # Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, D32), DFS-Kanäle optional meiden
   :foreach b,c in=($w->"channels") do={
     :local cp ({"name"=("cfm-" . $b . "g");"band"=($c->"band");"frequency"=($c->"freq");"width"=($c->"width")})
@@ -190,6 +215,9 @@
   :foreach b,c in=($w->"channels") do={
     :foreach f in={"sec";"ft";"ftOverDs";"pmf"} do={ :if ([:len [:tostr ($c->$f)]] > 0) do={ :set ($bov->$b) 1 } }
   }
+  # eigene Konfiguration je Band für weitere SSIDs: bei eigener Security (bov) oder eigenem Steering
+  :local bcf ({})
+  :foreach b,c in=($w->"channels") do={ :if ([:typeof ($bov->$b)] != "nothing" or ($stn->$b) != "cfm-steer") do={ :set ($bcf->$b) 1 } }
   :foreach k,s in=($w->"ssids") do={
     :local o ({})
     :foreach f in={"sec";"ft";"ftOverDs";"pmf";"isolation"} do={
@@ -215,15 +243,19 @@
     $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
     $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
     :foreach b,c in=($w->"channels") do={
-      :if ([:typeof ($bov->$b)] != "nothing" and ($k = $mk or (("," . ($s->"bands") . ",") ~ ("," . $b . ",")))) do={
+      :if ([:typeof ($bcf->$b)] != "nothing" and ($k = $mk or (("," . ($s->"bands") . ",") ~ ("," . $b . ",")))) do={
         :local bn ($nm . "-" . $b . "g")
-        :local bp ({"name"=$bn;"authentication-types"=($o->"sec");"ft"=($o->"ft");"ft-over-ds"=($o->"ftOverDs");"management-protection"=($o->"pmf")})
-        :foreach f,pn in={"sec"="authentication-types";"ft"="ft";"ftOverDs"="ft-over-ds";"pmf"="management-protection"} do={
-          :if ([:len [:tostr ($c->$f)]] > 0) do={ :set ($bp->$pn) ($c->$f) }
+        :local bsec $nm
+        :if ([:typeof ($bov->$b)] != "nothing") do={
+          :set bsec $bn
+          :local bp ({"name"=$bn;"authentication-types"=($o->"sec");"ft"=($o->"ft");"ft-over-ds"=($o->"ftOverDs");"management-protection"=($o->"pmf")})
+          :foreach f,pn in={"sec"="authentication-types";"ft"="ft";"ftOverDs"="ft-over-ds";"pmf"="management-protection"} do={
+            :if ([:len [:tostr ($c->$f)]] > 0) do={ :set ($bp->$pn) ($c->$f) }
+          }
+          $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k . "-" . $b) n=({"name"=$bn}) p=$bp
         }
-        $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k . "-" . $b) n=({"name"=$bn}) p=$bp
         :if ($k != $mk) do={
-          $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k . "-" . $b) n=({"name"=$bn}) p=({"name"=$bn;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$bn;"datapath"=$nm;"steering"="cfm-steer"})
+          $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k . "-" . $b) n=({"name"=$bn}) p=({"name"=$bn;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$bsec;"datapath"=$nm;"steering"=($stn->$b)})
         }
       }
     }
@@ -247,7 +279,7 @@
   }
   :local mcfg do={
     :global cfmEnsure
-    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=("cfm-" . $mk);"steering"="cfm-steer";"channel"=$ch})
+    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=("cfm-" . $mk);"steering"=$stg;"channel"=$ch})
   }
   :local pinch do={
     :global cfmEnsure
@@ -261,7 +293,7 @@
       :local chn ("cfm-" . $b . "g")
       :local f [:tostr ($w->"radios"->$ap->$b)]
       :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
-      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b)
+      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b)
       :set ($cf->$b) ("cfm-l" . $b)
     }
     :return $cf
@@ -271,12 +303,12 @@
   :foreach apn,pins in=($w->"radios") do={
     :foreach b,f in=$pins do={
       :local chn [$pinch b=$b apn=$apn c=($w->"channels"->$b) f=$f]
-      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b)
+      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b)
       :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
     }
   }
   :foreach b,c in=($w->"channels") do={
-    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g") sec=($msec->$b)
+    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g") sec=($msec->$b) stg=($stn->$b)
     :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b);"re"=""})
   }
   # MLO (Wi-Fi 7): Standard aus - ein MLD bietet kein FT an ("MLO does not support Fast Transition"),
@@ -296,7 +328,7 @@
     :local sl ({})
     :foreach k,s in=($w->"ssids") do={
       :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={
-        :if ([:typeof ($bov->$b)] != "nothing") do={ :set ($sl->[:len $sl]) ("cfm-" . $k . "-" . $b . "g") } else={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
+        :if ([:typeof ($bcf->$b)] != "nothing") do={ :set ($sl->[:len $sl]) ("cfm-" . $k . "-" . $b . "g") } else={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
       }
     }
     # Interface-Namen aus Identity und Band (z.B. ap1-2g) statt cap-wifiN, das sich bei jeder
@@ -345,6 +377,44 @@
     $cfmWarn "CAPsMAN bleibt aus, bis der Secret-Push die WLAN-Passphrasen gesetzt hat"
   }
   $cfmSet m="/interface/wifi/capsman" p=({"enabled"=$en;"interfaces"=("vlan" . [:tostr ($cfmG->"mgmtVlan")]);"certificate"="auto";"ca-certificate"="auto";"require-peer-certificate"="no";"upgrade-policy"="none"})
+  # Eigene Radios (TODO 24, D53): Ein CAPsMAN verwaltet sich laut MikroTik nicht selbst als CAP, kann
+  # seine Radios aber über /interface/wifi/radio/provision mit denselben Regeln provisionieren
+  # (Profile, Pins, virtuelle APs; der Datapath trägt "bridge" für genau diesen Fall). Hostfile
+  # capsmanRadios="yes". Neu provisioniert wird nur, wenn sich WLAN-Daten oder Regeln geändert haben
+  # (kurzer Aussetzer nur der eigenen Radios); der Stand steht in <cfm>/wifi-local.txt. Schalter
+  # wieder aus: cfm-Regeln kurz abschalten und neu provisionieren -> Radios unkonfiguriert (Doku).
+  :global cfmHost; :global cfmDir; :global cfmWifi; :global cfmDry; :global cfmLog
+  :local lr ([:tostr ($cfmHost->"capsmanRadios")] = "yes")
+  :local sf ($cfmDir . "/wifi-local.txt")
+  :local old ""
+  :onerror e in={ :set old [/file/get $sf contents] } do={}
+  :local nr 0
+  :onerror e in={ :set nr [:len [/interface/wifi/radio/find where local]] } do={}
+  :if ($nr > 0 and ($lr or [:len $old] > 0)) do={
+    :local h ""
+    :if ($lr and $en = "yes") do={ :set h [:convert ([:serialize to=json $cfmWifi] . [:serialize to=json $pl]) transform=md5 to=hex] }
+    :if ($lr and $en != "yes") do={ :set h $old }
+    :if ($h != $old) do={
+      :if ($cfmDry = true) do={
+        :if ($lr) do={ $cfmLog ("eigene Radios (" . $nr . ") würden über den eigenen CAPsMAN provisioniert") } else={ $cfmLog ("eigene Radios (" . $nr . ") würden zurückgesetzt (capsmanRadios aus)") }
+      } else={
+        :if ($lr) do={
+          /interface/wifi/radio/provision [find where local]
+          :if ([:len $old] = 0) do={ /file/add name=$sf contents=$h } else={ /file/set $sf contents=$h }
+          $cfmLog ("eigene Radios (" . $nr . ") über den eigenen CAPsMAN provisioniert")
+        } else={
+          :local on [/interface/wifi/provisioning/find where comment~"^cfm:" and !disabled]
+          /interface/wifi/provisioning/disable $on
+          :delay 1s
+          /interface/wifi/radio/provision [find where local]
+          :delay 1s
+          /interface/wifi/provisioning/enable $on
+          /file/remove $sf
+          $cfmLog ("eigene Radios (" . $nr . ") zurückgesetzt (capsmanRadios aus)")
+        }
+      }
+    }
+  }
   # Lese-Zugang per API (D47): Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault,
   # user.<name>; bis dahin abgeschaltet), Freigabe in local-input nur für capsmanApi.from. Den
   # Dienst selbst öffnet base. Zieht der CAPsMAN um, räumt die GC das alte Gerät auf.

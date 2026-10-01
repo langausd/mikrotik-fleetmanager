@@ -18,6 +18,9 @@
   :local w ($b . "/work")
   :local err ({}); :local warn ({})
   :local le ""
+  # Datei vorhanden? Über den Namen statt /file/find (TODO 21). Lokal statt $cfmFileEx, weil
+  # $cfmRelease diesen Prüfer aus work/ lädt, während noch die alten Manager-Module laufen
+  :local fex do={ :local r false; :onerror e in={ :local x [/file/get $1 name]; :set r true } do={}; :return $r }
   :onerror e in={ $cfmLoadData ver=0 } do={ :set le $e }
   # Helfer aus lib/lib.rsc (lädt $cfmLoadData mit): fehlen sie, liefern Aufrufe stillschweigend
   # nichts und die Prüfung liefe halb blind
@@ -159,10 +162,10 @@
       :set ($ips->$ip) $n
     }
     :foreach r in=[:toarray ($d->"role")] do={
-      :if ([:len [/file/find where name=($w . "/roles/" . $r . ".rsc")]] = 0) do={ :set ($err->[:len $err]) ("inventory: " . $n . ": Rolle " . $r . " ohne roles/" . $r . ".rsc") }
+      :if (![$fex ($w . "/roles/" . $r . ".rsc")]) do={ :set ($err->[:len $err]) ("inventory: " . $n . ": Rolle " . $r . " ohne roles/" . $r . ".rsc") }
     }
     :local hf ($w . "/hosts/" . $n . ".rsc")
-    :if ([:len [/file/find where name=$hf]] = 0) do={ :set ($warn->[:len $warn]) ("inventory: " . $n . " hat kein hosts/" . $n . ".rsc") } else={
+    :if (![$fex $hf]) do={ :set ($warn->[:len $warn]) ("inventory: " . $n . " hat kein hosts/" . $n . ".rsc") } else={
       :set cfmHost ({})
       :local he ""
       :onerror e in={ /import file-name=$hf verbose=no } do={ :set he $e }
@@ -204,6 +207,11 @@
           :if ([:typeof $c2] != "nil") do={ :set pe [:pick $pe 0 $c2] }
           :if ($pe != "-" and [:typeof ($inv->$pe)] != "array") do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: links " . $lp . ": " . $pe . " steht nicht im Inventar") }
         }
+        # eigene Radios des CAPsMAN (TODO 24): wirken nur auf dem CAPsMAN
+        :if ([:tostr ($cfmHost->"capsmanRadios")] = "yes") do={
+          :local rl ("," . [:tostr ($d->"role")] . ",")
+          :if (!($rl ~ ",capsman,") and !($rl ~ ",manager,")) do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: capsmanRadios ohne Rolle capsman - wirkt nur auf dem CAPsMAN") }
+        }
       }
     }
   }
@@ -239,10 +247,24 @@
       :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . ": Band " . $bb . " fehlt in channels") }
     }
   }
+  # Steering je Band und Mindestsignal (TODO 39): Schwellen in dBm, Band muss es geben
+  :foreach bb,st in=($cfmWifi->"steer") do={
+    :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: steer: Band " . $bb . " fehlt in channels") }
+    :local th [:tonum ($st->"threshold")]
+    :if ([:typeof $th] != "num" or $th > -40 or $th < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": threshold " . [:tostr ($st->"threshold")] . " ist kein Pegel in dBm (-100..-40)") }
+  }
+  :if ([:len [:tostr ($cfmWifi->"minSignal")]] > 0) do={
+    :local ms [:tonum ($cfmWifi->"minSignal")]
+    :if ([:typeof $ms] != "num" or $ms > -40 or $ms < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: minSignal " . [:tostr ($cfmWifi->"minSignal")] . " ist kein Pegel in dBm (-100..-40)") }
+  }
+  # Fallback weiterer SSIDs (TODO 40a): die Master-SSID hat ihn immer
+  :foreach k,s in=($cfmWifi->"ssids") do={
+    :if ([:tostr ($s->"fallback")] = "yes" and $k = [:tostr ($cfmWifi->"master")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: fallback an der Master-SSID " . $k . " ist überflüssig (D46)") }
+  }
   # Persönliche Admin-SSH-Keys (work/authorized_keys, OpenSSH-Format, D35): optional, grobe
   # Zeilenprüfung (kein RouterOS-Skript, daher kein :parse möglich)
   :local akf ($w . "/authorized_keys")
-  :if ([:len [/file/find where name=$akf]] > 0) do={
+  :if ([$fex $akf]) do={
     :local ln 0
     :local t ([/file/get $akf contents] . "\n")
     :while ([:len $t] > 0) do={

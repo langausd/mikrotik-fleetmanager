@@ -58,7 +58,8 @@
   :local fn ($pkg . "-" . $ver . $sfx . ".npk")
   :local lp ([$cfmPkgDir] . "/" . $ver . "/" . $fn)
   :local r ({"fn"=$fn;"sz"=0;"err"=""})
-  :if ([:len [/file/find where name=$lp]] = 0) do={
+  :global cfmFileEx
+  :if (![$cfmFileEx $lp]) do={
     :if ($dl = "no") do={ :set ($r->"err") "fehlt"; :return $r }
     :local url ("https://download.mikrotik.com/routeros/" . $ver . "/" . $fn)
     :put ("lade " . $url)

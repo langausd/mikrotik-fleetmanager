@@ -23,6 +23,15 @@
 #            $cfmSecret key=ppsk.iot.kameras value=...
 #  radios    optionales Pinning pro AP-Identity: {"ap1"={"5"="5180";"2"="2412"}}
 #            (ohne Pin wählt der CAPsMAN bei jeder Neuverbindung neu; gilt auch für den Fallback)
+#  steer     Steering je Band (RouterOS >= 7.21, D55): Liegt ein Client länger als "after" unter
+#            "threshold" (dBm), schlägt ihm der AP per 802.11v die Nachbar-APs vor; "kick" trennt ihn,
+#            wenn er danach noch bleibt (leer = nie trennen). Optional "count"/"period" der Vorschläge
+#            (Standard 3 alle 30s). Schwellen vor Ort ermitteln, z.B.:
+#              "steer"={"2"={"threshold"=-78;"after"="10s";"kick"="5m"};"5"={"threshold"=-75;"after"="10s"}}
+#  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab
+#  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback (D54,
+#            slaves-static; die Master-SSID tut das immer)
+# Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (D53)
 # ============================================================
 :global cfmWifi {
   "country"="Germany";
@@ -40,5 +49,6 @@
   };
   "reselect"="03:00";
   "ppsk"={};
-  "radios"={}
+  "radios"={};
+  "steer"={}
 }

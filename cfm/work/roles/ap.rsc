@@ -124,3 +124,50 @@ $cfmPskMissing
     }
   }
 }
+
+# Weitere SSIDs im lokalen Fallback (TODO 40a, D54): fallback="yes" an einer SSID in wifi.rsc schaltet
+# slaves-static ein - der CAP behält die virtuellen APs des CAPsMAN als statische Interfaces. cfm
+# hängt ihnen wie den Radios eine lokale Kopie ihrer SSID an (capsman-or-local, Datapath der SSID mit
+# Bridge + VLAN). Die SSID eines virtuellen AP liest es aus seiner Konfiguration bzw. dem Monitor.
+# Auf Hardware noch nicht geprüft: ob RouterOS sie im Fallback weitersenden lässt (Test: CAPsMAN-
+# Dienst kurz aus, TODO 40a). Statische virtuelle APs, die bei ausgeschaltetem Schalter übrig
+# bleiben, löscht cfm nicht - der CAPsMAN legt sie beim Verbinden ohnehin neu an.
+:local fbk ({})
+:foreach k,s in=($cfmWifi->"ssids") do={
+  :if ($k != [:tostr ($cfmWifi->"master")] and [:tostr ($s->"fallback")] = "yes") do={ :set ($fbk->[:tostr ($s->"ssid")]) $k }
+}
+:local sst "no"
+:if ([:len $fbk] > 0) do={ :set sst "yes" }
+:onerror e in={ $cfmSet m="/interface/wifi/cap" p=({"slaves-static"=$sst}) } do={ $cfmLog ("slaves-static nicht gesetzt: " . $e) }
+:if ([:len $fbk] > 0) do={
+  :foreach i in=[/interface/wifi/find where !dynamic] do={
+    :local mi ""
+    :onerror e in={ :set mi [:tostr [/interface/wifi/get $i master-interface]] } do={}
+    :if ([:len $mi] > 0) do={
+      :local vn [/interface/wifi/get $i name]
+      :local sid ""
+      :onerror e in={ :set sid [:tostr [/interface/wifi/get $i configuration.ssid]] } do={}
+      :if ([:len $sid] = 0) do={ :onerror e in={ :set sid [:tostr ([/interface/wifi/monitor $i once as-value]->"ssid")] } do={} }
+      :local k [:tostr ($fbk->$sid)]
+      :if ([:len $k] > 0) do={
+        # Band über das Radio des Masters; je Band eigene Konfiguration, wenn wifi.rsc sie vorsieht
+        :local b ""
+        :onerror e in={
+          :local bs [:tostr [/interface/wifi/radio/get [find where interface=$mi] bands]]
+          :if ($bs ~ "2ghz") do={ :set b "2" }
+          :if ($bs ~ "5ghz") do={ :set b "5" }
+          :if ($bs ~ "6ghz") do={ :set b "6" }
+        } do={}
+        :local cfg ("cfm-" . $k)
+        :if ([:len $b] > 0 and [:len [/interface/wifi/configuration/find where name=($cfg . "-" . $b . "g")]] > 0) do={ :set cfg ($cfg . "-" . $b . "g") }
+        :local curM [:tostr [/interface/wifi/get $i configuration.manager]]
+        :local curC [:tostr [/interface/wifi/get $i configuration]]
+        :local curD [:tostr [/interface/wifi/get $i datapath]]
+        :if ($curM != "capsman-or-local" or $curC != $cfg or $curD != ("cfm-" . $k)) do={
+          :if ($cfmDry != true) do={ /interface/wifi/set $i configuration=$cfg configuration.manager=capsman-or-local datapath=("cfm-" . $k) }
+          $cfmLog ("virtueller AP " . $vn . " (" . $sid . "): lokaler Fallback " . $cfg)
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,7 @@ set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 export LAB=${LAB:-${XDG_CACHE_HOME:-$HOME/.cache}/cfm-chr-lab}
+export LABPORT=${LABPORT:-2200} LABSOCK=${LABSOCK:-12000}
 O=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
 pass=0; fail=0
 ok()   { echo "  ✔ $*"; pass=$((pass+1)); }
@@ -19,7 +20,7 @@ bad()  { echo "  ✘ $*"; fail=$((fail+1)); }
 step() { echo; echo "== $*"; }
 r()    { ./lab.sh ssh "$@" 2>&1 | tr -d '\r'; }        # r <vm> '<ros cmd>'
 put()  { printf '#!/bin/sh\necho ""\n' > "$LAB/askpass"
-         SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force sftp -q -b - -P $((2200+$1*10)) "${O[@]}" -i "$LAB/lab_key" admin@127.0.0.1 >/dev/null; }
+         SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force sftp -q -b - -P $((LABPORT+$1*10)) "${O[@]}" -i "$LAB/lab_key" admin@127.0.0.1 >/dev/null; }
 get()  { echo "get $2 $3" | put "$1"; }
 mgr()  { r 1 "/system script run cfm-mgr; $1"; }      # Manager-Funktion auf cm1
 waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; sleep 2; done; return 1; }
@@ -30,8 +31,8 @@ diag() { # diag <name>: Zustand von cm1 und sw1 nach $LAB/diag-<name>.txt (über
   { echo "### cm1 -> sw1"; r 1 ':put ("ping: " . [/ping 192.168.10.21 count=3]); /ip/arp/print where address~"192.168.10."; /interface/bridge/port/print; /interface/bridge/host/print where vid=10; /log/print where !(topics~"debug")'
     echo; echo "### sw1"; r 2 ':put ("ping: " . [/ping 192.168.10.2 count=3]); /ip/address/print; /interface/bridge/print; /interface/bridge/port/print; /interface/bridge/vlan/print; /ip/service/print; /system/script/job/print; /system/scheduler/print; /user/print; /log/print'
   } > "$LAB/diag-$1.txt" 2>&1; echo "    (Diagnose: $LAB/diag-$1.txt)"; }
-agentwait() { # warten bis Agent auf vm $1 v$2 gemeldet hat
-  for _ in $(seq 1 45); do mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$3"'/status.dat"]->"v")]' | grep -qx "$2" && return 0; sleep 4; done; return 1; }
+agentwait() { # warten bis Agent auf vm $1 v$2 gemeldet hat; $4 = Anzahl Versuche à 4 s (Standard 45 = 3 min)
+  for _ in $(seq 1 "${4:-45}"); do mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$3"'/status.dat"]->"v")]' | grep -qx "$2" && return 0; sleep 4; done; return 1; }
 
 if [ "${1:-}" = fresh ]; then
   step "VMs neu aufsetzen"
@@ -41,7 +42,7 @@ for i in 1 2 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
 # clean="yes" (Standard): Reset auf leere Config, danach läuft der Bootstrap selbst weiter.
 # post sichert den Host-Zugang über ether1 per DHCP-Client (CHR legt ihn nach dem Reset meist
 # selbst wieder an, deshalb nur, wenn er fehlt).
@@ -58,6 +59,7 @@ expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find wh
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 7' "cm1: 7 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
 
@@ -206,6 +208,11 @@ echo "$out" | grep -q "ph1: nicht aufgenommen - übersprungen" && echo "$out" | 
 # upgrade.dat gibt es vor dem ersten Auftrag noch nicht: $cfmJson liefert dann ein leeres Array
 mgr ':global cfmJson; :put ("C=" . [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] . "/" . [:len [$cfmJson "cfm/meta/upgrade.dat"]])' | grep -q "C=0/0" && ok "check=yes: nichts geladen, kein Auftrag" || bad "check=yes hat geladen oder beauftragt"
 echo "$out" | grep "^sw1 " | grep -q "frei [0-9]" && ok "sw1 meldet den freien Platz (fs)" || bad "sw1 ohne Angabe zum freien Platz: $(echo "$out" | grep '^sw1')"
+# Vorabversionen (TODO 36): alpha < beta < rc < fertig, Zusätze wie " (stable)" zählen nicht
+out=$(mgr ':global cfmVerGe; :local n 0; :foreach c in={{"7.25beta5";"7.24.4";true};{"7.24.4";"7.25beta5";false};{"7.25rc1";"7.25beta5";true};{"7.25";"7.25rc2";true};{"7.25rc2";"7.25";false};{"7.25.1";"7.25";true};{"7.25beta10";"7.25beta9";true};{"7.25alpha1";"7.25beta1";false};{"7.24.5 (stable)";"7.24.5";true};{"7.24";"7.24.0";true};{"7.9";"7.24.5";false};{"7.25beta5";"7.25beta5";true}} do={ :if ([$cfmVerGe ($c->0) ($c->1)] = ($c->2)) do={ :set n ($n + 1) } else={ :put ("FALSCH " . ($c->0) . " >= " . ($c->1)) } }; :put ("VG=" . $n)')
+echo "$out" | grep -q "VG=12" && ok "\$cfmVerGe: 12 Fälle mit Vorabversionen" || { bad "\$cfmVerGe"; echo "$out" | grep FALSCH; }
+out=$(mgr '$cfmUpgrade ver=7.25beta5 host=sw1 check=yes')
+echo "$out" | grep "^sw1 " | grep -q "upgrade" && ok "check=yes: Beta der nächsten Version ist ein Upgrade, kein Downgrade" || { bad "Richtung bei 7.25beta5"; echo "$out" | grep "^sw1"; }
 # (a) sw1: Wartungsfenster in einer Stunde -> Paket wird sofort geladen, Neustart geplant
 now=$(r 1 ':put ([/system/clock/get date] . " " . [/system/clock/get time])' | head -1)
 at=$(date -d "@$(( $(date -d "$now" +%s) + 3600 ))" '+%Y-%m-%d %H:%M')
@@ -300,13 +307,15 @@ step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enr
 # Bootstrap-Route übernimmt (Tag cfm:rt:default) statt eine zweite Default-Route anzulegen
 mgr ':global e2eC [/file/get [/file/find name="cfm/work/hosts/cm2.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/cm2.rsc"] contents=($e2eC . ":global cfmHost; :set (\$cfmHost->\"gw\") \"192.168.10.254\"; :set (\$cfmHost->\"dns\") \"192.168.10.253\"; :set (\$cfmHost->\"ntp\") {\"192.168.10.252\"}; :set (\$cfmHost->\"cpuVlans\") {20}; :set (\$cfmHost->\"bridgeFrames\") \"admit-all\"\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" Hostfile-Overrides" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
-agentwait 3 "$rv" cm2 && [ "$(stat cm2 res)" = ok ] && ok "cm2 hat v$rv (Hostfile-Overrides) angewendet" || bad "cm2 Apply v$rv: $(stat cm2 res)"
+# cm2 ist Backup-Manager: Fällt sein Apply in den eigenen Spiegel-Sync, wartet sein Agent auf den SFTP des
+# Primary (Wiederholungen bis 2 min, D58) - deshalb bis zu 6 min
+agentwait 3 "$rv" cm2 90 && [ "$(stat cm2 res)" = ok ] && ok "cm2 hat v$rv (Hostfile-Overrides) angewendet" || bad "cm2 Apply v$rv: $(stat cm2 res)"
 expect 3 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and static]] = 1 and [:tostr [/ip/route/get [find where comment="cfm:rt:default"] gateway]] = "192.168.10.254"' "cm2: genau eine Default-Route, Gateway aus dem Hostfile (Bootstrap-Route übernommen)"
 expect 3 '[:tostr [/ip/dns/get servers]] = "192.168.10.253" and [:tostr [/system/ntp/client/get servers]] ~ "192.168.10.252"' "cm2: DNS und NTP aus dem Hostfile"
 expect 3 '[:tostr [/interface/bridge/vlan/get [find where comment="cfm:bv:20"] tagged]] ~ "bridge" and [/interface/bridge/get bridge frame-types] = "admit-all"' "cm2: cpuVlans (Bridge in VLAN 20 getaggt) und bridgeFrames"
 mgr ':global e2eC; /file/set [/file/find name="cfm/work/hosts/cm2.rsc"] contents=$e2eC' >/dev/null
 rv=$(mgr '$cfmRelease msg=" Overrides zurück" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
-agentwait 3 "$rv" cm2 && ok "cm2 hat v$rv (ohne Overrides) angewendet" || bad "cm2 Apply v$rv"
+agentwait 3 "$rv" cm2 90 && ok "cm2 hat v$rv (ohne Overrides) angewendet" || bad "cm2 Apply v$rv"
 agentwait 2 "$rv" sw1 || true   # sw1 bekommt das Release auch (all=yes): erst abwarten, sonst fällt sein Lauf in die Messung unten
 expect 3 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and static]] = 1 and [:tostr [/ip/route/get [find where comment="cfm:rt:default"] gateway]] = "192.168.10.1" and [/interface/bridge/get bridge frame-types] = "admit-only-vlan-tagged" and !([:tostr [/interface/bridge/vlan/get [find where comment="cfm:bv:20"] tagged]] ~ "bridge")' "cm2: ohne Overrides wieder MGMT-Gateway, nur getaggt, VLAN 20 ohne Bridge"
 # Enroll ohne ersten Apply: Scheduler aus, kein Agent-Lauf, Probelauf möglich; ein Apply schaltet ihn ein
@@ -354,7 +363,8 @@ invrole "manager-backup" "manager-backup,ap"
 out=$(mgr ':global cfmCheck; /file/add name="cfm/meta/inv2.rsc" contents=[/file/get [/file/find name="cfm/meta/inventory.rsc"] contents]; :local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "\"role\"=\"manager\""]; /file/set $f contents=([:pick $c 0 $p] . "\"role\"=\"manager,capsman\"" . [:pick $c ($p + 16) [:len $c]]); :foreach e in=([$cfmCheck]->"err") do={ :put $e }; /file/set $f contents=[/file/get [/file/find name="cfm/meta/inv2.rsc"] contents]; /file/remove [/file/find name="cfm/meta/inv2.rsc"]')
 echo "$out" | grep -q "Rolle capsman mehrfach vergeben" && ok "Prüfung: nur ein CAPsMAN (Rolle capsman doppelt = Fehler)" || { bad "doppelte Rolle capsman nicht erkannt"; echo "$out" | tail -3; }
 applied sw1 && ok "sw1 als switch,router,capsman angewendet" || bad "sw1 capsman: $(stat sw1 res)"
-expect 2 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [/ppp/secret/get [find name="cfm:key"] comment] ~ "sv=0\$"' "sw1: CAPsMAN gerendert, bleibt aus bis zur PSK (Secret-Push angefordert)"
+# Kam der Secret-Sync des Manager-Ticks (1 min) schon dazwischen (langsames Labor), ist der CAPsMAN bereits mit PSK an
+expect 2 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2 and (([:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [/ppp/secret/get [find name="cfm:key"] comment] ~ "sv=0\$") or ([:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [:len [/interface/wifi/security/get [find name="cfm-main"] passphrase]] > 0))' "sw1: CAPsMAN gerendert, bleibt aus bis zur PSK (Secret-Push angefordert)"
 mgr '$cfmSecretPush host=sw1' >/dev/null
 expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "sw1: Secret-Push setzt die PSK und schaltet den CAPsMAN ein"
 applied cm1 && ok "cm1 nach dem Umzug angewendet" || bad "cm1: $(stat cm1 res)"
@@ -406,6 +416,24 @@ r 3 '/interface/wifi/cap/set enabled=no' >/dev/null
 expect 3 '[:len [/log/find where message~"login failure for user cfmd-cm2 from 192.168.10.3"]] = 0' "cm2: Agent fragt nie sich selbst (TODO 44)"
 expect 2 '[:len [/log/find where message~"deprecation warning"]] = 0' "sw1: keine Deprecation-Warnung (/ip/service available-from, TODO 43)"
 
+step "14d. Watchdog: Apply kappt den Weg zum Manager -> Rollback nach Ablauf"
+# sw1.post.rsc schaltet die MGMT-Adresse ab: Der Apply gelingt, die Bestätigung scheitert. Zurück
+# rollt erst der Scheduler cfm-watchdog (watchdog=5m, angelegt ohne start-time - RouterOS 7.24 bis
+# 7.24.4: "scheduler scripts with the default start date and time not being triggered"), dessen
+# Lauf das Manifest noch 2 min lang wiederholt abzurufen versucht (TODO 44).
+rv=$(mgr '/file/add name="cfm/work/hosts/sw1.post.rsc" contents=":global cfmDry; :if (\$cfmDry != true) do={ /ip/address/disable [find where address=\"192.168.10.21/24\"] }"; $cfmRelease msg=" Watchdog-Test"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+for _ in $(seq 1 45); do r 2 ':put [:len [/ip/address/find where address="192.168.10.21/24" and disabled]]' | grep -qx 1 && break; sleep 4; done
+expect 2 '[:len [/ip/address/find where address="192.168.10.21/24" and disabled]] = 1 and [:len [/system/scheduler/find where name="cfm-watchdog"]] = 1' "sw1: v$rv angewendet, MGMT-Adresse aus, Watchdog scharf"
+r 2 '/system/scheduler/print detail where name="cfm-watchdog"' | grep -o 'start-date=[^ ]* start-time=[^ ]*' | head -1 | sed 's/^/    /'
+# 5 min Watchdog + 2 min Wiederholungen + Neustart
+for _ in $(seq 1 120); do r 2 ':put [:len [/ip/address/find where address="192.168.10.21/24" and !disabled]]' 2>/dev/null | grep -qx 1 && break; sleep 6; done
+waitssh 2
+for _ in $(seq 1 45); do [ "$(stat sw1 bad)" = "$rv" ] && break; sleep 4; done
+[ "$(stat sw1 bad)" = "$rv" ] && [ "$(stat sw1 res)" = rollback-watchdog ] && ok "sw1: Watchdog hat zurückgerollt (res=rollback-watchdog, v$rv als bad)" || { bad "Watchdog: res=$(stat sw1 res) bad=$(stat sw1 bad)"; diag step14d; }
+expect 2 '[:len [/ip/address/find where address="192.168.10.21/24" and !disabled]] = 1 and [:len [/system/scheduler/find where name="cfm-watchdog"]] = 0' "sw1: MGMT-Adresse wieder an, kein Watchdog mehr"
+rv=$(mgr '/file/remove [find name="cfm/work/hosts/sw1.post.rsc"]; $cfmRelease msg=" Watchdog-Test zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$rv ohne post.rsc angewendet" || bad "sw1 Apply v$rv: $(stat sw1 res)"
+
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)
 chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ("RES=" . ($r->"output"))' | sed -n 's/^RES=//p' | head -1; }
@@ -417,7 +445,7 @@ if [ "$a" = true ]; then ok "sw1: admin deaktiviert"; else bad "sw1: admin noch 
 a=$(chk ':put [/user/get [find name=netadmin] disabled]')
 [ "$a" = false ] && ok "sw1: eigener User netadmin aktiv" || bad "sw1: netadmin nicht aktiv (Antwort: '$a')"
 printf '#!/bin/sh\necho "Lab-Passw0rd!"\n' > "$LAB/askpass-netadmin"; chmod +x "$LAB/askpass-netadmin"
-out=$(SSH_ASKPASS="$LAB/askpass-netadmin" SSH_ASKPASS_REQUIRE=force ssh -p 2210 "${O[@]}" -o PubkeyAuthentication=no netadmin@127.0.0.1 '/system script run cfm-mgr; $cfmPush host=sw1' 2>&1 | tr -d '\r')
+out=$(SSH_ASKPASS="$LAB/askpass-netadmin" SSH_ASKPASS_REQUIRE=force ssh -p $((LABPORT+10)) "${O[@]}" -o PubkeyAuthentication=no netadmin@127.0.0.1 '/system script run cfm-mgr; $cfmPush host=sw1' 2>&1 | tr -d '\r')
 echo "$out" | grep -q "Push -> sw1" && ! echo "$out" | grep -q FEHLER && ok "cm1: Manager-Befehle unter eigenem User (netadmin)" || bad "netadmin: $(echo "$out" | tail -1)"
 
 echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]

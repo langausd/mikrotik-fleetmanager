@@ -74,7 +74,8 @@
   $cfmInvSave $inv
   :if ([:len $pw] > 0) do={ $cfmVaultSet ("init." . $serial) $pw }
   :local v ([$cfmRings]->"latest")
-  :if ([:len [/file/find where name=([$cfmMB] . "/archive/v" . $v . "/hosts/" . $name . ".rsc")]] = 0) do={
+  :global cfmFileEx
+  :if (![$cfmFileEx ([$cfmMB] . "/archive/v" . $v . "/hosts/" . $name . ".rsc")]) do={
     :put ("Hinweis: hosts/" . $name . ".rsc fehlt in v" . $v . " - anlegen und releasen, sonst fehlt das Port-Profil des Uplinks")
   }
   :put ("Registriert: " . $name . " (" . $serial . ", " . ($d->"role") . ", Ring " . ($d->"ring") . ", " . $ip . ")")

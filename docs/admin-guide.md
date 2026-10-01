@@ -194,7 +194,7 @@ irgendetwas ausgerollt wird.
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
 | `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
-| `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `10` |
+| `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `5` |
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
 | `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server), `allow:<Liste>` (nur die Ziele der Liste). **NAT nur mit Kennzeichen:** `*wan` = masquerade, `wan@<Adresse>` = feste NAT-Adresse (bei VRRP wandert sie mit dem Master); gilt auch für `mtupdate` und `allow:…`. `wan` ohne Kennzeichen wird geroutet, der Upstream braucht eine Route zurück. Zonen ohne `*`/`wan`: DNS an externe Server wird auf den Router umgeleitet | |
@@ -263,6 +263,18 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   `identity-regexp` würden sie als APs einschalten. Das MLD eines Wi-Fi-7-CAP heißt danach
   `mld-<Identity>-2g` (nur mit MLO); Radios ohne passende Regel (Band nicht in `channels`) behalten
   `cap-wifiN`.
+* `steer`: Steering je Band (RouterOS ≥ 7.21, D55), z.B.
+  `"steer"={"2"={"threshold"=-78;"after"="10s";"kick"="5m"};"5"={"threshold"=-75;"after"="10s"}}`.
+  Liegt ein Client länger als `after` unter `threshold` (dBm), schlägt ihm der AP per 802.11v die
+  Nachbar-APs derselben SSID vor (`count` Vorschläge alle `period`, Standard 3 alle 30 s); `kick`
+  trennt ihn, wenn er danach noch bleibt (weglassen = nie trennen). Ob ein anderer AP ihn besser
+  hört, prüft RouterOS nicht – Schwellen vor Ort ermitteln und erst vorsichtig (ohne `kick`)
+  einschalten.
+* `minSignal`: Mindestsignal bei der Anmeldung (dBm, ein Wert für alle Bänder), z.B. `-82`.
+  Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP.
+* `fallback="yes"` an einer weiteren SSID (z.B. Gast): Sie sendet auch im lokalen Fallback der APs
+  weiter (D54, `slaves-static`). Die `master`-SSID tut das immer (D46). Noch nicht auf Hardware
+  geprüft – nach dem Einschalten den CAPsMAN-Dienst kurz abschalten und nachsehen.
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
@@ -324,6 +336,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
 | `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste |
 | `bridgeFrames` | `"admit-all"`: die Bridge (CPU) nimmt weiter ungetaggte Frames an, statt nur getaggte – für eine Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll |
+| `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (D53). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Noch nicht auf Hardware geprüft |
 
 Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 `:global cfmVlans; :set ($cfmVlans->"119"->"l3") "no"`.
@@ -479,6 +492,10 @@ sie mit ihrer lokalen Kopie der `master`-SSID (D46).
    AP `/interface/wifi/cap/print` (`current-caps-man-identity`).
 
 Fällt der CAPsMAN länger aus, genauso auf ein anderes Gerät verschieben.
+
+Hat das CAPsMAN-Gerät eigene Radios, funken sie mit `capsmanRadios="yes"` in seinem Hostfile mit
+(D53). Zieht der CAPsMAN um, den Schalter im Hostfile des alten Geräts entfernen (setzt dessen
+Radios zurück) und beim neuen setzen.
 
 ### 6.7 Clients je AP in Home Assistant (D47)
 
@@ -779,6 +796,13 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
 * `$cfmChannels` zeigt die Kanäle der APs und warnt, wenn zwei APs am selben Switch denselben
   Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.
+* `$cfmWifiScan [host=<ap>] [band=2] [duration=10s]` lässt alle APs nacheinander auf ihren Radios
+  des Bands scannen (D56). **Während des Scans verlässt das Radio seinen Kanal, verbundene Clients
+  wechseln kurz zum Nachbarn** – also nicht zur Hauptnutzungszeit. Ausgabe je AP: fremde Netze nach
+  Frequenz (Anzahl/stärkstes Signal), welche eigenen APs sich hören (BSSIDs vom CAPsMAN), die Kosten
+  des aktuellen Stands und je ein Vorschlag für 1/6/11 und 1/5/9/13 samt fertiger Zeile für
+  `radios` in `wifi.rsc` (dort von Hand übernehmen, bestehende 5/6-GHz-Pins ergänzen, Release).
+  Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan.
 
 ### 8.8 WireGuard-Fernzugang
 
@@ -965,8 +989,17 @@ cd tools/chr-lab
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
+./e2e-vrrp.sh             # Router-Umzug: drei VRRP-Router hinter einem Internet-Router im LAN (4 VMs)
 ./lab.sh stop
 ```
+
+`e2e-vrrp.sh` startet vier VMs: cm1 (Manager, zentraler Switch, dritter Router), r1 und r2 als
+Router, vm4 als nicht verwalteter Internet-Router mit je einer VRF als Client in IoT und Gast
+(Daten in `seed-vrrp/`). Geprüft werden VIPs und DHCP nur auf dem Master, die Zonen-Policy samt
+fester NAT-Adresse der Gäste, Ausfall und Rückkehr des Masters, sein Neustart und der Ausfall von
+zwei Routern.
+`lab.sh` nimmt das neueste `chr-*.img` im Labor-Verzeichnis; eine andere Version per
+`CHR_IMG=…/chr-7.24.2.img ./e2e.sh fresh`.
 
 Das CHR-Image lädst du von download.mikrotik.com (`chr-<version>.img.zip`, entpacken). Mit
 `./lab.sh ssh <n>` kommst du an die Konsole einer VM. Funkteile lassen sich auf CHR nicht testen.
@@ -1003,6 +1036,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmChannels` | Kanäle der APs, Warnung bei gleichem Kanal an einem Switch |
+| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs nacheinander (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |
@@ -1047,7 +1081,7 @@ Wurzelverzeichnis.
 
 | Symptom | Ursache | Abhilfe |
 |---|---|---|
-| Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen |
+| Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen. Der Agent hat da schon 2 min lang wiederholt (8/16/32/64 s, Log „Manifest nicht abrufbar – neuer Versuch“, D58); kurze Aussetzer, etwa während ein Backup-Manager spiegelt, fängt das ab |
 | „Manifest-MAC ungültig“ | Geräteschlüssel passt nicht mehr (Reset, Restore); direkt nach `$cfmRekey` kurzzeitig normal | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
 | „Release abgebrochen (Prüfung)“ | inhaltlicher Fehler in `work/` | Meldung lesen und beheben; bewusst: `force=yes` |
 | Secret-Push: „Identitätsprüfung fehlgeschlagen“ | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |

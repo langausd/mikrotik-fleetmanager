@@ -70,7 +70,7 @@
 }
 
 :global cfmMirror do={
-  :global cfmMB; :global cfmConf; :global cfmJson; :global cfmInvLoad; :global cfmNow; :global cfmMirT; :global cfmRings
+  :global cfmFileEx; :global cfmMB; :global cfmConf; :global cfmJson; :global cfmInvLoad; :global cfmNow; :global cfmMirT; :global cfmRings
   :local now [$cfmNow]
   :if (($now - [:tonum $cfmMirT]) < 300) do={ :return false }
   :set cfmMirT $now
@@ -84,7 +84,7 @@
   :local rg [$cfmRings]
   :foreach r in={"r0";"r1";"r2";"latest"} do={
     :local v ($rg->$r)
-    :if ([:len [:tostr $v]] > 0 and [:len [/file/find where name=($b . "/archive/v" . $v . "/index.dat")]] = 0) do={
+    :if ([:len [:tostr $v]] > 0 and ![$cfmFileEx ($b . "/archive/v" . $v . "/index.dat")]) do={
       :local ip ("archive/v" . $v . "/")
       # Hilfsdatei ohne führenden Punkt (RouterOS listet Dotfiles nicht in /file).
       # index.dat erst schreiben, wenn ALLE Dateien da sind – sonst beim nächsten Lauf erneut.

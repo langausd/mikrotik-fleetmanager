@@ -36,13 +36,21 @@ $cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm
 # langsamer voranschreiten, sobald "mgrTick" größer als 1m ist.
 :local mgrTick [:tostr ($cfmG->"mgrTick")]
 :if ([:len $mgrTick] = 0) do={ :set mgrTick "10m" }
-$cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] < 2) do={ /system script run cfm-mgr; :global cfmTick; \$cfmTick } else={ :log warning \"cfm: mgr-tick uebersprungen (Vorlauf haengt)\" }"})
-# \\\$ statt \$ vor dem schließenden Anführungszeichen: der on-event-String wird zweimal geparst
-# (einmal jetzt beim Erzeugen des Scheduler-Werts, einmal später bei jeder Ausführung durch den
-# Scheduler) - für ein wörtliches "$" im AUSGEFÜHRTEN Ergebnis (Regex-Endanker) muss auf dieser
-# Ebene "\$" im Wert selbst stehen, sonst "syntax error" beim Scheduler-Lauf (real auf Hardware
-# erlebt, 2026-09-22: cfm-mgr-onb-tick lief tagelang minütlich in einen Syntaxfehler statt zu ticken).
-$cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-tick"}) p=({"name"="cfm-mgr-onb-tick";"start-time"="startup";"interval"="1m";"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] < 2) do={ :if ([:len [/file/find where name~\"meta/onboard.dat\\\$\" and size>2]] > 0) do={ /system script run cfm-mgr; :global cfmOnbTickRun; \$cfmOnbTickRun } } else={ :log warning \"cfm: mgr-onb-tick uebersprungen (Vorlauf haengt)\" }"})
+# Beide Ticks starten zur selben Sekunde (start-time=startup) und dürfen nicht gleichzeitig arbeiten:
+# Der allgemeine Tick wartet bis zu 60 s auf einen laufenden Onboarding-Tick (danach läuft er mit
+# Warnung trotzdem) und setzt während seiner Arbeit cfmTickBusy. Der Onboarding-Tick wartet bis zu
+# 30 s, solange cfmTickBusy gesetzt ist, und lässt danach seine Minute aus. Er wartet nie auf einen
+# allgemeinen Tick, der selbst noch wartet (sonst warteten beide aufeinander), und kommt auch bei
+# mgrTick=1m (Labor) zum Zug. Jeder überspringt sich außerdem, solange sein Vorlauf läuft (D42).
+$cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] < 2) do={ :local w 0; :while ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] > 0 and \$w < 30) do={ :delay 2s; :set w (\$w + 1) }; :if (\$w >= 30) do={ :log warning \"cfm: mgr-tick laeuft trotz Onboarding-Tick (60 s gewartet)\" }; :global cfmTickBusy; :set cfmTickBusy true; :onerror e in={ /system script run cfm-mgr; :global cfmTick; \$cfmTick } do={ :log warning (\"cfm: mgr-tick: \" . \$e) }; :set cfmTickBusy false } else={ :log warning \"cfm: mgr-tick uebersprungen (Vorlauf haengt)\" }"})
+# Aufträge in meta/onboard.dat? Über den Namen statt /file/find (TODO 21: eine Suche über alle
+# Dateien kostete auf Hardware jede Minute über 100 ms). Ablage wie $cfmMB.
+# Falle beim on-event: Der String wird zweimal geparst (beim Erzeugen und bei jedem Lauf). Ein
+# wörtliches "$" direkt vor einem schließenden Anführungszeichen (Regex-Endanker) braucht hier
+# deshalb \\\$, sonst "syntax error" bei jedem Lauf (Hardware, 2026-09-22).
+:local mb "cfm"
+:onerror e in={ :if ([/file/get "flash" type] = "directory") do={ :set mb "flash/cfm" } } do={}
+$cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-tick"}) p=({"name"="cfm-mgr-onb-tick";"start-time"="startup";"interval"="1m";"on-event"=(":if ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] < 2) do={ :local s 0; :onerror e in={ :set s [/file/get \"" . $mb . "/meta/onboard.dat\" size] } do={}; :if (\$s > 2) do={ :global cfmTickBusy; :local w 0; :while (\$cfmTickBusy = true and [:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] > 0 and \$w < 15) do={ :delay 2s; :set w (\$w + 1) }; :if (\$w < 15) do={ /system script run cfm-mgr; :global cfmOnbTickRun; \$cfmOnbTickRun } } } else={ :log warning \"cfm: mgr-onb-tick uebersprungen (Vorlauf haengt)\" }")})
 
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---
 $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-dev";"policy"="ssh,ftp,read"})
@@ -61,7 +69,9 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
 }
 :if ($cfmDry != true) do={
   :foreach d in={"work";"meta";"live";"live/m";"archive";"state";"vault"} do={
-    :if ([:len [/file find where name=($base . "/" . $d)]] = 0) do={ :onerror e in={ /file add name=($base . "/" . $d) type=directory } do={} }
+    :local ex false
+    :onerror e in={ :local x [/file/get ($base . "/" . $d) name]; :set ex true } do={}
+    :if (!$ex) do={ :onerror e in={ /file add name=($base . "/" . $d) type=directory } do={} }
   }
 }
 

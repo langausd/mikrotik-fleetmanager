@@ -24,7 +24,10 @@
 :set cfmArg
 
 :global cfmWrite do={
-  :if ([:len [/file/find where name=$1]] = 0) do={ /file/add name=$1 contents=$2 } else={ /file/set [/file/find where name=$1] contents=$2 }
+  # über den Namen statt /file/find (TODO 21, auf dem Manager liegen Hunderte Dateien)
+  :local ex false
+  :onerror e in={ :local x [/file/get $1 name]; :set ex true } do={}
+  :if ($ex) do={ /file/set $1 contents=$2 } else={ /file/add name=$1 contents=$2 }
 }
 
 # SFTP zum Manager (Key-Login als cfmd-<name>). r=Pfad auf dem Manager (relativ zu cfm/, mit
@@ -153,13 +156,14 @@
   :foreach fe in=($mf->"files") do={
     :local lp ($d . "/" . ($fe->0))
     # bis zu fünf Versuche: ein Download kann unvollständig gelesen werden; nach einem Fehlschlag
-    # wachsend warten (10/20/30/40 s) - solange ein Backup-Manager seinen Spiegel zieht (~1 min),
-    # beantwortet der SFTP-Server des Primary keine weiteren Downloads (Labor, TODO 44)
+    # exponentiell warten (8/16/32/64 s, zusammen 2 min) - solange ein Backup-Manager seinen Spiegel
+    # zieht (~1 min), beantwortet der SFTP-Server des Primary keine weiteren Downloads (TODO 44)
     :local ok false
     :local info ""
+    :local w 8s
     :for t from=1 to=5 do={
       :if (!$ok) do={
-        :if ($t > 1) do={ :delay (($t - 1) * 10s) }
+        :if ($t > 1) do={ :delay $w; :set w ($w * 2) }
         :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] != "") do={
           :delay 300ms
           :local c [/file/get $lp contents]
@@ -308,6 +312,23 @@
 
   # --- Manifest holen ---
   :local mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+  :if ($mgr = "") do={
+    # Von Hand aus einer Admin-Sitzung gestartet (TODO 35): /tool/fetch nimmt den privaten Schlüssel
+    # des aufrufenden Users, den nur cfm hat - Wiederholen hilft dann nicht
+    :local ow ""
+    :onerror e in={
+      :foreach j in=[/system/script/job/find where script="cfm-agent"] do={
+        :local o [:tostr [/system/script/job/get $j owner]]
+        :if ([:len $o] > 0 and $o != "cfm") do={ :set ow $o }
+      }
+    } do={}
+    :if ([:len $ow] > 0) do={
+      # :put für das Terminal, aus dem der Agent gestartet wurde; der Fehler selbst landet im Log
+      :local m ("kein Manager erreichbar - der Agent läuft als " . $ow . ", der SFTP-Schlüssel gehört cfm: am Manager \$cfmPush host=" . [/system/identity/get name] . " verwenden")
+      :put $m
+      :error $m
+    }
+  }
   # RouterOS-Eigenheit (7.24, im CHR-Labor): Nach einem Neustart – besonders nach /system backup
   # load (Rollback) – nimmt die Bridge getaggte Frames ihrer Ports u.U. erst wieder an, wenn die
   # Ports neu starten. Findet der Boot-Lauf keinen Manager, die Ethernet-Ports der Bridge einmal
@@ -325,6 +346,16 @@
     :delay 15s
     :set mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
     :if ($mgr != "") do={ :log warning "cfm: Manager nach dem Neustart der Bridge-Ports wieder erreichbar" }
+  }
+  # Wiederholungen mit exponentieller Pause (8/16/32/64 s, zusammen 2 min, TODO 44): Solange ein
+  # Backup-Manager seinen Spiegel zieht (~1 min), beantwortet der SFTP-Server des Primary keine
+  # weiteren Downloads. Gilt auch für den Watchdog-Lauf - er rollte sonst fälschlich zurück.
+  :local w 8s
+  :while ($mgr = "" and $w <= 64s) do={
+    :log info ("cfm: Manifest nicht abrufbar - neuer Versuch in " . [:tostr $w])
+    :delay $w
+    :set w ($w * 2)
+    :set mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
   }
 
   # --- Watchdog-Lauf: Apply bestätigen oder zurückrollen ---
@@ -347,24 +378,7 @@
     }
     :error "cfm-done"
   }
-  :if ($mgr = "") do={
-    # Von Hand aus einer Admin-Sitzung gestartet (TODO 35): /tool/fetch nimmt den privaten Schlüssel
-    # des aufrufenden Users, den nur cfm hat
-    :local ow ""
-    :onerror e in={
-      :foreach j in=[/system/script/job/find where script="cfm-agent"] do={
-        :local o [:tostr [/system/script/job/get $j owner]]
-        :if ([:len $o] > 0 and $o != "cfm") do={ :set ow $o }
-      }
-    } do={}
-    :if ([:len $ow] > 0) do={
-      # :put für das Terminal, aus dem der Agent gestartet wurde; der Fehler selbst landet im Log
-      :local m ("kein Manager erreichbar - der Agent läuft als " . $ow . ", der SFTP-Schlüssel gehört cfm: am Manager \$cfmPush host=" . [/system/identity/get name] . " verwenden")
-      :put $m
-      :error $m
-    }
-    :error "kein Manager erreichbar"
-  }
+  :if ($mgr = "") do={ :error "kein Manager erreichbar" }
   :set ($st->"mgr") $mgr
 
   # --- Manifest prüfen ---

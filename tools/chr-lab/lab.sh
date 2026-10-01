@@ -16,9 +16,12 @@ LAB=${LAB:-${XDG_CACHE_HOME:-$HOME/.cache}/cfm-chr-lab}
 CHR_IMG=${CHR_IMG:-$(ls "$LAB"/chr-*.img 2>/dev/null | sort -V | tail -1 || true)}
 KEY="$LAB/lab_key"
 MEM=${MEM:-256}
+# Port-Basen: SSH-Forward LABPORT + 10*i, Sockets der Stern-Topologie LABSOCK + i. Zwei Labore
+# nebeneinander brauchen eigene Werte und ein eigenes LAB-Verzeichnis.
+export LABPORT=${LABPORT:-2200} LABSOCK=${LABSOCK:-12000}
 mkdir -p "$LAB"
 
-port() { echo $((2200 + $1 * 10)); }
+port() { echo $((LABPORT + $1 * 10)); }
 
 # Stern-Topologie: vm1 (Manager) hat ether2..etherN je als Punkt-zu-Punkt-Link zu
 # vm2..vmN (TCP-Socket). Kein Multicast-Hub: der spiegelt jeder VM ihre eigenen
@@ -27,10 +30,10 @@ topo() { # topo <vm> <anzahl>
   local i=$1 n=$2 j a=""
   if [ "$i" = 1 ]; then
     for j in $(seq 2 "$n"); do
-      a="$a -netdev socket,id=t$j,listen=127.0.0.1:$((12000 + j)) -device virtio-net-pci,netdev=t$j,mac=52:54:00:00:01:0$j"
+      a="$a -netdev socket,id=t$j,listen=127.0.0.1:$((LABSOCK + j)) -device virtio-net-pci,netdev=t$j,mac=52:54:00:00:01:0$j"
     done
   else
-    a="-netdev socket,id=t1,connect=127.0.0.1:$((12000 + i)) -device virtio-net-pci,netdev=t1,mac=52:54:00:00:0$i:02"
+    a="-netdev socket,id=t1,connect=127.0.0.1:$((LABSOCK + i)) -device virtio-net-pci,netdev=t1,mac=52:54:00:00:0$i:02"
   fi
   echo "$a"
 }

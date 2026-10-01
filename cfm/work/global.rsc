@@ -16,7 +16,7 @@
   "watchdog"="5m";
   "mgrTick"="10m";
   "ringSoak"={"30m";"2h"};
-  "archiveKeep"=10;
+  "archiveKeep"=5;
   "pkgPath"="";
   "mgmtAccess"="mgmt";
   "mgmtExtra"={};

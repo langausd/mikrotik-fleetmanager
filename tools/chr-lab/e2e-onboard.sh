@@ -15,6 +15,7 @@ set -uo pipefail
 cd "$(dirname "$0")"
 ROOT=$(cd ../.. && pwd)
 export LAB=${LAB:-${XDG_CACHE_HOME:-$HOME/.cache}/cfm-chr-lab}
+export LABPORT=${LABPORT:-2200} LABSOCK=${LABSOCK:-12000}
 O=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
 pass=0; fail=0
 ok()   { echo "  ✔ $*"; pass=$((pass+1)); }
@@ -22,7 +23,7 @@ bad()  { echo "  ✘ $*"; fail=$((fail+1)); }
 step() { echo; echo "== $*"; }
 r()    { ./lab.sh ssh "$@" 2>&1 | tr -d '\r'; }
 put()  { printf '#!/bin/sh\necho ""\n' > "$LAB/askpass"
-         SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force sftp -q -b - -P $((2200+$1*10)) "${O[@]}" -i "$LAB/lab_key" admin@127.0.0.1 >/dev/null; }
+         SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force sftp -q -b - -P $((LABPORT+$1*10)) "${O[@]}" -i "$LAB/lab_key" admin@127.0.0.1 >/dev/null; }
 mgr()  { r 1 "/system script run cfm-mgr; $1"; }
 waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; sleep 2; done; return 1; }
 expect() { if r "$1" ":put ($2)" | grep -q true; then ok "$3"; else bad "$3"; fi; }
@@ -38,7 +39,7 @@ for i in 1 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Primary-Manager cm1"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port 2210 --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
 # hier der Weg ohne Reset (clean="no"), den Reset testet e2e.sh
 sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' -e 's/^:local clean "yes"/:local clean "no" /' \
     "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm.rsc"

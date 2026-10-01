@@ -1,18 +1,21 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-09-30)
+## Übersicht offener Punkte (Stand 2026-10-01)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
-* **Nur mit Hardware vor Ort testbar:** 40a (weitere SSIDs im lokalen Fallback), 39 (Mindestsignal,
-  vorher die Abdeckung prüfen), 41 (`$cfmWifiScan`, ein Scan unterbricht die Radios), 24 (eigene
-  Radios des Managers/CAPsMAN), 38 (RouterOS-Update bei 16 MB Flash) sowie die Punkte unter „Noch
-  nicht mit echter Hardware getestet“.
-* **Remote bzw. im Labor machbar:** 25 (WebFig per HTTPS), „Manager-Ticks starten gleichzeitig“
-  (Bekannte Fehler), Rest von 44 (Spiegel-Sync und Agent gegeneinander sperren), 21 (weniger
-  `/file/find` im Tick), 36 (Labortest für Vorabversionen). Erledigt am 2026-09-30: 28, 29, 30, 31,
-  35, 37, 38 (Vorab-Prüfung).
-* **Größere Ausbauten:** 2 (Benachrichtigungen), 10–15, 18–21 sowie Netinstall/Branding (Onboarding).
+* **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
+  Darstellung und Prüfung): 24 (eigene Radios des CAPsMAN, D53), 40a (Gast/IoT im lokalen Fallback,
+  D54), 39 (Steering je Band + Mindestsignal, D55), 41 (`$cfmWifiScan`, D56).
+* **Nur mit Hardware:** 38 (RouterOS-Update bei 16 MB Flash) sowie die Punkte unter „Noch nicht mit
+  echter Hardware getestet“.
+* **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
+  – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-01:** 21 (Dateizugriff über den Namen, D59), 36 (Labortest), 44 (Rest,
+  D58), „Manager-Ticks starten gleichzeitig“ (D57); Labortest des Watchdog-Rollbacks (`e2e.sh`
+  Schritt 14d) und Probe des Router-Umzugs mit drei VRRP-Routern (`e2e-vrrp.sh`). Am 2026-09-30:
+  28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
+* **Größere Ausbauten:** 2 (Benachrichtigungen), 10–15, 18–20 sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -77,7 +80,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
-* PPSK-VLANs, VRRP mit mehreren Routern. ~~Umzug der Rolle `capsman`~~ (D45) am 2026-09-27 von
+* PPSK-VLANs, VRRP mit mehreren Routern (im Labor mit drei Routern geprobt, `e2e-vrrp.sh` 79/79,
+  2026-10-01: Failover, Rückkehr mit Preemption, Neustart, Ausfall zweier Router, DHCP nur auf dem
+  Master, Zonen-Policy, feste NAT-Adresse; dabei die Rolle `router` korrigiert, siehe DECISIONS
+  „Rolle `router` mit VRRP“). ~~Umzug der Rolle `capsman`~~ (D45) am 2026-09-27 von
   einer CHR auf einen hAP be³ gelaufen, vier APs folgten samt Zertifikatswechsel. Zwei APs
   (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (D41), WPA2/WPA3 + FT und Clients
   mit `ft-wpa3-psk` laufen seit 2026-09-24, Roaming zwischen den beiden APs klappt (2026-09-25)
@@ -90,7 +96,9 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
-* **Manager-Ticks starten gleichzeitig:** `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (jede
+* ~~**Manager-Ticks starten gleichzeitig:**~~ – *erledigt (D57):* Der allgemeine Tick wartet bis zu
+  60 s auf einen laufenden Onboarding-Tick und setzt während seiner Arbeit `cfmTickBusy`, der
+  Onboarding-Tick wartet bis zu 30 s darauf und lässt dann seine Minute aus. – `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (jede
   Minute) haben beide `start-time=startup` und laufen deshalb zur selben Sekunde los, im Labor mit
   `mgrTick=1m` jede Minute. Bisher nur als Zeitversatz beobachtet (Onboarding-Test: Status von ob1
   und Rückstellung des Onboarding-Ports einige Sekunden später, einmal ein leerer Status beim Lesen).
@@ -172,7 +180,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Proxy als Ziel (transparent, Filter nach Domain) für Geräte, deren Cloud-Adressen häufig
     wechseln. WLAN-Client-Isolation trennt laut MikroTik nur Clients am selben AP – für
     isolierte Zonen über mehrere APs zusätzlich einen Bridge-Filter auf den APs (nur zum Gateway).
-21. **Weniger `/file/find` im Manager-Tick** – Hardware-Befund (CRS418, RouterOS 7.22.2): eine
+21. ~~**Weniger `/file/find` im Manager-Tick**~~ – *erledigt (D59):* Zugriffe auf bekannte Dateinamen per
+    `/file/get <Name>` statt Suche (CHR, 600 Dateien: 0,05 statt 8 ms), `cfmMB` je Sitzung gemerkt,
+    `archiveKeep` standardmäßig 5, `$cfmRelease` lädt den Prüfer aus `work/`. Offen: auf Geräten mit
+    USB-Stick prüfen, ob er die Dateiliste bremst. – Hardware-Befund (CRS418, RouterOS 7.22.2): eine
     `/file/find`-Suche kostet ca. 0,23 ms je Datei in `/file` (624 Dateien: 120 ms, 351: 80 ms).
     Fast jede Funktion (`cfmMB`, `cfmWrite`, `cfmRead`, `cfmJson`) sucht sich ihre Datei so;
     ein Tick lief mit 624 Dateien 87 s, nach dem Aufräumen (`archiveKeep` 3, Supout weg) 33 s.
@@ -184,6 +195,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     meldet der alte Prüfer auf dem Manager neue Zonenkennzeichen (`*wan`) als Fehler, das erste
     Release braucht dann `force=yes` (Henne-Ei; künftig Prüfer aus dem neuen Archiv laden).
 22. **Fehlgeschlagener Apply löst über den Watchdog einen Reboot aus (Design-Falle, kein Bug)** –
+    *Disk-Logging zurückgestellt (2026-10-01): Ein externer Syslog-Server ist geplant; den Grund eines
+    Rollbacks meldet der Agent schon vor dem Neustart (`res` in `$cfmStatus`).* –
     Hardware-Befund, 2026-09-22: ein ungültiges RouterOS-Property (`local-forwarding` im
     WLAN-Datapath – ein Feld des alten CAPsMAN `/caps-man`, das es im wifi-Paket nicht gibt; RouterOS
     lehnt es als "bad parameter" ab) ließ `$cfmImportAll` auf
@@ -204,14 +217,18 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Radio bzw. virtuellem AP einen statischen Bridge-Port mit der PVID der SSID anlegen, und der
     CAPsMAN dürfte solchen CAPs keinen Datapath mit `vlan-id` schicken. Erst mit einem solchen
     Gerät umsetzen und testen; bis dahin erkennt cfm das Paket nicht und warnt auch nicht.
-24. **Eigene Radios des Managers** (z.B. CRS418-…-5axQ2axQ): Die Rolle `manager` rendert nur den
+24. **Eigene Radios des Managers** – *vorbereitet (D53):* Hostfile `capsmanRadios="yes"` auf dem
+    CAPsMAN provisioniert dessen eigene Radios über den eigenen CAPsMAN. Test vor Ort: SSIDs von den
+    eigenen Radios, Bridge-Port und VLAN, Interface-Namen, Roaming mit FT zu den CAPs, Schalter wieder
+    aus (Radios unkonfiguriert). – (z.B. CRS418-…-5axQ2axQ): Die Rolle `manager` rendert nur den
     CAPsMAN, die eingebauten Radios bleiben unkonfiguriert. *Entschieden 2026-09-25: Sie sollen
     mitfunken.* Offen ist das Wie, vor der Umsetzung als Designfrage vorlegen: Rolle `ap` zusätzlich
     auf dem Manager (lokaler CAP des eigenen CAPsMAN – in der MikroTik-Doku prüfen, wie ein CAP den
     CAPsMAN auf demselben Gerät findet) oder die Rolle `manager` stellt die lokalen Radios direkt
     auf `configuration.manager=capsman`. Beide müssen im selben FT-Verbund wie die übrigen APs
     landen. Test nur auf der Hardware des Pilots möglich.
-25. **WebFig per HTTPS** – `services` kennt `www-ssl`, die Rolle `base` setzt aber nur Port und
+25. **WebFig per HTTPS** – *zurückgestellt (2026-10-01), bis Let's Encrypt über acme-dns mit einer
+    öffentlichen Domain steht (dann Zertifikat per DNS-Challenge statt selbstsigniert).* – `services` kennt `www-ssl`, die Rolle `base` setzt aber nur Port und
     Adressen; ohne Zertifikat lauscht RouterOS dort nicht. Bis dahin geht das Web-Interface nur
     per `www` (HTTP, Passwort unverschlüsselt, auf die Management-Netze begrenzt). Umsetzung:
     je Gerät ein selbstsigniertes Zertifikat (oder von einer CA auf dem Manager signiert) anlegen,
@@ -293,7 +310,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Schlüssel des aufrufenden Users, den nur `cfm` hat. *Doku erledigt* (Admin-Guide 7.3 und
     Fehlersuche: immer `$cfmPush host=…`); *erledigt:* Der Agent erkennt den Besitzer des Jobs und
     meldet „der Agent läuft als <user> … `$cfmPush host=<n>` verwenden“ (Terminal und Log).
-36. **Vorabversionen in `$cfmUpgrade`** – `$cfmVerGe` las „7.25beta5“ als 7.0 (`[:tonum "25beta5"]`
+36. ~~**Vorabversionen in `$cfmUpgrade`**~~ – *erledigt:* Labortest `e2e.sh` Schritt 13 (12 Fälle für
+    `$cfmVerGe`, `check=yes` auf eine Beta der nächsten Version ergibt „upgrade“). – `$cfmVerGe` las „7.25beta5“ als 7.0 (`[:tonum "25beta5"]`
     ist `nil`) und stufte ein Update von 7.24.4 als Downgrade ein (`/system/package/downgrade`).
     Hardware-Befund: hAP be³ Media, dessen Switch-Ports erst ab 7.25beta4 funktionieren, dort von
     Hand aktualisiert. Behoben in `lib/mgr-onboard.rsc` (alpha < beta < rc < fertig), auf RouterOS
@@ -315,7 +333,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     am Gerät. Optionen: Pakete in eine tmpfs-Disk (`/disk add type=tmpfs`) laden und von dort
     installieren, falls RouterOS das zulässt; oder für solche Geräte das eingebaute Update über einen
     Proxy/Update-Pfad des Managers. `$cfmUpgrade` sollte vorab den freien Platz prüfen und klar abbrechen.
-39. **Mindestsignal für Clients** (Entscheidung offen) – Hardware-Befund Roaming-Test mit FT: Die
+39. **Mindestsignal für Clients** – *vorbereitet (D55):* `wifi.rsc` `steer` je Band (802.11v-Vorschläge
+    an Clients unter der Schwelle, optional Trennen nach `kick`) und `minSignal` für die Anmeldung,
+    standardmäßig aus. Vor Ort: Abdeckung prüfen, Schwellen je Band ermitteln, dann einschalten. – Hardware-Befund Roaming-Test mit FT: Die
     Wechsel selbst dauern meist unter 1 s, aber Clients bleiben lange an einem schwachen AP hängen
     (z.B. −79 dBm auf 2,4 GHz, viele kurze Aussetzer), obwohl ein stärkerer AP in Reichweite ist; ein
     Client verlor sogar erst die Verbindung, bevor er wechselte. FT beschleunigt nur den Wechsel, nicht
@@ -324,7 +344,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     ob die Steering-Einstellungen (`rrm`/`wnm`, BSS Transition) aktiv zum Wechsel auffordern.
     Risiko: In Randbereichen ohne besseren AP verliert ein Client dann ganz die Verbindung – vorher
     die Abdeckung prüfen (Löcher zwischen APs).
-40. **Lokaler Fallback der APs (D46), offene Punkte** (a offen, b/c/d/e erledigt) – Umgesetzt ist die `master`-SSID je Radio
+40. **Lokaler Fallback der APs (D46), offene Punkte** (a vorbereitet, b/c/d/e erledigt) – *40a vorbereitet
+    (D54):* `fallback="yes"` an einer SSID schaltet `slaves-static` ein und hängt den virtuellen APs
+    eine lokale Kopie an; Test vor Ort (CAPsMAN-Dienst kurz aus). – Umgesetzt ist die `master`-SSID je Radio
     (`capsman-or-local`, Hardware-Test mit einem cAP ax). Offen: (a) weitere SSIDs als lokale
     virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
     APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven
@@ -338,7 +360,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (siehe Hardware-Eigenheiten); 2026-09-27 geprüft: von Hand eingeschaltet, blieb es nach einem
     Neustart des CAPsMAN an, und nach einer Neuprovisionierung (neue Namen, D47) legte er es aktiv
     an. Nur beim allerersten Kontakt eines CAP prüfen.
-41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) –
+41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) – *vorbereitet
+    (D56):* `$cfmWifiScan` scannt alle APs nacheinander und schlägt Pins für 1/6/11 und 1/5/9/13 vor
+    (Auswertung im Labor mit erfundenen Daten geprüft). Vor Ort: Feldnamen des Scan-Ergebnisses und
+    ob ein CAP seine Radios lokal scannen kann. –
     Manager-Befehl `$cfmWifiScan`: über den CAPsMAN von jedem AP aus scannen
     (`/interface/wifi/scan cap-wifiN duration=…`, nur Radios ohne Clients oder mit Hinweis), fremde
     Netze und ihre Kanäle je AP sammeln, einen Pin-Vorschlag für `wifi.rsc → radios` berechnen
@@ -362,7 +387,11 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Felder, der Vergleich bleibt deshalb idempotent. Vor dem Wegfall auf `available-from` umstellen,
     ältere Versionen kennen nur `address` → Feldname nach der Version wählen (oder nach dem
     Eigenschafts-Array von `get`).
-44. ~~**Agent auf einem Backup-Manager fragt sich selbst**~~ – *behoben:* `$cfmFetch` überspringt die
+44. ~~**Agent auf einem Backup-Manager fragt sich selbst**~~ – *Rest erledigt (D58):* auch der Abruf des
+    Manifests (normal und im Watchdog-Lauf) wiederholt mit 8/16/32/64 s Pause; die Dateien ebenso.
+    Labor (run57b): Fällt der Apply des Backup-Managers in seinen eigenen Spiegel-Sync, dauert er so
+    gut 3 min statt 25 s – er gelingt aber. Der Spiegel-Sync selbst wird nicht gesperrt (bewusst,
+    Entscheidung 2026-10-01). – *behoben:* `$cfmFetch` überspringt die
     eigenen Adressen, wenn es den Geräte-User lokal nicht gibt (der Primary behält seinen SFTP-Weg zu
     sich selbst); `$cfmGetFiles` versucht es bis zu fünfmal mit 10/20/30/40 s Pause. Labor-Befund run45/48/49:
     Solange der Backup-Manager seinen Spiegel zieht (~1 min), beantwortet der SFTP-Server des Primary
@@ -376,3 +405,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `cfmd-<name>`, den es dort nicht gibt („login failure … critical“ im Log, danach „kein Manager
     erreichbar“). Der nächste Lauf holt es nach. Eigene Adresse aus der Liste nehmen oder dort lokal
     aus dem Spiegel lesen; ein einmaliger Timeout sollte einen kurzen Wiederholversuch auslösen.
+45. **RouterOS 7.24.5 (2026-09-29)** – Changelog-Punkte, die cfm berühren: „scheduler scripts with the
+    default start date and time not being triggered (introduced in v7.24)“ betrifft `cfm-watchdog`,
+    `cfm-agent-retry`, `cfm-onboard-revert` und die Bootstrap-Stufen (alle ohne `start-time`); im
+    Labor feuern sie unter 7.24.2 und 7.24.5 (Watchdog-Rollback: `e2e.sh` Schritt 14d). Außerdem
+    „poe-out – fix loss of PoE-out capability on CRS328-24P-4S+ after a reboot“ (Core-Switch, der
+    APs per PoE versorgt) und für den hAP be³ Media VLAN-Offloading im Switch-Chip und stabilere
+    Ethernet-Ports (womöglich der Fehler der Kabel-Ports unter 7.24.2–7.24.4). Der Labortest aller
+    Skripte auf 7.24.5 ist grün (e2e 169, Onboarding 14/15/18, `e2e-vrrp.sh` 79), e2e auf 7.24.2
+    ebenso. Update auf Hardware: vor Ort.

@@ -37,6 +37,8 @@
 #   $cfmUpgrade cancel=yes host=..|ring=..|all=yes   Auftrag zurückziehen; ohne ver: Übersicht
 #   $cfmLinks [accept=yes] [export=yes]   Verkabelung (LLDP) prüfen, Netzplan state/netzplan.md
 #   $cfmChannels                       Kanäle der APs, Warnung bei gleichem Kanal an einem Switch
+#   $cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]
+#                                      Kanal-Scan aller APs nacheinander, Pin-Vorschlag für 2,4 GHz
 #   $cfmBootstrap                      bootstrap.rsc für neue Geräte erzeugen
 #   $cfmPromoteManager                 (auf dem Backup) zum Primary befördern
 #   Onboarding (Push in die Werks-Config):
@@ -48,16 +50,30 @@
 # $cfmOnbTickRun (Scheduler cfm-mgr-onb-tick, fest 1m, nur fürs Onboarding)
 # ============================================================
 
+# Dateien über den Namen ansprechen statt per /file/find (TODO 21): find wertet jede Datei aus
+# (Hardware ~0,2 ms je Datei, CHR mit 600 Dateien 8 ms je Suche), /file/get <Name> braucht
+# 0,05 ms. Suchen per Regex nur noch dort, wo wirklich mehrere Dateien gemeint sind.
+:global cfmFileEx do={
+  :local r false
+  :onerror e in={ :local x [/file/get $1 name]; :set r true } do={}
+  :return $r
+}
+# Ablage einmal je Sitzung bestimmen (das flash/-Verzeichnis kommt und geht nicht im Betrieb)
 :global cfmMB do={
-  :if ([:len [/file/find where name="flash" and type="directory"]] > 0) do={ :return "flash/cfm" }
-  :return "cfm"
+  :global cfmMBv
+  :if ([:typeof $cfmMBv] = "str") do={ :return $cfmMBv }
+  :local r "cfm"
+  :onerror e in={ :if ([/file/get "flash" type] = "directory") do={ :set r "flash/cfm" } } do={}
+  :set cfmMBv $r
+  :return $r
 }
 :global cfmWrite do={
-  :if ([:len [/file/find where name=$1]] = 0) do={ /file/add name=$1 contents=$2 } else={ /file/set [/file/find where name=$1] contents=$2 }
+  :global cfmFileEx
+  :if ([$cfmFileEx $1]) do={ /file/set $1 contents=$2 } else={ /file/add name=$1 contents=$2 }
 }
 :global cfmRead do={
   :local r ""
-  :onerror e in={ :set r [/file/get [/file/find where name=$1] contents] } do={}
+  :onerror e in={ :set r [/file/get $1 contents] } do={}
   :return $r
 }
 :global cfmJson do={
@@ -178,8 +194,8 @@
 
 # ---------- Rolle / Primary ----------
 :global cfmIsPrimary do={
-  :global cfmMB; :global cfmG; :global cfmLoadData
-  :if ([:len [/file/find where name=([$cfmMB] . "/meta/PROMOTED")]] > 0) do={ :return true }
+  :global cfmMB; :global cfmG; :global cfmLoadData; :global cfmFileEx
+  :if ([$cfmFileEx ([$cfmMB] . "/meta/PROMOTED")]) do={ :return true }
   :if ([:typeof $cfmG] != "array") do={ $cfmLoadData }
   :local p [:pick ($cfmG->"managers") 0]
   :return ([:len [/ip/address/find where address~("^" . $p . "/")]] > 0)
@@ -289,7 +305,12 @@
   :if (![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
   :local bad [$cfmParseWork]
   :if ([:len $bad] > 0) do={ :error ("Release abgebrochen:" . $bad) }
-  # inhaltliche Prüfung (mgr-check): Fehler stoppen das Release, force=yes übergeht sie
+  # inhaltliche Prüfung (mgr-check): Fehler stoppen das Release, force=yes übergeht sie.
+  # Der Prüfer kommt aus work/ (TODO 21): Nach einem Framework-Update kennt der installierte die
+  # neuen Kennzeichen noch nicht und hielte das erste Release auf. Lädt die neue Fassung nicht,
+  # prüft die installierte.
+  :onerror e in={ /import file-name=($b . "/work/lib/mgr-check.rsc") verbose=no } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
+  :global cfmCheck
   :local ck [$cfmCheck]
   :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
   :if ([:len ($ck->"err")] > 0) do={
@@ -349,9 +370,9 @@
 }
 
 :global cfmRollback do={
-  :global cfmMB; :global cfmRelease; :global cfmWrite; :global cfmHook
+  :global cfmMB; :global cfmRelease; :global cfmWrite; :global cfmHook; :global cfmFileEx
   :local b [$cfmMB]
-  :if ([:len [/file/find where name=($b . "/archive/v" . $ver . "/index.dat")]] = 0) do={ :error ("Version v" . $ver . " nicht im Archiv") }
+  :if (![$cfmFileEx ($b . "/archive/v" . $ver . "/index.dat")]) do={ :error ("Version v" . $ver . " nicht im Archiv") }
   # work/ sichern und durch den alten Stand ersetzen, dann normal releasen
   :foreach f in=[/file/find where name~("^" . $b . "/work/") and type!="directory"] do={ /file/remove $f }
   :foreach f in=[/file/find where name~("^" . $b . "/archive/v" . $ver . "/") and type!="directory"] do={
@@ -437,7 +458,7 @@
 # Geräte haben am Manager nur Lesezugriff; der Manager (User cfm auf dem Gerät)
 # holt cfm/out/status.json und – wenn neu – cfm/out/export.rsc nach state/<name>/.
 :global cfmCollect do={
-  :global cfmInvLoad; :global cfmMB; :global cfmJson; :global cfmEnrolled
+  :global cfmInvLoad; :global cfmMB; :global cfmJson; :global cfmEnrolled; :global cfmFileEx
   :local b [$cfmMB]
   :local n 0
   :foreach name,d in=[$cfmInvLoad] do={
@@ -454,7 +475,7 @@
         :if ($got != "") do={
           :set n ($n + 1)
           :local new [$cfmJson ($sd . "/status.dat")]
-          :if ([:tostr ($new->"et")] != [:tostr ($old->"et")] or [:len [/file/find where name=($sd . "/export.rsc")]] = 0) do={
+          :if ([:tostr ($new->"et")] != [:tostr ($old->"et")] or ![$cfmFileEx ($sd . "/export.rsc")]) do={
             :onerror e in={ /tool/fetch url=("sftp://" . ($d->"ip") . "/" . $got . "/export.rsc") user="cfm" dst-path=($sd . "/export.rsc") as-value } do={}
           }
         }
@@ -570,7 +591,7 @@
 }
 
 # ---------- Archiv aufräumen (D27) ----------
-# Behält die letzten archiveKeep Versionen (global.rsc, Standard 10) und alle Versionen, die ein
+# Behält die letzten archiveKeep Versionen (global.rsc, Standard 5) und alle Versionen, die ein
 # Ring nutzt oder die ein Gerät meldet (angewendet, ausstehend, als fehlerhaft markiert).
 :global cfmArchivePrune do={
   :global cfmMB; :global cfmRings; :global cfmInvLoad; :global cfmJson; :global cfmG
@@ -578,7 +599,7 @@
   :local rg [$cfmRings]
   :local k [:tonum $keep]
   :if ([:typeof $k] != "num") do={ :set k [:tonum ($cfmG->"archiveKeep")] }
-  :if ([:typeof $k] != "num") do={ :set k 10 }
+  :if ([:typeof $k] != "num") do={ :set k 5 }
   :if ($k < 1) do={ :set k 1 }
   :local used ({})
   :foreach r in={"r0";"r1";"r2";"latest"} do={ :set ($used->[:tostr ($rg->$r)]) 1 }

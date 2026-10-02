@@ -346,7 +346,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     die Abdeckung prüfen (Löcher zwischen APs).
 40. **Lokaler Fallback der APs (D46), offene Punkte** (a vorbereitet, b/c/d/e erledigt) – *40a vorbereitet
     (D54):* `fallback="yes"` an einer SSID schaltet `slaves-static` ein und hängt den virtuellen APs
-    eine lokale Kopie an; Test vor Ort (CAPsMAN-Dienst kurz aus). – Umgesetzt ist die `master`-SSID je Radio
+    eine lokale Kopie an; Test vor Ort (CAPsMAN-Dienst kurz aus). Hardware-Befund beim Ausrollen
+    (2026-10-02): Das erste Setzen von `slaves-static=no` (vorher nicht gesetzt) trennt jeden AP kurz
+    vom CAPsMAN (3–24 s, „configuration changed“), danach nie wieder. Verbesserung: den Wert nur
+    setzen, wenn ein `fallback` es verlangt oder er gerade `yes` ist. – Umgesetzt ist die `master`-SSID je Radio
     (`capsman-or-local`, Hardware-Test mit einem cAP ax). Offen: (a) weitere SSIDs als lokale
     virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
     APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven

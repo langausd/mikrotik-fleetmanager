@@ -84,11 +84,13 @@ if [ -z "$seed_inventory" ] && [ -f "$stage/meta/inventory.rsc" ]; then
   rm -f "$stage/meta/inventory.rsc"
   echo "meta/inventory.rsc nicht hochgeladen (lebt auf dem Gerät, siehe --seed-inventory)"
 fi
-# Verzeichnisse in einem Batch anlegen (idempotent, Fehler hier sind unkritisch/meist "exists").
+# Verzeichnisse in einem Batch anlegen (idempotent). Für ein schon vorhandenes Verzeichnis meldet
+# der SFTP-Server von RouterOS 'remote mkdir "…": Unknown status' (mit CR am Zeilenende) statt
+# "already exists" - diese Zeilen ausblenden, andere Meldungen bleiben sichtbar.
 mkbatch=$(mktemp); trap 'rm -rf "$stage" "$mkbatch"' EXIT
 echo "-mkdir $base" > "$mkbatch"
 (cd "$stage" && find . -mindepth 1 -type d | sed "s|^\./|-mkdir $base/|") >> "$mkbatch"
-sftp -q -b "$mkbatch" -P "$port" ${SFTP_OPTS:-} "$dest" >/dev/null
+{ sftp -q -b "$mkbatch" -P "$port" ${SFTP_OPTS:-} "$dest" 2>&1 >/dev/null | tr -d '\r' | grep -v '^remote mkdir ".*": Unknown status$' >&2; } || true
 
 # Dateien einzeln hochladen (nicht als ein großes Batch-Kommando): ein Batch-`put` schlägt hier
 # gelegentlich lautlos fehl (Datei bleibt auf dem Gerät beim alten Stand, sftp meldet trotzdem

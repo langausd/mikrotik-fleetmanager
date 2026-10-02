@@ -81,8 +81,8 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 |---|---|
 | `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys`), Firmware-Aktivierung, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
-| `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`) |
-| `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering, Kanäle, Provisioning, PPSK); genau ein Gerät |
+| `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
+| `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`) |
 | `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master), Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS, NTP-Server, WireGuard-Fernzugang (optional) |
 | `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only |

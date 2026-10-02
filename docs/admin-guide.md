@@ -192,7 +192,7 @@ irgendetwas ausgerollt wird.
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
 | `domain`, `tz`, `ntp`, `dns`, `syslog` | Domain für DHCP, Zeitzone, NTP/DNS für Nicht-Router, Syslog-Ziel | |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
-| `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon | `10m` |
+| `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (D57) | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
 | `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `5` |
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
@@ -349,10 +349,10 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 |---|---|
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7) |
-| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
-| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute) |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54) |
+| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
@@ -999,7 +999,10 @@ Router, vm4 als nicht verwalteter Internet-Router mit je einer VRF als Client in
 fester NAT-Adresse der Gäste, Ausfall und Rückkehr des Masters, sein Neustart und der Ausfall von
 zwei Routern.
 `lab.sh` nimmt das neueste `chr-*.img` im Labor-Verzeichnis; eine andere Version per
-`CHR_IMG=…/chr-7.24.2.img ./e2e.sh fresh`.
+`CHR_IMG=…/chr-7.24.2.img ./e2e.sh fresh`. Zwei Labore gleichzeitig brauchen ein eigenes
+Verzeichnis und eigene Port-Basen, z.B. `LAB=~/.cache/cfm-chr-lab-b LABPORT=2300 LABSOCK=13000
+./e2e.sh fresh` (Standard 2200/12000). Ein laufendes `e2e*.sh` nie bearbeiten – bash liest es
+stückweise; bei längeren Läufen aus einer Kopie des Baums starten.
 
 Das CHR-Image lädst du von download.mikrotik.com (`chr-<version>.img.zip`, entpacken). Mit
 `./lab.sh ssh <n>` kommst du an die Konsole einer VM. Funkteile lassen sich auf CHR nicht testen.

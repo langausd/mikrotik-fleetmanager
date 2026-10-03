@@ -58,7 +58,7 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 7' "cm1: 7 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 8' "cm1: 8 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
@@ -120,6 +120,9 @@ echo "$out" | grep -q "bv:99" && ok "Plan zeigt das neue Bridge-VLAN 99" || { ba
 echo "$out" | grep -q "# Plan sw1" && ok "Plan-Zusammenfassung vom Gerät" || bad "keine Plan-Zusammenfassung"
 expect 2 '[:len [/interface/bridge/vlan/find where comment="cfm:bv:99"]] = 0' "sw1: Probelauf hat nichts angewendet"
 [ "$(stat sw1 v)" = "$v0" ] && ok "sw1: Version unverändert (v$v0)" || bad "sw1: Version nach dem Probelauf geändert"
+# zweiter Probelauf direkt danach: plan/ wird geleert und neu geschrieben ("no such item" auf Hardware)
+out=$(mgr '$cfmPlan host=sw1; $cfmPlan host=sw1')
+[ "$(echo "$out" | grep -c '# Plan sw1')" = 2 ] && ! echo "$out" | grep -q "no such item" && ok "zwei Probeläufe direkt hintereinander" || { bad "zwei Probeläufe hintereinander"; echo "$out" | grep -E "no such|Plan sw1" | head -3; }
 mgr ':global e2eV; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV' >/dev/null
 
 step "7. Kaputte Version -> Prüfung stoppt, mit force: Rollback + bad"
@@ -170,6 +173,27 @@ expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redi
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Router-Rolle idempotent" || bad "Router idempotent: $(stat sw1 stats)"
+# Feste Leases und DNS-Namen (D62), $cfmDiff und $cfmShow (D61)
+mgr ':global e2eL [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL . ":set (\$cfmLeases->\"30\") {\"drucker\"={\"mac\"=\"02:00:00:00:00:aa\";\"ip\"=20}}\n")' >/dev/null
+out=$(mgr '$cfmDiff')
+echo "$out" | grep -q "geändert: leases.rsc" && echo "$out" | grep -q "betroffen: alle Geräte" && echo "$out" | grep -qF '+ :set ($cfmLeases->"30")' && ok "\$cfmDiff: work/ gegen das letzte Release mit der neuen Zeile" || { bad "\$cfmDiff work/"; echo "$out" | tail -8; }
+rv=$(mgr '$cfmRelease msg=" Lease" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (Lease) angewendet" || bad "sw1 Apply v$rv"
+expect 2 '[:len [/ip/dhcp-server/lease/find where comment="cfm:lease:30:drucker" and mac-address="02:00:00:00:00:AA" and address="192.168.30.20" and server="dhcp30"]] = 1' "sw1: feste Lease (MAC in Großbuchstaben, Adresse aus dem Host-Anteil)"
+expect 2 '[:len [/ip/dns/static/find where name="drucker.internal" and address="192.168.30.20"]] = 1 and [:len [/ip/dns/static/find where name="sw1.internal" and address="192.168.10.21"]] = 1 and [:len [/ip/dns/static/find where name="cm1.internal"]] = 1' "sw1: DNS-Namen für Lease und Geräte (.internal)"
+mgr '$cfmDiff' | grep -q "keine Unterschiede" && ok "\$cfmDiff nach dem Release: keine Unterschiede" || bad "\$cfmDiff nach dem Release"
+out=$(mgr "\$cfmDiff ver=$((rv-1)) to=$rv")
+echo "$out" | grep -q "geändert: leases.rsc" && ok "\$cfmDiff zwischen zwei Releases" || { bad "\$cfmDiff ver/to"; echo "$out" | tail -5; }
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Leases und DNS-Namen idempotent" || bad "Leases idempotent: $(stat sw1 stats)"
+out=$(mgr '$cfmShow host=sw1')
+echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen" || { bad "\$cfmShow"; echo "$out" | tail -12; }
+out=$(mgr '$cfmShow host=sw1 objects=yes')
+echo "$out" | grep -q "# Soll-Objekte sw1" && echo "$out" | grep -q "^/ip/dhcp-server/lease lease:30:drucker:" && echo "$out" | grep -q "^/interface/bridge br:" && ok "\$cfmShow objects=yes: Soll-Objekte vom Gerät" || { bad "\$cfmShow objects=yes"; echo "$out" | head -5; }
+out=$(mgr ':global e2eL2 [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL2 . ":set (\$cfmLeases->\"40\") {\"x1\"={\"mac\"=\"zz\";\"ip\"=5};\"cm1\"={\"mac\"=\"02:00:00:00:00:bb\";\"ip\"=1}}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
+echo "$out" | grep -q "x1: MAC fehlt oder ungültig" && echo "$out" | grep -q "Name cm1 ist auch ein Gerät" && echo "$out" | grep -q "cm1: ip ist die Adresse des Gateways" && ok "Prüfung: Leases (MAC, Gerätename, Gateway)" || { bad "Prüfung Leases"; echo "$out" | tail -4; }
+mgr ':global e2eL2; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL2' >/dev/null
 
 step "10. Backup-Spiegel & Vault-Backup"
 for _ in $(seq 1 50); do r 3 ':put ([:len [/file/find where name="cfm/meta/rings.dat"]] + [:len [/file/find where name="cfm/archive/v4/index.dat"]])' | grep -qx 2 && break; sleep 8; done
@@ -179,10 +203,11 @@ expect 1 '[:len [/file/find where name~"^cfm/vault/.*-vault.bak"]] = 1' "cm1: ve
 
 step "11. Archiv aufräumen"
 out=$(mgr ':global cfmArchivePrune; :put ("AP=" . [$cfmArchivePrune keep=1])')
-echo "$out" | grep -q "AP=2" && ok "2 alte Versionen gelöscht" || bad "Archiv: $(echo "$out" | tail -1)"
-expect 1 '[:len [/file/find where name~"^cfm/archive/v[12](/|\$)"]] = 0' "v1 und v2 samt Verzeichnis entfernt"
+# v1-v5: v3 ist kaputt (Schritt 7), v5 das Lease-Release aus Schritt 9 auf allen Ringen
+echo "$out" | grep -q "AP=3" && ok "3 alte Versionen gelöscht" || bad "Archiv: $(echo "$out" | tail -1)"
+expect 1 '[:len [/file/find where name~"^cfm/archive/v[124](/|\$)"]] = 0' "v1, v2 und v4 samt Verzeichnis entfernt"
 expect 1 '[:len [/file/find where name="cfm/archive/v3/index.dat"]] = 1' "v3 bleibt (sw1 meldet sie als bad)"
-expect 1 '[:len [/file/find where name="cfm/archive/v4/index.dat"]] = 1' "v4 bleibt (von den Ringen genutzt)"
+expect 1 '[:len [/file/find where name="cfm/archive/v5/index.dat"]] = 1' "v5 bleibt (von den Ringen genutzt)"
 
 step "12. Identitätsprüfung vor dem Secret-Push, Geräteschlüssel erneuern"
 ser=$(stat sw1 serial)
@@ -254,6 +279,28 @@ expect 1 '[:len [/file/find where name="cfm/pkg/7.0.0/routeros-7.0.0.npk"]] = 1'
 mgr '$cfmPkgPrune' >/dev/null
 expect 1 '[:len [/file/find where name~"^cfm/pkg/7.0.0"]] = 0 and [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] = 1' "Paketversion ohne Einsatz gelöscht, 7.24.1 bleibt"
 
+# (e) eingebautes Update über einen Spiegel (TODO 38, D63): cm2 von 7.24.1 zurück auf die Version
+#     des Images; tools/upgrade-mirror.py lauscht auf LABPORT+90, die VMs erreichen ihn als 10.0.2.100
+tv=$(r 1 ':put [/system/resource/get version]' | head -1 | cut -d' ' -f1)
+mkdir -p "$LAB/mirror"
+python3 "$ROOT/tools/upgrade-mirror.py" "$tv" --port $((LABPORT + 90)) --bind 127.0.0.1 --dir "$LAB/mirror" > "$LAB/mirror.log" 2>&1 &
+mpid=$!
+sleep 3
+out=$(mgr "\$cfmUpgrade ver=$tv host=cm2 via=mirror mirror=10.0.2.100 check=yes")
+echo "$out" | grep "^cm2 " | grep -q "über Spiegel 10.0.2.100" && echo "$out" | grep -q "kein Auftrag erteilt" && ok "check=yes mit via=mirror" || { bad "check=yes via=mirror"; echo "$out" | tail -3; }
+mgr '$cfmUpgrade ver=7.24.1 host=sw1 via=internet check=yes' | grep "^sw1 " | grep -q "nur Upgrades" && ok "via=internet: Downgrade abgelehnt" || bad "via=internet mit Downgrade"
+out=$(mgr ':onerror e in={ $cfmUpgrade ver=7.24.9 host=cm2 via=mirror } do={ :put ("ERR " . $e) }')
+echo "$out" | grep -q "ERR via=mirror braucht mirror=" && ok "via=mirror ohne Adresse abgelehnt" || { bad "via=mirror ohne Adresse"; echo "$out" | tail -3; }
+out=$(mgr "\$cfmUpgrade ver=$tv host=cm2 via=mirror mirror=10.0.2.100")
+echo "$out" | grep -q "Auftrag cm2: upgrade auf $tv über Spiegel 10.0.2.100 (sofort)" && ok "Auftrag cm2 über den Spiegel" || { bad "Auftrag cm2 via=mirror"; echo "$out" | tail -3; }
+for _ in $(seq 1 100); do [ "$(stat cm2 ros | cut -d' ' -f1)" = "$tv" ] && break; sleep 6; done
+[ "$(stat cm2 ros | cut -d' ' -f1)" = "$tv" ] && ok "cm2 läuft mit $tv (eingebautes Update vom Spiegel)" || { bad "cm2 via=mirror: $(stat cm2 ros) $(stat cm2 upg)"; tail -5 "$LAB/mirror.log"; }
+grep -q "GET /routeros/$tv/routeros-$tv.npk" "$LAB/mirror.log" && ok "Paket kam vom Spiegel" || bad "kein Paketabruf am Spiegel"
+for _ in $(seq 1 40); do r 3 ':put ("M=" . [:len [/ip/dns/static/find where comment="cfm-sys:upgrade-mirror"]] . [/system/package/update/get mode])' | grep -q "M=0https" && break; sleep 5; done
+if r 3 ':put ([:len [/ip/dns/static/find where comment="cfm-sys:upgrade-mirror"]] = 0 and [/system/package/update/get mode] = "https")' | grep -q true; then ok "cm2: Spiegel-Eintrag entfernt, Update wieder über https"; else
+  bad "cm2: Spiegel-Eintrag oder mode=http geblieben"; r 3 ':put ("DNS=" . [:len [/ip/dns/static/find where comment="cfm-sys:upgrade-mirror"]] . " mode=" . [/system/package/update/get mode] . " state=" . [/file/get cfm/state.json contents])' | tail -1; fi
+kill $mpid 2>/dev/null
+
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"ph1"); $cfmInvSave $i' >/dev/null
 
 step "14. Verkabelung (LLDP, Netzplan) und WLAN (PPSK, Kanäle)"
@@ -271,6 +318,18 @@ echo "$out" | grep -q "sw1 ether2: erwartet cm1:ether3, gefunden cm1:ether2" && 
 expect 1 '[:len [/file/find where name="cfm/state/netzplan.dot"]] = 1 and [/file/get [find where name="cfm/state/netzplan.csv"] contents] ~ "geraet_a;port_a"' "Export: netzplan.dot und netzplan.csv"
 mgr ':global e2eH; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eH' >/dev/null
 mgr '$cfmChannels' | grep -q "keine Funkdaten" && ok "Kanalbericht (Labor ohne Radios)" || bad "Kanalbericht"
+# Kanal-Scan (D56/D60): ohne APs kein Vorschlag und keine Messdatei; Auswertung mit erfundenen Daten
+out=$(mgr '$cfmWifiScan')
+echo "$out" | grep -q "keine Netze gemessen" && ! echo "$out" | grep -q "^Vorschlag" && ok "WLAN-Scan ohne Messdaten: kein Vorschlag" || { bad "WLAN-Scan ohne Messdaten"; echo "$out" | tail -3; }
+expect 1 '[:len [/file/find where name="cfm/state/wifiscan.json"]] = 0' "WLAN-Scan ohne Netze schreibt keine Messdatei"
+# JSON als Funktionsargument nur in runden Klammern (sonst Syntaxfehler, siehe lib.rsc)
+mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"2\",\"t\":\"e2e\",\"own\":{},\"aps\":{\"apA\":[[\"m00:00:00:00:00:01\",\"X\",2412,-40]],\"apB\":[[\"m00:00:00:00:00:02\",\"Y\",2462,-45]]}}")' | grep -i "error" 
+out=$(mgr '$cfmWifiScan data=yes')
+l=$(echo "$out" | grep "^Vorschlag 1/6/11")
+echo "$l" | grep -q "Kosten 0" && ! echo "$l" | grep -q "apA=2412" && ! echo "$l" | grep -q "apB=2462" && ok "WLAN-Scan data=yes: Vorschlag meidet die belegten Kanäle" || { bad "WLAN-Scan data=yes"; echo "$out" | tail -6; }
+mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"2\",\"t\":\"e2e\",\"own\":{},\"aps\":{\"apA\":[],\"apB\":[]}}")' | grep -i "error" 
+mgr '$cfmWifiScan data=yes' | grep -q "keine Messung mit Netzen" && ok "WLAN-Scan data=yes ohne Netze: kein Vorschlag" || bad "WLAN-Scan data=yes ohne Netze"
+r 1 '/file/remove [find where name="cfm/state/wifiscan.json"]' >/dev/null
 expect 1 '[:tostr [/interface/wifi/channel/get [find name="cfm-5g"] reselect-time]] = "03:00:00" and [/interface/wifi/channel/get [find name="cfm-5g"] skip-dfs-channels] = "10min-cac"' "cm1: Kanalprofil 5 GHz mit nächtlicher Neuwahl, ohne DFS-Wartezeit"
 # PPSK: zweite Passphrase auf der IoT-SSID landet in VLAN 40
 mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"ppsk\") {\"iot\"={\"gast\"={\"vlan\"=40;\"isolation\"=\"yes\"}}}\n")' >/dev/null

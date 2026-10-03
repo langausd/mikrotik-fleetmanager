@@ -29,6 +29,20 @@ class KlammerAnfang(unittest.TestCase):
         self.assertEqual(rules('# [$f] im Kommentar\n'), [])
 
 
+class LeeresArray(unittest.TestCase):
+    def test_fund(self):
+        self.assertEqual(lines(':global a {}\n'), [(1, "leeres-array")])
+        self.assertEqual(lines('# x\n:global a {\n}\n'), [(2, "leeres-array")])
+        self.assertEqual(rules(':local a {}\n'), ["leeres-array"])
+
+    def test_kein_fund(self):
+        self.assertEqual(rules(':global a ({})\n'), [])
+        self.assertEqual(rules(':global a {\n  "x"=1\n}\n'), [])
+        self.assertEqual(rules(':global p {\n  "peers"={\n  }\n}\n'), [])   # verschachtelt erlaubt
+        self.assertEqual(rules(':global f do={}\n'), [])                     # leere Funktion
+        self.assertEqual(rules('$f p=({})\n'), [])
+
+
 class KommentarImArray(unittest.TestCase):
     def test_fund(self):
         self.assertEqual(lines(':global p {\n  "a"={"x"=1};\n  # Kommentar\n  "b"={"x"=2}\n}\n'),

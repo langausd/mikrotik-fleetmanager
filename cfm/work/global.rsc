@@ -6,7 +6,7 @@
   "mgmtVlan"=10;
   "managers"={"192.168.10.2";"192.168.10.3"};
   "mgrPath"="cfm";
-  "domain"="lan";
+  "domain"="internal";
   "tz"="Europe/Berlin";
   "ntp"="192.168.10.1";
   "dns"="192.168.10.1";

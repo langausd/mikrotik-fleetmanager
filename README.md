@@ -59,6 +59,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/profiles.rsc` | Port-Profile (`trunk`, `trunk-ap`, `access:<vid>`, `vport:<vid>`, …) |
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
+| `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
 | `cfm/work/authorized_keys` | optional: persönliche Admin-SSH-Keys (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
@@ -70,6 +71,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
+| `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
 | `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, Lab-Overlays `seed/`, `seed-vrrp/` |
 
@@ -83,7 +85,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`) |
-| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master), Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS, NTP-Server, WireGuard-Fernzugang (optional) |
+| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, NTP-Server, WireGuard-Fernzugang (optional) |
 | `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only |
 
@@ -96,8 +98,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
    `meta/`), samt `STAND.md` (was zu prüfen ist, danach Logbuch der Site) und ausgefülltem
    `bootstrap-manager.rsc`. Die Beispieldaten sind ein
    fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
-   `global.rsc` (Manager-IPs, MGMT-VLAN, User), `vlans.rsc`, `wifi.rsc`, `hosts/`,
-   `meta/inventory.rsc`, optional `wireguard.rsc` und `authorized_keys`.
+   `global.rsc` (Manager-IPs, MGMT-VLAN, User, Domain – Standard `internal`), `vlans.rsc`, `wifi.rsc`,
+   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc` und `authorized_keys`.
 2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory --bootstrap`
    (das Inventar nur beim ersten Mal; `--bootstrap` nimmt `site/bootstrap-manager.rsc` mit ins
    Wurzelverzeichnis), dann auf dem Gerät `/import bootstrap-manager.rsc`.
@@ -116,7 +118,9 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Aufgabe | Vorgehen |
 |---|---|
 | VLAN hinzufügen/ändern/löschen | `cfm/work/vlans.rsc` editieren → `$cfmRelease msg="VLAN 180"` |
-| Vorher sehen, was sich ändert | `$cfmPlan host=sw1`: Probelauf gegen `work/`, das Gerät ändert nichts |
+| Vorher sehen, was sich ändert | `$cfmDiff`: geänderte Dateien, betroffene Geräte und Zeilen (letztes Release → `work/`); `$cfmPlan host=sw1`: Probelauf gegen `work/`, das Gerät ändert nichts |
+| Effektive Konfiguration eines Geräts | `$cfmShow host=sw1` (Daten: Rollen, Ports mit Profil, VLANs, WLAN, Leases); `objects=yes`: alle Soll-Objekte vom Gerät |
+| Feste Adresse + DNS-Name für ein Gerät | `leases.rsc` → `$cfmRelease` (wirkt auf Routern) |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
 | Status der Flotte | `$cfmStatus` |
@@ -128,13 +132,13 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Hand-Objekte finden | `$cfmAudit host=sw1` → `$cfmAudit host=sw1 op=mark sel=A2` / `op=purge sel=A5` |
 | Gerät tauschen | Ersatz bootstrappen → `$cfmEnroll name=sw1 ip=…` (neue Seriennummer wird übernommen) |
 | Manager-Ausfall | Geräte ziehen automatisch von cm2. Dauerhaft: `$cfmPromoteManager` auf cm2 |
-| RouterOS aktualisieren | `$cfmUpgrade ver=7.25 ring=0` (sofort) bzw. `host=sw1 at="2026-10-01 02:00"` (einmaliges Wartungsfenster). Der Manager lädt vorher alle Pakete und prüft den Platz der Geräte; ältere Zielversion = Downgrade. Probe: `check=yes`, Übersicht: `$cfmUpgrade`, zurückziehen: `cancel=yes` |
+| RouterOS aktualisieren | `$cfmUpgrade ver=7.25 ring=0` (sofort) bzw. `host=sw1 at="2026-10-01 02:00"` (einmaliges Wartungsfenster). Der Manager lädt vorher alle Pakete und prüft den Platz der Geräte; ältere Zielversion = Downgrade. Probe: `check=yes`, Übersicht: `$cfmUpgrade`, zurückziehen: `cancel=yes`. Geräte mit 16 MB Flash: `via=internet` bzw. `via=mirror mirror=<IP>` (eingebautes Update, Spiegel `tools/upgrade-mirror.py`) |
 | Geräteschlüssel erneuern | `$cfmRekey host=sw1` bzw. `all=yes` |
 | Archiv verkleinern | automatisch nach jedem Release (`archiveKeep`), von Hand `$cfmArchivePrune keep=5` |
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
 | Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle der APs | `$cfmChannels` (Warnung bei gleichem Kanal an einem Switch) |
-| Kanalplan per Scan | `$cfmWifiScan` (alle APs scannen nacheinander, Pin-Vorschlag für 2,4 GHz) |
+| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP nacheinander, Pin-Vorschlag für 2,4 GHz) |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 
@@ -191,6 +195,9 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   (MGMT, `mgmtAccess`, `mgmtExtra`), Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. IPv6
   auf allen Geräten nur ICMPv6 und Link-Local aus dem MGMT-VLAN. Eigene Regeln: Chain `local-input`.
 * RouterOS-Pakete lädt nur der Manager; Geräte holen sie per SFTP, RouterOS prüft die Signatur.
+  Ausnahme ist das eingebaute Update (`via=internet|mirror`, für Geräte mit wenig Flash): Dort lädt
+  das Gerät selbst, beim Spiegel befristet per HTTP über einen statischen DNS-Eintrag – die Signatur
+  prüft RouterOS auch dann.
 * Die Nachbarsuche (LLDP/MNDP/CDP) läuft auf allen Bridge-Ports, auch an Access-Ports: Endgeräte
   sehen Modell, Version und Identität des Switches (bewusste Entscheidung für den Netzplan, D33).
 
@@ -199,7 +206,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2. Auf Hardware im Einsatz an zwei
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2 und 7.24.5. Auf Hardware im Einsatz an zwei
   Standorten (7.23.1 bis 7.25beta5): CRS418 als Router und Manager, Manager als CHR in einer VM,
   CRS328 als Core-Switch, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX, L009. Ab 7.24
   brauchen Skripte, die aus Winbox gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.
@@ -211,6 +218,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * **Eigene Templates schreiben:** Objekte mit `$cfmEnsure m=<menü> k=<key> p=({…})` anlegen
   (verwaltet inkl. Aufräumen), Singletons/Built-ins mit `$cfmSet`. Funktionen als Anweisung **ohne**
   eckige Klammern aufrufen: Eine Zeile, die mit `[` beginnt, liest RouterOS u.U. als Fortsetzung
-  der vorigen Anweisung. Außerdem kein `\"\"` in String-Argumenten (`:parse` akzeptiert es, `/import`
-  nicht). `$cfmRelease` prüft nur mit `:parse`, im Zweifel im CHR-Labor testen. Details im Kopf von
-  `cfm/work/lib/lib.rsc`.
+  der vorigen Anweisung. Strings mit Escape (`\n`, `\"`) als Funktionsargument in runde Klammern setzen,
+  ein leeres Array nach `:global`/`:local` als `({})` schreiben – sonst Syntaxfehler. `tools/rsc-check.py`
+  findet solche Fallen, `$cfmRelease` prüft nur mit `:parse`; im Zweifel im CHR-Labor testen. Details
+  im Kopf von `cfm/work/lib/lib.rsc`.

@@ -136,7 +136,12 @@
   }
   :local chk ($check = "yes")
   :if (!$chk and ![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
-  :if ([:len $host] = 0 and [:len [:tostr $ring]] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at=\"YYYY-MM-DD HH:MM\"] [check=yes]" }
+  :if ([:len $host] = 0 and [:len [:tostr $ring]] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at=\"YYYY-MM-DD HH:MM\"] [via=internet|via=mirror mirror=<IP>] [check=yes]" }
+  # eingebautes Update (TODO 38, D63): das Gerät lädt selbst - aus dem Internet oder von einem Spiegel
+  :local vi [:tostr $via]
+  :local mip [:tostr $mirror]
+  :if ([:len $vi] > 0 and $vi != "internet" and $vi != "mirror") do={ :error "via=internet oder via=mirror mirror=<IP>" }
+  :if ($vi = "mirror" and !($mip ~ "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+\$")) do={ :error "via=mirror braucht mirror=<IPv4-Adresse des Spiegels> (tools/upgrade-mirror.py)" }
   # nur aufgenommene Geräte (TODO 28): Platzhalter melden nie Architektur/Pakete und hielten den Auftrag auf
   :local tg ({})
   :foreach name,d in=$inv do={
@@ -192,6 +197,36 @@
   }
   :if ([:len $err] > 0) do={ :error ("Update abgebrochen:" . $err) }
   :if ([:len $plan] = 0) do={ :put "nichts zu tun"; :return "" }
+
+  # --- via=internet|mirror: keine Pakete auf dem Manager, kein Platzbedarf im Flash (das eingebaute
+  #     Update lädt bei wenig Flash in den RAM); es kann nur auf die angebotene Version aktualisieren ---
+  :if ([:len $vi] > 0) do={
+    :local vt $vi
+    :if ($vi = "mirror") do={ :set vt ("Spiegel " . $mip) }
+    :local ok ({})
+    :foreach name,pl in=$plan do={
+      :local t ("über " . $vt)
+      :if (($pl->"how") != "upgrade") do={ :set t "nur Upgrades - kein Auftrag" } else={ :set ($ok->$name) $pl }
+      :put ([$cfmPad $name 12] . [$cfmPad (($pl->"cur") . " -> " . $ver) 20] . [$cfmPad ($pl->"arch") 8] . $t)
+    }
+    :if ($chk) do={ :put "Probe (check=yes): kein Auftrag erteilt"; :return "" }
+    :if ([:len $ok] = 0) do={ :put "nichts zu tun"; :return "" }
+    :local id ("i" . [$cfmNow])
+    :local wat ""
+    :if ([:len $when] > 0) do={ :set wat ("@" . $when) }
+    # Präfixe wie bei rv: :deserialize machte aus der Adresse sonst einen IP-Wert
+    :foreach name,pl in=$ok do={ :set ($ord->$name) ({"rv"=("v" . $ver);"at"=$wat;"id"=$id;"how"="upgrade";"via"=$vi;"mirror"=("m" . $mip);"files"=({})}) }
+    $cfmWrite $of [:serialize to=json $ord]
+    $cfmManifests
+    :foreach name,pl in=$ok do={
+      :local w "sofort"
+      :if ([:len $when] > 0) do={ :set w ("am " . $when) }
+      :put ("Auftrag " . $name . ": upgrade auf " . $ver . " über " . $vt . " (" . $w . ")")
+      $cfmPush host=$name
+    }
+    :log info ("cfm: RouterOS-Auftrag " . $ver . " über " . $vt . " für " . [:len $ok] . " Geräte")
+    :return ""
+  }
 
   # --- alle Pakete vor dem Rollout bereitstellen; check=yes lädt nichts, sieht nur nach ---
   :local dl "yes"; :if ($chk) do={ :set dl "no" }

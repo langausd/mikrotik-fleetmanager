@@ -9,7 +9,7 @@
 #   wan={"if"="vlan20";"gw"="192.168.20.1";"dns"="192.168.20.1"}
 #     oder {"if"="ether1";"dhcp"="yes"}  [optional "addr"="x.x.x.x/nn"]
 # ============================================================
-:global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg
+:global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
 :global cfmFind; :global cfmRun; :global cfmTarget
 
@@ -39,6 +39,7 @@
 $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 
 # --- pro VLAN: Interface, Adressen, VRRP, DHCP ---
+:local dnsN ({})
 :foreach vid,v in=$cfmVlans do={
   :if ([:tostr ($v->"l3")] != "no") do={
     :local ifn ("vlan" . $vid)
@@ -100,6 +101,15 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         :local dns [:tostr ($v->"dns")]
         :if ([:len $dns] = 0) do={ :set dns [:tostr $gw] }
         $cfmEnsure m="/ip/dhcp-server/network" k=("dn:" . $vid) n=({"address"=($nn->"net")}) p=({"address"=($nn->"net");"gateway"=[:tostr $gw];"dns-server"=$dns;"domain"=($cfmG->"domain")})
+        # feste Leases aus leases.rsc (D62); der Name ist Kommentar und DNS-Name
+        :if ([:typeof $cfmLeases] = "array") do={
+          :foreach ln,ld in=($cfmLeases->$vid) do={
+            :local la [:tostr (($nn->"addr") + [:tonum ($ld->"ip")])]
+            :local lm [$cfmMacUp ($ld->"mac")]
+            $cfmEnsure m="/ip/dhcp-server/lease" k=("lease:" . $vid . ":" . $ln) n=({"mac-address"=$lm;"server"=("dhcp" . $vid)}) p=({"address"=$la;"mac-address"=$lm;"server"=("dhcp" . $vid)})
+            :set ($dnsN->$ln) $la
+          }
+        }
       }
     }
   }
@@ -129,6 +139,17 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   :set wdns [:tostr ($wan->"dns")]
 }
 $cfmSet m="/ip/dns" p=({"allow-remote-requests"="yes";"servers"=$wdns})
+# DNS-Namen (D62): feste Leases und alle aufgenommenen Geräte (MGMT-Adresse, Liste im Manifest) als
+# <name>.<domain>; bei gleichem Namen gilt die Lease ($cfmCheck meldet das als Fehler)
+:local dom [:tostr ($cfmG->"domain")]
+:if ([:len $dom] > 0) do={
+  :if ([:typeof ($cfmMf->"dns")] = "array") do={
+    :foreach hn,hip in=($cfmMf->"dns") do={ :if ([:typeof ($dnsN->$hn)] = "nothing") do={ :set ($dnsN->$hn) $hip } }
+  }
+  :foreach hn,hip in=$dnsN do={
+    $cfmEnsure m="/ip/dns/static" k=("dns:" . $hn) n=({"name"=($hn . "." . $dom)}) p=({"name"=($hn . "." . $dom);"address"=[:tostr $hip]})
+  }
+}
 :local ntpSrv $wdns
 :if ([:len $ntpSrv] = 0) do={ :set ntpSrv "0.de.pool.ntp.org,1.de.pool.ntp.org" }
 $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntpSrv})

@@ -4,20 +4,23 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.2 laufen der Gesamttest (162 Prüfungen, darunter
-> Manager-Bootstrap mit Reset, Probelauf, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle,
-> Netzplan, PPSK, CAPsMAN-Rolle und ein RouterOS-Downgrade auf 7.24.1) und der Onboarding-Test
-> (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter einem nicht verwalteten Switch)
-> fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 (zuvor 7.24.2) laufen der Gesamttest (über 190
+> Prüfungen, darunter Manager-Bootstrap mit Reset, Probelauf, `$cfmShow`/`$cfmDiff`, Firewall,
+> Schlüsselwechsel, Backup-Manager, Router-Rolle mit festen Leases und DNS-Namen, Netzplan, PPSK,
+> CAPsMAN-Rolle, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem Spiegel), der
+> Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter einem nicht
+> verwalteten Switch) und die Probe mit drei VRRP-Routern (79 Prüfungen) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
 > und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit neun Geräten – der
 > Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset, routet noch
 > selbst), ein hAP be³ als CAPsMAN, APs (hAP be³, hAP ax³, cAP ax) mit lokalem Fallback, hEX und
 > L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Automatisches Onboarding im CAPs-Modus,
-> CAPsMAN-Umzug und RouterOS-Updates mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen
+> CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64) und der Kanal-Scan über den
+> CAPsMAN liefen dort. Die gefundenen
 > Fehler sind behoben, siehe [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 > **Noch nicht** mit echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager,
-> das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs und der
-> Kanalbericht; offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, feste Leases und
+> DNS-Namen sowie das eingebaute Update über cfm auf einem Gerät mit 16 MB Flash; offene Punkte
+> stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -98,6 +101,13 @@ Konsequenz: **Eine Zeile aus den Daten löschen genügt**, damit das Objekt auf 
 verschwindet, zum Beispiel ein VLAN. Hand-Änderungen an verwalteten Objekten werden beim
 nächsten Apply zurückgesetzt.
 
+Aufräumen und Audit umfassen die Menüs aus `cfmMenus` im Kopf von `lib/lib.rsc` (Bridge, VLANs,
+Adressen, Routen und Routing-Tabellen, DHCP samt statischer Leases, Firewall inkl. Mangle, DNS,
+WLAN, Benutzer, Skripte, Scheduler …). Seit D62 gehören statische DHCP-Leases, Mangle-Regeln und
+Routing-Tabellen dazu: Auf einem Bestandsgerät, das noch selbst DHCP macht, zeigt `$cfmAudit` die
+von Hand angelegten festen Leases deshalb als unverwaltet – sie bleiben, solange du sie nicht per
+`op=purge` entfernst.
+
 ### Rollen, Hostfile und Inventar
 
 * **Rollen** (`roles/*.rsc`) sind die Templates. `base` gilt immer, dazu kommen `switch`, `ap`,
@@ -167,7 +177,7 @@ Bevor du etwas einspielst, kläre diese Punkte:
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
 
 **Hardware und Software:**
-* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, auf Hardware 7.23.1 bis 7.25beta5
+* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2 und 7.24.5, auf Hardware 7.23.1 bis 7.25beta5
   (siehe Teststand oben).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
@@ -190,7 +200,8 @@ irgendetwas ausgerollt wird.
 | `mgmtVlan` | MGMT-VLAN | `10` |
 | `managers` | Manager-IPs, Primary zuerst (Fallback-Reihenfolge der Geräte) | |
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
-| `domain`, `tz`, `ntp`, `dns`, `syslog` | Domain für DHCP, Zeitzone, NTP/DNS für Nicht-Router, Syslog-Ziel | |
+| `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, D62). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
+| `tz`, `ntp`, `dns`, `syslog` | Zeitzone, NTP/DNS für Nicht-Router, Syslog-Ziel | |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
 | `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (D57) | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
@@ -292,6 +303,28 @@ Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`.
   `net`. Leere `peers={}` = WireGuard-Interface bleibt aus. Der private Schlüssel des Routers
   wird lokal erzeugt (wie SSH-Host-Keys), steht nirgends in den Daten.
 
+### `leases.rsc`
+
+Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLANs mit `dhcp`
+(bei VRRP auf allen Routern, der DHCP-Server läuft nur auf dem Master):
+
+```
+:global cfmLeases {
+  "30"={"drucker"={"mac"="02:00:00:00:00:30";"ip"=20};"kamera-hof"={"mac"="02:00:00:00:00:31";"ip"=21}}
+}
+```
+
+* `ip` ist der Host-Anteil im Netz des VLANs (wie `gw`/`dhcp` in `vlans.rsc`), hier `.20`.
+* Der Name ist Kommentar der Lease (`cfm:lease:<VID>:<name>`) und DNS-Name `<name>.<domain>` auf
+  den Routern. Die Router führen außerdem die Namen aller aufgenommenen Geräte mit ihrer
+  MGMT-Adresse (`sw1.<domain>`).
+* `$cfmCheck` prüft: VLAN vorhanden (Warnung ohne DHCP), Name aus Buchstaben, Ziffern und `-`
+  und kein Gerätename, MAC gültig und je VLAN eindeutig, Adresse im Netz, eindeutig und nicht die
+  des Gateways (Warnung für .251–.254, dort liegen die eigenen Adressen von VRRP-Routern).
+* Die MAC darf klein geschrieben sein, die Rolle schreibt sie wie RouterOS groß.
+* Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
+* Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).
+
 ### `authorized_keys` (optional)
 
 Persönliche Admin-SSH-Keys, **OpenSSH-Format** (kein RouterOS-Datenformat): eine Zeile je Key,
@@ -351,7 +384,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54) |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53) |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt |
 
@@ -685,6 +718,31 @@ Die cfm-Objekte, die diese Datei beim letzten echten Apply angelegt hat, behält
 selbst zeigt er nicht.
 Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 
+**Effektive Konfiguration eines Geräts** (D61):
+
+```
+$cfmShow host=sw1              # Daten: Rollen, Ring, Hostfile, Ports mit Profil, VLANs, WLAN, Leases
+$cfmShow host=sw1 ver=41       # dasselbe aus Release 41 statt aus work/
+$cfmShow host=sw1 objects=yes  # Soll-Objekte: jedes Objekt, das cfm dort verlangt (Probelauf)
+```
+
+Ohne `objects` rechnet der Manager allein, auch für Geräte, die gerade nicht erreichbar sind.
+`objects=yes` lässt das Gerät seine Rollen wie beim Probelauf durchgehen und listet alle
+verlangten Objekte mit Schlüssel und Sollwerten (lange Werte gekürzt, ohne `post.rsc`); ein Agent
+vor diesem Stand liefert stattdessen den normalen Plan.
+
+**Unterschiede zwischen zwei Ständen** (D61):
+
+```
+$cfmDiff                       # letztes Release -> work/: was ändert das nächste Release?
+$cfmDiff ver=40 to=41          # zwischen zwei Releases (to=work ist der Standard)
+```
+
+Ausgabe: geänderte, neue und entfernte Dateien, die betroffenen Geräte (bei gemeinsamen Dateien
+wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`, `profiles`,
+`wifi`, `wireguard`, `leases`, `hosts/*`, `authorized_keys`) die geänderten Zeilen
+(`@@ Zeile <alt> / <neu>`, `-` alt, `+` neu). `lib/` und `roles/` erscheinen nur als Datei.
+
 ### 8.4 Rezepte
 
 | Aufgabe | Vorgehen |
@@ -702,7 +760,9 @@ Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 | Gerät sofort aktualisieren | `$cfmPush host=<name>`; Voll-Apply trotz gleicher Version: `force=yes` |
 | Ring eines Geräts ändern | Inventar editieren (wirkt sofort) |
 | Hand-Objekte finden | `$cfmAudit host=<name>` → `op=mark|purge sel=…` |
-| Vorher sehen, was sich ändert | `$cfmPlan host=<name>` |
+| Vorher sehen, was sich ändert | `$cfmDiff` (Dateien und Zeilen), `$cfmPlan host=<name>` (Objekte auf dem Gerät) |
+| Effektive Konfiguration eines Geräts | `$cfmShow host=<name>` bzw. `objects=yes` |
+| Feste Adresse und DNS-Name für ein Gerät im VLAN | `leases.rsc` → Release (nur mit Rolle `router`) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
 | Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
@@ -733,6 +793,8 @@ $cfmUpgrade ver=7.25.1 ring=1 at="2026-10-01 02:00"     # einmaliges Wartungsfen
 $cfmUpgrade ver=7.25.1 all=yes check=yes                # Probe: Pakete, Platz - kein Auftrag
 $cfmUpgrade                                             # offene Aufträge und ihr Stand
 $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
+$cfmUpgrade ver=7.25.1 host=hex1 via=mirror mirror=192.168.10.50   # eingebautes Update vom Spiegel
+$cfmUpgrade ver=7.25.1 host=core via=internet           # eingebautes Update, Gerät hat Internet
 ```
 
 * Der Manager lädt vorher alle nötigen Pakete (`routeros` und Zusatzpakete wie `wifi-qcom`) für
@@ -771,7 +833,20 @@ $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
   alle fehlenden Dateien. Platz auf dem Manager beachten; nicht mehr gebrauchte Pakete einer
   laufenden Version darfst du von Hand löschen.
 * **Geräte mit 16 MB Flash** (hEX, CRS328 …) haben oft nur 2–3 MB frei, `routeros` braucht ~12 MB:
-  Dort lehnt `$cfmUpgrade` den Auftrag ab (TODO 38); das eingebaute Update braucht Internet am Gerät.
+  Dort lehnt `$cfmUpgrade` den normalen Auftrag ab (TODO 38). Für sie gibt es das **eingebaute
+  Update** (D63, `via=`): Das Gerät lädt selbst und kommt mit wenig Flash zurecht (RouterOS lädt dann
+  in den RAM). Der Manager braucht dafür keine Pakete und prüft keinen Platz.
+  * `via=internet`: Das Gerät braucht selbst Internet (und DNS).
+  * `via=mirror mirror=<IP>`: Für Geräte ohne Internet. Auf einem Rechner, den die Geräte
+    erreichen, läuft `sudo tools/upgrade-mirror.py <ver>` (Port 80; er holt die Dateien bei Bedarf
+    von MikroTik und speichert sie zwischen, ohne Internet vorher unter `<dir>/routeros/<ver>/`
+    ablegen). Der Agent leitet `upgrade.mikrotik.com` per statischem DNS-Eintrag
+    (`cfm-sys:upgrade-mirror`) auf den Spiegel um und stellt das eingebaute Update auf HTTP; nach
+    dem Update nimmt er beides zurück. Die Pakete sind von MikroTik signiert, RouterOS prüft das beim
+    Installieren. Beim Wartungsfenster (`at=`) muss der Spiegel zu dieser Zeit laufen.
+  * Nur Upgrades, und nur auf die Version, die Internet bzw. Spiegel anbieten: Bietet das Internet
+    inzwischen eine neuere Version an, installiert der Agent nichts und meldet
+    „fehlgeschlagen: internet bietet … statt …“. Vorabversionen holt er über den Kanal `testing`.
 
 ### 8.7 Verkabelung und Netzplan
 
@@ -797,8 +872,11 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.
 * `$cfmWifiScan [host=<ap>] [band=2] [duration=10s]` lässt alle APs nacheinander auf ihren Radios
-  des Bands scannen (D56). **Während des Scans verlässt das Radio seinen Kanal, verbundene Clients
-  wechseln kurz zum Nachbarn** – also nicht zur Hauptnutzungszeit. Ausgabe je AP: fremde Netze nach
+  des Bands scannen (D56). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am AP ab; cfm scannt
+  deshalb auf dem CAPsMAN am Interface `<AP>-<Band>g` (D60), Radios ohne CAPsMAN direkt am AP.
+  Unter 10 s Dauer liefert der CAPsMAN keine Ergebnisse, kürzere Angaben hebt der Befehl auf 10 s
+  an. **Während des Scans verlässt das Radio seinen Kanal, verbundene Clients wechseln kurz zum
+  Nachbarn** – also nicht zur Hauptnutzungszeit. Ausgabe je AP: fremde Netze nach
   Frequenz (Anzahl/stärkstes Signal), welche eigenen APs sich hören (BSSIDs vom CAPsMAN), die Kosten
   des aktuellen Stands und je ein Vorschlag für 1/6/11 und 1/5/9/13 samt fertiger Zeile für
   `radios` in `wifi.rsc` (dort von Hand übernehmen, bestehende 5/6-GHz-Pins ergänzen, Release).
@@ -946,8 +1024,14 @@ Diese Fallen zeigen sich erst beim echten Laden per `/import`, nicht beim Syntax
 * Funktionen **ohne eckige Klammern** aufrufen (`$cfmEnsure …`). Eine Zeile, die mit `[` beginnt,
   liest RouterOS u.U. als Fortsetzung der vorigen Zeile.
 * Array-Literale in Aufrufen in runde Klammern: `p=({…})`.
-* Kein `\"\"` (maskiertes leeres Anführungszeichenpaar) in String-Argumenten eines
-  Funktionsaufrufs, solche Strings vorher in eine Local legen.
+* Ein leeres Array direkt nach `:global`/`:local` (`{}`, auch über zwei Zeilen) ist ein Codeblock
+  und beim `/import` ein Syntaxfehler – `({})` schreiben.
+* Kein String-Literal mit Escape (`\n`, `\"`, `\$`) direkt als Argument einer eigenen Funktion –
+  positionell wie `k="…"` ein Syntaxfehler, an der Konsole wie beim `/import`. In runde Klammern
+  setzen (`$cfmWrite "x.json" ("{\"a\":1}")`) oder vorher in eine Local legen. Eingebaute Befehle
+  (`:pick`, `/file/set …`) sind nicht betroffen.
+* `:for i from=5 to=4` läuft rückwärts (zweimal) – Schleifen über eine möglicherweise leere
+  Spanne vorher mit `:if` absichern.
 * Kein Operator `!~` („cannot invert string“), stattdessen `!($x ~ "re")`.
 * Fehlertexte aus `:onerror` nie per `=` vergleichen: RouterOS 7.24.4 hängt „ (:error; line N)“ an,
   also per `~ "^text"` prüfen.
@@ -984,7 +1068,8 @@ aus. Auf GitHub prüft die Action `rsc-check` jeden Push. Das Skript ersetzt wed
 cd tools/chr-lab
 ./lab.sh start 3          # CHR-Image chr-<version>.img in ~/.cache/cfm-chr-lab
 ./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
-                          # Router, Archiv, Schlüsselwechsel, RouterOS-Downgrade, Netzplan, PPSK,
+                          # Router, Leases/DNS, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
+                          # RouterOS-Downgrade und Update vom Spiegel, Netzplan, PPSK, WLAN-Scan,
                           # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply) …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
@@ -1009,7 +1094,10 @@ Das CHR-Image lädst du von download.mikrotik.com (`chr-<version>.img.zip`, entp
 Die Lab-Hostfiles setzen `adminUser="keep"`, weil `lab.sh` sich als `admin` anmeldet.
 Der Update-Schritt lädt ein RouterOS-Paket (ca. 20 MB) aus dem Internet; dafür legt der Test auf
 cm1 zwei Routen über `ether1` an. SFTP zwischen den CHRs ist langsam (etwa 100 KB/s), der Schritt
-dauert deshalb einige Minuten.
+dauert deshalb einige Minuten. Danach aktualisiert sich cm2 mit dem eingebauten Update über
+`tools/upgrade-mirror.py` (D63): Die VMs erreichen den Spiegel als `10.0.2.100:80`, `lab.sh` leitet
+das per QEMU auf `127.0.0.1:LABPORT+90` des Rechners weiter (braucht `nc`); der Zwischenspeicher
+liegt unter `$LAB/mirror`.
 
 ---
 
@@ -1022,6 +1110,8 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmRelease [msg="…"] [all=yes] [force=yes]` | `work/` prüfen und als neue Version an Ring 0 (bzw. alle) freigeben; `force=yes` trotz inhaltlicher Prüffehler |
 | `$cfmCheck` | inhaltliche Prüfung von `work/` (läuft bei jedem Release) |
 | `$cfmPlan host=<n>` | Probelauf: was ein Release von `work/` auf dem Gerät ändern würde |
+| `$cfmShow host=<n> [ver=<N>] [objects=yes]` | effektive Konfiguration: zusammengeführte Daten bzw. Soll-Objekte vom Gerät (8.3) |
+| `$cfmDiff [ver=<A>] [to=<B>\|work]` | Unterschiede zwischen zwei Ständen: Dateien, betroffene Geräte, Zeilen der Datendateien (8.3) |
 | `$cfmArchivePrune [keep=<n>]` | alte Versionen löschen (automatisch nach jedem Release) |
 | `$cfmPromote [ring=1\|2]` | Version des vorigen Rings freigeben |
 | `$cfmRollback ver=<N> [all=yes]` | alten Stand als neue Version freigeben (überschreibt `work/`) |
@@ -1035,11 +1125,12 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmRekey host=<n>\|all=yes` | Geräteschlüssel erneuern |
 | `$cfmUpgrade ver=<x.y.z> host=<n>\|ring=<r>\|all=yes [at="YYYY-MM-DD HH:MM"]` | RouterOS-Update oder -Downgrade, sofort oder im Wartungsfenster |
 | `$cfmUpgrade ver=<x.y.z> host=…\|ring=…\|all=yes check=yes` | Probe ohne Download und Auftrag: Bedarf, freier Platz, fehlende Pakete |
+| `$cfmUpgrade ver=<x.y.z> host=…\|ring=… via=internet\|via=mirror mirror=<IP>` | eingebautes Update des Geräts, auch bei 16 MB Flash (D63, Spiegel: `tools/upgrade-mirror.py`) |
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmChannels` | Kanäle der APs, Warnung bei gleichem Kanal an einem Switch |
-| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs nacheinander (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz |
+| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |
@@ -1065,6 +1156,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat` |
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
 | `state/netzplan.md` | Netzplan (Mermaid + Tabelle), auf Anforderung `netzplan.dot` und `netzplan.csv` |
+| `state/wifiscan.json` | letzte Messung von `$cfmWifiScan` (nur mit gemessenen Netzen) |
 | `vault/<name>-vault.bak` | verschlüsseltes Manager-Backup |
 
 `.dat` statt `.json`, weil RouterOS lesenden SFTP-Nutzern `.json`- und `.backup`-Dateien verweigert.
@@ -1076,7 +1168,7 @@ den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöck
 `cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); während eines Applys der Scheduler
 `cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
-Wurzelverzeichnis.
+Wurzelverzeichnis, beim eingebauten Update über einen Spiegel der DNS-Eintrag `cfm-sys:upgrade-mirror`.
 
 ---
 

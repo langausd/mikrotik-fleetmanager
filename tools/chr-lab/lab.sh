@@ -6,7 +6,8 @@
 #   ./lab.sh put <i> <local> [remote]   Datei per SFTP hochladen
 #   ./lab.sh status
 #
-# Netz: nic0 = QEMU-User-Net (ether1, DHCP 10.0.2.x, SSH-Forward auf 22<i>0),
+# Netz: nic0 = QEMU-User-Net (ether1, DHCP 10.0.2.x, SSH-Forward auf 22<i>0; 10.0.2.100:80 führt zu
+#       127.0.0.1:LABPORT+90 auf dem Host, dort lauscht im Test tools/upgrade-mirror.py, D63),
 #       Stern: vm1 ether2..etherN <-> vm2..vmN ether2 (Trunks, siehe topo()).
 #       vm1 muss zuerst starten (lauscht), "start" startet in dieser Reihenfolge.
 # Voraussetzung: CHR-Image (raw .img) in $CHR_IMG oder im Arbeitsverzeichnis $LAB.
@@ -22,6 +23,8 @@ export LABPORT=${LABPORT:-2200} LABSOCK=${LABSOCK:-12000}
 mkdir -p "$LAB"
 
 port() { echo $((LABPORT + $1 * 10)); }
+# Weiterleitung 10.0.2.100:80 -> Host LABPORT+90 (Spiegel für das eingebaute Update), nur mit nc
+gfwd() { command -v nc >/dev/null && echo ",guestfwd=tcp:10.0.2.100:80-cmd:nc 127.0.0.1 $((LABPORT + 90))"; }
 
 # Stern-Topologie: vm1 (Manager) hat ether2..etherN je als Punkt-zu-Punkt-Link zu
 # vm2..vmN (TCP-Socket). Kein Multicast-Hub: der spiegelt jeder VM ihre eigenen
@@ -58,7 +61,7 @@ start)
     if [ -f "$LAB/vm$i.pid" ] && kill -0 "$(cat "$LAB/vm$i.pid")" 2>/dev/null; then echo "vm$i läuft bereits"; continue; fi
     qemu-system-x86_64 -enable-kvm -m "$MEM" -smp 1 -name "cfm-vm$i" \
       -drive file="$disk",format=qcow2,if=virtio \
-      -netdev user,id=n0,hostfwd=tcp:127.0.0.1:"$(port "$i")"-:22 \
+      -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:$(port "$i")-:22$(gfwd)" \
       -device virtio-net-pci,netdev=n0,mac=52:54:00:00:0$i:01 \
       $(topo "$i" "$n") \
       -serial unix:"vm$i.serial",server,nowait -monitor none \

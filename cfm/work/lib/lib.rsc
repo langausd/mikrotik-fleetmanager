@@ -19,9 +19,12 @@
 #    ("expected end of command"):
 #      $cfmEnsure m="/interface/bridge" k="br" p=({"name"="bridge"})
 #  * Array-Literale in Aufrufen in runde Klammern setzen: p=({...})
-#  * Kein \"\" (maskiertes leeres Anführungszeichenpaar) in String-Literalen,
-#    die als Funktionsargument dienen – :parse akzeptiert es, /import nicht.
-#    Solche Strings vorher in eine Local legen oder anders formulieren.
+#  * Ein leeres Array direkt nach :global/:local ({} oder {\n}) liest RouterOS als Codeblock -
+#    Syntaxfehler beim /import. ({}) schreiben (tools/rsc-check.py: leeres-array).
+#  * Ein String-Literal mit Escape (\n, \", \$) direkt als Argument einer eigenen Funktion ist ein
+#    Syntaxfehler (positionell und k="…", Konsole wie /import, 7.24.5; eingebaute Befehle wie :pick
+#    sind nicht betroffen). In runde Klammern setzen oder vorher in eine Local legen:
+#      $cfmWrite "x.json" ("{\"a\":1}")      (tools/rsc-check.py: escape-argument)
 #  * /import ... verbose=yes führt Zeilen einzeln aus -> Locals gehen verloren.
 #  * :return innerhalb von :onerror ... in={} verlässt die Funktion nicht –
 #    Ergebnis in ein Flag schreiben und am Ende zurückgeben.
@@ -44,8 +47,9 @@
 :global cfmMenus {
   "/interface/bridge";"/interface/bridge/port";"/interface/vlan";"/interface/bridge/vlan";
   "/interface/vrrp";"/interface/list";"/interface/list/member";
-  "/ip/address";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";"/ip/dhcp-client";
-  "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
+  "/ip/address";"/routing/table";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";
+  "/ip/dhcp-server/lease";"/ip/dhcp-client";
+  "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";
   "/interface/wifi/steering";"/interface/wifi/access-list";"/interface/wifi/configuration";"/interface/wifi/provisioning";
@@ -56,6 +60,17 @@
 # Probelauf: cfmDry=true (setzt der Agent), Meldungen landen dann in cfmPlanOut statt im Log
 :global cfmDry
 :global cfmPlanOut
+# Soll-Objekte anzeigen ($cfmShow objects=yes, D61): im Probelauf zusätzlich cfmShowAll=true - jedes
+# Objekt, das $cfmEnsure/$cfmBlock/$cfmSet verlangt, landet (Werte gekürzt) in cfmShowOut
+:global cfmShowAll
+:global cfmShowOut
+:global cfmShowObj do={
+  :global cfmShowOut; :global cfmShort
+  :local s ""
+  :foreach kk,vv in=$p do={ :if ($kk != "comment") do={ :set s ($s . " " . $kk . "=" . [$cfmShort $vv]) } }
+  :if ([:len $s] > 200) do={ :set s ([:pick $s 0 200] . " …") }
+  :set cfmShowOut ($cfmShowOut . $m . " " . $k . ":" . $s . "\n")
+}
 :global cfmLog do={
   :global cfmDry; :global cfmPlanOut
   :if ($cfmDry = true) do={ :set cfmPlanOut ($cfmPlanOut . $1 . "\n") } else={ :log info ("cfm: " . $1) }
@@ -133,6 +148,20 @@
   :local nre "^(0[xX][0-9a-fA-F]+|[0-9]+)\$"
   :if ($a != $b and $a ~ $nre and $b ~ $nre) do={ :return ([:tonum $a] = [:tonum $b]) }
   :return ($a = $b)
+}
+
+# MAC-Adresse in Großbuchstaben: RouterOS meldet sie so, $cfmSame vergleicht Text (sonst erschiene
+# eine klein geschriebene MAC aus leases.rsc bei jedem Apply als Änderung, vgl. TODO 27)
+:global cfmMacUp do={
+  :local r ""
+  :local s [:tostr $1]
+  :for i from=0 to=([:len $s] - 1) do={
+    :local c [:pick $s $i]
+    :local p [:find "abcdef" $c]
+    :if ([:typeof $p] = "num") do={ :set c [:pick "ABCDEF" $p] }
+    :set r ($r . $c)
+  }
+  :return $r
 }
 
 # Mitglieder einer Menge {key=1|0} als Liste
@@ -469,6 +498,8 @@
   :local tag ("cfm:" . $k)
   :if ([:len $x] > 0) do={ :set tag ($tag . " " . $x) }
   :set ($cfmSeen->$m->$k) 1
+  :global cfmShowAll
+  :if ($cfmShowAll = true) do={ :global cfmShowObj; $cfmShowObj m=$m k=$k p=$p }
   :local id ($cfmIdx->$m->$k)
   :if ([:typeof $id] = "nothing" and [:typeof $n] = "array") do={
     :local ids [$cfmFind $m N=$n]
@@ -513,6 +544,13 @@
 # Für eingebaute Objekte (Identity, DNS, IP-Services, Ethernet-Ports, ...)
 :global cfmSet do={
   :global cfmRun; :global cfmFind; :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
+  :global cfmShowAll
+  :if ($cfmShowAll = true) do={
+    :global cfmShowObj
+    :local sk "(set)"
+    :if ([:typeof $n] = "array") do={ :set sk ("(set " . [:tostr $n] . ")") }
+    $cfmShowObj m=$m k=$sk p=$p
+  }
   :local ids ({"-"})
   :if ([:typeof $n] = "array") do={ :set ids [$cfmFind $m N=$n] }
   :foreach id in=$ids do={
@@ -537,6 +575,12 @@
 # einfügen und danach den alten löschen (nie ein Moment ohne Regeln).
 :global cfmBlock do={
   :global cfmIndex; :global cfmIdx; :global cfmSeen; :global cfmRun; :global cfmStat; :global cfmLog
+  :global cfmShowAll
+  :if ($cfmShowAll = true) do={
+    :global cfmShowObj
+    :local j 0
+    :foreach r in=$l do={ $cfmShowObj m=$m k=($k . ":" . [:pick [:tostr (100 + $j)] 1 3]) p=$r; :set j ($j + 1) }
+  }
   $cfmIndex $m
   :local sig [:convert [:tostr $l] transform=md5 to=hex]
   :local pre ($k . ":")

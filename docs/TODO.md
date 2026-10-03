@@ -1,21 +1,24 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-01)
+## Übersicht offener Punkte (Stand 2026-10-03)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 24 (eigene Radios des CAPsMAN, D53), 40a (Gast/IoT im lokalen Fallback,
-  D54), 39 (Steering je Band + Mindestsignal, D55), 41 (`$cfmWifiScan`, D56).
-* **Nur mit Hardware:** 38 (RouterOS-Update bei 16 MB Flash) sowie die Punkte unter „Noch nicht mit
-  echter Hardware getestet“.
+  D54), 39 (Steering je Band + Mindestsignal, D55).
+* **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
+  eingebaute Update über cfm auf einem Gerät mit 16 MB Flash (38, D63).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-02/03:** 11 (feste Leases und DNS-Namen, D62), 12 (`$cfmShow`/`$cfmDiff`,
+  D61), 41 (`$cfmWifiScan` über den CAPsMAN, auf Hardware gelaufen, D60), 38 (Update bei 16 MB
+  Flash über das eingebaute Update, Spiegel `tools/upgrade-mirror.py`, D63).
 * **Erledigt am 2026-10-01:** 21 (Dateizugriff über den Namen, D59), 36 (Labortest), 44 (Rest,
   D58), „Manager-Ticks starten gleichzeitig“ (D57); Labortest des Watchdog-Rollbacks (`e2e.sh`
   Schritt 14d) und Probe des Router-Umzugs mit drei VRRP-Routern (`e2e-vrrp.sh`). Am 2026-09-30:
   28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
-* **Größere Ausbauten:** 2 (Benachrichtigungen), 10–15, 18–20 sowie Netinstall/Branding (Onboarding).
+* **Größere Ausbauten:** 2 (Benachrichtigungen), 10, 13–15, 18–20 sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -93,6 +96,13 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * Feste NAT-Adresse (`wan@<Adresse>`, D38) bei VRRP: Wandert die Adresse mit dem Master, und
   übernimmt der neue Master den ausgehenden Verkehr ohne Hand-Eingriff (bestehende Verbindungen
   brechen ab, conntrack wird nicht abgeglichen)?
+* Feste Leases und DNS-Namen (D62) auf einem Hardware-Router, bei VRRP auf allen Routern; dabei
+  prüfen, ob eine schon dynamisch vergebene Lease derselben MAC das Anlegen der festen stört.
+* Eingebautes Update über cfm (D63, `via=internet|mirror`) auf einem Gerät mit 16 MB Flash (hEX,
+  CRS328): RAM statt Flash beim Download, Rückbau von DNS-Eintrag und `mode` nach dem Neustart.
+  (Das eingebaute Update selbst lief auf einem CRS328 mit 1,7 MB frei von Hand.)
+* `$cfmShow objects=yes` auf einem Manager mit vielen Skripten: bleibt die Ausgabe unter der
+  Grenze, oder greift die Kürzung bei 50 000 Zeichen?
 
 ## Bekannte Fehler
 
@@ -156,8 +166,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 9. ~~**Minimale Firewall auf allen Geräten**~~ – *erledigt (D31):* Default-Drop auf Nicht-Routern,
    IPv6-input auf allen Geräten. Offen: IPv6-Forward auf Routern (mit Punkt 13).
 10. **Link-Bündel (Bonding/LACP) als Port-Profil** für Uplinks.
-11. **Feste DHCP-Leases und DNS-Namen aus zentralen Daten** (z.B. `leases.rsc`).
-12. **Effektive Config und Diff anzeigen:** `$cfmShow host=<n>`, `$cfmDiff ver=A ver=B`.
+11. ~~**Feste DHCP-Leases und DNS-Namen aus zentralen Daten**~~ – *erledigt (D62):* `leases.rsc` je
+    VLAN, die Rolle `router` legt Leases und DNS-Namen `<name>.<domain>` (Leases und aufgenommene
+    Geräte) an; Standard-Domain `internal`. Labor: `e2e.sh` Schritt 9.
+12. ~~**Effektive Config und Diff anzeigen**~~ – *erledigt (D61):* `$cfmShow host=<n> [ver=] [objects=yes]`
+    (Daten bzw. Soll-Objekte per Probelauf), `$cfmDiff [ver=A] [to=B]` (Dateien, betroffene Geräte,
+    Zeilen der Datendateien). Labor: `e2e.sh` Schritt 9.
 
 ### Größere Ausbauten
 
@@ -324,7 +338,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Besser: echte Prüfung (NPK-Kennung am Dateianfang oder Größe aus einer Prüfsummenliste von
     MikroTik). Außerdem: Ohne Internet am Manager müssen alle installierten Pakete eines Geräts vorab
     in `<pkgPath>/<ver>/` liegen – `$cfmUpgrade` könnte die fehlenden vor dem Auftrag auflisten.
-38. **RouterOS-Update auf Geräten mit 16 MB Flash** (hEX RB750Gr3, CRS328 u.ä.) – *Vorab-Prüfung
+38. ~~**RouterOS-Update auf Geräten mit 16 MB Flash**~~ (hEX RB750Gr3, CRS328 u.ä.) – *erledigt
+    (D63):* `$cfmUpgrade … via=internet|via=mirror mirror=<IP>` nutzt das eingebaute Update des
+    Geräts, der Spiegel ist `tools/upgrade-mirror.py`; Labor: `e2e.sh` Schritt 13e. tmpfs geht nicht
+    (Laborversuch 2026-10-03). Auf Hardware mit 16 MB noch nicht über cfm gelaufen. – *Vorab-Prüfung
     erledigt (D51):* Agent meldet den freien Platz (`fs`), `$cfmUpgrade` erteilt zu vollen Geräten
     keinen Auftrag, der Agent prüft vor dem Download erneut. Offen bleibt das Update selbst (tmpfs
     oder eingebautes Update, nur mit Hardware testbar). – `$cfmUpgrade` lädt
@@ -363,10 +380,13 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (siehe Hardware-Eigenheiten); 2026-09-27 geprüft: von Hand eingeschaltet, blieb es nach einem
     Neustart des CAPsMAN an, und nach einer Neuprovisionierung (neue Namen, D47) legte er es aktiv
     an. Nur beim allerersten Kontakt eines CAP prüfen.
-41. **Kanalplan per Scan** (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) – *vorbereitet
-    (D56):* `$cfmWifiScan` scannt alle APs nacheinander und schlägt Pins für 1/6/11 und 1/5/9/13 vor
-    (Auswertung im Labor mit erfundenen Daten geprüft). Vor Ort: Feldnamen des Scan-Ergebnisses und
-    ob ein CAP seine Radios lokal scannen kann. –
+41. ~~**Kanalplan per Scan**~~ (entschieden 2026-09-27: fester Plan, gelegentlich neu optimieren) –
+    *erledigt (D56, D60):* `$cfmWifiScan` scannt über den CAPsMAN (der CAP selbst lehnt den Scan ab,
+    der CAPsMAN liefert erst ab ~10 s Ergebnisse) und schlägt Pins für 1/6/11 und 1/5/9/13 vor.
+    Hardware 2026-10-03: Feldnamen `address`, `channel` („2437/ax“), `signal`, `ssid`; 30–42 Netze je
+    AP auf 2,4 GHz. Die Zeile „Aktuell“ blieb leer, weil `monitor` auf einem CAP keinen Kanal liefert
+    – der Agent liest ihn jetzt aus `about`. Eine Messung ohne Netze ergibt keinen Vorschlag mehr
+    (vorher „alle auf 2412, Kosten 0“). –
     Manager-Befehl `$cfmWifiScan`: über den CAPsMAN von jedem AP aus scannen
     (`/interface/wifi/scan cap-wifiN duration=…`, nur Radios ohne Clients oder mit Hinweis), fremde
     Netze und ihre Kanäle je AP sammeln, einen Pin-Vorschlag für `wifi.rsc → radios` berechnen

@@ -13,7 +13,7 @@
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
-  :global cfmNet; :global cfmTarget
+  :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp
   :local b [$cfmMB]
   :local w ($b . "/work")
   :local err ({}); :local warn ({})
@@ -114,6 +114,47 @@
       :if ([:typeof ($wgAddrs->$ad)] != "nothing") do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": addr " . $ad . " doppelt vergeben (" . ($wgAddrs->$ad) . ")") }
       :set ($wgAddrs->$ad) $k
     }
+  }
+  # Feste Leases (D62): VLAN mit DHCP der Router, Name als DNS-Label (eindeutig, kein Gerätename),
+  # MAC und Adresse je VLAN eindeutig, Adresse im Netz und nicht die des Gateways
+  :local lName ({})
+  :foreach vid,ls in=$cfmLeases do={
+    :local v ($cfmVlans->[:tostr $vid])
+    :if ([:typeof $v] != "array") do={ :set ($err->[:len $err]) ("leases.rsc: VLAN " . $vid . " fehlt in vlans.rsc") } else={
+      :local dh [:tostr ($v->"dhcp")]
+      :if ([:len $dh] = 0 or $dh = "no" or [:tostr ($v->"onboard")] = "yes") do={ :set ($warn->[:len $warn]) ("leases.rsc: VLAN " . $vid . " ohne DHCP der Router - die Leases wirken nicht") }
+      :local nn [$cfmNet $vid]
+      :local hmax 254
+      :if ([:len [:tostr ($nn->"pfx")]] > 0) do={
+        :set hmax 1
+        :for i from=1 to=(32 - [:tonum ($nn->"pfx")]) do={ :set hmax ($hmax * 2) }
+        :set hmax ($hmax - 2)
+      }
+      :local gwh [:tonum ($v->"gw")]
+      :if ([:typeof $gwh] != "num") do={ :set gwh 1 }
+      :local lMac ({}); :local lIp ({})
+      :foreach ln,ld in=$ls do={
+        :local w ("leases.rsc: VLAN " . $vid . " " . $ln . ": ")
+        :if (!($ln ~ "^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\$")) do={ :set ($err->[:len $err]) ($w . "Name nur aus Buchstaben, Ziffern und \"-\" (DNS)") }
+        :if ([:typeof ($lName->$ln)] != "nothing") do={ :set ($err->[:len $err]) ($w . "Name schon in VLAN " . ($lName->$ln)) }
+        :set ($lName->$ln) $vid
+        :local mac [$cfmMacUp ($ld->"mac")]
+        :if (!($mac ~ "^([0-9A-F][0-9A-F]:){5}[0-9A-F][0-9A-F]\$")) do={ :set ($err->[:len $err]) ($w . "MAC fehlt oder ungültig (AA:BB:CC:DD:EE:FF)") } else={
+          :if ([:typeof ($lMac->$mac)] != "nothing") do={ :set ($err->[:len $err]) ($w . "MAC schon bei " . ($lMac->$mac)) }
+          :set ($lMac->$mac) $ln
+        }
+        :local h [:tonum ($ld->"ip")]
+        :if ([:typeof $h] != "num" or $h < 1 or $h > $hmax) do={ :set ($err->[:len $err]) ($w . "ip = Host-Anteil 1-" . $hmax) } else={
+          :if ($h = $gwh) do={ :set ($err->[:len $err]) ($w . "ip ist die Adresse des Gateways") }
+          :if ([:typeof ($lIp->[:tostr $h])] != "nothing") do={ :set ($err->[:len $err]) ($w . "ip schon bei " . ($lIp->[:tostr $h])) }
+          :set ($lIp->[:tostr $h]) $ln
+          :if ($h >= 251 and $h <= 254) do={ :set ($warn->[:len $warn]) ($w . ".251-.254 nutzen VRRP-Router als eigene Adresse (routerId 1-4)") }
+        }
+      }
+    }
+  }
+  :foreach hn,hd in=[$cfmInvLoad] do={
+    :if ([:typeof ($lName->$hn)] != "nothing") do={ :set ($err->[:len $err]) ("leases.rsc: Name " . $hn . " ist auch ein Gerät (gleicher DNS-Name)") }
   }
   # IP-Dienste: nur RouterOS-Namen (http/https blieben stillschweigend wirkungslos), jeder Port nur
   # einmal (www-ssl und reverse-proxy stehen ab Werk beide auf 443)
@@ -320,7 +361,10 @@
   $cfmWrite ($b . "/plan/index.dat") [:serialize to=json ({"v"=0;"msg"="plan";"files"=$idx})]
   :if ([$cfmManifests plan=$host] = 0) do={ :error ("kein Plan-Manifest für " . $host . " (Geräteschlüssel oder Pflichtdateien fehlen, siehe Log)") }
   :local id [:rndstr length=12 from="0123456789abcdef"]
-  :local c (":execute \":global cfmArg {\\\"mode\\\"=\\\"plan\\\";\\\"id\\\"=\\\"" . $id . "\\\"}; /system script run cfm-agent\"")
+  # show=yes: alle Soll-Objekte statt der Änderungen ($cfmShow objects=yes, D61)
+  :local sh ""
+  :if ($show = "yes") do={ :set sh ";\\\"show\\\"=\\\"yes\\\"" }
+  :local c (":execute \":global cfmArg {\\\"mode\\\"=\\\"plan\\\";\\\"id\\\"=\\\"" . $id . "\\\"" . $sh . "}; /system script run cfm-agent\"")
   :local r [$cfmExec ip=($d->"ip") cmd=$c]
   :if (($r->"exit-code") != 0) do={ :error ("Gerät nicht erreichbar: " . ($r->"output")) }
   :put ("Probelauf auf " . $host . " läuft ...")
@@ -340,6 +384,8 @@
     }
   }
   :if (!$got) do={ :error "keine Antwort vom Probelauf (Agent beschäftigt?) - später erneut" }
-  :put [/file/get [find where name=$lf] contents]
+  :local pc [/file/get [find where name=$lf] contents]
+  :put $pc
+  :if ($show = "yes" and [:typeof [:find $pc "# Soll-Objekte"]] = "nil") do={ :put ("Hinweis: Der Agent auf " . $host . " kennt die Objektliste noch nicht (erst nach dem nächsten Release) - oben steht der normale Plan") }
   :return ""
 }

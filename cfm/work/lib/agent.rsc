@@ -112,7 +112,20 @@
     :onerror e in={
       :foreach i in=[/interface/wifi/find] do={
         :local ch ""
-        :onerror e2 in={ :set ch [:tostr ([/interface/wifi/monitor $i once as-value]->"channel")] } do={}
+        # Unter CAPsMAN liefert monitor kein Feld channel, nur about "… channel: 2472/ax"
+        # (Hardware 2026-10-03) - dann daraus lesen
+        :onerror e2 in={
+          :local mo [/interface/wifi/monitor $i once as-value]
+          :set ch [:tostr ($mo->"channel")]
+          :if ([:len $ch] = 0) do={
+            :local ab [:tostr ($mo->"about")]
+            :local p [:find $ab "channel: "]
+            :if ([:typeof $p] = "num") do={
+              :set ch [:pick $ab ($p + 9) [:len $ab]]
+              :foreach t in={";";",";" "} do={ :local q [:find $ch $t]; :if ([:typeof $q] = "num") do={ :set ch [:pick $ch 0 $q] } }
+            }
+          }
+        } do={}
         :set ($rd->[:len $rd]) ({[/interface/wifi/get $i name];("c" . $ch)})
       }
     } do={}
@@ -183,6 +196,8 @@
 # Rückgabe: "" oder "<datei>: <fehler>"
 :global cfmImportAll do={
   :global cfmHost; :set cfmHost ({})
+  # optionale Datendatei (D62): ohne sie keine alten Werte aus einem früheren Lauf behalten
+  :global cfmLeases; :set cfmLeases ({})
   :global cfmSeen; :global cfmDir; :global cfmWrite; :global cfmLog
   :local pf ($cfmDir . "/post.json")
   :local cur ""
@@ -297,12 +312,21 @@
       :set cfmDl $pd
       :set cfmMf $pm
       :global cfmPlanOut; :set cfmPlanOut ""
+      # show=yes ($cfmShow objects=yes, D61): alle Soll-Objekte statt nur der Änderungen
+      :global cfmShowAll; :global cfmShowOut; :set cfmShowOut ""
+      :set cfmShowAll (($arg->"show") = "yes")
       :set cfmDry true
       :local perr [$cfmImportAll mf=$pm d=$pd skip="post"]
       :set cfmDry false
+      :set cfmShowAll false
       :set cfmDl $dl0
       :global cfmStat
       :local rep ("# id=" . [:tostr ($arg->"id")] . "\n" . $cfmPlanOut . "# Plan " . ($pm->"name") . " (Stand work/): " . [:tostr $cfmStat] . "\n")
+      :if (($arg->"show") = "yes") do={
+        # /file/get liest nur ~60 KB: lange Listen (Manager mit vielen Skripten) kürzen
+        :if ([:len $cfmShowOut] > 50000) do={ :set cfmShowOut ([:pick $cfmShowOut 0 50000] . "\n… gekürzt (über 50 000 Zeichen)\n") }
+        :set rep ("# id=" . [:tostr ($arg->"id")] . "\n# Soll-Objekte " . ($pm->"name") . " (Stand work/, ohne post.rsc)\n" . $cfmShowOut)
+      }
       :if ([:len $perr] > 0) do={ :set rep ($rep . "# FEHLER im Probelauf (ein Apply würde zurückrollen): " . $perr . "\n") }
       $cfmWrite ($dir . "/out/plan.txt") $rep
       :put $rep
@@ -466,32 +490,66 @@
           :set ($st->"upg") ("fehlgeschlagen " . $tv)
         }
         :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
+        # Spiegel des eingebauten Updates (D63) nicht stehen lassen
+        /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"]
+        :if ([:tostr ($st->"upm")] = "spiegel") do={ /system/package/update/set mode=https; :set ($st->"upm") }
       } else={
-       # Platz vorab prüfen (TODO 38): Ein voller Flash lässt auch Config und Log scheitern. Der Manager
-       # prüft beim Auftrag schon den gemeldeten Wert; 1 MB Reserve wie dort. Kein neuer Versuch - nach
-       # dem Aufräumen einen neuen Auftrag erteilen.
-       :local need 1048576
-       :foreach pf in=($ro->"files") do={ :set need ($need + [:tonum ($pf->1)]) }
-       :local free [/system/resource/get free-hdd-space]
-       :if (!($dir ~ "^flash/") and $free < $need) do={
+       :local act ""
+       :local fl ({})
+       :local via [:tostr ($ro->"via")]
+       :if ([:len $via] > 0) do={
+        # eingebautes Update (TODO 38, D63): Das Gerät lädt selbst - aus dem Internet oder von einem
+        # Spiegel (befristeter DNS-Eintrag + mode=http, nach dem Update zurück). Kommt auch mit wenig
+        # Flash zurecht (lädt dann in den RAM), installiert aber nur die angebotene Version.
         :set ($st->"upa") $tag
         :set ($st->"upf") ({})
-        :set ($st->"upg") ("Platz fehlt: " . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig")
-        :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig) - nichts geladen")
-       } else={
-        # Pakete in die Wurzel laden: dort installiert RouterOS sie beim nächsten Start
-        :local fl ({})
-        :foreach pf in=($ro->"files") do={
-          :local fn ($pf->0)
-          :if ([$cfmFetch r=(($ro->"path") . "/" . $fn) l=$fn prefer=$mgr abs="yes"] = "") do={ :error ("Paket-Download fehlgeschlagen: " . $fn) }
-          :delay 1s
-          :if ([/file/get [find where name=$fn] size] != [:tonum ($pf->1)]) do={ :error ("Paketgröße stimmt nicht: " . $fn) }
-          :set ($fl->[:len $fl]) $fn
+        :if ($via = "mirror") do={
+          /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"]
+          /ip/dns/static/add name="upgrade.mikrotik.com" address=[:pick [:tostr ($ro->"mirror")] 1 99] comment="cfm-sys:upgrade-mirror"
+          /ip/dns/cache/flush
+          /system/package/update/set mode=http
+          # nicht "yes": :deserialize macht daraus beim nächsten Lauf ein Bool
+          :set ($st->"upm") "spiegel"
         }
-        :set ($st->"upf") $fl
-        :set ($st->"upa") $tag
-        :local act "/system/reboot"
-        :if (($ro->"how") = "downgrade") do={ :set act "/system/package/downgrade" }
+        :local ch "stable"
+        :if ($tv ~ "(alpha|beta|rc)") do={ :set ch "testing" }
+        /system/package/update/set channel=$ch
+        :onerror e in={ /system/package/update/check-for-updates once } do={}
+        :local w 0
+        :while ($w < 30 and [:tostr [/system/package/update/get status]] ~ "finding|calculating") do={ :delay 1s; :set w ($w + 1) }
+        :local lv [:tostr [/system/package/update/get latest-version]]
+        :if ($lv = $tv) do={ :set act "/system/package/update/install" } else={
+          :set ($st->"upg") ("fehlgeschlagen: " . $via . " bietet " . $lv . " statt " . $tv . " (" . [:tostr [/system/package/update/get status]] . ")")
+          :log error ("cfm: RouterOS " . $tv . ": " . $via . " bietet " . $lv . " - nichts installiert")
+        }
+       } else={
+        # Platz vorab prüfen (TODO 38): Ein voller Flash lässt auch Config und Log scheitern. Der Manager
+        # prüft beim Auftrag schon den gemeldeten Wert; 1 MB Reserve wie dort. Kein neuer Versuch - nach
+        # dem Aufräumen einen neuen Auftrag erteilen.
+        :local need 1048576
+        :foreach pf in=($ro->"files") do={ :set need ($need + [:tonum ($pf->1)]) }
+        :local free [/system/resource/get free-hdd-space]
+        :if (!($dir ~ "^flash/") and $free < $need) do={
+         :set ($st->"upa") $tag
+         :set ($st->"upf") ({})
+         :set ($st->"upg") ("Platz fehlt: " . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig")
+         :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig) - nichts geladen")
+        } else={
+         # Pakete in die Wurzel laden: dort installiert RouterOS sie beim nächsten Start
+         :foreach pf in=($ro->"files") do={
+           :local fn ($pf->0)
+           :if ([$cfmFetch r=(($ro->"path") . "/" . $fn) l=$fn prefer=$mgr abs="yes"] = "") do={ :error ("Paket-Download fehlgeschlagen: " . $fn) }
+           :delay 1s
+           :if ([/file/get [find where name=$fn] size] != [:tonum ($pf->1)]) do={ :error ("Paketgröße stimmt nicht: " . $fn) }
+           :set ($fl->[:len $fl]) $fn
+         }
+         :set ($st->"upf") $fl
+         :set ($st->"upa") $tag
+         :set act "/system/reboot"
+         :if (($ro->"how") = "downgrade") do={ :set act "/system/package/downgrade" }
+        }
+       }
+       :if ([:len $act] > 0) do={
         :if ([:len $upn] > 0) do={ /system/scheduler/remove $upn }
         :local at [:tostr ($ro->"at")]
         :if ([:pick $at 0 1] = "@") do={ :set at [:pick $at 1 99] } else={ :set at "" }
@@ -523,6 +581,9 @@
     :if ([:len $upn] > 0) do={ /system/scheduler/remove $upn; :log info "cfm: geplantes RouterOS-Update verworfen" }
     :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
     :set ($st->"upf"); :set ($st->"upa"); :set ($st->"upg")
+    # befristeten Spiegel des eingebauten Updates (D63) zurücknehmen
+    :if ([:len [/ip/dns/static/find where comment="cfm-sys:upgrade-mirror"]] > 0) do={ /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"] }
+    :if ([:tostr ($st->"upm")] = "spiegel") do={ /system/package/update/set mode=https; :set ($st->"upm") }
   }
 
   # --- RouterBOARD-Firmware: Nach einem RouterOS-Update passt "current-firmware" nicht mehr zu

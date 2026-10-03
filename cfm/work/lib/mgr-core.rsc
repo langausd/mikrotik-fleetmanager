@@ -69,7 +69,9 @@
 }
 :global cfmWrite do={
   :global cfmFileEx
-  :if ([$cfmFileEx $1]) do={ /file/set $1 contents=$2 } else={ /file/add name=$1 contents=$2 }
+  # Eine eben gelöschte Datei meldet /file/get kurz noch, /file/set scheitert dann mit "no such item"
+  # (Hardware 2026-10-03: zweimal $cfmPlan hintereinander, der zweite leert plan/ und schreibt neu)
+  :if ([$cfmFileEx $1]) do={ :onerror e in={ /file/set $1 contents=$2 } do={ /file/add name=$1 contents=$2 } } else={ /file/add name=$1 contents=$2 }
 }
 :global cfmRead do={
   :local r ""
@@ -159,6 +161,9 @@
   # nicht, sondern liefert stillschweigend "nothing" (siehe DECISIONS.md).
   :onerror e in={ /import file-name=($d . "/lib/lib.rsc") verbose=no } do={}
   :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ /import file-name=($d . "/" . $f) verbose=no }
+  # leases.rsc (D62) ist optional: ältere Versionen im Archiv haben sie nicht
+  :global cfmLeases; :set cfmLeases ({})
+  :onerror e in={ /import file-name=($d . "/leases.rsc") verbose=no } do={}
   :return $v
 }
 
@@ -228,6 +233,12 @@
   :local reap ([:tonsec [:totime ($cfmG->"reapply")]] / 1000000000)
   :local inv [$cfmInvLoad]
   :local cms [$cfmCapsmen $inv]
+  # DNS-Namen der Geräte für die Router (D62): aufgenommene Geräte mit Namen aus Buchstaben, Ziffern, "-"
+  :global cfmEnrolled
+  :local dnsH ({})
+  :foreach hn,hd in=$inv do={
+    :if ([$cfmEnrolled $hd] and [:len [:tostr ($hd->"ip")]] > 0 and $hn ~ "^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\$") do={ :set ($dnsH->$hn) [:tostr ($hd->"ip")] }
+  }
   :local ord [$cfmJson ($b . "/meta/upgrade.dat")]
   :local cnt 0
   :foreach name,d in=$inv do={
@@ -253,6 +264,8 @@
         :foreach p,h in=$fx do={ :if ($p ~ "^lib/mgr-") do={ :set ($want->[:len $want]) ({$p;0;1}) } }
       }
       :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ :set ($want->[:len $want]) ({$f;1;1}) }
+      # optional (D62): ältere Versionen haben keine leases.rsc - Ringe auf einer solchen bleiben gültig
+      :set ($want->[:len $want]) ({"leases.rsc";1;0})
       # authorized_keys (D35, persönliche Admin-SSH-Keys): optional, kein /import (kein RouterOS-Skript)
       :set ($want->[:len $want]) ({"authorized_keys";0;0})
       :set ($want->[:len $want]) ({("hosts/" . $name . ".rsc");1;0})
@@ -270,6 +283,7 @@
       }
       :if ($ok) do={
         :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=($d->"role");"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"cm"=$cms;"files"=$fl})
+        :if ($rl ~ ",router,") do={ :set ($m->"dns") $dnsH }
         # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
         :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
         :local body [:serialize to=json $m]

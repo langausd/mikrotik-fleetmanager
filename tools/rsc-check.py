@@ -28,14 +28,17 @@ FEHLER, HINWEIS = "FEHLER", "HINWEIS"
 REGELN = {
     "klammer-anfang": "Anweisung beginnt am Zeilenanfang mit '[': RouterOS liest die Zeile u.U. als "
                       "Fortsetzung der vorigen. Funktion ohne Klammern aufrufen ($f …).",
-    "escape-argument": "\\\" in einem String, der direkt Funktionsargument ist, bricht /import "
-                       "(:parse akzeptiert es). Den String vorher in eine Local legen.",
+    "escape-argument": "Escape (\\n, \\\", \\$) in einem String, der direkt Argument einer eigenen "
+                       "Funktion ist: Syntaxfehler (Konsole und /import). In runde Klammern setzen "
+                       "oder vorher in eine Local legen.",
     "return-onerror": ":return in :onerror … in={} verlässt die Funktion nicht. Ergebnis über ein "
                       "Flag setzen und nach dem Block zurückgeben.",
     "geraetemenue": "geräteabhängiges Menü in Slash-Schreibweise: Fehlt es (z.B. auf CHR/x86), ist das "
                     "ein Syntaxfehler, den :onerror nicht fängt. Leerzeichen-Schreibweise "
                     "(/system routerboard …) oder :parse verwenden.",
     "array-klammern": "Array-Literal als Funktionsargument ohne runde Klammern: p=({…}) schreiben.",
+    "leeres-array": "Leeres Array-Literal direkt nach :global/:local (auch {\\n}): RouterOS liest es als "
+                    "Codeblock, Syntaxfehler beim /import. ({}) schreiben.",
     "kommentar-im-array": "Kommentarzeile innerhalb eines Array-Literals: /import scheitert mit "
                           "\"syntax error\". Kommentar über das Array setzen.",
     "import-verbose": "/import … verbose=yes führt Zeilen einzeln aus, Locals gehen verloren: "
@@ -122,6 +125,8 @@ class Frame:
         self.onerr = onerr     # liegt in :onerror … in={} (bis zu einem Funktionsrumpf)
         self.data = data       # Array-Literal (Ausdruck), kein Anweisungsblock
         self.call = False      # bracket: [$f …]
+        self.ntok = 0          # Tokens innerhalb dieser Klammer (ohne Zeilenenden)
+        self.assign = False    # block direkt nach :global/:local <name>
         self.new_stmt()
 
     def new_stmt(self):
@@ -151,6 +156,8 @@ def check_rsc(path, text):
             line_start = True
             continue
         at_line_start, line_start = line_start, False
+        if kind not in ")]}":
+            fr.ntok += 1
         if kind == ";":
             if fr.kind == "block":
                 fr.new_stmt()
@@ -191,8 +198,11 @@ def check_rsc(path, text):
                 # RouterOS keine Kommentarzeilen.
                 stmt = pw in ("do=", "else=") or (pw == "in=" and fr.words[:1] == [":onerror"])
                 data = not (stmt or (fr.kind == "block" and fr.first))
+            assign = kind == "{" and fr.kind == "block" and fr.words[:1] in ([":global"], [":local"]) \
+                and len(fr.words) == 2
             fr.first, fr.prev = False, (kind, val)
             stack.append(Frame({"(": "paren", "[": "bracket", "{": "block"}[kind], line, onerr, data))
+            stack[-1].assign = assign
             continue
         else:                                   # ) ] }
             want = {")": "paren", "]": "bracket", "}": "block"}[kind]
@@ -204,6 +214,8 @@ def check_rsc(path, text):
                     stack.pop()
             if stack[-1].data:
                 daten.append((stack[-1].line, line))
+            if stack[-1].assign and stack[-1].ntok == 0:
+                add(stack[-1].line, "leeres-array")
             stack.pop()
             fr = stack[-1]
         fr.first, fr.prev = False, (kind, val)

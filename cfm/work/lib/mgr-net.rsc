@@ -254,9 +254,13 @@
 # ---------- Kanalplan per Scan (TODO 41, D56) ----------
 # $cfmWifiScan [host=<AP>] [band=2|5|6] [duration=10s] [data=yes]
 # Jeder AP (Rolle ap, aufgenommen) scannt nacheinander auf seinen Radios des Bands (Standard 2,4 GHz)
-# per ssh-exec (/interface/wifi/scan … as-value). Das Radio verlässt dafür den Kanal, verbundene
-# Clients wechseln kurz zum Nachbarn. Die BSSIDs der eigenen APs kennt der CAPsMAN (Interface-Namen
-# <AP>-<Band>g, D47). Ergebnis in state/wifiscan.json; data=yes rechnet nur mit der letzten Messung.
+# (/interface/wifi/scan … as-value). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am CAP ab
+# ("not allowed") - gescannt wird deshalb auf dem CAPsMAN am Interface <AP>-<Band>g (D47, D60), erst
+# ab ~10 s Dauer kommen dort Ergebnisse (5 s lieferten keine, Hardware 2026-10-03). Radios ohne
+# CAPsMAN scannen direkt am AP. Das Radio verlässt dafür den Kanal, verbundene Clients wechseln kurz
+# zum Nachbarn. Die BSSIDs der eigenen APs kennt der CAPsMAN (Interface-Namen <AP>-<Band>g).
+# Ergebnis in state/wifiscan.json (eine Messung ganz ohne Netze überschreibt sie nicht); data=yes
+# rechnet nur mit der letzten Messung.
 # Vorschlag (nur 2,4 GHz): Kanalsätze 1/6/11 und 1/5/9/13 durchprobieren, Kosten je AP = Summe über
 # gehörte Netze: Gewicht (Signal + 95 dB) mal Überlappung der Kanäle (gleich 4/4, 1 Kanal daneben
 # 3/4 … ab 4 Kanälen Abstand 0); eigene APs, die sich hören, zählen doppelt. Bis 6 APs alle
@@ -283,7 +287,9 @@
   :local sc ({})
   :if ($data = "yes") do={
     :set sc [$cfmJson $f]
-    :if ([:len ($sc->"aps")] = 0) do={ :put "keine Messung in state/wifiscan.json - erst ohne data=yes scannen"; :return false }
+    :local tn 0
+    :foreach ap,nets in=($sc->"aps") do={ :set tn ($tn + [:len $nets]) }
+    :if ($tn = 0) do={ :put "keine Messung mit Netzen in state/wifiscan.json - erst ohne data=yes scannen"; :return false }
     :set bd [:tostr ($sc->"band")]
   } else={
     :set sc ({"band"=$bd;"t"=([/system/clock/get date] . " " . [/system/clock/get time]);"own"=({});"aps"=({})})
@@ -302,17 +308,36 @@
       }
     }
     :local bre ($bd . "ghz")
+    :if ([:totime $dur] < 10s) do={ :put ("duration " . $dur . " -> 10s (über den CAPsMAN liefern kürzere Scans nichts)"); :set dur "10s" }
+    :local cml [$cfmCapsmen $inv]
     :foreach name,d in=$inv do={
       :if (([:len $host] = 0 or $host = $name) and (("," . [:tostr ($d->"role")] . ",") ~ ",ap,") and [$cfmEnrolled $d]) do={
         :put ("Scan " . $name . " (" . $bd . " GHz, " . $dur . " je Radio) ...")
-        :local cmd (":local r ({}); :foreach i in=[/interface/wifi/find where default-name~\"^wifi\"] do={ :local n [/interface/wifi/get \$i name]; :local bs \"\"; :onerror e in={ :set bs [:tostr [/interface/wifi/radio/get [find where interface=\$n] bands]] } do={}; :if (\$bs ~ \"" . $bre . "\") do={ :onerror e in={ :foreach x in=[/interface/wifi/scan \$i duration=" . $dur . " as-value] do={ :set (\$r->[:len \$r]) \$x } } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) } } }; :put [:serialize to=json \$r]")
-        :local r [$cfmExec ip=($d->"ip") cmd=$cmd]
+        # zuerst auf dem CAPsMAN am Interface <AP>-<Band>g; nur die vier gebrauchten Felder zurück
         :local lst ({})
-        :onerror e in={ :set lst [:deserialize from=json ($r->"output")] } do={ :put ("  " . $name . ": keine Daten (" . [:pick ($r->"output") 0 120] . ")") }
+        :local via ""
+        :local sel (":foreach x in=[/interface/wifi/scan \$i duration=" . $dur . " as-value] do={ :set (\$r->[:len \$r]) ({\"address\"=(\$x->\"address\");\"channel\"=(\$x->\"channel\");\"signal\"=(\$x->\"signal\");\"ssid\"=(\$x->\"ssid\")}) }")
+        :foreach c in=$cml do={
+          :if ($via = "") do={
+            :local cc (":local r ({}); :local i [/interface/wifi/find where name=\"" . $name . "-" . $bd . "g\"]; :if ([:len \$i] = 0) do={ :put \"none\" } else={ :onerror e in={ " . $sel . " } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) }; :put [:serialize to=json \$r] }")
+            :local r [$cfmExec ip=($c->"ip") cmd=$cc]
+            :local out [:tostr ($r->"output")]
+            :if ([:pick $out 0 4] != "none") do={
+              :onerror e in={ :set lst [:deserialize from=json $out]; :set via ($c->"n") } do={ :put ("  " . $name . ": keine Daten vom CAPsMAN " . ($c->"n") . " (" . [:pick $out 0 120] . ")") }
+            }
+          }
+        }
+        # Radios ohne CAPsMAN: direkt am AP
+        :if ($via = "") do={
+          :local cmd (":local r ({}); :foreach i in=[/interface/wifi/find where default-name~\"^wifi\"] do={ :local n [/interface/wifi/get \$i name]; :local bs \"\"; :onerror e in={ :set bs [:tostr [/interface/wifi/radio/get [find where interface=\$n] bands]] } do={}; :if (\$bs ~ \"" . $bre . "\") do={ :onerror e in={ " . $sel . " } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) } } }; :put [:serialize to=json \$r]")
+          :local r [$cfmExec ip=($d->"ip") cmd=$cmd]
+          :onerror e in={ :set lst [:deserialize from=json ($r->"output")]; :set via "AP" } do={ :put ("  " . $name . ": keine Daten (" . [:pick ($r->"output") 0 120] . ")") }
+        }
         :local nets ({})
         :foreach x in=$lst do={
           :if ([:len [:tostr ($x->"err")]] > 0) do={ :put ("  " . $name . ": Scan-Fehler " . ($x->"err")) } else={
-            # Feldnamen tolerant lesen (as-value des Scans auf Hardware noch nicht gesehen)
+            # Feldnamen auf Hardware (hAP ax³, 7.24.4): address, channel ("2437/ax"), signal, ssid,
+            # security, active - die Alternativen bleiben für andere Versionen
             :local bss [:tostr ($x->"address")]; :if ([:len $bss] = 0) do={ :set bss [:tostr ($x->"bssid")] }
             :local ch [:tostr ($x->"channel")]; :if ([:len $ch] = 0) do={ :set ch [:tostr ($x->"frequency")] }
             :local sg [:tostr ($x->"sig")]; :if ([:len $sg] = 0) do={ :set sg [:tostr ($x->"signal")] }
@@ -321,9 +346,12 @@
           }
         }
         :set ($sc->"aps"->$name) $nets
-        :put ("  " . [:len $nets] . " Netze")
+        :put ("  " . [:len $nets] . " Netze (über " . $via . ")")
       }
     }
+    :local tn 0
+    :foreach ap,nets in=($sc->"aps") do={ :set tn ($tn + [:len $nets]) }
+    :if ($tn = 0) do={ :put "keine Netze gemessen - kein Vorschlag, state/wifiscan.json bleibt unverändert"; :return false }
     $cfmWrite $f [:serialize to=json $sc]
   }
   # --- Auswertung: je AP fremde Netze nach Kanal, eigene Nachbarn ---

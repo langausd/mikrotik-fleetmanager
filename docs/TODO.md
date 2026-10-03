@@ -5,8 +5,10 @@
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
-  Darstellung und Prüfung): 24 (eigene Radios des CAPsMAN, D53), 40a (Gast/IoT im lokalen Fallback,
+  Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
+* **Auf Hardware eingeschaltet, Client-Test offen:** 24 (eigene Radios des CAPsMAN, D53: hAP be³ mit
+  drei Radios, gepinnt, Gast-Schalter schaltet sie mit, 2026-10-03).
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update über cfm auf einem Gerät mit 16 MB Flash (38, D63).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging

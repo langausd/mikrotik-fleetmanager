@@ -567,8 +567,8 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
 `"switch"="off"` an der SSID in `wifi.rsc` (optional `"autoOff"="50h"`) bekommt der CAPsMAN:
 
 * die Skripte `cfm-ssid-<key>-on` und `cfm-ssid-<key>-off`: Sie nehmen die SSID in die
-  Provisioning-Regeln auf bzw. heraus und provisionieren die Radios der APs neu – **alle SSIDs eines
-  APs sind dabei etwa 3 s weg**. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
+  Provisioning-Regeln auf bzw. heraus und provisionieren die Radios der APs neu (mit
+  `capsmanRadios` auch die eigenen) – **alle SSIDs eines APs sind dabei etwa 3 s weg**. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
   `read,api,test`) darf sie starten, ohne selbst schreiben zu dürfen;
 * den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn, ein
   Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`;

@@ -458,6 +458,8 @@
       :set src ($src . ":local v \$st\n:if (\$st = \"on\" and " . $aos . " > 0) do={ :set v (\"on \" . (([:tonsec [:timestamp]] / 1000000000) + " . $aos . ")) }\n")
       :set src ($src . ":onerror e in={ /file/set \"" . $sf . "\" contents=\$v } do={ /file/add name=\"" . $sf . "\" contents=\$v }\n")
       :set src ($src . ":global cfmSsid" . $k . "; :set cfmSsid" . $k . " \$st\n:delay 1s\n/interface/wifi/radio/provision [find where !local]\n")
+      # eigene Radios des CAPsMAN (capsmanRadios, D53; Merker wifi-local.txt) ebenfalls neu provisionieren
+      :set src ($src . ":onerror e in={ :local x [/file/get \"" . $cfmDir . "/wifi-local.txt\" name]; /interface/wifi/radio/provision [find where local] } do={}\n")
       :set src ($src . ":log info (\"cfm: SSID " . ($s->"ssid") . " \" . \$st)\n")
       $cfmEnsure m="/system/script" k=("sys:ssid-" . $k . "-" . $act) n=({"name"=("cfm-ssid-" . $k . "-" . $act)}) p=({"name"=("cfm-ssid-" . $k . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
     }
@@ -501,6 +503,13 @@
         :if ($lr) do={ $cfmLog ("eigene Radios (" . $nr . ") würden über den eigenen CAPsMAN provisioniert") } else={ $cfmLog ("eigene Radios (" . $nr . ") würden zurückgesetzt (capsmanRadios aus)") }
       } else={
         :if ($lr) do={
+          # Wi-Fi 7 (hAP be³): ab Werk hängen die Radios am statischen, abgeschalteten MLD - ohne MLO
+          # blieben sie aus ("mld-interface not enabled"), wie bei den APs (D46) lösen
+          :if ([:len [:tostr ($cfmWifi->"mlo")]] = 0 or [:tostr ($cfmWifi->"mlo")] = "disabled") do={
+            :local smld false
+            :foreach x in=[/interface/wifi/find where !dynamic] do={ :if ([:len [:tostr ([/interface/wifi/get $x]->"mld-name")]] > 0) do={ :set smld true } }
+            :if ($smld) do={ :foreach i in=[/interface/wifi/find where default-name~"^wifi" and !dynamic] do={ :onerror e in={ /interface/wifi/unset $i value-name=mld-interface } do={} } }
+          }
           /interface/wifi/radio/provision [find where local]
           :if ([:len $old] = 0) do={ /file/add name=$sf contents=$h } else={ /file/set $sf contents=$h }
           $cfmLog ("eigene Radios (" . $nr . ") über den eigenen CAPsMAN provisioniert")

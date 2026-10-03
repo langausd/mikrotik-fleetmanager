@@ -492,7 +492,9 @@
         :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
         # Spiegel des eingebauten Updates (D63) nicht stehen lassen
         /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"]
-        :if ([:tostr ($st->"upm")] = "spiegel") do={ /system/package/update/set mode=https; :set ($st->"upm") }
+        :if ([:tostr ($st->"upm")] = "spiegel") do={
+          :if ([:tostr [/system/package/update/get mode]] = "https") do={ :set ($st->"upm") } else={ /system/package/update/set mode=https }
+        }
       } else={
        :local act ""
        :local fl ({})
@@ -583,7 +585,11 @@
     :set ($st->"upf"); :set ($st->"upa"); :set ($st->"upg")
     # befristeten Spiegel des eingebauten Updates (D63) zurücknehmen
     :if ([:len [/ip/dns/static/find where comment="cfm-sys:upgrade-mirror"]] > 0) do={ /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"] }
-    :if ([:tostr ($st->"upm")] = "spiegel") do={ /system/package/update/set mode=https; :set ($st->"upm") }
+    # mode=https erst als erledigt merken, wenn ein späterer Lauf es vorfindet: direkt nach dem Neustart
+    # in die neue Version blieb es auf einem hEX (7.24.5) trotz set auf http (Hardware 2026-10-03)
+    :if ([:tostr ($st->"upm")] = "spiegel") do={
+      :if ([:tostr [/system/package/update/get mode]] = "https") do={ :set ($st->"upm") } else={ /system/package/update/set mode=https }
+    }
   }
 
   # --- RouterBOARD-Firmware: Nach einem RouterOS-Update passt "current-firmware" nicht mehr zu

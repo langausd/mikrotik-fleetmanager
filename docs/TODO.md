@@ -99,9 +99,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   brechen ab, conntrack wird nicht abgeglichen)?
 * Feste Leases und DNS-Namen (D62) auf einem Hardware-Router, bei VRRP auf allen Routern; dabei
   prüfen, ob eine schon dynamisch vergebene Lease derselben MAC das Anlegen der festen stört.
-* Eingebautes Update über cfm (D63, `via=internet|mirror`) auf einem Gerät mit 16 MB Flash (hEX,
-  CRS328): RAM statt Flash beim Download, Rückbau von DNS-Eintrag und `mode` nach dem Neustart.
-  (Das eingebaute Update selbst lief auf einem CRS328 mit 1,7 MB frei von Hand.)
+* ~~Eingebautes Update über cfm (D63) auf einem Gerät mit 16 MB Flash~~ – gelaufen 2026-10-03: hEX
+  RB750Gr3 von 7.23.1 auf 7.24.5 über `via=mirror` (Apache als Spiegel, `--export`), 2,4 MB frei, vier
+  Pakete, gut 4 min samt Neustart. Befund: `mode` blieb danach auf `http` – der Agent prüft den
+  Rückbau jetzt in einem späteren Lauf nach. `via=internet` noch nicht über cfm gelaufen.
 * Schaltbare SSID (D64) auf Hardware mit Home Assistant: Taster/Sensor der Integration, Rechte des
   API-Users (`read,api,test` + `dont-require-permissions` ist nur im Labor per SSH geprüft), Auto-Aus.
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
@@ -344,7 +345,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 38. ~~**RouterOS-Update auf Geräten mit 16 MB Flash**~~ (hEX RB750Gr3, CRS328 u.ä.) – *erledigt
     (D63):* `$cfmUpgrade … via=internet|via=mirror mirror=<IP>` nutzt das eingebaute Update des
     Geräts, der Spiegel ist `tools/upgrade-mirror.py`; Labor: `e2e.sh` Schritt 13e. tmpfs geht nicht
-    (Laborversuch 2026-10-03). Auf Hardware mit 16 MB noch nicht über cfm gelaufen. – *Vorab-Prüfung
+    (Laborversuch 2026-10-03). Auf Hardware: hEX mit 2,4 MB frei über den Spiegel aktualisiert. – *Vorab-Prüfung
     erledigt (D51):* Agent meldet den freien Platz (`fs`), `$cfmUpgrade` erteilt zu vollen Geräten
     keinen Auftrag, der Agent prüft vor dem Download erneut. Offen bleibt das Update selbst (tmpfs
     oder eingebautes Update, nur mit Hardware testbar). – `$cfmUpgrade` lädt
@@ -440,3 +441,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Ethernet-Ports (womöglich der Fehler der Kabel-Ports unter 7.24.2–7.24.4). Der Labortest aller
     Skripte auf 7.24.5 ist grün (e2e 169, Onboarding 14/15/18, `e2e-vrrp.sh` 79), e2e auf 7.24.2
     ebenso. Update auf Hardware: vor Ort.
+
+46. **`$cfmWifiScan` mit den eigenen Radios des CAPsMAN** – Der Scan und der Pin-Vorschlag umfassen nur
+    Geräte mit Rolle `ap`. Funkt der CAPsMAN selbst mit (`capsmanRadios`), fehlt er in der Rechnung;
+    seine Radios lassen sich direkt scannen (auch abgeschaltet, Hardware 2026-10-03). Einbauen, damit
+    ein Vorschlag alle Sender kennt.

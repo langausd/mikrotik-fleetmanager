@@ -145,7 +145,7 @@ Die WLAN-Punkte D53–D56 sind gebaut und im Labor nur auf Darstellung und Prüf
 
 ## Zweite Remote-Runde (2026-10-02/03)
 
-Aus der Ferne gebaut, D60 auf Hardware geprüft (vier APs an einem hAP be³ als CAPsMAN), D61/D62 im Labor (`e2e.sh` Schritt 9), D63 im Labor (`e2e.sh` Schritt 13e: Update vom Spiegel); D62 wirkt nur auf Geräten mit Rolle `router`.
+Aus der Ferne gebaut. Labor: D61/D62 in `e2e.sh` Schritt 9, D63 in Schritt 13e (Update vom Spiegel). Hardware (2026-10-03, neun Geräte, vier APs an einem hAP be³ als CAPsMAN): D60 (Scan mit Pin-Vorschlag und Zeile „Aktuell“) und D61 (`$cfmShow`, `objects=yes` am Manager, `$cfmDiff`); D62 wirkt nur auf Geräten mit Rolle `router`, D63 ist auf Hardware noch nicht über cfm gelaufen.
 
 | Nr | Frage | Entscheidung · Alternativen | Begründung |
 |---|---|---|---|

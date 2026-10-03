@@ -101,8 +101,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * Eingebautes Update über cfm (D63, `via=internet|mirror`) auf einem Gerät mit 16 MB Flash (hEX,
   CRS328): RAM statt Flash beim Download, Rückbau von DNS-Eintrag und `mode` nach dem Neustart.
   (Das eingebaute Update selbst lief auf einem CRS328 mit 1,7 MB frei von Hand.)
-* `$cfmShow objects=yes` auf einem Manager mit vielen Skripten: bleibt die Ausgabe unter der
-  Grenze, oder greift die Kürzung bei 50 000 Zeichen?
+* ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
+  (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
 
 ## Bekannte Fehler
 

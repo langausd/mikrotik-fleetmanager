@@ -31,6 +31,10 @@
 #  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab
 #  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback (D54,
 #            slaves-static; die Master-SSID tut das immer)
+#  switch    an einer weiteren SSID: "switch"="off"|"on" -> per Skript schaltbar (D64), Wert =
+#            Grundzustand. Der CAPsMAN bekommt cfm-ssid-<key>-on/-off (z.B. für Home Assistant über
+#            capsmanApi), :global cfmSsid<key> zeigt den Zustand; Schlüssel nur a-z0-9
+#  autoOff   zu switch: nach dieser Dauer wieder aus, z.B. "autoOff"="50h"
 # Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (D53)
 # ============================================================
 :global cfmWifi {

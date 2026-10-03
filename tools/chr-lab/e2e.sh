@@ -360,6 +360,28 @@ echo "$out" | grep -q "PPSK auf SSID main braucht sec=wpa2-psk" && ok "Prüfung:
 echo "$out" | grep -q "cap ist reserviert" && ok "Prüfung: SSID-Schlüssel cap reserviert (D41)" || { bad "SSID-Schlüssel cap nicht erkannt"; echo "$out" | tail -3; }
 echo "$out" | grep -q "(6 GHz) braucht" && ok "Prüfung: 6 GHz nur mit WPA3 und PMF required" || { bad "6 GHz mit WPA2 nicht erkannt"; echo "$out" | tail -3; }
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
+# Schaltbare SSIDs (D64): guest und event mit switch=off -> nicht in den Regeln; die Skripte schalten
+# (5 GHz bleibt dabei ganz ohne weitere SSID: leere Liste), der Apply behält den Zustand, Auto-Aus
+cnt=':local n 0; :foreach i in=[/interface/wifi/provisioning/find where comment~"^cfm:wprov"] do={ :if ([:tostr [/interface/wifi/provisioning/get $i slave-configurations]] ~ "cfm-guest") do={ :set n ($n + 1) } }; :put ("G=" . $n)'
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"ssids\"->\"guest\"->\"switch\") \"off\"\n:set (\$cfmWifi->\"ssids\"->\"guest\"->\"autoOff\") \"50h\"\n:set (\$cfmWifi->\"ssids\"->\"event\"->\"switch\") \"off\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" SSID schaltbar" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Gast schaltbar) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
+r 1 "$cnt" | grep -q "G=0" && ok "Gast-SSID im Grundzustand aus: in keiner Provisioning-Regel" || bad "Gast-SSID trotz switch=off in den Regeln: $(r 1 "$cnt" | tail -1)"
+expect 1 '[/system/script/get [find name="cfm-ssid-guest-on"] dont-require-permissions] = true and [:len [/system/script/find where name~"^cfm-ssid-(guest|event)-(on|off)\$"]] = 4 and [:len [/system/scheduler/find where name="cfm-ssid-check" and interval=10m]] = 1' "cm1: Schalt-Skripte (dont-require-permissions) und Prüfung alle 10 min"
+expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "cfm-guest"]] = "num"' "Schalt-Skript kennt die Konfiguration der Gast-SSID"
+r 1 ':global cfmSsidguest; :put ("S=" . $cfmSsidguest)' | grep -q "S=off" && ok "Zustand für Home Assistant: cfmSsidguest=off" || bad "cfmSsidguest: $(r 1 ':global cfmSsidguest; :put $cfmSsidguest' | tail -1)"
+r 1 '/system/script/run cfm-ssid-guest-on' >/dev/null
+r 1 "$cnt" | grep -q "G=0" && bad "Einschalten wirkt nicht" || ok "cfm-ssid-guest-on: Gast-SSID in den Regeln ($(r 1 "$cnt" | tail -1))"
+expect 1 '[:pick [/file/get cfm/ssid-guest.txt contents] 0 3] = "on " and [:tonum [:pick [/file/get cfm/ssid-guest.txt contents] 3 99]] > ([:tonsec [:timestamp]] / 1000000000 + 170000)' "Zustand on mit Ablauf in 50 h"
+t0=$(stat cm1 t); mgr '$cfmPush host=cm1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat cm1 t)" != "$t0" ] && break; sleep 4; done
+r 1 "$cnt" | grep -q "G=0" && bad "Apply hat die eingeschaltete Gast-SSID wieder entfernt" || ok "Apply behält den Zustand on"
+r 1 '/system/script/run cfm-ssid-guest-off' >/dev/null
+r 1 "$cnt" | grep -q "G=0" && ok "cfm-ssid-guest-off: Gast-SSID aus den Regeln" || bad "Ausschalten wirkt nicht"
+r 1 ':local n 0; :foreach i in=[/interface/wifi/provisioning/find where comment~"^cfm:wprov"] do={ :if ([:tostr [/interface/wifi/provisioning/get $i supported-bands]] ~ "5ghz" and [:len [/interface/wifi/provisioning/get $i slave-configurations]] = 0) do={ :set n ($n + 1) } }; :put ("E=" . $n)' | grep -q "E=[1-9]" && ok "5 GHz ganz ohne weitere SSID (leere Liste gesetzt)" || bad "leere Liste auf 5 GHz nicht gesetzt"
+r 1 '/system/script/run cfm-ssid-guest-on; /file/set cfm/ssid-guest.txt contents="on 1000"; /system/script/run cfm-ssid-check' >/dev/null
+r 1 "$cnt" | grep -q "G=0" && r 1 ':global cfmSsidguest; :put ("S=" . $cfmSsidguest)' | grep -q "S=off" && ok "Auto-Aus nach Ablauf (cfm-ssid-check)" || bad "Auto-Aus: $(r 1 "$cnt" | tail -1)"
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 
 step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enroll ohne Apply (sw1)"
 # cm2 ist kein Router und per Bootstrap aufgenommen: prüft zugleich, dass die Rolle base die

@@ -84,7 +84,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 | `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys`), Firmware-Aktivierung, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
-| `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`) |
+| `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus) |
 | `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, NTP-Server, WireGuard-Fernzugang (optional) |
 | `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only |
@@ -138,6 +138,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
 | Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle der APs | `$cfmChannels` (Warnung bei gleichem Kanal an einem Switch) |
+| Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API), Auto-Aus mit `autoOff` |
 | Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP nacheinander, Pin-Vorschlag für 2,4 GHz) |
 
 ## Automatisches Onboarding (Push in die Werks-Config)

@@ -13,7 +13,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   – ein externer Syslog-Server ist geplant).
 * **Erledigt am 2026-10-02/03:** 11 (feste Leases und DNS-Namen, D62), 12 (`$cfmShow`/`$cfmDiff`,
   D61), 41 (`$cfmWifiScan` über den CAPsMAN, auf Hardware gelaufen, D60), 38 (Update bei 16 MB
-  Flash über das eingebaute Update, Spiegel `tools/upgrade-mirror.py`, D63).
+  Flash über das eingebaute Update, Spiegel `tools/upgrade-mirror.py`, D63); dazu schaltbare SSIDs
+  für Home Assistant (D64, neu auf Wunsch).
 * **Erledigt am 2026-10-01:** 21 (Dateizugriff über den Namen, D59), 36 (Labortest), 44 (Rest,
   D58), „Manager-Ticks starten gleichzeitig“ (D57); Labortest des Watchdog-Rollbacks (`e2e.sh`
   Schritt 14d) und Probe des Router-Umzugs mit drei VRRP-Routern (`e2e-vrrp.sh`). Am 2026-09-30:
@@ -101,6 +102,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * Eingebautes Update über cfm (D63, `via=internet|mirror`) auf einem Gerät mit 16 MB Flash (hEX,
   CRS328): RAM statt Flash beim Download, Rückbau von DNS-Eintrag und `mode` nach dem Neustart.
   (Das eingebaute Update selbst lief auf einem CRS328 mit 1,7 MB frei von Hand.)
+* Schaltbare SSID (D64) auf Hardware mit Home Assistant: Taster/Sensor der Integration, Rechte des
+  API-Users (`read,api,test` + `dont-require-permissions` ist nur im Labor per SSH geprüft), Auto-Aus.
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
 

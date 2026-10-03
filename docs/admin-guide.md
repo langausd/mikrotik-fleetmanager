@@ -25,7 +25,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
 [3 Planung](#3-planung) · [4 Datenmodell](#4-datenmodell) · [5 Rollen](#5-rollen) ·
-[6 Inbetriebnahme](#6-inbetriebnahme) · [7 Geräte aufnehmen](#7-geräte-aufnehmen) ·
+[6 Inbetriebnahme](#6-inbetriebnahme) (6.8 SSID per Home Assistant) · [7 Geräte aufnehmen](#7-geräte-aufnehmen) ·
 [8 Tägliche Arbeit](#8-tägliche-arbeit) · [9 Notfälle](#9-sicherheitsnetze-und-notfälle) ·
 [10 Sicherheit](#10-sicherheit) · [11 Eigene Templates](#11-eigene-templates) ·
 [12 Testlabor](#12-testlabor) · [13 Befehle](#13-befehlsreferenz) ·
@@ -286,6 +286,9 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 * `fallback="yes"` an einer weiteren SSID (z.B. Gast): Sie sendet auch im lokalen Fallback der APs
   weiter (D54, `slaves-static`). Die `master`-SSID tut das immer (D46). Noch nicht auf Hardware
   geprüft – nach dem Einschalten den CAPsMAN-Dienst kurz abschalten und nachsehen.
+* `switch="off"|"on"` an einer weiteren SSID: schaltbar per Skript, der Wert ist der Grundzustand
+  (D64, siehe 6.8); dazu optional `autoOff` (z.B. `"50h"`): so lange nach dem Einschalten schaltet
+  der CAPsMAN sie selbst wieder ab. Schlüssel der SSID nur aus Kleinbuchstaben und Ziffern.
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
@@ -383,7 +386,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54) |
-| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53) |
+| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt |
@@ -557,6 +560,28 @@ Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für desse
    Ein neuer Regelblock steht ganz oben in `/ip/firewall/filter`, also vor eigenen Sperrregeln.
 3. In HA die Integration einrichten: Host = MGMT-IP des CAPsMAN, Port 8728, ohne SSL, User/Passwort
    wie oben. Zieht der CAPsMAN um, dort die Adresse ändern (die Freigaben ziehen selbst mit).
+
+### 6.8 SSID per Home Assistant schalten (D64)
+
+Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre Beacons. Mit
+`"switch"="off"` an der SSID in `wifi.rsc` (optional `"autoOff"="50h"`) bekommt der CAPsMAN:
+
+* die Skripte `cfm-ssid-<key>-on` und `cfm-ssid-<key>-off`: Sie nehmen die SSID in die
+  Provisioning-Regeln auf bzw. heraus und provisionieren die Radios der APs neu – **alle SSIDs eines
+  APs sind dabei etwa 3 s weg**. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
+  `read,api,test`) darf sie starten, ohne selbst schreiben zu dürfen;
+* den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn, ein
+  Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`;
+* die Variable `:global cfmSsid<key>` (`on`/`off`) als Zustand für HA und das Skript
+  `cfm-ssid-check` (Scheduler alle 10 min), das sie nach einem Neustart setzt und nach `autoOff`
+  abschaltet.
+
+In HA (nicht von cfm geprüft): Die Integration „Mikrotik Router“ kann Skripte als Taster anbieten
+und Umgebungsvariablen als Sensor (in ihren Optionen aktivieren); ein Template-Schalter kombiniert
+beides. Jeder andere API-Client geht genauso: `/system/script/run` mit `number=cfm-ssid-guest-on`.
+Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`. Nach dem ersten Release mit
+`switch="off"` sendet die SSID noch, bis die Radios neu provisioniert werden – einmal
+`cfm-ssid-<key>-off` starten (oder `/interface/wifi/radio/provision [find where !local]`).
 
 ---
 
@@ -763,6 +788,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`,
 | Vorher sehen, was sich ändert | `$cfmDiff` (Dateien und Zeilen), `$cfmPlan host=<name>` (Objekte auf dem Gerät) |
 | Effektive Konfiguration eines Geräts | `$cfmShow host=<name>` bzw. `objects=yes` |
 | Feste Adresse und DNS-Name für ein Gerät im VLAN | `leases.rsc` → Release (nur mit Rolle `router`) |
+| Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN, z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
 | Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
@@ -840,7 +866,10 @@ $cfmUpgrade ver=7.25.1 host=core via=internet           # eingebautes Update, Ge
   * `via=mirror mirror=<IP>`: Für Geräte ohne Internet. Auf einem Rechner, den die Geräte
     erreichen, läuft `sudo tools/upgrade-mirror.py <ver>` (Port 80; er holt die Dateien bei Bedarf
     von MikroTik und speichert sie zwischen, ohne Internet vorher unter `<dir>/routeros/<ver>/`
-    ablegen). Der Agent leitet `upgrade.mikrotik.com` per statischem DNS-Eintrag
+    ablegen). Läuft dort schon ein Webserver auf Port 80, schreibt `--export <DocumentRoot>` die
+    Dateien statisch hinein (z.B. `sudo tools/upgrade-mirror.py 7.24.5 --dir ~/.cache/cfm-upgrade-mirror
+    --offline --export /var/www/html`, vorher ohne sudo mit `--prefetch` laden, danach
+    `routeros/` wieder löschen). Der Agent leitet `upgrade.mikrotik.com` per statischem DNS-Eintrag
     (`cfm-sys:upgrade-mirror`) auf den Spiegel um und stellt das eingebaute Update auf HTTP; nach
     dem Update nimmt er beides zurück. Die Pakete sind von MikroTik signiert, RouterOS prüft das beim
     Installieren. Beim Wartungsfenster (`at=`) muss der Spiegel zu dieser Zeit laufen.
@@ -1169,6 +1198,8 @@ den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöck
 `cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
 Wurzelverzeichnis, beim eingebauten Update über einen Spiegel der DNS-Eintrag `cfm-sys:upgrade-mirror`.
+Auf dem CAPsMAN mit schaltbaren SSIDs (D64): Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
+samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 
 ---
 

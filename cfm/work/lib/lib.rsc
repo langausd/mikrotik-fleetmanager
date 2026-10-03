@@ -195,6 +195,18 @@
 # und Konfiguration, PPSK-Einträge, dazu je Band die Master-Konfiguration mit dem Kanal.
 #  ohne ap    CAPsMAN: cfm-m<Band>, je gepinntem AP cfm-m<Band>-<AP> -> Liste der Provisioning-Regeln
 #  ap=<Name>  lokal auf dem AP: cfm-l<Band> mit dem Pin dieses APs bzw. dem Pool -> {Band=Konfiguration}
+:global cfmSsidState do={
+  # Schaltbare SSID (D64): Zustand "on"/"off" aus <cfm>/ssid-<key>.txt auf dem CAPsMAN (schreiben die
+  # Skripte cfm-ssid-<key>-on/-off), ohne Datei der Grundzustand aus wifi.rsc ("switch")
+  :global cfmDir; :global cfmWifi
+  :local st [:tostr ($cfmWifi->"ssids"->$1->"switch")]
+  :local c ""
+  :onerror e in={ :set c [/file/get ($cfmDir . "/ssid-" . $1 . ".txt") contents] } do={}
+  :if ([:pick $c 0 2] = "on") do={ :set st "on" }
+  :if ([:pick $c 0 3] = "off") do={ :set st "off" }
+  :return $st
+}
+
 :global cfmWifiRender do={
   :global cfmWifi; :global cfmEnsure; :global cfmLog; :global cfmDry
   :local w $cfmWifi
@@ -352,12 +364,24 @@
     $f
   } do={ :if ($e ~ "bad parameter") do={ :set mlOk false } }
   :local pl ({})
+  # schaltbare SSIDs (D64): im Zustand "off" nicht in den Regeln; je Regel (Schlüssel wie $cfmBlock:
+  # wprov:00, wprov:01 …) merkt cfmSsidSw den Namen der Konfiguration für die Schalt-Skripte
+  :global cfmSsidSw; :set cfmSsidSw ({})
+  :global cfmSsidState
+  :local son ({})
+  :foreach k,s in=($w->"ssids") do={
+    :if ($k != $mk and [:len [:tostr ($s->"switch")]] > 0) do={ :set ($cfmSsidSw->$k) ({}); :set ($son->$k) [$cfmSsidState $k] }
+  }
   :foreach r in=$rules do={
     :local b ($r->"b")
     :local sl ({})
+    :local rk ("wprov:" . [:pick [:tostr (100 + [:len $pl])] 1 3])
     :foreach k,s in=($w->"ssids") do={
       :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={
-        :if ([:typeof ($bcf->$b)] != "nothing") do={ :set ($sl->[:len $sl]) ("cfm-" . $k . "-" . $b . "g") } else={ :set ($sl->[:len $sl]) ("cfm-" . $k) }
+        :local cn ("cfm-" . $k)
+        :if ([:typeof ($bcf->$b)] != "nothing") do={ :set cn ("cfm-" . $k . "-" . $b . "g") }
+        :if ([:typeof ($cfmSsidSw->$k)] = "array") do={ :set ($cfmSsidSw->$k->$rk) $cn }
+        :if ([:tostr ($son->$k)] != "off") do={ :set ($sl->[:len $sl]) $cn }
       }
     }
     # Interface-Namen aus Identity und Band (z.B. ap1-2g) statt cap-wifiN, das sich bei jeder
@@ -406,6 +430,55 @@
     $cfmWarn "CAPsMAN bleibt aus, bis der Secret-Push die WLAN-Passphrasen gesetzt hat"
   }
   $cfmSet m="/interface/wifi/capsman" p=({"enabled"=$en;"interfaces"=("vlan" . [:tostr ($cfmG->"mgmtVlan")]);"certificate"="auto";"ca-certificate"="auto";"require-peer-certificate"="no";"upgrade-policy"="none"})
+  # Schaltbare SSIDs (D64): Skripte cfm-ssid-<key>-on/-off nehmen die SSID in die Provisioning-Regeln
+  # auf bzw. heraus und provisionieren die CAP-Radios neu (alle SSIDs eines APs ~3 s weg); Zustand in
+  # <cfm>/ssid-<key>.txt, den der nächste Apply übernimmt. dont-require-permissions: der API-User aus
+  # capsmanApi (Gruppe read,api,test) darf sie starten, ohne selbst schreiben zu dürfen. cfm-ssid-check
+  # (alle 10 min) schaltet nach autoOff ab und hält :global cfmSsid<key> ("on"/"off") für Home Assistant.
+  :global cfmSsidSw; :global cfmSsidState; :global cfmDir; :global cfmWifi
+  :local ck ""
+  :foreach k,mp in=$cfmSsidSw do={
+    :local s ($cfmWifi->"ssids"->$k)
+    :local sf ($cfmDir . "/ssid-" . $k . ".txt")
+    :local aos 0
+    :if ([:len [:tostr ($s->"autoOff")]] > 0) do={ :set aos ([:tonsec [:totime ($s->"autoOff")]] / 1000000000) }
+    :local am ""
+    :foreach rk,cn in=$mp do={ :set am ($am . ";\"" . $rk . "\"=\"" . $cn . "\"") }
+    :set am ("({" . [:pick $am 1 [:len $am]] . "})")
+    :foreach act in={"on";"off"} do={
+      :local src ("# cfm (Rolle capsman, D64): SSID " . ($s->"ssid") . " " . $act . " - für Home Assistant, jeder Apply schreibt es neu\n")
+      :set src ($src . ":local st \"" . $act . "\"\n:local add " . $am . "\n")
+      :set src ($src . ":foreach id in=[/interface/wifi/provisioning/find where comment~\"^cfm:wprov:\"] do={\n")
+      :set src ($src . "  :local c [:tostr [/interface/wifi/provisioning/get \$id comment]]\n")
+      :set src ($src . "  :local nm [:tostr (\$add->[:pick \$c 4 [:find (\$c . \" \") \" \"]])]\n")
+      :set src ($src . "  :if ([:len \$nm] > 0) do={\n    :local nl ({})\n")
+      :set src ($src . "    :foreach x in=[/interface/wifi/provisioning/get \$id slave-configurations] do={ :if ([:tostr \$x] != \$nm) do={ :set (\$nl->[:len \$nl]) [:tostr \$x] } }\n")
+      :set src ($src . "    :if (\$st = \"on\") do={ :set (\$nl->[:len \$nl]) \$nm }\n")
+      :set src ($src . "    :if ([:len \$nl] = 0) do={ /interface/wifi/provisioning/set \$id slave-configurations=\"\" } else={ /interface/wifi/provisioning/set \$id slave-configurations=\$nl }\n  }\n}\n")
+      :set src ($src . ":local v \$st\n:if (\$st = \"on\" and " . $aos . " > 0) do={ :set v (\"on \" . (([:tonsec [:timestamp]] / 1000000000) + " . $aos . ")) }\n")
+      :set src ($src . ":onerror e in={ /file/set \"" . $sf . "\" contents=\$v } do={ /file/add name=\"" . $sf . "\" contents=\$v }\n")
+      :set src ($src . ":global cfmSsid" . $k . "; :set cfmSsid" . $k . " \$st\n:delay 1s\n/interface/wifi/radio/provision [find where !local]\n")
+      :set src ($src . ":log info (\"cfm: SSID " . ($s->"ssid") . " \" . \$st)\n")
+      $cfmEnsure m="/system/script" k=("sys:ssid-" . $k . "-" . $act) n=({"name"=("cfm-ssid-" . $k . "-" . $act)}) p=({"name"=("cfm-ssid-" . $k . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
+    }
+    # Prüfung: Zustand für HA aus der Datei (ohne Datei der Grundzustand), Auto-Aus nach autoOff
+    :local df [:tostr ($s->"switch")]
+    :set ck ($ck . ":local c" . $k . " \"\"\n:onerror e in={ :set c" . $k . " [/file/get \"" . $sf . "\" contents] } do={}\n")
+    :set ck ($ck . ":global cfmSsid" . $k . "\n:set cfmSsid" . $k . " \"" . $df . "\"\n")
+    :set ck ($ck . ":if ([:pick \$c" . $k . " 0 2] = \"on\") do={ :set cfmSsid" . $k . " \"on\" }\n:if ([:pick \$c" . $k . " 0 3] = \"off\") do={ :set cfmSsid" . $k . " \"off\" }\n")
+    :if ($aos > 0) do={
+      :set ck ($ck . ":local p" . $k . " [:find \$c" . $k . " \" \"]\n")
+      :set ck ($ck . ":if ([:pick \$c" . $k . " 0 2] = \"on\" and [:typeof \$p" . $k . "] = \"num\") do={ :if ([:tonum [:pick \$c" . $k . " (\$p" . $k . " + 1) [:len \$c" . $k . "]]] <= \$now) do={ /system/script/run cfm-ssid-" . $k . "-off } }\n")
+    }
+    # Zustand gleich jetzt setzen (sonst erst nach dem ersten Prüflauf)
+    :local fs [:parse (":global cfmSsid" . $k . "; :set cfmSsid" . $k . " \"" . [$cfmSsidState $k] . "\"")]
+    $fs
+  }
+  :if ([:len $ck] > 0) do={
+    :set ck ("# cfm (Rolle capsman, D64): Zustand der schaltbaren SSIDs für Home Assistant, Auto-Aus\n:local now ([:tonsec [:timestamp]] / 1000000000)\n" . $ck)
+    $cfmEnsure m="/system/script" k="sys:ssid-check" n=({"name"="cfm-ssid-check"}) p=({"name"="cfm-ssid-check";"source"=$ck;"policy"="ftp,read,write,test"})
+    $cfmEnsure m="/system/scheduler" k="sys:ssid-check" n=({"name"="cfm-ssid-check"}) p=({"name"="cfm-ssid-check";"interval"="10m";"start-time"="startup";"on-event"="/system/script/run cfm-ssid-check";"disabled"="no"})
+  }
   # Eigene Radios (TODO 24, D53): Ein CAPsMAN verwaltet sich laut MikroTik nicht selbst als CAP, kann
   # seine Radios aber über /interface/wifi/radio/provision mit denselben Regeln provisionieren
   # (Profile, Pins, virtuelle APs; der Datapath trägt "bridge" für genau diesen Fall). Hostfile

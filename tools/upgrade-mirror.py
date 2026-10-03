@@ -16,12 +16,18 @@ NPK-Kennung.
   tools/upgrade-mirror.py 7.24.5 --port 8080         # ohne root (nur mit Weiterleitung auf 80)
   tools/upgrade-mirror.py 7.24.5 --prefetch arm64:routeros,wifi-qcom mmips:routeros
 
+Läuft auf Port 80 schon ein Webserver, legt --export die Dateien statisch dort ab und beendet sich
+(danach wieder löschen):
+  tools/upgrade-mirror.py 7.24.5 --prefetch mmips:routeros,dude
+  sudo tools/upgrade-mirror.py 7.24.5 --dir ~/.cache/cfm-upgrade-mirror --offline --export /var/www/html
+
 Geräte erreichen den Spiegel auf Port 80 der angegebenen Adresse (RouterOS fragt immer Port 80).
 """
 import argparse
 import http.server
 import os
 import re
+import shutil
 import sys
 import time
 import urllib.request
@@ -138,6 +144,8 @@ def main(argv=None):
     ap.add_argument("--offline", action="store_true", help="nichts von MikroTik laden, nur den Zwischenspeicher")
     ap.add_argument("--prefetch", nargs="*", default=[], metavar="ARCH:PAKET,…",
                     help="vorab laden, z.B. arm64:routeros,wifi-qcom x86:routeros")
+    ap.add_argument("--export", metavar="DOCROOT",
+                    help="statt zu lauschen: Spiegel nach DOCROOT/routeros/ schreiben (vorhandener Webserver auf Port 80)")
     a = ap.parse_args(argv)
     if not re.fullmatch(VER_RE, a.version):
         ap.error(f"Version {a.version!r} nicht erkannt")
@@ -149,6 +157,25 @@ def main(argv=None):
             if not m.fetch(f"{a.version}/{pkg_name(p, a.version, arch)}"):
                 print(f"Vorab laden fehlgeschlagen: {p} ({arch})", file=sys.stderr)
                 return 1
+    if a.export:
+        dst = os.path.join(a.export, "routeros")
+        os.makedirs(os.path.join(dst, a.version), exist_ok=True)
+        with open(os.path.join(dst, f"NEWESTa7.{channel(a.version)}"), "wb") as f:
+            f.write(m.newest)
+        src = m.local(a.version)
+        n = 0
+        for fn in sorted(os.listdir(src)) if os.path.isdir(src) else []:
+            if not fn.endswith(".part"):
+                shutil.copyfile(os.path.join(src, fn), os.path.join(dst, a.version, fn))
+                n += 1
+        for root, dirs, files in os.walk(dst):           # für den Webserver lesbar
+            for x in dirs:
+                os.chmod(os.path.join(root, x), 0o755)
+            for x in files:
+                os.chmod(os.path.join(root, x), 0o644)
+        print(f"Spiegel für RouterOS {a.version} nach {dst} geschrieben ({n} Dateien + "
+              f"NEWESTa7.{channel(a.version)}) - nach dem Update wieder löschen", file=sys.stderr)
+        return 0
     srv = http.server.ThreadingHTTPServer((a.bind, a.port), make_handler(m))
     print(f"Spiegel für RouterOS {a.version} (Kanal {channel(a.version)}) auf {a.bind}:{a.port}, "
           f"Zwischenspeicher {a.dir} - Ende mit Strg+C", file=sys.stderr)

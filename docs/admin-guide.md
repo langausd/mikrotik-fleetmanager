@@ -572,13 +572,18 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
   `read,api,test`) darf sie starten, ohne selbst schreiben zu dürfen;
 * den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn, ein
   Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`;
-* die Variable `:global cfmSsid<key>` (`on`/`off`) als Zustand für HA und das Skript
-  `cfm-ssid-check` (Scheduler alle 10 min), das sie nach einem Neustart setzt und nach `autoOff`
-  abschaltet.
+* das Skript `cfm-ssid-check` (Scheduler alle 10 min), das nach `autoOff` abschaltet, und die
+  Variable `:global cfmSsid<key>` (`on`/`off`) für die Konsole. Für HA taugt sie nicht: Die API zeigt
+  `/system/script/environment` nur Usern mit `write` und `policy`, und ein über die API gestartetes
+  Skript ändert sie nicht (Labor 7.24.5); sie folgt erst mit dem nächsten `cfm-ssid-check`.
 
-In HA (nicht von cfm geprüft): Die Integration „Mikrotik Router“ kann Skripte als Taster anbieten
-und Umgebungsvariablen als Sensor (in ihren Optionen aktivieren); ein Template-Schalter kombiniert
-beides. Jeder andere API-Client geht genauso: `/system/script/run` mit `number=cfm-ssid-guest-on`.
+In HA: **Anleitung [home-assistant.md](home-assistant.md)**, ein `command_line`-Schalter mit dem
+Hilfsskript `tools/home-assistant/cfm_ssid.py` (nur Python-Standardbibliothek). Es startet die
+Skripte per API (`/system/script/run` mit `number=cfm-ssid-guest-on`) und liest den Zustand mit den
+Rechten aus 6.7 aus den Provisioning-Regeln (`slave-configurations` enthält `cfm-<key>` bzw.
+`cfm-<key>-<Band>g`), den Ablauf aus der Datei. Die Taster der Integration „Mikrotik Router“
+schalten auch, kennen aber keinen Zustand. Jede Abfrage ist eine API-Anmeldung mit zwei Log-Zeilen
+am CAPsMAN – Abfrageintervall nicht unter 5 min.
 Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`. Nach dem ersten Release mit
 `switch="off"` sendet die SSID noch, bis die Radios neu provisioniert werden – einmal
 `cfm-ssid-<key>-off` starten (oder `/interface/wifi/radio/provision [find where !local]`).

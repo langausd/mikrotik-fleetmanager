@@ -434,7 +434,9 @@
   # auf bzw. heraus und provisionieren die CAP-Radios neu (alle SSIDs eines APs ~3 s weg); Zustand in
   # <cfm>/ssid-<key>.txt, den der nächste Apply übernimmt. dont-require-permissions: der API-User aus
   # capsmanApi (Gruppe read,api,test) darf sie starten, ohne selbst schreiben zu dürfen. cfm-ssid-check
-  # (alle 10 min) schaltet nach autoOff ab und hält :global cfmSsid<key> ("on"/"off") für Home Assistant.
+  # (alle 10 min) schaltet nach autoOff ab und hält :global cfmSsid<key> ("on"/"off") für die Konsole –
+  # nicht für HA: die API zeigt globale Variablen nur mit write+policy, ein API-Lauf ändert sie nicht
+  # (HA liest Regeln und Datei, tools/home-assistant/cfm_ssid.py).
   :global cfmSsidSw; :global cfmSsidState; :global cfmDir; :global cfmWifi
   :local ck ""
   :foreach k,mp in=$cfmSsidSw do={
@@ -463,7 +465,7 @@
       :set src ($src . ":log info (\"cfm: SSID " . ($s->"ssid") . " \" . \$st)\n")
       $cfmEnsure m="/system/script" k=("sys:ssid-" . $k . "-" . $act) n=({"name"=("cfm-ssid-" . $k . "-" . $act)}) p=({"name"=("cfm-ssid-" . $k . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
     }
-    # Prüfung: Zustand für HA aus der Datei (ohne Datei der Grundzustand), Auto-Aus nach autoOff
+    # Prüfung: Zustand für die Konsole aus der Datei (ohne Datei der Grundzustand), Auto-Aus nach autoOff
     :local df [:tostr ($s->"switch")]
     :set ck ($ck . ":local c" . $k . " \"\"\n:onerror e in={ :set c" . $k . " [/file/get \"" . $sf . "\" contents] } do={}\n")
     :set ck ($ck . ":global cfmSsid" . $k . "\n:set cfmSsid" . $k . " \"" . $df . "\"\n")

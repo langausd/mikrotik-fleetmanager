@@ -105,8 +105,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   RB750Gr3 von 7.23.1 auf 7.24.5 über `via=mirror` (Apache als Spiegel, `--export`), 2,4 MB frei, vier
   Pakete, gut 4 min samt Neustart. Befund: `mode` blieb danach auf `http` – der Agent prüft den
   Rückbau jetzt in einem späteren Lauf nach. `via=internet` noch nicht über cfm gelaufen.
-* Schaltbare SSID (D64) auf Hardware mit Home Assistant: Taster/Sensor der Integration, Rechte des
-  API-Users (`read,api,test` + `dont-require-permissions` ist nur im Labor per SSH geprüft), Auto-Aus.
+* Schaltbare SSID (D64) auf Hardware mit Home Assistant: `command_line`-Schalter mit
+  `tools/home-assistant/cfm_ssid.py` ([home-assistant.md](home-assistant.md)), Auto-Aus. Im Labor
+  per API geprüft (2026-10-03): Starten mit `read,api,test` + `dont-require-permissions`, Zustand aus
+  den Regeln, Ablauf aus der Datei; `:global cfmSsid<key>` ist für HA nicht lesbar (D64).
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
 

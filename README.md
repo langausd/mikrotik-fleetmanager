@@ -138,7 +138,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
 | Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle der APs | `$cfmChannels` (Warnung bei gleichem Kanal an einem Switch) |
-| Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API), Auto-Aus mit `autoOff` |
+| Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
 | Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP nacheinander, Pin-Vorschlag für 2,4 GHz) |
 
 ## Automatisches Onboarding (Push in die Werks-Config)

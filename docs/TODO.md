@@ -200,7 +200,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     z.B. bei mehreren Admins.
 19. ~~**Individuelle `authorized_keys` je Admin-Benutzer**~~ – *erledigt (D65):* `work/authorized_keys.<user>`
     je Person, Abgleich über den Fingerprint, Users ohne Datei unangetastet, die gemeinsame Datei gilt
-    nicht mehr. Labor: `e2e.sh` Schritt 14e. – Aktuell (D35) gilt eine einzige
+    nicht mehr. Labor: `e2e.sh` Schritt 14e. Hardware 2026-10-04: neun Geräte von der gemeinsamen Datei
+    umgestellt, die drei vorhandenen Keys blieben ohne Änderung stehen (gleiche Fingerprints). – Aktuell (D35) gilt eine einzige
     `authorized_keys`-Datei für ALLE User aus `global.rsc` `users`; bei mehreren Admins sollte
     jeder Benutzer nur seine eigenen Keys bekommen (z.B. `authorized_keys.<user>` oder Zuordnung
     innerhalb der Datei), inkl. Revocation pro Person statt nur global.
@@ -459,7 +460,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     scannt mit, wenn er ein eigenes Interface `<Name>-<Band>g` hat (also mitfunkt), und steht dann im
     Vorschlag; sein Agent meldet die Kanäle seiner eigenen Radios (`$cfmChannels`, Zeile „Aktuell“).
     Ohne dieses Interface bleibt er draußen (abgeschaltete Radios gehören nicht in den Plan).
-    `host=` ersetzt nur diesen AP in der letzten Messung, statt sie zu überschreiben. – Der Scan und der Pin-Vorschlag umfassen nur
+    `host=` ersetzt nur diesen AP in der letzten Messung, statt sie zu überschreiben (eine Messung eines
+    anderen Bands ersetzt es ganz). Hardware 2026-10-04: hAP be³ als CAPsMAN mit drei eigenen Radios in
+    `$cfmChannels` und im Vorschlag, `host=` mit vier APs aus einer früheren Messung zusammengeführt. – Der Scan und der Pin-Vorschlag umfassen nur
     Geräte mit Rolle `ap`. Funkt der CAPsMAN selbst mit (`capsmanRadios`), fehlt er in der Rechnung;
     seine Radios lassen sich direkt scannen (auch abgeschaltet, Hardware 2026-10-03). Einbauen, damit
     ein Vorschlag alle Sender kennt.

@@ -10,7 +10,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Auf Hardware eingeschaltet, Client-Test offen:** 24 (eigene Radios des CAPsMAN, D53: hAP be³ mit
   drei Radios, gepinnt, Gast-Schalter schaltet sie mit, 2026-10-03).
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
-  eingebaute Update über cfm auf einem Gerät mit 16 MB Flash (38, D63).
+  eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
+* **RouterOS 7.25:** seit etwa 2026-10-01 als 7.25rc1 im Kanal `testing` (stable: 7.24.5). Den
+  Labortest aller Skripte erst mit 7.25 stable (entschieden 2026-10-04).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
 * **Erledigt am 2026-10-04:** 19 (Admin-SSH-Keys je Person, D65), 46 (`$cfmWifiScan` mit den eigenen

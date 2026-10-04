@@ -4,23 +4,25 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 (zuvor 7.24.2) laufen der Gesamttest (über 190
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 (zuvor 7.24.2) laufen der Gesamttest (217
 > Prüfungen, darunter Manager-Bootstrap mit Reset, Probelauf, `$cfmShow`/`$cfmDiff`, Firewall,
 > Schlüsselwechsel, Backup-Manager, Router-Rolle mit festen Leases und DNS-Namen, Netzplan, PPSK,
-> CAPsMAN-Rolle, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem Spiegel), der
+> CAPsMAN-Rolle, Admin-Keys je User, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update
+> von einem Spiegel), der
 > Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter einem nicht
 > verwalteten Switch) und die Probe mit drei VRRP-Routern (79 Prüfungen) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
 > und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit neun Geräten – der
 > Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset, routet noch
-> selbst), ein hAP be³ als CAPsMAN, APs (hAP be³, hAP ax³, cAP ax) mit lokalem Fallback, hEX und
-> L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Automatisches Onboarding im CAPs-Modus,
-> CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64) und der Kanal-Scan über den
-> CAPsMAN liefen dort. Die gefundenen
+> selbst), ein hAP be³ als CAPsMAN mit eigenen Radios, APs (hAP be³, hAP ax³, cAP ax) mit lokalem
+> Fallback, hEX und L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Automatisches Onboarding im
+> CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64), das eingebaute Update
+> eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs, die Umstellung auf Admin-Keys je User und
+> der Kanal-Scan über den CAPsMAN liefen dort. Die gefundenen
 > Fehler sind behoben, siehe [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 > **Noch nicht** mit echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager,
 > das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, feste Leases und
-> DNS-Namen sowie das eingebaute Update über cfm auf einem Gerät mit 16 MB Flash; offene Punkte
-> stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> DNS-Namen, weitere SSIDs im lokalen Fallback, Steering/Mindestsignal und das eingebaute Update
+> mit `via=internet`; offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -181,10 +183,12 @@ Bevor du etwas einspielst, kläre diese Punkte:
   (siehe Teststand oben).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
-  Internetzugang für die Paket-Downloads, idealerweise mit Funk, falls er selbst auch AP sein soll
-  (dann Rolle `ap` separat bedenken).
-* APs brauchen den **neuen wifi-Stack** (`wifi-qcom`, ax-Geräte). Der alte `wireless`-Stack wird
-  nicht unterstützt.
+  Internetzugang für die Paket-Downloads (ohne Internet: Pakete von Hand ablegen, 8.6).
+* Der CAPsMAN kann mit eigenen Radios mitfunken (Hostfile `capsmanRadios`, D53), ein eigenes Gerät
+  mit der Rolle `ap` braucht er dafür nicht.
+* APs brauchen den **neuen wifi-Stack** mit `wifi-qcom` (ax) bzw. `wifi-qcom-be` (Wi-Fi 7). Der alte
+  `wireless`-Stack wird nicht unterstützt; APs mit `wifi-qcom-ac` (hAP ac², cAP ac) übernehmen das
+  VLAN einer SSID nicht vom CAPsMAN – die Rolle `ap` und `$cfmCheck` warnen davor (TODO 23).
 
 ---
 
@@ -389,7 +393,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
 | `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste |
 | `bridgeFrames` | `"admit-all"`: die Bridge (CPU) nimmt weiter ungetaggte Frames an, statt nur getaggte – für eine Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll |
-| `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (D53). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Noch nicht auf Hardware geprüft |
+| `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (D53). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Auf Hardware eingeschaltet (hAP be³), der Client-Test steht aus |
 
 Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 `:global cfmVlans; :set ($cfmVlans->"119"->"l3") "no"`.
@@ -402,7 +406,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 |---|---|
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54) |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
@@ -541,8 +545,9 @@ sie mit ihrer lokalen Kopie der `master`-SSID (D46).
    Passphrasen da sind – sofort nachschieben: `$cfmSecretPush host=<gerät>` (sonst im nächsten Tick).
 4. Die APs und den bisherigen CAPsMAN anstoßen: `$cfmPush host=<ap>` bzw. `$cfmPush ring=…`.
    Der alte CAPsMAN schaltet sich ab und räumt seine WLAN-Profile weg.
-5. Prüfen: auf dem neuen CAPsMAN `/interface/wifi/print` (je AP dynamische `cap-wifi*`), auf einem
-   AP `/interface/wifi/cap/print` (`current-caps-man-identity`).
+5. Prüfen: auf dem neuen CAPsMAN `/interface/wifi/print` (je AP dynamische Interfaces
+   `<AP>-2g`/`-5g`, D47; vor der ersten Provisionierung `cap-wifiN`), auf einem AP
+   `/interface/wifi/cap/print` (`current-caps-man-identity`).
 
 Fällt der CAPsMAN länger aus, genauso auf ein anderes Gerät verschieben.
 
@@ -800,6 +805,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`,
 | SSID ändern/hinzufügen | `wifi.rsc` → Release; neue SSID: `$cfmSecret key=psk.<key> value=…` |
 | PSK wechseln | `$cfmSecret key=psk.<key> value=…` (kein Release nötig) |
 | Admin-Benutzer | `users` in `global.rsc` → Release, dann `$cfmSecret key=user.<name> value=…` |
+| SSH-Key einer Person hinzufügen/entziehen | Zeile in `authorized_keys.<user>` ergänzen bzw. löschen → Release; alle Keys entziehen: Datei leeren, nicht löschen (Kapitel 4) |
 | Firewall-Freigabe zwischen Zonen | `policy` in `global.rsc` → Release |
 | Internet für eine Zone | `policy`: `wan` (geroutet, Upstream kennt das Netz), `*wan` (masquerade) oder `wan@<Adresse>` (feste NAT-Adresse im WAN-Netz) → Release |
 | Zone nur zu bestimmten Internet-Zielen (z.B. IoT-Cloud) | Liste in `allow` anlegen, `policy` z.B. `"iot"="allow:tuya"` (mit NAT `*allow:tuya`) → Release. Feiner als je Zone geht es über kleinere Zonen (eigenes VLAN je Gerätegruppe) |
@@ -817,6 +823,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`,
 | Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
 | Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle ansehen | `$cfmChannels` |
+| Kanalplan für 2,4 GHz neu bestimmen | `$cfmWifiScan` (Clients wechseln kurz), Vorschlag prüfen, Zeile `radios` in `wifi.rsc` übernehmen → Release (8.7) |
 
 ### 8.5 Überblick
 
@@ -937,7 +944,46 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   `radios` in `wifi.rsc` (dort von Hand übernehmen, bestehende 5/6-GHz-Pins ergänzen, Release).
   Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan, `host=<AP>`
   scannt nur diesen AP und ersetzt ihn in der letzten Messung desselben Bands (die übrigen behalten
-  ihre Werte und müssen nicht erneut vom Kanal).
+  ihre Werte und müssen nicht erneut vom Kanal). Liegt dort eine Messung eines anderen Bands,
+  ersetzt `host=` sie ganz – Messungen, die du behalten willst, vorher wegkopieren.
+
+#### Kostenmodell des Kanal-Vorschlags (D56)
+
+Der Vorschlag gilt nur für 2,4 GHz (bei `band=5`/`6` zeigt der Befehl nur die Messung). Er bewertet
+jeden möglichen Plan – eine Frequenz je AP – mit einer Kostenzahl und nennt den billigsten. Die
+Zahl hat keine Einheit; vergleichen lassen sich nur Pläne aus **derselben Messung**.
+
+1. **Messung je AP:** jedes gehörte Netz mit BSSID, Frequenz des Hauptkanals (MHz) und Signal (dBm).
+   Die BSSIDs der eigenen Sender liefert der CAPsMAN (Interface `<Name>-<Band>g` → MAC); ein so
+   erkanntes Netz zählt als **eigener Nachbar** (je Paar „A hört B“ das stärkste Signal), alle
+   anderen als **fremd**. Die eigenen SSIDs des scannenden APs (virtuelle APs) zählen gar nicht.
+2. **Gewicht** eines Signals: `w(s) = s + 95`, mindestens 0. −95 dBm und schwächer zählen nicht,
+   −75 dBm wiegen 20, −45 dBm 50.
+3. **Überlappung** zweier Frequenzen in Vierteln, bei 20 MHz Kanalbreite und 5 MHz Raster:
+   `d = |f1 − f2| / 5` (Abstand in Kanälen), `o = 4 − d` für `d < 4`, sonst 0. Gleicher Kanal 4,
+   Nachbarkanal 3, zwei Kanäle daneben 2, drei daneben 1, ab vier Kanälen (1 und 5, 1 und 6) 0.
+4. **Kosten eines APs `a` auf Frequenz `f`** durch fremde Netze: Summe über alle fremden Netze, die
+   `a` hört, von `w(Signal) × o(f, Frequenz des Netzes)`.
+5. **Kosten eines Plans `P`:** Summe der Fremdkosten aller APs auf ihrer Plan-Frequenz, dazu je
+   gehörtem eigenem Nachbarn `2 × w(Signal) × o(P(a), P(b))`. Eigene Nachbarn zählen doppelt – sie
+   senden den eigenen Verkehr, und ihren Kanal bestimmt der Plan selbst. Hören sich zwei APs
+   gegenseitig, zählt jede Richtung für sich.
+6. **Suche:** je Kanalsatz 1/6/11 (2412/2437/2462 MHz) und 1/5/9/13 (2412/2432/2452/2472 MHz).
+   Bis 6 APs prüft der Befehl alle Kombinationen (bei 4 Kanälen und 6 APs 4096), darüber
+   schrittweise: alle APs auf dem ersten Kanal, dann dreimal reihum für jeden AP den besten Kanal
+   bei festen übrigen. Bei gleichen Kosten bleibt der zuerst gefundene Plan.
+7. **„Aktuell“** rechnet dieselbe Formel mit den Kanälen, die die APs gerade melden (Status-Feld
+   `radios`), auch abseits der Raster. Die Zeile fehlt, solange ein AP keinen 2,4-GHz-Kanal meldet.
+
+Beispiel: AP A hört ein fremdes Netz auf Kanal 6 (2437) mit −60 dBm (`w` = 35) und den eigenen AP B
+mit −70 dBm (`w` = 25). A auf Kanal 5 (2432, `d` = 1, `o` = 3) und B auf 9 (2452, `d` = 4 zu A):
+Fremdkosten 35 × 3 = 105, Nachbarkosten 2 × 25 × 0 = 0, zusammen 105. Mit A auf Kanal 1 (`d` = 5 zum
+fremden Netz) sinken die Fremdkosten auf 0.
+
+Grenzen: Gemessen wird am AP, nicht bei den Clients. Fremde Netze mit 40 MHz zählen nur mit ihrem
+Hauptkanal, und fremde APs mit automatischer Kanalwahl wechseln womöglich später. Die Kosten
+bilden die Auslastung der fremden Netze nicht ab, nur ihre Stärke. Den Vorschlag deshalb als
+Anhaltspunkt nehmen und im Betrieb vergleichen (Paketverlust und Abbrüche auf 2,4 GHz).
 
 ### 8.8 WireGuard-Fernzugang
 
@@ -996,7 +1042,7 @@ ist. Bei mehreren WireGuard-Verbindungen (z.B. weitere Standorte) auf sich nicht
 | Zurück auf einen alten Stand | – | `$cfmRollback ver=<N> [all=yes]`. **Achtung:** überschreibt `work/` mit dem alten Stand |
 | Primary-Manager fällt aus | Geräte ziehen vom Backup; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager`, dann `managers` tauschen und releasen |
 | Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
-| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs noch nicht, TODO 40); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
+| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, D54, auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
 | Release stoppt mit „Prüfung“ | nichts wurde ausgerollt | Fehler beheben oder bewusst `force=yes` |
 | RouterOS-Update schlägt fehl | Gerät bleibt auf der alten Version, Status `fehlgeschlagen`, kein weiterer Neustart | Log am Gerät lesen, `$cfmUpgrade cancel=yes host=<name>`, neuen Auftrag erteilen |
@@ -1127,7 +1173,8 @@ cd tools/chr-lab
 ./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
                           # Router, Leases/DNS, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
                           # RouterOS-Downgrade und Update vom Spiegel, Netzplan, PPSK, WLAN-Scan,
-                          # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply) …
+                          # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply),
+                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
@@ -1186,8 +1233,8 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
-| `$cfmChannels` | Kanäle der APs, Warnung bei gleichem Kanal an einem Switch |
-| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz |
+| `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
+| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |
@@ -1213,7 +1260,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat` |
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
 | `state/netzplan.md` | Netzplan (Mermaid + Tabelle), auf Anforderung `netzplan.dot` und `netzplan.csv` |
-| `state/wifiscan.json` | letzte Messung von `$cfmWifiScan` (nur mit gemessenen Netzen) |
+| `state/wifiscan.json` | letzte Messung von `$cfmWifiScan` (ein Band; nur mit gemessenen Netzen) |
 | `vault/<name>-vault.bak` | verschlüsseltes Manager-Backup |
 
 `.dat` statt `.json`, weil RouterOS lesenden SFTP-Nutzern `.json`- und `.backup`-Dateien verweigert.
@@ -1238,6 +1285,9 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen. Der Agent hat da schon 2 min lang wiederholt (8/16/32/64 s, Log „Manifest nicht abrufbar – neuer Versuch“, D58); kurze Aussetzer, etwa während ein Backup-Manager spiegelt, fängt das ab |
 | „Manifest-MAC ungültig“ | Geräteschlüssel passt nicht mehr (Reset, Restore); direkt nach `$cfmRekey` kurzzeitig normal | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
 | „Release abgebrochen (Prüfung)“ | inhaltlicher Fehler in `work/` | Meldung lesen und beheben; bewusst: `force=yes` |
+| Prüfung: „authorized_keys: die gemeinsame Datei gilt nicht mehr (D65)“ | alte Key-Datei für alle User in `work/` | Keys je Person nach `authorized_keys.<user>`, hochladen, `/file/remove cfm/work/authorized_keys` |
+| Log `cfm: authorized_keys.<user>: Key N nicht angelegt …`, danach „vorhandene Keys bleiben stehen“ | Zeile ist kein Key, den RouterOS annimmt (nur rsa, ed25519, ed25519-sk) | Zeile korrigieren, releasen; bis dahin entfernt cfm für diesen User keine Keys |
+| Warnung „Paket wifi-qcom-ac“ (Log des AP bzw. `$cfmCheck`) | AP mit altem Treiber übernimmt das VLAN einer SSID nicht vom CAPsMAN (TODO 23) | Gerät nicht als `ap` unter cfm betreiben |
 | Secret-Push: „Identitätsprüfung fehlgeschlagen“ | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |

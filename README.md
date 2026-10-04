@@ -123,7 +123,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Feste Adresse + DNS-Name für ein Gerät | `leases.rsc` → `$cfmRelease` (wirkt auf Routern) |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
-| Status der Flotte | `$cfmStatus` |
+| SSH-Key einer Person | Zeile in `authorized_keys.<user>` ergänzen/löschen → `$cfmRelease` (alle entziehen: Datei leeren) |
+| Status der Flotte | `$cfmStatus` (`bad vN` = gescheiterte Version, solange sie aktuell ist) |
 | Ring vorziehen | `$cfmPromote` (bzw. automatisch nach `ringSoak`) |
 | Zurück auf alten Stand | `$cfmRollback ver=12 all=yes` |
 | Sofort anwenden | `$cfmPush` / `$cfmPush host=sw1 force=yes` |
@@ -137,9 +138,9 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Archiv verkleinern | automatisch nach jedem Release (`archiveKeep`), von Hand `$cfmArchivePrune keep=5` |
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
 | Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
-| WLAN-Kanäle der APs | `$cfmChannels` (Warnung bei gleichem Kanal an einem Switch) |
+| WLAN-Kanäle der APs | `$cfmChannels` (auch die eigenen Radios des CAPsMAN; Warnung bei gleichem Kanal an einem Switch) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
-| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP nacheinander, Pin-Vorschlag für 2,4 GHz) |
+| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7); `host=<ap>` misst nur einen AP neu |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 

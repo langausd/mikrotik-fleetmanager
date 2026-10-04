@@ -328,29 +328,46 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
 * Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
 * Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).
 
-### `authorized_keys` (optional)
+### `authorized_keys.<user>` (optional)
 
-Persönliche Admin-SSH-Keys, **OpenSSH-Format** (kein RouterOS-Datenformat): eine Zeile je Key,
-`<typ> <base64> [kommentar]`, z.B. `ssh-ed25519 AAAAC3... admin@laptop`. OpenSSH-Optionen vor dem
-Typ (`command=...`, `no-port-forwarding`, …) werden nicht unterstützt; `#`-Zeilen und Leerzeilen
-werden ignoriert.
+Persönliche Admin-SSH-Keys **je User** (D65), eine Datei je Person: `authorized_keys.alice` gilt nur
+für den User `alice` aus `global.rsc` `users`. Format wie bei OpenSSH: eine Zeile je Key,
+`<typ> <base64> [kommentar]`, z.B. `ssh-ed25519 AAAAC3... alice@laptop`. RouterOS kennt nur
+`ssh-ed25519`, `ssh-rsa` und `sk-ssh-ed25519@openssh.com`; OpenSSH-Optionen vor dem Typ
+(`command=...`, `no-port-forwarding`, …) gehen nicht; `#`-Zeilen und Leerzeilen zählen nicht.
 
-Die Rolle `base` wendet die Datei auf **jedem** Gerät für **alle** Admin-User aus `global.rsc`
-`users` an. Fehlt die Datei, bleiben `ssh-keys` unangetastet (Feature nicht genutzt). Existiert
-sie, ist sie der vollständige Sollzustand: Keys, die nicht (mehr) drinstehen, werden bei jedem
-Apply entfernt – auch von Hand hinzugefügte, denn `/user/ssh-keys` hat kein `comment`-Feld für
-eine feinere Reconciliation. Revocation = Zeile löschen + `$cfmRelease`.
+Die Rolle `base` gleicht auf **jedem** Gerät die Keys jedes Users ab, für den es eine Datei gibt:
+
+* Die Datei ist der **vollständige Sollzustand** dieses Users: Fehlende Keys legt `base` an, alle
+  übrigen Keys des Users entfernt es – auch von Hand hinzugefügte.
+* **Entzug** eines Keys: Zeile löschen + `$cfmRelease`. **Alle Keys einer Person entziehen:** die
+  Datei leeren (nur Kommentare stehen lassen) + `$cfmRelease`.
+* **Ohne Datei bleiben die Keys eines Users unangetastet.** Eine gelöschte Datei entzieht also
+  nichts – erst leeren, ausrollen, dann löschen.
+* Abgleich über den **Fingerprint**: Jeder Key wird angelegt und sofort wieder entfernt, wenn der
+  User ihn schon hat. Es gibt nie einen Moment ohne Key, und Log/Status zählen nur echte
+  Änderungen (`neu: /user/ssh-keys alice …`, `entfernt: …`). Scheitert ein Key (z.B. ein Typ, den
+  RouterOS nicht kennt), entfernt `base` für diesen User nichts und warnt.
+* Im Probelauf (`$cfmPlan`) kann RouterOS keinen Fingerprint berechnen, ohne den Key anzulegen –
+  dort vergleicht `base` näherungsweise über den Kommentar (`Admin-SSH-Keys alice: 1 neu,
+  0 entfernt`).
+
+Die frühere gemeinsame Datei `authorized_keys` für alle User (D35) gilt nicht mehr: `$cfmCheck`
+lehnt sie ab, `tools/upload-seed.sh` lädt sie nicht hoch. Umstellen: Keys je Person nach
+`authorized_keys.<user>` verschieben, hochladen, die alte Datei auf dem Manager löschen
+(`/file/remove cfm/work/authorized_keys`), dann `$cfmRelease`. Die Keys, die schon auf den Geräten
+sind, bleiben dabei stehen (gleicher Fingerprint).
 
 Das ist eine **Zusatzoption**, kein Ersatz für das Passwort: `$cfmSecret key=user.<name> value=…`
 gilt unabhängig davon weiter. Aber: Hat ein User einen Key, lehnt RouterOS **SSH**-Anmeldungen
 dieses Users per Passwort ab (`/ip/ssh always-allow-password-login=no`, Werkseinstellung) – nur
-Winbox und WebFig gehen weiter mit Passwort. Ein kaputter Key sperrt also nicht ganz aus, SSH
-aber schon. Auch kein Ersatz für die Geräteschlüssel der Rolle `manager` (`cfm`/`cfmd-<name>`) – die sind
-Maschinen-Identität für Push/Pull, hier geht es um menschliche Admins.
+Winbox und WebFig gehen weiter mit Passwort. Auch kein Ersatz für die Geräteschlüssel der Rolle
+`manager` (`cfm`/`cfmd-<name>`) – die sind Maschinen-Identität für Push/Pull, hier geht es um
+menschliche Admins.
 
-`$cfmCheck` prüft grob das Zeilenformat (Typ-Präfix, mindestens ein Leerzeichen), nicht die
-Gültigkeit des Base64-Teils. `tools/upload-seed.sh` lädt die Datei aus einem Overlay wie die
-übrigen Top-Level-`.rsc`-Dateien mit hoch, obwohl sie selbst keine ist.
+`$cfmCheck` prüft das Zeilenformat (Typ, Base64-Teil) und warnt bei einer Datei für einen User,
+der nicht in `users` steht. Editor-Sicherungen (`authorized_keys.alice~`) lädt
+`tools/upload-seed.sh` nicht hoch.
 
 ### `meta/inventory.rsc`
 
@@ -383,7 +400,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys` (optional); Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54) |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
@@ -416,7 +433,7 @@ WLAN). So bleiben deine Daten aus dem Repo, und neue Versionen des Frameworks la
 übernehmen. Die `STAND.md` begleitet die Site danach weiter: oben der aktuelle Stand, dann ein
 Logbuch (neueste Einträge oben), die nächsten Schritte und offene Punkte; ausführliche Analysen
 gehören in eine `BEFUNDE.md` daneben. `tools/upload-seed.sh` lädt aus dem Overlay nur die Daten
-(`*.rsc`, `authorized_keys`, `hosts/`, `meta/` …); Notizen wie diese oder eigene CSV-Listen bleiben
+(`*.rsc`, `authorized_keys.<user>`, `hosts/`, `meta/` …); Notizen wie diese oder eigene CSV-Listen bleiben
 lokal. Die Bootstrap-Datei
 gehört nicht nach `work/` (das wird an die Flotte verteilt), sondern ins Wurzelverzeichnis des
 Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad die
@@ -770,7 +787,7 @@ $cfmDiff ver=40 to=41          # zwischen zwei Releases (to=work ist der Standar
 
 Ausgabe: geänderte, neue und entfernte Dateien, die betroffenen Geräte (bei gemeinsamen Dateien
 wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`, `profiles`,
-`wifi`, `wireguard`, `leases`, `hosts/*`, `authorized_keys`) die geänderten Zeilen
+`wifi`, `wireguard`, `leases`, `hosts/*`, `authorized_keys.*`) die geänderten Zeilen
 (`@@ Zeile <alt> / <neu>`, `-` alt, `+` neu). `lib/` und `roles/` erscheinen nur als Datei.
 
 ### 8.4 Rezepte
@@ -804,7 +821,8 @@ wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`,
 ### 8.5 Überblick
 
 * `$cfmStatus` zeigt je Gerät Ring, Soll- und Ist-Version, Ergebnis (`ok`, `failed …`,
-  `bad vN`, `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
+  `bad vN` = Version N ist gescheitert, der Agent wendet sie nicht erneut an (vorn in der Spalte;
+  ausgeblendet, sobald eine neuere Version ok läuft), `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
   sendet nur die lokale Kopie der `master`-SSID, D46; `nicht aufgenommen` = Inventar-Eintrag ohne
   Geräteschlüssel, z.B. Platzhalter oder per `$cfmRegister` vorgemerkt – solche Geräte stößt der
   Manager nicht an, D49), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
@@ -902,19 +920,24 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   Editoren) und die Link-Tabelle; neue Links sind dick, fehlende gestrichelt gezeichnet. Die Datei
   wird nur bei Änderungen neu geschrieben und landet mit der Git-Sicherung im Repo.
 * Der Manager prüft alle 15 Minuten selbst und schreibt neue Abweichungen ins Log (`cfm: Netz:`).
-* `$cfmChannels` zeigt die Kanäle der APs und warnt, wenn zwei APs am selben Switch denselben
+* `$cfmChannels` zeigt die Kanäle der APs (und die des CAPsMAN, wenn er mitfunkt – `capsmanRadios`)
+  und warnt, wenn zwei APs am selben Switch denselben
   Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.
 * `$cfmWifiScan [host=<ap>] [band=2] [duration=10s]` lässt alle APs nacheinander auf ihren Radios
   des Bands scannen (D56). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am AP ab; cfm scannt
   deshalb auf dem CAPsMAN am Interface `<AP>-<Band>g` (D60), Radios ohne CAPsMAN direkt am AP.
+  Funkt der CAPsMAN selbst mit (`capsmanRadios`), scannt er über sein Interface `<Name>-<Band>g`
+  mit und steht im Vorschlag; ohne dieses Interface (Radios aus) bleibt er draußen.
   Unter 10 s Dauer liefert der CAPsMAN keine Ergebnisse, kürzere Angaben hebt der Befehl auf 10 s
   an. **Während des Scans verlässt das Radio seinen Kanal, verbundene Clients wechseln kurz zum
   Nachbarn** – also nicht zur Hauptnutzungszeit. Ausgabe je AP: fremde Netze nach
   Frequenz (Anzahl/stärkstes Signal), welche eigenen APs sich hören (BSSIDs vom CAPsMAN), die Kosten
   des aktuellen Stands und je ein Vorschlag für 1/6/11 und 1/5/9/13 samt fertiger Zeile für
   `radios` in `wifi.rsc` (dort von Hand übernehmen, bestehende 5/6-GHz-Pins ergänzen, Release).
-  Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan.
+  Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan, `host=<AP>`
+  scannt nur diesen AP und ersetzt ihn in der letzten Messung desselben Bands (die übrigen behalten
+  ihre Werte und müssen nicht erneut vom Kanal).
 
 ### 8.8 WireGuard-Fernzugang
 
@@ -1018,10 +1041,10 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   keine Host-Schlüssel. Sorge deshalb dafür, dass niemand anderes im Onboarding-VLAN hängt.
 * **`vaultpw`** gehört offline in einen Passwortmanager, nicht auf den Manager allein.
 * **Git-Host:** nur Forced Command für den Manager-Schlüssel, der Lese-User `cfm-git` am Manager.
-* **Persönliche Admin-SSH-Keys:** optional über `authorized_keys` (siehe Datenmodell). Das
-  Passwort gilt danach nur noch für Winbox/WebFig, SSH verlangt den Key. Existiert die Datei, entfernt jeder Apply Keys, die nicht mehr
-  drinstehen – auch von Hand hinzugefügte, `/user/ssh-keys` hat kein Feld für eine feinere
-  Unterscheidung. Leg die Datei also nur an, wenn du sie auch pflegst.
+* **Persönliche Admin-SSH-Keys:** optional über `authorized_keys.<user>` je Person (siehe
+  Datenmodell, D65). Das Passwort gilt danach nur noch für Winbox/WebFig, SSH verlangt den Key. Gibt
+  es die Datei eines Users, entfernt jeder Apply dessen Keys, die nicht drinstehen – auch von Hand
+  hinzugefügte. Entzug je Person: Zeile löschen bzw. Datei leeren, dann `$cfmRelease`.
 
 ---
 
@@ -1164,7 +1187,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmChannels` | Kanäle der APs, Warnung bei gleichem Kanal an einem Switch |
-| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz |
+| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |
@@ -1242,7 +1265,7 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | `$cfmUpgrade`: „Pakete fehlen oder sind ungültig“ | Manager ohne Internet oder Paket ohne NPK-Kennung (z.B. Fehlerseite) | die genannten Dateien von download.mikrotik.com nach `<pkgPath>/<ver>/` legen; vorab `check=yes` |
 | Onboarding `manual=yes` beendet, Gerät hängt weiter im Onboarding-VLAN | gewollt: cfm fasst den Port bei `manual=yes` nicht an | Port am Switch von Hand auf sein Profil zurückstellen (Log-Hinweis) |
 | `upload-seed.sh`: „keine SFTP-Anmeldung per SSH-Key“ (früher nur „Connection closed“) | das Skript nutzt Batch-SFTP, das kein Passwort abfragt | Public Key für den User auf dem Gerät hinterlegen, `ssh-agent` laden oder `SFTP_OPTS="-i <key>"` setzen |
-| SSH-Anmeldung per Passwort wird abgelehnt, Winbox geht | der User hat einen SSH-Key (z.B. aus `authorized_keys`), RouterOS erlaubt dann per SSH nur noch den Key | mit dem Key anmelden; Key-Datei prüfen (Kapitel 4, `authorized_keys`) |
+| SSH-Anmeldung per Passwort wird abgelehnt, Winbox geht | der User hat einen SSH-Key (z.B. aus `authorized_keys.<user>`), RouterOS erlaubt dann per SSH nur noch den Key | mit dem Key anmelden; Key-Datei prüfen (Kapitel 4, `authorized_keys.<user>`) |
 | `upload-seed.sh`: „Seed unvollständig hochgeladen“ | einzelne Dateien auch nach drei Versuchen nicht übertragen | erneut aufrufen; Verbindung und freien Platz am Manager prüfen |
 | Über WireGuard kein SSH/Winbox | Peer fehlt in `wireguard.rsc` oder ist noch nicht ausgerollt; Client-`allowed-ips` ohne das WireGuard-Subnetz | `$cfmCheck`, am Router `/interface/wireguard/peers/print`, Client-Konfiguration prüfen |
 | Webfig o.ä. bleibt aus, obwohl in `services` eingetragen | falscher Dienstname (`http` statt `www`) | RouterOS-Namen verwenden (Kapitel 4, `services`) |

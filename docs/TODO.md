@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-03)
+## Übersicht offener Punkte (Stand 2026-10-04)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -13,6 +13,11 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   eingebaute Update über cfm auf einem Gerät mit 16 MB Flash (38, D63).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-04:** 19 (Admin-SSH-Keys je Person, D65), 46 (`$cfmWifiScan` mit den eigenen
+  Radios des CAPsMAN), 40 (`slaves-static` nur bei Bedarf), 23 (Warnung bei `wifi-qcom-ac`; die
+  Unterstützung selbst bleibt offen), `$cfmStatus` blendet eine veraltete `bad`-Version aus. Im Labor
+  gefunden: `/file/get` meldet gelöschte Dateien u.U. dauerhaft als Eintrag ohne Namen – die
+  Existenzprüfungen verlangen jetzt einen Namen (DECISIONS, Labor-Eigenheiten).
 * **Erledigt am 2026-10-02/03:** 11 (feste Leases und DNS-Namen, D62), 12 (`$cfmShow`/`$cfmDiff`,
   D61), 41 (`$cfmWifiScan` über den CAPsMAN, auf Hardware gelaufen, D60), 38 (Update bei 16 MB
   Flash über das eingebaute Update, Spiegel `tools/upgrade-mirror.py`, D63); dazu schaltbare SSIDs
@@ -21,7 +26,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   D58), „Manager-Ticks starten gleichzeitig“ (D57); Labortest des Watchdog-Rollbacks (`e2e.sh`
   Schritt 14d) und Probe des Router-Umzugs mit drei VRRP-Routern (`e2e-vrrp.sh`). Am 2026-09-30:
   28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
-* **Größere Ausbauten:** 2 (Benachrichtigungen), 10, 13–15, 18–20 sowie Netinstall/Branding (Onboarding).
+* **Größere Ausbauten:** 2 (Benachrichtigungen), 10, 13–15, 18, 20 sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -193,7 +198,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Hostfile-Angaben, `netzplan.md` (Mermaid + Tabelle), `export=yes` für Graphviz/CSV.
 18. **Optional Git als Arbeitsort** mit Review vor dem Release – bewusste Alternative zu D4,
     z.B. bei mehreren Admins.
-19. **Individuelle `authorized_keys` je Admin-Benutzer** – aktuell (D35) gilt eine einzige
+19. ~~**Individuelle `authorized_keys` je Admin-Benutzer**~~ – *erledigt (D65):* `work/authorized_keys.<user>`
+    je Person, Abgleich über den Fingerprint, Users ohne Datei unangetastet, die gemeinsame Datei gilt
+    nicht mehr. Labor: `e2e.sh` Schritt 14e. – Aktuell (D35) gilt eine einzige
     `authorized_keys`-Datei für ALLE User aus `global.rsc` `users`; bei mehreren Admins sollte
     jeder Benutzer nur seine eigenen Keys bekommen (z.B. `authorized_keys.<user>` oder Zuordnung
     innerhalb der Datei), inkl. Revocation pro Person statt nur global.
@@ -238,7 +245,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     nicht vom CAPsMAN – der Datapath `cfm-cap` (D41) reicht dort nicht. Die Rolle `ap` müsste je
     Radio bzw. virtuellem AP einen statischen Bridge-Port mit der PVID der SSID anlegen, und der
     CAPsMAN dürfte solchen CAPs keinen Datapath mit `vlan-id` schicken. Erst mit einem solchen
-    Gerät umsetzen und testen; bis dahin erkennt cfm das Paket nicht und warnt auch nicht.
+    Gerät umsetzen und testen. *Seit 2026-10-04 warnen die Rolle `ap` (Log, Probelauf) und `$cfmCheck`
+    (aus den gemeldeten Paketen), wenn ein AP das Paket hat.*
 24. **Eigene Radios des Managers** – *vorbereitet (D53):* Hostfile `capsmanRadios="yes"` auf dem
     CAPsMAN provisioniert dessen eigene Radios über den eigenen CAPsMAN. Test vor Ort: SSIDs von den
     eigenen Radios, Bridge-Port und VLAN, Interface-Namen, Roaming mit FT zu den CAPs, Schalter wieder
@@ -373,8 +381,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (D54):* `fallback="yes"` an einer SSID schaltet `slaves-static` ein und hängt den virtuellen APs
     eine lokale Kopie an; Test vor Ort (CAPsMAN-Dienst kurz aus). Hardware-Befund beim Ausrollen
     (2026-10-02): Das erste Setzen von `slaves-static=no` (vorher nicht gesetzt) trennt jeden AP kurz
-    vom CAPsMAN (3–24 s, „configuration changed“), danach nie wieder. Verbesserung: den Wert nur
-    setzen, wenn ein `fallback` es verlangt oder er gerade `yes` ist. – Umgesetzt ist die `master`-SSID je Radio
+    vom CAPsMAN (3–24 s, „configuration changed“), danach nie wieder. ~~Verbesserung: den Wert nur
+    setzen, wenn ein `fallback` es verlangt oder er gerade `yes` ist.~~ – *erledigt 2026-10-04*
+    (Labor: `e2e.sh` 14c; ein AP, der den Wert schon gesetzt hat, bleibt unberührt). – Umgesetzt ist die `master`-SSID je Radio
     (`capsman-or-local`, Hardware-Test mit einem cAP ax). Offen: (a) weitere SSIDs als lokale
     virtuelle APs – ob `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten virtuellen
     APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen lässt, erst mit einer zweiten aktiven
@@ -446,7 +455,11 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Skripte auf 7.24.5 ist grün (e2e 169, Onboarding 14/15/18, `e2e-vrrp.sh` 79), e2e auf 7.24.2
     ebenso. Update auf Hardware: vor Ort.
 
-46. **`$cfmWifiScan` mit den eigenen Radios des CAPsMAN** – Der Scan und der Pin-Vorschlag umfassen nur
+46. ~~**`$cfmWifiScan` mit den eigenen Radios des CAPsMAN**~~ – *erledigt 2026-10-04:* Der CAPsMAN
+    scannt mit, wenn er ein eigenes Interface `<Name>-<Band>g` hat (also mitfunkt), und steht dann im
+    Vorschlag; sein Agent meldet die Kanäle seiner eigenen Radios (`$cfmChannels`, Zeile „Aktuell“).
+    Ohne dieses Interface bleibt er draußen (abgeschaltete Radios gehören nicht in den Plan).
+    `host=` ersetzt nur diesen AP in der letzten Messung, statt sie zu überschreiben. – Der Scan und der Pin-Vorschlag umfassen nur
     Geräte mit Rolle `ap`. Funkt der CAPsMAN selbst mit (`capsmanRadios`), fehlt er in der Rechnung;
     seine Radios lassen sich direkt scannen (auch abgeschaltet, Hardware 2026-10-03). Einbauen, damit
     ein Vorschlag alle Sender kennt.

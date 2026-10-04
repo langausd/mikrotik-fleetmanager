@@ -136,6 +136,7 @@ for _ in $(seq 1 60); do [ "$(stat sw1 bad)" = 3 ] && break; sleep 4; done
 if [ "$(stat sw1 bad)" = 3 ]; then ok "v3 als bad gemeldet ($(stat sw1 res | cut -c1-60))"; else bad "Rollback/bad: $(stat sw1 res)"; diag step7; fi
 waitssh 2; sleep 20
 expect 2 '[:len [/ip/address/find where address="192.168.10.21/24"]] = 1' "sw1 nach Rollback erreichbar konfiguriert"
+mgr '$cfmStatus' | grep "^sw1" | grep -q "bad v3" && ok "\$cfmStatus zeigt bad v3 (neuer als IST)" || bad "\$cfmStatus ohne bad v3"
 mgr '$cfmRollback ver=2 all=yes' >/dev/null
 
 step "8. Backup-Manager cm2"
@@ -207,6 +208,7 @@ out=$(mgr ':global cfmArchivePrune; :put ("AP=" . [$cfmArchivePrune keep=1])')
 echo "$out" | grep -q "AP=3" && ok "3 alte Versionen gelöscht" || bad "Archiv: $(echo "$out" | tail -1)"
 expect 1 '[:len [/file/find where name~"^cfm/archive/v[124](/|\$)"]] = 0' "v1, v2 und v4 samt Verzeichnis entfernt"
 expect 1 '[:len [/file/find where name="cfm/archive/v3/index.dat"]] = 1' "v3 bleibt (sw1 meldet sie als bad)"
+mgr '$cfmStatus' | grep "^sw1" | grep -q "bad v" && bad "\$cfmStatus zeigt die alte bad v3 nach neuerem ok" || ok "\$cfmStatus: alte bad v3 nach neuerem ok ausgeblendet"
 expect 1 '[:len [/file/find where name="cfm/archive/v5/index.dat"]] = 1' "v5 bleibt (von den Ringen genutzt)"
 
 step "12. Identitätsprüfung vor dem Secret-Push, Geräteschlüssel erneuern"
@@ -470,6 +472,10 @@ else
 fi
 applied cm2 || true
 stat cm2 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Rolle ap idempotent" || bad "ap idempotent: $(stat cm2 stats)"
+expect 3 '[:len [/log/find where message~"slaves-static"]] = 0' "cm2: slaves-static ohne fallback nicht gesetzt (kein Abriss zum CAPsMAN, TODO 40)"
+# AP mit wifi-qcom-ac (TODO 23): \$cfmCheck warnt anhand der gemeldeten Pakete (Status kurz verändert)
+out=$(mgr ':local f [/file/find name="cfm/state/cm2/status.dat"]; :local c [/file/get $f contents]; :local j [:deserialize from=json $c]; :set ($j->"pkgs") ({"routeros";"wifi-qcom-ac"}); /file/set $f contents=[:serialize to=json $j]; :global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put ("W " . $e) }; /file/set $f contents=$c')
+echo "$out" | grep -q "W inventory: cm2 hat das Paket wifi-qcom-ac" && ok "\$cfmCheck warnt vor wifi-qcom-ac am AP (TODO 23)" || { bad "Warnung wifi-qcom-ac fehlt"; echo "$out" | tail -3; }
 # CAPsMAN zurück auf cm1 (ohne Rolle capsman übernimmt der Primary): cm2 folgt, erneuert Zertifikate
 nc=$(r 3 ':put [:len [/certificate/find where trust-store=capsman]]' | tail -1 | tr -dc 0-9)
 invrole "switch,router,capsman" "switch,router"
@@ -514,6 +520,38 @@ for _ in $(seq 1 45); do [ "$(stat sw1 bad)" = "$rv" ] && break; sleep 4; done
 expect 2 '[:len [/ip/address/find where address="192.168.10.21/24" and !disabled]] = 1 and [:len [/system/scheduler/find where name="cfm-watchdog"]] = 0' "sw1: MGMT-Adresse wieder an, kein Watchdog mehr"
 rv=$(mgr '/file/remove [find name="cfm/work/hosts/sw1.post.rsc"]; $cfmRelease msg=" Watchdog-Test zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$rv ohne post.rsc angewendet" || bad "sw1 Apply v$rv: $(stat sw1 res)"
+
+step "14e. Admin-SSH-Keys je User (D65)"
+# gemeinsame Datei abgelehnt, Datei eines unbekannten Users gewarnt, kaputte Zeile ein Fehler
+out=$(mgr '/file/add name="cfm/work/authorized_keys" contents="x"; /file/add name="cfm/work/authorized_keys.niemand" contents="ssh-ed25519 AAAA== x\nkaputt\n"; :delay 200ms; :global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }; /file/remove [find name="cfm/work/authorized_keys"]; /file/remove [find name="cfm/work/authorized_keys.niemand"]')
+echo "$out" | grep -q "ERR authorized_keys: die gemeinsame Datei gilt nicht mehr" && ok "\$cfmCheck: gemeinsame authorized_keys abgelehnt" || { bad "gemeinsame authorized_keys nicht abgelehnt"; echo "$out" | tail -3; }
+echo "$out" | grep -q "W authorized_keys.niemand: niemand steht nicht in global.rsc users" && echo "$out" | grep -q "ERR authorized_keys.niemand: Zeile 2" && ! echo "$out" | grep -q "niemand: Zeile 1" && ok "\$cfmCheck: unbekannter User gewarnt, kaputte Zeile 2 ein Fehler" || { bad "Prüfung authorized_keys.<user>"; echo "$out" | grep niemand; }
+# netadmin: Lab-Key + zweiter Key; ein Hand-Key auf sw1 wird entfernt, der Login per Key klappt
+rm -f "$LAB/e2e_k2" "$LAB/e2e_k2.pub" "$LAB/e2e_k3" "$LAB/e2e_k3.pub"
+ssh-keygen -q -t ed25519 -N "" -C "e2e@zwei" -f "$LAB/e2e_k2"; ssh-keygen -q -t ed25519 -N "" -C "e2e@hand" -f "$LAB/e2e_k3"
+printf '# Testkeys\n%s\n\n%s\n' "$(cat "$LAB/lab_key.pub")" "$(cat "$LAB/e2e_k2.pub")" > "$LAB/ak.netadmin"
+echo "put $LAB/ak.netadmin cfm/work/authorized_keys.netadmin" | put 1
+r 2 "/user/ssh-keys/add user=netadmin key=\"$(cat "$LAB/e2e_k3.pub")\"" >/dev/null
+v0=$(stat sw1 v)
+out=$(mgr '$cfmPlan host=sw1')
+echo "$out" | grep -q "Admin-SSH-Keys netadmin: 2 neu, 1 entfernt" && ok "Plan: 2 Keys neu, Hand-Key entfernt" || { bad "Plan Admin-SSH-Keys"; echo "$out" | grep -i "keys" | head -3; }
+rv=$(mgr '$cfmRelease msg=" Admin-Keys" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (Admin-Keys) angewendet" || bad "sw1 Apply v$rv"
+agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
+mgr "\$cfmDiff ver=$v0 to=$rv" | grep -q "betroffen: alle Geräte" && ok "\$cfmDiff: Key-Datei betrifft alle Geräte" || bad "\$cfmDiff ohne alle Geräte"
+expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 2 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@hand"]] = 0 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@zwei"]] = 1' "sw1: netadmin hat genau die zwei Keys der Datei, Hand-Key entfernt"
+expect 2 '[:len [/user/ssh-keys/find where user!=netadmin and info~"e2e@"]] = 0' "sw1: andere User ohne Datei unangetastet"
+out=$(ssh -p $((LABPORT+20)) "${O[@]}" -o BatchMode=yes -i "$LAB/e2e_k2" netadmin@127.0.0.1 ':put keyok' 2>&1 | tr -d '\r')
+echo "$out" | grep -q keyok && ok "sw1: Login als netadmin mit dem zweiten Key" || bad "Key-Login netadmin: $(echo "$out" | tail -1)"
+applied sw1 || true
+stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Keys idempotent (zweiter Apply ohne Änderung)" || bad "Keys idempotent: $(stat sw1 stats)"
+# alle Keys einer Person entziehen = Datei leeren; danach Datei weg (Schritt 15 meldet netadmin per Passwort an)
+echo "# entzogen" > "$LAB/ak.netadmin"; echo "put $LAB/ak.netadmin cfm/work/authorized_keys.netadmin" | put 1
+rv=$(mgr '$cfmRelease msg=" Admin-Keys entzogen" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
+expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 0' "sw1: leere Datei entzieht alle Keys von netadmin"
+expect 1 '[:len [/user/ssh-keys/find where user=netadmin]] = 0' "cm1: leere Datei entzieht alle Keys von netadmin"
+mgr '/file/remove [find name="cfm/work/authorized_keys.netadmin"]' >/dev/null
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

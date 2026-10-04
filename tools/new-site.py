@@ -188,7 +188,7 @@ Mit `tools/new-site.py` aus den neutralen Beispieldaten angelegt: Manager `{name
 - [ ] **Domain** in `global.rsc` (`domain`, Standard `internal`; nicht `.local`, das gehört mDNS).
 - [ ] **Optional:** `wireguard.rsc` (Fernzugang, nur mit Rolle `router`, Admin-Guide 8.8),
       `leases.rsc` (feste DHCP-Leases und DNS-Namen, nur mit Rolle `router`, Admin-Guide Kapitel 4)
-      und `authorized_keys` (persönliche SSH-Keys, Admin-Guide Kapitel 4).
+      und `authorized_keys.<user>` (persönliche SSH-Keys je Person, Admin-Guide Kapitel 4).
 - [ ] **Prüfen:** `tools/rsc-check.py {rel}` ohne Fund.
 
 ### Manager aufsetzen

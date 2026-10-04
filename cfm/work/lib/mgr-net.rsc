@@ -212,8 +212,12 @@
   :local rows ""
   :local n 0
   :local by ({})
+  # APs und der CAPsMAN, sofern er eigene Radios meldet (capsmanRadios, TODO 46)
+  :global cfmCapsmen
+  :local cmSet ({})
+  :foreach c in=[$cfmCapsmen $inv] do={ :set ($cmSet->[:tostr ($c->"n")]) 1 }
   :foreach name,d in=$inv do={
-    :if (("," . ($d->"role") . ",") ~ ",ap,") do={
+    :if ((("," . ($d->"role") . ",") ~ ",ap,") or [:typeof ($cmSet->$name)] != "nothing") do={
       :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
       # Switch am Uplink = verwalteter Nachbar des APs
       :local sw ""
@@ -253,14 +257,15 @@
 
 # ---------- Kanalplan per Scan (TODO 41, D56) ----------
 # $cfmWifiScan [host=<AP>] [band=2|5|6] [duration=10s] [data=yes]
-# Jeder AP (Rolle ap, aufgenommen) scannt nacheinander auf seinen Radios des Bands (Standard 2,4 GHz)
+# Jeder AP (Rolle ap, aufgenommen) scannt nacheinander auf seinen Radios des Bands (Standard 2,4 GHz),
+# ebenso der CAPsMAN, wenn er mitfunkt (capsmanRadios, TODO 46)
 # (/interface/wifi/scan … as-value). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am CAP ab
 # ("not allowed") - gescannt wird deshalb auf dem CAPsMAN am Interface <AP>-<Band>g (D47, D60), erst
 # ab ~10 s Dauer kommen dort Ergebnisse (5 s lieferten keine, Hardware 2026-10-03). Radios ohne
 # CAPsMAN scannen direkt am AP. Das Radio verlässt dafür den Kanal, verbundene Clients wechseln kurz
 # zum Nachbarn. Die BSSIDs der eigenen APs kennt der CAPsMAN (Interface-Namen <AP>-<Band>g).
 # Ergebnis in state/wifiscan.json (eine Messung ganz ohne Netze überschreibt sie nicht); data=yes
-# rechnet nur mit der letzten Messung.
+# rechnet nur mit der letzten Messung, host= ersetzt in ihr nur diesen AP (gleiches Band).
 # Vorschlag (nur 2,4 GHz): Kanalsätze 1/6/11 und 1/5/9/13 durchprobieren, Kosten je AP = Summe über
 # gehörte Netze: Gewicht (Signal + 95 dB) mal Überlappung der Kanäle (gleich 4/4, 1 Kanal daneben
 # 3/4 … ab 4 Kanälen Abstand 0); eigene APs, die sich hören, zählen doppelt. Bis 6 APs alle
@@ -293,6 +298,15 @@
     :set bd [:tostr ($sc->"band")]
   } else={
     :set sc ({"band"=$bd;"t"=([/system/clock/get date] . " " . [/system/clock/get time]);"own"=({});"aps"=({})})
+    # host=: in die letzte Messung desselben Bands einfügen (die übrigen APs müssen nicht neu scannen)
+    :if ([:len $host] > 0) do={
+      :local old [$cfmJson $f]
+      :if ([:tostr ($old->"band")] = $bd and [:typeof ($old->"aps")] = "array") do={
+        :set ($sc->"aps") ($old->"aps")
+        :if ([:typeof ($old->"own")] = "array") do={ :set ($sc->"own") ($old->"own") }
+        :put "übrige APs aus der letzten Messung (state/wifiscan.json)"
+      }
+    }
     # eigene BSSIDs vom CAPsMAN: Interface-Name <AP>-<Band>g[n], MAC = BSSID
     :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :set (\$o->(\"m\" . [:tostr [/interface/wifi/get \$i mac-address]])) [/interface/wifi/get \$i name] }; :put [:serialize to=json \$o]"
     :foreach c in=[$cfmCapsmen $inv] do={
@@ -310,8 +324,14 @@
     :local bre ($bd . "ghz")
     :if ([:totime $dur] < 10s) do={ :put ("duration " . $dur . " -> 10s (über den CAPsMAN liefern kürzere Scans nichts)"); :set dur "10s" }
     :local cml [$cfmCapsmen $inv]
+    # der CAPsMAN selbst, wenn er mitfunkt (capsmanRadios, TODO 46): seine Radios heißen wie die der
+    # CAPs <Name>-<Band>g und lassen sich dort scannen; ohne dieses Interface sendet er nicht
+    :local cmSet ({})
+    :foreach c in=$cml do={ :set ($cmSet->[:tostr ($c->"n")]) 1 }
     :foreach name,d in=$inv do={
-      :if (([:len $host] = 0 or $host = $name) and (("," . [:tostr ($d->"role")] . ",") ~ ",ap,") and [$cfmEnrolled $d]) do={
+      :local isAp (("," . [:tostr ($d->"role")] . ",") ~ ",ap,")
+      :local isCm ([:typeof ($cmSet->$name)] != "nothing")
+      :if (([:len $host] = 0 or $host = $name) and ($isAp or $isCm) and [$cfmEnrolled $d]) do={
         :put ("Scan " . $name . " (" . $bd . " GHz, " . $dur . " je Radio) ...")
         # zuerst auf dem CAPsMAN am Interface <AP>-<Band>g; nur die vier gebrauchten Felder zurück
         :local lst ({})
@@ -327,8 +347,8 @@
             }
           }
         }
-        # Radios ohne CAPsMAN: direkt am AP
-        :if ($via = "") do={
+        # Radios ohne CAPsMAN: direkt am AP (nicht am CAPsMAN: ohne eigenes Interface sendet er nicht)
+        :if ($via = "" and $isAp) do={
           :local cmd (":local r ({}); :foreach i in=[/interface/wifi/find where default-name~\"^wifi\"] do={ :local n [/interface/wifi/get \$i name]; :local bs \"\"; :onerror e in={ :set bs [:tostr [/interface/wifi/radio/get [find where interface=\$n] bands]] } do={}; :if (\$bs ~ \"" . $bre . "\") do={ :onerror e in={ " . $sel . " } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) } } }; :put [:serialize to=json \$r]")
           :local r [$cfmExec ip=($d->"ip") cmd=$cmd]
           :onerror e in={ :set lst [:deserialize from=json ($r->"output")]; :set via "AP" } do={ :put ("  " . $name . ": keine Daten (" . [:pick ($r->"output") 0 120] . ")") }
@@ -345,8 +365,12 @@
             :if ([:typeof $fq] = "num" and [:len $sg] > 0) do={ :set ($nets->[:len $nets]) ({("m" . $bss);[:tostr ($x->"ssid")];$fq;[:tonum $sg]}) }
           }
         }
-        :set ($sc->"aps"->$name) $nets
-        :put ("  " . [:len $nets] . " Netze (über " . $via . ")")
+        :if ($via = "" and !$isAp) do={
+          :put ("  " . $name . ": eigene Radios senden nicht (capsmanRadios aus) - nicht im Vorschlag")
+        } else={
+          :set ($sc->"aps"->$name) $nets
+          :put ("  " . [:len $nets] . " Netze (über " . $via . ")")
+        }
       }
     }
     :local tn 0

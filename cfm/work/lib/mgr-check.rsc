@@ -20,7 +20,7 @@
   :local le ""
   # Datei vorhanden? Über den Namen statt /file/find (TODO 21). Lokal statt $cfmFileEx, weil
   # $cfmRelease diesen Prüfer aus work/ lädt, während noch die alten Manager-Module laufen
-  :local fex do={ :local r false; :onerror e in={ :local x [/file/get $1 name]; :set r true } do={}; :return $r }
+  :local fex do={ :local r false; :onerror e in={ :if ([:len [/file/get $1 name]] > 0) do={ :set r true } } do={}; :return $r }
   :onerror e in={ $cfmLoadData ver=0 } do={ :set le $e }
   # Helfer aus lib/lib.rsc (lädt $cfmLoadData mit): fehlen sie, liefern Aufrufe stillschweigend
   # nichts und die Prüfung liefe halb blind
@@ -220,6 +220,12 @@
     :foreach r in=[:toarray ($d->"role")] do={
       :if (![$fex ($w . "/roles/" . $r . ".rsc")]) do={ :set ($err->[:len $err]) ("inventory: " . $n . ": Rolle " . $r . " ohne roles/" . $r . ".rsc") }
     }
+    # AP mit wifi-qcom-ac (TODO 23): übernimmt vlan-id nicht vom CAPsMAN - Pakete aus dem letzten Status
+    :if (("," . [:tostr ($d->"role")] . ",") ~ ",ap,") do={
+      :local sp ""
+      :onerror e in={ :set sp [:tostr ([:deserialize from=json [/file/get ($b . "/state/" . $n . "/status.dat") contents]]->"pkgs")] } do={}
+      :if ($sp ~ "wifi-qcom-ac") do={ :set ($warn->[:len $warn]) ("inventory: " . $n . " hat das Paket wifi-qcom-ac - SSIDs bekommen dort ihr VLAN nicht vom CAPsMAN (TODO 23)") }
+    }
     :local hf ($w . "/hosts/" . $n . ".rsc")
     :if (![$fex $hf]) do={ :set ($warn->[:len $warn]) ("inventory: " . $n . " hat kein hosts/" . $n . ".rsc") } else={
       :set cfmHost ({})
@@ -317,12 +323,17 @@
   :foreach k,s in=($cfmWifi->"ssids") do={
     :if ([:tostr ($s->"fallback")] = "yes" and $k = [:tostr ($cfmWifi->"master")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: fallback an der Master-SSID " . $k . " ist überflüssig (D46)") }
   }
-  # Persönliche Admin-SSH-Keys (work/authorized_keys, OpenSSH-Format, D35): optional, grobe
-  # Zeilenprüfung (kein RouterOS-Skript, daher kein :parse möglich)
-  :local akf ($w . "/authorized_keys")
-  :if ([$fex $akf]) do={
+  # Persönliche Admin-SSH-Keys je User (work/authorized_keys.<user>, OpenSSH-Format, D65): optional,
+  # grobe Zeilenprüfung (kein RouterOS-Skript, daher kein :parse möglich). RouterOS kennt nur
+  # rsa, ed25519 und ed25519-sk. Die gemeinsame Datei authorized_keys (D35) gilt nicht mehr.
+  :if ([$fex ($w . "/authorized_keys")]) do={ :set ($err->[:len $err]) "authorized_keys: die gemeinsame Datei gilt nicht mehr (D65) - Keys je Person nach authorized_keys.<user> verschieben und die Datei löschen" }
+  :foreach f in=[/file/find where name~("^" . $w . "/authorized_keys\\.") and type!="directory"] do={
+    :local fn [/file/get $f name]
+    :local rel [:pick $fn ([:len $w] + 1) [:len $fn]]
+    :local u [:pick $rel 16 [:len $rel]]
+    :if ([:typeof ($cfmG->"users"->$u)] = "nothing") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
     :local ln 0
-    :local t ([/file/get $akf contents] . "\n")
+    :local t ([/file/get $f contents] . "\n")
     :while ([:len $t] > 0) do={
       :set ln ($ln + 1)
       :local p [:find $t "\n"]
@@ -330,13 +341,9 @@
       :set t [:pick $t ($p + 1) [:len $t]]
       :if ([:len $l] > 0 and [:pick $l ([:len $l] - 1) [:len $l]] = "\r") do={ :set l [:pick $l 0 ([:len $l] - 1)] }
       :if ([:len $l] > 0 and [:pick $l 0 1] != "#") do={
-        :local sp [:find $l " "]
         :local ok false
-        :if ([:typeof $sp] != "nil") do={
-          :local typ [:pick $l 0 $sp]
-          :if ($typ ~ "^(ssh-ed25519|ssh-rsa|ssh-dss|ecdsa-sha2-|sk-ssh-ed25519|sk-ecdsa-sha2-)") do={ :set ok true }
-        }
-        :if (!$ok) do={ :set ($err->[:len $err]) ("authorized_keys: Zeile " . $ln . ": kein gültiger OpenSSH-Public-Key (Format \"<typ> <base64> [kommentar]\", keine Optionen wie command=... davor)") }
+        :if ($l ~ "^(ssh-ed25519|ssh-rsa|sk-ssh-ed25519@openssh\\.com) [A-Za-z0-9+/]+=*( |\$)") do={ :set ok true }
+        :if (!$ok) do={ :set ($err->[:len $err]) ($rel . ": Zeile " . $ln . ": kein gültiger OpenSSH-Public-Key (\"<typ> <base64> [kommentar]\", Typ ssh-ed25519, ssh-rsa oder sk-ssh-ed25519@openssh.com, keine Optionen wie command=... davor)") }
       }
     }
   }

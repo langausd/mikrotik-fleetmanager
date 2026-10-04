@@ -239,9 +239,10 @@
   :if ([:len $ch] = 0) do={ :put "keine Unterschiede"; :return false }
   :foreach rel,t in=$ch do={ :put ("  " . $t . ": " . $rel) }
   # betroffene Geräte - wie die Manifeste die Dateien zuordnen
-  :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1;"authorized_keys"=1}
+  :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
   :local all false
-  :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing") do={ :set all true } }
+  # authorized_keys.<user> (D65): jedes Gerät mit diesem User
+  :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing" or $rel ~ "^authorized_keys\\.") do={ :set all true } }
   :if ($all) do={ :put "betroffen: alle Geräte (gemeinsame Datei)" } else={
     :local aff ""
     :foreach name,d in=[$cfmInvLoad] do={
@@ -262,7 +263,7 @@
   }
   # geänderte Zeilen der Datendateien (lib/ und roles/ nur als Datei)
   :foreach rel,t in=$ch do={
-    :if ($rel ~ "^(global|vlans|profiles|wifi|wireguard|leases)\\.rsc\$" or $rel ~ "^hosts/" or $rel = "authorized_keys") do={
+    :if ($rel ~ "^(global|vlans|profiles|wifi|wireguard|leases)\\.rsc\$" or $rel ~ "^hosts/" or $rel ~ "^authorized_keys\\.") do={
       :put ""
       :put ($rel . ":")
       :local ta ""

@@ -14,6 +14,13 @@
 
 :local mv [:tostr ($cfmG->"mgmtVlan")]
 
+# Radios mit wifi-qcom-ac (hAP ac², cAP ac …) übernehmen vlan-id nicht vom CAPsMAN (TODO 23) - die
+# SSIDs landen dann nicht in ihrem VLAN. cfm unterstützt das Paket noch nicht, nur Warnung
+:global cfmWarn
+:local qac 0
+:onerror e in={ :set qac [:len [/system/package/find where name="wifi-qcom-ac" and !disabled and !available]] } do={ :set qac [:len [/system/package/find where name="wifi-qcom-ac" and !disabled]] }
+:if ($qac > 0) do={ $cfmWarn "Paket wifi-qcom-ac: SSIDs bekommen ihr VLAN nicht vom CAPsMAN (TODO 23) - Rolle ap hier nicht verwenden" }
+
 # CAPsMAN-Geräte aus dem Manifest (fehlt cm bei einem Manager vor D45: alle Manager, Namen offen lassen)
 :local cmA ({}); :local cmN ({})
 :foreach c in=($cfmMf->"cm") do={
@@ -138,7 +145,13 @@ $cfmPskMissing
 }
 :local sst "no"
 :if ([:len $fbk] > 0) do={ :set sst "yes" }
-:onerror e in={ $cfmSet m="/interface/wifi/cap" p=({"slaves-static"=$sst}) } do={ $cfmLog ("slaves-static nicht gesetzt: " . $e) }
+# Nur setzen, wenn ein fallback es verlangt oder der Wert gerade an ist: Jedes Setzen unter
+# /interface/wifi/cap - auch von "nicht gesetzt" auf no - trennt den CAP 3-24 s vom CAPsMAN (TODO 40)
+:local cst ""
+:onerror e in={ :set cst [:tostr [/interface/wifi/cap/get slaves-static]] } do={}
+:if ($sst = "yes" or $cst = "true" or $cst = "yes") do={
+  :onerror e in={ $cfmSet m="/interface/wifi/cap" p=({"slaves-static"=$sst}) } do={ $cfmLog ("slaves-static nicht gesetzt: " . $e) }
+}
 :if ([:len $fbk] > 0) do={
   :foreach i in=[/interface/wifi/find where !dynamic] do={
     :local mi ""

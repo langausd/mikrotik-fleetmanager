@@ -70,7 +70,7 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
 :if ($cfmDry != true) do={
   :foreach d in={"work";"meta";"live";"live/m";"archive";"state";"vault"} do={
     :local ex false
-    :onerror e in={ :local x [/file/get ($base . "/" . $d) name]; :set ex true } do={}
+    :onerror e in={ :if ([:len [/file/get ($base . "/" . $d) name]] > 0) do={ :set ex true } } do={}
     :if (!$ex) do={ :onerror e in={ /file add name=($base . "/" . $d) type=directory } do={} }
   }
 }

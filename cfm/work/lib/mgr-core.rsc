@@ -54,8 +54,10 @@
 # (Hardware ~0,2 ms je Datei, CHR mit 600 Dateien 8 ms je Suche), /file/get <Name> braucht
 # 0,05 ms. Suchen per Regex nur noch dort, wo wirklich mehrere Dateien gemeint sind.
 :global cfmFileEx do={
+  # Eine gelöschte Datei liefert /file/get u.U. dauerhaft weiter - als Eintrag ohne Namen (nur .id,
+  # Labor 7.24.5, 2026-10-04); /file/find sieht sie nicht. Deshalb auf den Namen prüfen
   :local r false
-  :onerror e in={ :local x [/file/get $1 name]; :set r true } do={}
+  :onerror e in={ :if ([:len [/file/get $1 name]] > 0) do={ :set r true } } do={}
   :return $r
 }
 # Ablage einmal je Sitzung bestimmen (das flash/-Verzeichnis kommt und geht nicht im Betrieb)
@@ -69,7 +71,7 @@
 }
 :global cfmWrite do={
   :global cfmFileEx
-  # Eine eben gelöschte Datei meldet /file/get kurz noch, /file/set scheitert dann mit "no such item"
+  # Eine gelöschte Datei meldet /file/get u.U. noch, /file/set scheitert dann mit "no such item"
   # (Hardware 2026-10-03: zweimal $cfmPlan hintereinander, der zweite leert plan/ und schreibt neu)
   :if ([$cfmFileEx $1]) do={ :onerror e in={ /file/set $1 contents=$2 } do={ /file/add name=$1 contents=$2 } } else={ /file/add name=$1 contents=$2 }
 }
@@ -266,8 +268,9 @@
       :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ :set ($want->[:len $want]) ({$f;1;1}) }
       # optional (D62): ältere Versionen haben keine leases.rsc - Ringe auf einer solchen bleiben gültig
       :set ($want->[:len $want]) ({"leases.rsc";1;0})
-      # authorized_keys (D35, persönliche Admin-SSH-Keys): optional, kein /import (kein RouterOS-Skript)
-      :set ($want->[:len $want]) ({"authorized_keys";0;0})
+      # authorized_keys.<user> (D65, persönliche Admin-SSH-Keys je User): optional, kein /import (kein
+      # RouterOS-Skript); base liest nur die Dateien der User aus users
+      :foreach p,h in=$fx do={ :if ($p ~ "^authorized_keys\\.") do={ :set ($want->[:len $want]) ({$p;0;0}) } }
       :set ($want->[:len $want]) ({("hosts/" . $name . ".rsc");1;0})
       :set ($want->[:len $want]) ({"roles/base.rsc";1;1})
       :if ($rl ~ ",manager-backup,") do={ :set ($want->[:len $want]) ({"roles/manager.rsc";0;1}) }
@@ -445,7 +448,13 @@
     :if ([:len [:tostr ($s->"seen")]] > 0) do={ :set age (($now - [:tonum ($s->"seen")]) / 60 . " min") }
     :local res [:tostr ($s->"res")]
     :if ([:len [:tostr ($s->"pending")]] > 0) do={ :set res ($res . " pend v" . ($s->"pending")) }
-    :if ([:len [:tostr ($s->"bad")]] > 0) do={ :set res ($res . " bad v" . ($s->"bad")) }
+    # bad = zuletzt gescheiterte Version (der Agent wendet sie nicht erneut an). Liegt danach schon eine
+    # neuere ok vor, ist sie Geschichte - nur anzeigen, solange sie nicht älter ist als IST oder SOLL ist.
+    # Vorn, weil die Spalte nach 25 Zeichen endet (der Fehlertext in res ist meist länger)
+    :local bv [:tonum ($s->"bad")]
+    :local iv [:tonum ($s->"v")]; :if ([:typeof $iv] != "num") do={ :set iv 0 }
+    :local sv0 [:tonum ($rg->("r" . ($d->"ring")))]; :if ([:typeof $sv0] != "num") do={ :set sv0 0 }
+    :if ([:typeof $bv] = "num" and ($bv >= $iv or $bv = $sv0)) do={ :set res ("bad v" . $bv . " " . $res) }
     :if ([:len [:tostr ($s->"fwe")]] > 0) do={ :set res ($res . " fw " . ($s->"fwe") . "!") }
     :if ([:tostr ($s->"wfb")] = "1") do={ :set res ($res . " WLAN lokal") }
     :if (![$cfmEnrolled $d]) do={ :set res "nicht aufgenommen" }

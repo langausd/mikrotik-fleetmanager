@@ -24,10 +24,11 @@
 :set cfmArg
 
 :global cfmWrite do={
-  # über den Namen statt /file/find (TODO 21, auf dem Manager liegen Hunderte Dateien)
+  # über den Namen statt /file/find (TODO 21, auf dem Manager liegen Hunderte Dateien). Eine gelöschte
+  # Datei liefert /file/get u.U. weiter als Eintrag ohne Namen - dann neu anlegen
   :local ex false
-  :onerror e in={ :local x [/file/get $1 name]; :set ex true } do={}
-  :if ($ex) do={ /file/set $1 contents=$2 } else={ /file/add name=$1 contents=$2 }
+  :onerror e in={ :if ([:len [/file/get $1 name]] > 0) do={ :set ex true } } do={}
+  :if ($ex) do={ :onerror e in={ /file/set $1 contents=$2 } do={ /file/add name=$1 contents=$2 } } else={ /file/add name=$1 contents=$2 }
 }
 
 # SFTP zum Manager (Key-Login als cfmd-<name>). r=Pfad auf dem Manager (relativ zu cfm/, mit
@@ -105,12 +106,21 @@
     }
   } do={}
   :set ($s->"nb") $nb
-  # APs: aktueller Kanal je Radio ($cfmChannels), {Radio;"c"Kanal}
+  # APs: aktueller Kanal je Radio ($cfmChannels, $cfmWifiScan), {Radio;"c"Kanal}. Ein CAPsMAN meldet nur
+  # seine eigenen Radios, wenn sie senden (capsmanRadios, TODO 46) - seine Interface-Liste enthält
+  # auch die aller CAPs
   :global cfmMf
-  :if (("," . [:tostr ($cfmMf->"role")] . ",") ~ ",ap,") do={
+  :local isAp (("," . [:tostr ($cfmMf->"role")] . ",") ~ ",ap,")
+  :local ownR false
+  :if (!$isAp) do={ :onerror e in={ :set ownR ([/interface/wifi/capsman/get enabled] and [:len [/interface/wifi/find where default-name~"^wifi" and !disabled]] > 0) } do={} }
+  :if ($isAp or $ownR) do={
     :local rd ({})
+    :local sel [:toarray ""]
     :onerror e in={
-      :foreach i in=[/interface/wifi/find] do={
+      :if ($isAp) do={ :set sel [/interface/wifi/find] } else={ :set sel [/interface/wifi/find where default-name~"^wifi" and !disabled] }
+    } do={}
+    :onerror e in={
+      :foreach i in=$sel do={
         :local ch ""
         # Unter CAPsMAN liefert monitor kein Feld channel, nur about "… channel: 2472/ax"
         # (Hardware 2026-10-03) - dann daraus lesen
@@ -133,9 +143,11 @@
     # Lokaler Fallback (D46): CAP eingeschaltet, aber mit keinem CAPsMAN verbunden -> die Radios senden
     # mit der lokalen Kopie der Master-SSID, weitere SSIDs fehlen ($cfmStatus: "WLAN lokal", TODO 40d)
     :local fb false
-    :onerror e in={
-      :if ([/interface/wifi/cap/get enabled] and [:len [:tostr [/interface/wifi/cap/get current-caps-man-identity]]] = 0) do={ :set fb true }
-    } do={}
+    :if ($isAp) do={
+      :onerror e in={
+        :if ([/interface/wifi/cap/get enabled] and [:len [:tostr [/interface/wifi/cap/get current-caps-man-identity]]] = 0) do={ :set fb true }
+      } do={}
+    }
     :if ($fb) do={
       :set ($s->"wfb") 1
       :log warning "cfm: WLAN im lokalen Fallback - kein CAPsMAN verbunden"

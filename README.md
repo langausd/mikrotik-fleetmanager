@@ -60,7 +60,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
-| `cfm/work/authorized_keys` | optional: persönliche Admin-SSH-Keys (OpenSSH-Format), siehe Sicherheitsmodell |
+| `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
 | `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
@@ -81,7 +81,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 
 | Rolle | Inhalt |
 |---|---|
-| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys`), Firmware-Aktivierung, Agent |
+| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus) |
@@ -99,7 +99,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
    `bootstrap-manager.rsc`. Die Beispieldaten sind ein
    fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
    `global.rsc` (Manager-IPs, MGMT-VLAN, User, Domain – Standard `internal`), `vlans.rsc`, `wifi.rsc`,
-   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc` und `authorized_keys`.
+   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc` und `authorized_keys.<user>`.
 2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory --bootstrap`
    (das Inventar nur beim ersten Mal; `--bootstrap` nimmt `site/bootstrap-manager.rsc` mit ins
    Wurzelverzeichnis), dann auf dem Gerät `/import bootstrap-manager.rsc`.
@@ -185,11 +185,12 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Der Werks-User `admin` wird abgeschaltet, sobald auf einem Gerät ein eigener Admin-User aktiv ist
   (`adminUser` in `global.rsc`, Ausnahmen pro Gerät im Hostfile).
 * **Menschen** melden sich mit **Passwort** an (`$cfmSecret key=user.<name> value=…`, Push wie
-  oben, nie als Datei). Optional zusätzlich eigene SSH-Keys über `cfm/work/authorized_keys`
-  (OpenSSH-Format, eine Zeile je Key, für alle Admin-User aus `users`): existiert die Datei, ist
-  sie der vollständige Sollzustand – nicht mehr gelistete Keys verschwinden beim nächsten Apply,
-  auch von Hand hinzugefügte. Revocation = Zeile löschen + `$cfmRelease`. Das Passwort gilt danach
-  nur noch für Winbox/WebFig: Hat ein User einen Key, lehnt RouterOS SSH per Passwort ab.
+  oben, nie als Datei). Optional zusätzlich eigene SSH-Keys je Person über
+  `cfm/work/authorized_keys.<user>` (OpenSSH-Format, eine Zeile je Key, D65): existiert die Datei
+  eines Users, ist sie dessen vollständiger Sollzustand – nicht mehr gelistete Keys verschwinden
+  beim nächsten Apply, auch von Hand hinzugefügte; Users ohne Datei bleiben unangetastet. Entzug =
+  Zeile löschen (alle Keys: Datei leeren) + `$cfmRelease`. Das Passwort gilt danach nur noch für
+  Winbox/WebFig: Hat ein User einen Key, lehnt RouterOS SSH per Passwort ab.
 * Vor jedem Secret-Push beweist das Gerät per **Challenge-Response**, dass es seinen Geräteschlüssel
   kennt. Ein Gerät, das sich nur unter der IP ausgibt, bekommt keine Secrets.
 * **Minimale Firewall** auf Switches, APs und Managern: nur Antworten, ICMP und Management-Netze

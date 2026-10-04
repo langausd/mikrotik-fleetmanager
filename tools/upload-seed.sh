@@ -6,7 +6,7 @@
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
 #            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert, anlegen mit
 #            tools/new-site.py) oder tools/chr-lab/seed für das Testlabor. Hochgeladen werden
-#            nur *.rsc (außer bootstrap*.rsc), authorized_keys und die Verzeichnisse
+#            nur *.rsc (außer bootstrap*.rsc), authorized_keys.<user> und die Verzeichnisse
 #            hosts/ roles/ lib/ meta/; Notizen wie STAND.md, BEFUNDE.md oder CSV-Listen bleiben lokal.
 # --bootstrap: zusätzlich diese Bootstrap-Datei ins Wurzelverzeichnis des Geräts legen (nicht nach
 #            work/ - dort landet nur, was an die Flotte verteilt wird). Ohne Pfad wird
@@ -57,7 +57,11 @@ if [ -n "$overlay" ]; then
       hosts|roles|lib) [ -d "$d" ] && cp -r "$d" "$stage/work/" ;;
       # die per --bootstrap gewählte Datei geht separat ins Wurzelverzeichnis, nicht nach work/
       bootstrap*.rsc) { [ -n "$bootstrap" ] && cmp -s "$d" "$bootstrap"; } || skipped="$skipped $n" ;;
-      *.rsc|authorized_keys) [ -f "$d" ] && cp "$d" "$stage/work/" ;;
+      # Editor-Sicherungen (z.B. authorized_keys.alice~) nie hochladen
+      *~|\#*\#) skipped="$skipped $n" ;;
+      # die gemeinsame authorized_keys gilt seit D65 nicht mehr ($cfmCheck lehnt sie ab)
+      authorized_keys) skipped="$skipped $n"; echo "authorized_keys nicht hochgeladen: Keys je Person in authorized_keys.<user> (D65)" >&2 ;;
+      *.rsc|authorized_keys.*) [ -f "$d" ] && cp "$d" "$stage/work/" ;;
       *) skipped="$skipped $n" ;;
     esac
   done

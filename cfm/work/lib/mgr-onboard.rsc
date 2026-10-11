@@ -248,7 +248,11 @@
   :set cfmOnbBusy $now
   $cfmLoadData
   :local to ([:tonsec [:totime ($cfmG->"onboard"->"timeout")]] / 1000000000)
-  :if (($now - [:tonum ($s->"t0")]) > $to) do={ :set cfmOnbBusy; $cfmOnboardEnd msg=("Timeout im Status " . $st); :return "timeout" }
+  :if (($now - [:tonum ($s->"t0")]) > $to) do={
+    :set cfmOnbBusy; $cfmOnboardEnd msg=("Timeout im Status " . $st)
+    :global cfmNotify; $cfmNotify ev="onboard" host=[:tostr ($s->"name")] st="once" msg=("Onboarding abgebrochen: Timeout im Status " . $st)
+    :return "timeout"
+  }
   :local ov [$cfmOnbVid]
   :local onet [$cfmNet $ov]
   :local gw [:tostr ($onet->"gw")]
@@ -411,6 +415,7 @@
   :if ([:len $fail] > 0) do={
     :log warning ("cfm: Onboarding fehlgeschlagen: " . $fail)
     $cfmOnboardEnd msg=("FEHLER: " . $fail)
+    :global cfmNotify; $cfmNotify ev="onboard" host=[:tostr ($s->"name")] st="once" msg=("Onboarding fehlgeschlagen: " . $fail)
     :return "fail"
   }
   :set ($s->"state") $st

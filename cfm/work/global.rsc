@@ -35,7 +35,8 @@
   "adminUser"="disable";
   "services"={"ssh"=22;"winbox"=8291};
   "capsmanApi"={};
-  "hook"={"host"="";"user"="cfm"}
+  "hook"={"host"="";"user"="cfm"};
+  "notify"={"url"="";"stale"="30m";"licWarn"="14d"}
 }
 # Erläuterungen:
 #  managers   Fallback-Liste (Primary zuerst). Geräte ziehen per SFTP von hier.
@@ -67,6 +68,12 @@
 #  services   aktive IP-Services, alle anderen werden deaktiviert (RouterOS-Namen: telnet, ftp, www,
 #             www-ssl, reverse-proxy, api, api-ssl, ssh, winbox – nicht http/https).
 #  hook       Git-Host für externe Sicherung (leer = aus).
+#  notify     Benachrichtigungen (D66) per HTTP-POST mit JSON-Body an url (leer = aus), z.B. ein
+#             Webhook von Home Assistant "http://192.168.10.50:8123/api/webhook/<id>". Gemeldet wird
+#             je Wechsel: Apply-Fehler/Rollback, Gerät stumm (kein Status seit stale), AP im lokalen
+#             Fallback, RouterOS-Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz des
+#             Managers (Erneuerung überfällig oder Ablauf in weniger als licWarn). Optional "site" =
+#             Name in der Meldung (Default: Identity des Managers). Probe: $cfmNotify test=yes
 #  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (D47), z.B. für Home Assistant (welcher
 #             Client an welchem AP). {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}
 #             öffnet dort den Dienst api nur für from, legt den User (Gruppe cfm-api: read,api,test) an,

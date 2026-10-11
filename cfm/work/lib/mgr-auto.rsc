@@ -2,7 +2,7 @@
 # cfm lib/mgr-auto.rsc – Manager-Funktionen: Automatik
 #   $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick"), $cfmOnbTickRun (Scheduler
 #   cfm-mgr-onb-tick, fest 1m), $cfmAutoPromote, $cfmSecretSync, $cfmHookState, $cfmMirror,
-#   $cfmPromoteManager
+#   $cfmPromoteManager; Benachrichtigungen: lib/mgr-notify.rsc
 # ============================================================
 # ---------- Automatik (Scheduler cfm-mgr-tick) ----------
 :global cfmAutoPromote do={
@@ -71,6 +71,7 @@
 
 :global cfmMirror do={
   :global cfmFileEx; :global cfmMB; :global cfmConf; :global cfmJson; :global cfmInvLoad; :global cfmNow; :global cfmMirT; :global cfmRings
+  :global cfmDevUser
   :local now [$cfmNow]
   :if (($now - [:tonum $cfmMirT]) < 300) do={ :return false }
   :set cfmMirT $now
@@ -101,6 +102,11 @@
     :local sfn ""
     :for i from=0 to=([:len ($d->"serial")] - 1) do={ :local c [:pick ($d->"serial") $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
     $get s=$src u=$u r=("live/m/" . $sfn . ".mf") l=($b . "/live/m/" . $sfn . ".mf")
+    # SFTP-User der Geräte (D67), gesperrt bis zur Beförderung: Der Spiegel kann älter sein als der
+    # Primary, ein Gerät darf daraus nur nach $cfmPromoteManager ziehen. Nicht für dieses Gerät selbst -
+    # sein Agent überspringt die eigenen Adressen, solange der User fehlt (TODO 44)
+    :local own ([:len [/ip/address/find where address~("^" . [:tostr ($d->"ip")] . "/")]] > 0)
+    :if ([$get s=$src u=$u r=("meta/keys/" . $name . ".pem") l=($b . "/meta/keys/" . $name . ".pem")] and !$own) do={ $cfmDevUser name=$name serial=($d->"serial") dis=yes }
     :foreach f in={"status.dat";"export.rsc";"audit.txt"} do={ $get s=$src u=$u r=("state/" . $name . "/" . $f) l=($b . "/state/" . $name . "/" . $f) }
   }
   # der Spiegel wächst sonst unbegrenzt (gleiche Regel wie auf dem Primary)
@@ -118,6 +124,10 @@
     :local rel [:pick $n ([:len ($b . "/archive/v" . $v)] + 1) [:len $n]]
     :if ($rel != "index.dat") do={ $cfmWrite ($b . "/work/" . $rel) [/file/get $f contents] }
   }
+  # Geräte-User freischalten, den eigenen anlegen (D67): ab hier ziehen die Geräte - und der eigene
+  # Agent - bei diesem Manager
+  :global cfmDevUsersOn
+  :put ("SFTP-User freigeschaltet: " . [$cfmDevUsersOn])
   :put ("Befördert: dieser Manager ist jetzt Primary (work/ = v" . $v . "). Reihenfolge in global.rsc managers anpassen und releasen!")
 }
 
@@ -139,6 +149,8 @@
       :global cfmNetTick; $cfmNetTick
       :log info "cfm: tick hook"
       $cfmHookState
+      :log info "cfm: tick notify"
+      :global cfmNotifyTick; $cfmNotifyTick
       :local vj [$cfmJson ([$cfmMB] . "/meta/vault.dat")]
       # als String vergleichen: [:tonum nothing] ist nil, und "3 != nil" ist weder wahr noch falsch
       :if ([:tostr ($vj->"ver")] != [:tostr ($vj->"bver")] and [:len [$cfmVaultGet "vaultpw"]] > 0) do={ $cfmVaultBackup }

@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-04)
+## Übersicht offener Punkte (Stand 2026-10-08)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -15,6 +15,12 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Labortest aller Skripte erst mit 7.25 stable (entschieden 2026-10-04).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-08:** 2 (Benachrichtigungen per HTTP-POST, D66), 8 Rest (SFTP-/Host-Schlüssel
+  rotieren, Manager zweiphasig, D67); beim Sichten gefunden und behoben: Der Backup-Manager hatte
+  keine Geräte-User `cfmd-<name>`, Geräte konnten auch nach der Beförderung nicht von ihm ziehen
+  (D67: gesperrt bereit, `$cfmPromoteManager` schaltet frei; Labor: `e2e.sh` 14g). Dazu `level`/`device`/`message` für einfache Webhook-Empfänger und der Hinweis auf neue
+  RouterOS-Versionen (`ros`). Offen: Benachrichtigung am Backup, wenn der Primary ausfällt (bisher
+  meldet nur der Primary).
 * **Erledigt am 2026-10-04:** 19 (Admin-SSH-Keys je Person, D65), 46 (`$cfmWifiScan` mit den eigenen
   Radios des CAPsMAN), 40 (`slaves-static` nur bei Bedarf), 23 (Warnung bei `wifi-qcom-ac`; die
   Unterstützung selbst bleibt offen), `$cfmStatus` blendet eine veraltete `bad`-Version aus. Im Labor
@@ -28,7 +34,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   D58), „Manager-Ticks starten gleichzeitig“ (D57); Labortest des Watchdog-Rollbacks (`e2e.sh`
   Schritt 14d) und Probe des Router-Umzugs mit drei VRRP-Routern (`e2e-vrrp.sh`). Am 2026-09-30:
   28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
-* **Größere Ausbauten:** 2 (Benachrichtigungen), 10, 13–15, 18, 20 sowie Netinstall/Branding (Onboarding).
+* **Größere Ausbauten:** 10, 13–15, 18, 20 sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -152,8 +158,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 1. ~~**`manager.rsc` aufteilen**~~ – *erledigt (D26):* `lib/mgr-core.rsc`, `mgr-enroll.rsc`,
    `mgr-onboard.rsc`, `mgr-auto.rsc` (je höchstens 21 KB statt 53 KB in einer Datei; RouterOS liest
    per `/file get` nur etwa 60 KB, `$cfmRelease` lehnt größere Dateien ab).
-2. **Benachrichtigungen** (E-Mail oder Push-Dienst wie ntfy/Telegram) bei Fehler/Rollback, stummen
-   Geräten, gescheitertem Onboarding, CAPs im lokalen Fallback (D46).
+2. ~~**Benachrichtigungen**~~ – *erledigt (D66):* `global.rsc` `notify` (HTTP-POST mit JSON, z.B. an
+   einen Webhook von Home Assistant), je Zustandswechsel: Apply-Fehler/Rollback, stumm, WLAN lokal,
+   Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz; Labor: `e2e.sh` Schritt 14f. Offen: der
+   Backup-Manager meldet nicht, wenn der Primary ausfällt. – (E-Mail oder Push-Dienst wie
+   ntfy/Telegram) bei Fehler/Rollback, stummen Geräten, gescheitertem Onboarding, CAPs im lokalen
+   Fallback (D46).
 3. ~~**Archiv aufräumen**~~ – *erledigt (D27):* nach jedem Release und auf dem Backup-Spiegel;
    behalten werden `archiveKeep` (10) plus alle von Ringen/Geräten genutzten Versionen.
 4. ~~**Prüfskript für RouterOS-Fallen**~~ – *erledigt (D34):* `tools/rsc-check.py` (Zeile beginnt
@@ -176,8 +186,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
    `container`, `iot`, `ups` …) auf arm und arm64 auf Hardware gelaufen (2026-09-26). Offen: Pakete
    auf den Backup-Manager spiegeln; Vorabversionen im Labortest (TODO 36).
 8. ~~**Identitätsprüfung vor dem Secret-Push**~~ – *erledigt (D28):* Challenge-Response mit dem
-   Geräteschlüssel; Erneuerung per `$cfmRekey`. Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
-   (bisher nur per `$cfmEnroll … rekey=yes`).
+   Geräteschlüssel; Erneuerung per `$cfmRekey`. ~~Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
+   (bisher nur per `$cfmEnroll … rekey=yes`).~~ – *erledigt (D67):* `$cfmRekey … sftp=yes`, bei
+   Managern zweiphasig (neuer Trust-Key erst auf allen Geräten, sonst Abbruch); der Backup-Manager legt
+   die Geräte-User aus dem Spiegel selbst an. Labor: `e2e.sh` Schritt 14g.
 9. ~~**Minimale Firewall auf allen Geräten**~~ – *erledigt (D31):* Default-Drop auf Nicht-Routern,
    IPv6-input auf allen Geräten. Offen: IPv6-Forward auf Routern (mit Punkt 13).
 10. **Link-Bündel (Bonding/LACP) als Port-Profil** für Uplinks.

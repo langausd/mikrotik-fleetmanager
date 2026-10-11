@@ -10,6 +10,7 @@
 #   mgr-ros      RouterOS-Pakete und -Updates ($cfmUpgrade)
 #   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels)
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
+#   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (D66)
 # Die Module hängen nur beim Aufruf voneinander ab (:global in den Funktionen), die
 # Ladereihenfolge ist daher egal.
 #
@@ -30,6 +31,8 @@
 #   $cfmSecretPush [host=<n>]          Secrets per SSH direkt in die Geräte schreiben
 #   $cfmVaultBackup                    verschlüsseltes Backup (inkl. Vault) nach vault/
 #   $cfmRekey host=<n>|all=yes         Geräteschlüssel (Manifest-Signatur) erneuern
+#   $cfmRekey host=<n>|all=yes sftp=yes  SFTP-/Host-Schlüssel erneuern (Manager: zweiphasig, D67)
+#   $cfmNotify test=yes                Probemeldung an global.rsc notify (D66)
 #   $cfmArchivePrune [keep=<n>]        alte Versionen löschen (läuft nach jedem Release)
 #   $cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at="YYYY-MM-DD HH:MM"]
 #                                      RouterOS-Update/-Downgrade, Pakete kommen vom Manager
@@ -668,8 +671,19 @@
   :global cfmInvLoad; :global cfmChallenge; :global cfmExec; :global cfmVaultSet; :global cfmManifests
   :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmIsPrimary; :global cfmEnrolled
   :if (![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
-  :if ([:len $host] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmRekey host=<name> | all=yes" }
+  :if ([:len $host] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmRekey host=<name> | all=yes [sftp=yes]" }
   :local n 0
+  # sftp=yes: SFTP-/Host-Schlüssel statt Geräteschlüssel (D67, lib/mgr-enroll.rsc); Manager zuletzt
+  :if ($sftp = "yes") do={
+    :global cfmRekeySsh
+    :foreach pass in={false;true} do={
+      :foreach name,d in=[$cfmInvLoad] do={
+        :local im ((("," . ($d->"role") . ",") ~ ",manager"))
+        :if ($im = $pass and (($all = "yes" and [$cfmEnrolled $d]) or $host = $name)) do={ :if ([$cfmRekeySsh host=$name]) do={ :set n ($n + 1) } }
+      }
+    }
+    :return $n
+  }
   :foreach name,d in=[$cfmInvLoad] do={
     :if (($all = "yes" and [$cfmEnrolled $d]) or $host = $name) do={
       :if (![$cfmChallenge ip=($d->"ip") serial=($d->"serial")]) do={ :put ("Rekey " . $name . ": Identitätsprüfung fehlgeschlagen - übersprungen") } else={

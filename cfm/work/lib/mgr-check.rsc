@@ -285,6 +285,18 @@
     :if ([:len $cmn] = 0) do={ :set ($warn->[:len $warn]) "inventory: kein Gerät mit Rolle capsman – CAPsMAN bleibt übergangsweise auf dem Primary-Manager (D45)" }
     :if ([:len $cmn] > 1) do={ :set ($err->[:len $err]) ("inventory: Rolle capsman mehrfach vergeben (" . [:tostr $cmn] . ") – nur ein CAPsMAN vorgesehen (D45)") }
   }
+  # Benachrichtigungen (D66): URL mit http(s)://, Zeiten lesbar
+  :local nfy ($cfmG->"notify")
+  :if ([:typeof $nfy] = "array") do={
+    :local nu [:tostr ($nfy->"url")]
+    :if ([:len $nu] > 0 and !($nu ~ "^https?://[^/]+")) do={ :set ($err->[:len $err]) ("global.rsc: notify url " . $nu . " ist keine http(s)-URL") }
+    :foreach nk in={"stale";"licWarn"} do={
+      :local nv [:tostr ($nfy->$nk)]
+      :local tok false
+      :onerror x in={ :if ([:typeof [:totime $nv]] = "time") do={ :set tok true } } do={}
+      :if ([:len $nv] > 0 and !$tok) do={ :set ($err->[:len $err]) ("global.rsc: notify " . $nk . "=" . $nv . " ist keine Zeitangabe (z.B. 30m, 14d)") }
+    }
+  } else={ :if ([:typeof $nfy] != "nothing") do={ :set ($err->[:len $err]) "global.rsc: notify muss ein Array sein ({\"url\"=…})" } }
   # API-Zugang auf dem CAPsMAN (D47): Adressen gültig, Passwort im Vault
   :local capi ($cfmG->"capsmanApi")
   :if ([:typeof $capi] = "array") do={

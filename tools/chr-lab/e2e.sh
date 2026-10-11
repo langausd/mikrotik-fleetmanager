@@ -58,7 +58,7 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 8' "cm1: 8 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 9' "cm1: 9 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
@@ -552,6 +552,131 @@ agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" 
 expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 0' "sw1: leere Datei entzieht alle Keys von netadmin"
 expect 1 '[:len [/user/ssh-keys/find where user=netadmin]] = 0' "cm1: leere Datei entzieht alle Keys von netadmin"
 mgr '/file/remove [find name="cfm/work/authorized_keys.netadmin"]' >/dev/null
+
+step "14f. Benachrichtigungen (D66)"
+# Empfänger auf dem Host; die VMs erreichen ihn über das QEMU-User-Net als 10.0.2.2
+NP=$((LABPORT + 91)); NL="$LAB/notify.log"; : > "$NL"
+sink() { python3 "$ROOT/tools/chr-lab/notify-sink.py" "$NP" "$NL" & npid=$!; sleep 1; }
+sink
+nwait() { for _ in $(seq 1 15); do [ "$(grep -c "$1" "$NL")" -ge "${2:-1}" ] && return 0; sleep 2; done; return 1; }
+out=$(mgr ':global cfmDays; :global cfmNotifyLic; :put ("D=" . [$cfmDays "1970-01-01"] . "," . [$cfmDays "2000-02-29"] . "," . [$cfmDays "2000-03-01"] . "," . [$cfmDays "2024-02-29 10:00:00"] . "," . [$cfmDays "2026-10-08"] . "," . [$cfmDays "oct/08/2026"]); :put ("L1=" . [$cfmNotifyLic now="2026-10-08" renew="2026-10-07 23:00:00" deadline="2026-11-18 00:00:00" warn=14]); :put ("L2=" . [$cfmNotifyLic now="2026-10-08" renew="2026-10-08 01:00:00" deadline="2026-11-18" warn=14]); :put ("L3=" . [$cfmNotifyLic now="2026-11-05" renew="2026-12-01" deadline="2026-11-18" warn=14]); :put ("L4=" . [$cfmNotifyLic now="2026-10-08" renew="" deadline="" warn=14])')
+echo "$out" | grep -q "^D=0,11016,11017,19782,20734,-1$" && ok "\$cfmDays: Tage seit 1970 (Schaltjahre, Uhrzeit, unlesbar = -1)" || { bad "\$cfmDays"; echo "$out" | grep "^D="; }
+echo "$out" | grep -q "^L1=CHR-Lizenz: Erneuerung überfällig seit 2026-10-07" && echo "$out" | grep -qx "L2=" && echo "$out" | grep -q "^L3=CHR-Lizenz läuft am 2026-11-18 ab (in 13 Tagen)" && echo "$out" | grep -qx "L4=" && ok "Lizenz: überfällig, rechtzeitig, Ablauf in 13 Tagen, ohne Angaben" || { bad "Lizenzprüfung"; echo "$out" | grep "^L"; }
+out=$(mgr '$cfmNotify test=yes')
+echo "$out" | grep -q "notify.url ist leer" && ok "ohne notify.url aus" || { bad "notify ohne URL"; echo "$out" | tail -2; }
+mgr ':global e2eG [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"notify\"->\"url\") \"http://10.0.2.2:'"$NP"'/hook\"\n:set (\$cfmG->\"notify\"->\"site\") \"Labor\"\n")' >/dev/null
+out=$(mgr ':global cfmCheck; :global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"notify\") {\"url\"=\"ftp://x\";\"stale\"=\"bald\"}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"notify\"->\"url\") \"http://10.0.2.2:'"$NP"'/hook\"\n:set (\$cfmG->\"notify\"->\"site\") \"Labor\"\n")')
+echo "$out" | grep -q "ERR global.rsc: notify url ftp://x ist keine http(s)-URL" && echo "$out" | grep -q "ERR global.rsc: notify stale=bald ist keine Zeitangabe" && ok "\$cfmCheck: notify-URL und Zeitangabe geprüft" || { bad "\$cfmCheck notify"; echo "$out" | tail -3; }
+rv=$(mgr '$cfmRelease msg=" notify" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
+out=$(mgr '$cfmNotify test=yes; $cfmNotify ev="e2e" host="sw1" st="once" msg=("Pr\C3\BCfung \C3\A4\C3\B6\C3\BC \"x\"")')
+echo "$out" | grep -q "zugestellt an http://10.0.2.2:$NP/hook" && nwait '"ev": "test"' && ok "Probemeldung zugestellt" || { bad "Probemeldung"; echo "$out" | tail -2; }
+nwait '"ev": "e2e"' && grep '"ev": "e2e"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "e2e", "state": "once", "msg": "Prüfung äöü \\"x\\"", "text": "Labor: sw1 - Prüfung äöü \\"x\\""' && grep '"ev": "e2e"' "$NL" | grep -q '"_ct": "application/json"' && ok "JSON mit Umlauten und Anführungszeichen, Content-Type application/json" || { bad "JSON der Meldung"; tail -1 "$NL"; }
+grep '"ev": "test"' "$NL" | grep -q '"level": "info", "device": "cm1", "message": "Labor: Probemeldung von cfm"' && grep '"ev": "e2e"' "$NL" | grep -q '"level": "warning", "device": "sw1"' && ok "level/device/message (Probe info, Gerät statt Absender)" || { bad "level/device/message"; grep '"ev": "test"' "$NL" | tail -1; }
+# Umlaute oben als Bytes (\C3\BC): die Konsole verwirft Mehrbyte-Zeichen aus der ssh-Befehlszeile
+# Zustände von sw1 im gesammelten Status vortäuschen: stumm, Apply-Fehler, WLAN lokal, Update fehlgeschlagen
+setst() { mgr ':global cfmJson; :global cfmWrite; :global cfmRead; :global cfmNow; :global e2eS; :if ([:typeof $e2eS] != "str") do={ :set e2eS [$cfmRead "cfm/state/sw1/status.dat"] }; :local s [$cfmJson "cfm/state/sw1/status.dat"]; :set ($s->"seen") ([$cfmNow] - 3600); :set ($s->"res") "failed e2e"; :set ($s->"wfb") 1; :set ($s->"upg") "fehlgeschlagen 7.0.0"; $cfmWrite "cfm/state/sw1/status.dat" [:serialize to=json $s]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])'; }
+rest() { mgr ':global cfmWrite; :global e2eS; $cfmWrite "cfm/state/sw1/status.dat" $e2eS; :set e2eS; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])'; }
+setst >/dev/null
+nwait '"state": "on"' 4 && for e in stumm apply wlan update; do grep -q "\"host\": \"sw1\", \"ev\": \"$e\", \"state\": \"on\"" "$NL" || bad "keine Meldung $e"; done && ok "vier Meldungen beim Eintreten (stumm, apply, wlan, update)" || { bad "Meldungen beim Eintreten: $(grep -c '"state": "on"' "$NL")"; grep '"state": "on"' "$NL" | cut -c1-160; }
+grep '"ev": "apply", "state": "on"' "$NL" | grep -q '"level": "error"' && grep '"ev": "stumm", "state": "on"' "$NL" | grep -q '"level": "error"' && grep '"ev": "wlan", "state": "on"' "$NL" | grep -q '"level": "warning"' && grep '"ev": "update", "state": "on"' "$NL" | grep -q '"level": "action"' && ok "level: apply/stumm error, wlan warning, update action" || bad "level beim Eintreten: $(grep '"state": "on"' "$NL" | grep -o '"ev": "[a-z]*".*"level": "[a-z]*"' | sed 's/"state.*"level"/ level/' | tr '\n' ' ')"
+grep '"ev": "apply", "state": "on"' "$NL" | grep -q '"msg": "Apply-Fehler: failed e2e"' && grep '"ev": "stumm", "state": "on"' "$NL" | grep -q '"msg": "stumm: kein Status seit 6[0-9] min"' && ok "Texte: Apply-Fehler, stumm seit 60 min" || bad "Meldungstexte: $(grep '"state": "on"' "$NL" | cut -c1-200 | head -2)"
+setst >/dev/null; sleep 2
+[ "$(grep -c '"state": "on"' "$NL")" = 4 ] && ok "kein zweites Mal, solange der Zustand bleibt" || bad "Wiederholung: $(grep -c '"state": "on"' "$NL") Meldungen"
+rest >/dev/null
+nwait '"state": "off"' 4 && grep '"ev": "apply", "state": "off"' "$NL" | grep -q '"msg": "wieder ok (war: Apply-Fehler: failed e2e)"' && ok "vier Meldungen \"wieder ok\"" || { bad "Meldungen wieder ok: $(grep -c '"state": "off"' "$NL")"; }
+[ "$(grep '"state": "off"' "$NL" | grep -c '"level": "warning"')" = 4 ] && ok "\"wieder ok\" mit level warning" || bad "level von wieder ok"
+# neue RouterOS-Version (level action): echte Abfrage bei MikroTik (Internet über ether1 aus Schritt 13),
+# dann mit vorgetäuschter Version; je Version nur einmal, auch wenn erneut gefragt wird
+mgr ':global cfmRosLatest; :put ("RL=" . [$cfmRosLatest])' | grep -qE '^RL=7\.[0-9]+' && ok "neueste RouterOS-Version bei MikroTik abgefragt" || bad "NEWESTa7 nicht abrufbar: $(mgr ':global cfmRosLatest; :put ("RL=" . [$cfmRosLatest])' | tail -1)"
+rost() { mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"rost") 0; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmRosFake "7.99.1"; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick]); :set cfmRosFake'; }
+rost >/dev/null
+nwait 'RouterOS 7.99.1' && grep 'RouterOS 7.99.1' "$NL" | grep -q '"state": "once", "msg": "RouterOS 7.99.1 (stable) verfügbar, älter: .*sw1=7\.[0-9.]*.*"level": "action"' && ok "neue Version gemeldet (level action, ältere Geräte genannt)" || { bad "Meldung neue Version"; grep '"ev": "ros"' "$NL" | tail -1 | cut -c1-250; }
+rost >/dev/null; sleep 2
+[ "$(grep -c 'RouterOS 7.99.1' "$NL")" = 1 ] && ok "dieselbe Version kein zweites Mal" || bad "Version mehrfach gemeldet: $(grep -c 'RouterOS 7.99.1' "$NL")"
+expect 1 '[:len ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"act")] = 0' "notify.dat: keine offenen Zustände"
+# Empfänger weg: nichts gilt als gemeldet, der nächste Tick holt es nach
+kill $npid 2>/dev/null; wait $npid 2>/dev/null; n0=$(grep -c . "$NL")
+setst >/dev/null
+expect 1 '[:len [/log/find where message~"^cfm: Meldung nicht zugestellt"]] >= 1 and [:len ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"act")] = 0' "Empfänger aus: Warnung im Log, nichts als gemeldet vermerkt"
+sink; setst >/dev/null
+nwait '"state": "on"' 8 && ok "Empfänger zurück: Meldungen nachgeholt" || bad "nicht nachgeholt: $(grep -c '"state": "on"' "$NL")"
+rest >/dev/null; nwait '"state": "off"' 8 || bad "wieder ok nach dem Nachholen fehlt"
+mgr ':global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG' >/dev/null
+
+step "14g. SFTP-User auf dem Backup, Ernstfall, Schlüssel erneuern (D67)"
+# Spiegel auf cm2 sofort anstoßen: als User cfm (dessen Schlüssel braucht der SFTP-Abruf) im Hintergrund,
+# ssh-exec selbst liefe vorher in seine Zeitgrenze; Ergebnis in e2e-mir.txt auf cm2
+mirror() { local f="e2e-mir-$RANDOM.txt"
+  mgr ':global cfmExec; $cfmExec ip=192.168.10.3 cmd=(":execute script=\"/system script run cfm-mgr; :global cfmMirT; :set cfmMirT 0; :global cfmMirror; /file/add name='"$f"' contents=(\\\"MIR=\\\" . [\\\$cfmMirror])\"")' >/dev/null
+  for _ in $(seq 1 60); do o=$(r 3 ':onerror e in={ :put ("F=" . [/file/get '"$f"' contents]) } do={ :put none }' | tail -1); [ "${o#F=}" != "$o" ] && { echo "${o#F=}"; r 3 "/file/remove $f" >/dev/null; return; }; sleep 4; done; echo MIR=timeout; }
+fp() { r "$1" ":put [/user/ssh-keys/get [:pick [find where user=\"$2\"] 0] fingerprint]" | head -1; }
+mirror | grep -q MIR=true && ok "Spiegel auf cm2 angestoßen" || bad "Spiegel auf cm2"
+expect 3 '[:len [/user/find where name~"^cfmd-(cm1|sw1)\$" and group="cfm-dev" and comment~" k=" and disabled]] = 2 and [:len [/user/ssh-keys/find where user="cfmd-sw1"]] = 1 and [:len [/user/find where name="cfmd-cm2"]] = 0' "cm2: SFTP-User von cm1 und sw1 gesperrt, je ein Schlüssel, keiner für sich selbst"
+[ "$(fp 3 cfmd-sw1)" = "$(fp 1 cfmd-sw1)" ] && ok "cm2: Schlüssel von sw1 wie auf dem Primary" || bad "cm2: Schlüssel von sw1 weicht ab"
+# Ernstfall nach der Beförderung: $cfmDevUsersOn (Teil von $cfmPromoteManager) schaltet die User frei;
+# sw1 erreicht cm1 per SFTP nicht mehr (eigene Verbindungen zu cm1:22 abgewiesen; der Push von cm1 und
+# das Abholen des Status laufen als Verbindungen von cm1 weiter)
+mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.3 cmd=("/system script run cfm-mgr; :global cfmDevUsersOn; :put [\$cfmDevUsersOn]")]; :put ($r->"output")' >/dev/null
+expect 3 '[:len [/user/find where name~"^cfmd-(cm1|sw1|cm2)\$" and !disabled]] = 3' "cm2: \$cfmDevUsersOn schaltet die User frei und legt den eigenen an"
+r 2 '/ip/firewall/filter/add chain=output protocol=tcp dst-address=192.168.10.2 dst-port=22 action=reject reject-with=tcp-reset comment=e2e-dr' >/dev/null
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+[ "$(stat sw1 mgr)" = 192.168.10.3 ] && [ "$(stat sw1 res)" = ok ] && ok "sw1 zieht vom Backup-Manager cm2 (res=ok)" || { bad "sw1 vom Backup: mgr=$(stat sw1 mgr) res=$(stat sw1 res)"; r 3 '/log/print where message~"login failure"' | tail -3; }
+r 2 '/ip/firewall/filter/remove [find where comment=e2e-dr]' >/dev/null
+expect 2 '[:len [/ip/firewall/filter/find where comment="e2e-dr"]] = 0' "sw1: Testregel entfernt"
+# zurück zum unbeförderten Backup: eigenen User weg, der nächste Spiegel sperrt die übrigen wieder
+r 3 '/user/remove [find where name="cfmd-cm2"]' >/dev/null
+mirror >/dev/null
+expect 3 '[:len [/user/find where name~"^cfmd-" and !disabled]] = 0 and [:len [/user/find where name="cfmd-cm2"]] = 0' "cm2: Spiegel sperrt die Geräte-User wieder"
+# SFTP-Schlüssel eines Geräts erneuern
+f0=$(fp 1 cfmd-sw1)
+out=$(mgr '$cfmRekey host=sw1 sftp=yes')
+echo "$out" | grep -q "Rekey SFTP sw1: neuer SFTP-/Host-Schlüssel aktiv" && ok "Rekey SFTP sw1" || { bad "Rekey SFTP sw1"; echo "$out" | tail -3; }
+f1=$(fp 1 cfmd-sw1)
+[ -n "$f1" ] && [ "$f0" != "$f1" ] && expect 1 '[:len [/user/ssh-keys/find where user="cfmd-sw1"]] = 1' "cm1: cfmd-sw1 hat genau den neuen Schlüssel" || bad "cfmd-sw1 unverändert"
+expect 2 '[:len [/user/ssh-keys/private/find where user=cfm]] = 1 and [:len [/file/find where name~"^cfm-rk"]] = 0' "sw1: ein privater Schlüssel, keine Dateien übrig"
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+[ "$(stat sw1 t)" != "$t0" ] && [ "$(stat sw1 res)" = ok ] && [ "$(stat sw1 mgr)" = 192.168.10.2 ] && ok "sw1 zieht mit dem neuen Schlüssel vom Primary" || bad "sw1 nach Rekey SFTP: mgr=$(stat sw1 mgr) res=$(stat sw1 res)"
+mirror >/dev/null
+[ "$(fp 3 cfmd-sw1)" = "$f1" ] && expect 3 '[:len [/user/ssh-keys/find where user="cfmd-sw1"]] = 1' "cm2: neuer Schlüssel von sw1 nach dem Spiegel" || bad "cm2 hat den neuen Schlüssel von sw1 nicht"
+# Manager-Schlüssel: ein aufgenommenes, aber unerreichbares Gerät bricht die Rotation ab
+k2a=$(fp 2 cfm); n2a=$(r 2 ':put [:len [/user/ssh-keys/find where user=cfm]]' | head -1)
+mgr ':global cfmVaultSet; $cfmVaultSet "mac.SERIAL-PH2" "x"; $cfmRegister name=ph2 serial=SERIAL-PH2 ip=192.168.10.97 role=switch ring=0' >/dev/null
+out=$(mgr '$cfmRekey host=cm2 sftp=yes')
+echo "$out" | grep -q "Rekey SFTP cm2: neuer Manager-Schlüssel nicht auf allen Geräten ( ph2 ) - abgebrochen" && ok "Rotation cm2 abgebrochen (ph2 unerreichbar)" || { bad "Abbruch der Rotation"; echo "$out" | tail -3; }
+[ "$(r 2 ':put [:len [/user/ssh-keys/find where user=cfm]]' | head -1)" = "$n2a" ] && ok "sw1: Trust-Keys wie vorher ($n2a)" || bad "sw1: Trust-Keys nach dem Abbruch: $(r 2 ':put [:len [/user/ssh-keys/find where user=cfm]]' | head -1)"
+mirror | grep -q MIR=true && ok "cm2 spiegelt nach dem Abbruch weiter (alter Schlüssel)" || bad "cm2 spiegelt nach dem Abbruch nicht"
+mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"ph2"); $cfmInvSave $i; /ppp/secret/remove [find where name="cfm:mac.SERIAL-PH2"]' >/dev/null
+# Backup-Manager cm2: zweiphasig
+c0=$(fp 1 cfmd-cm2)
+out=$(mgr '$cfmRekey host=cm2 sftp=yes')
+echo "$out" | grep -q "Rekey SFTP cm2: Manager-Schlüssel auf 3 Geräten, alter entfernt" && echo "$out" | grep -q "Rekey SFTP cm2: neuer SFTP-/Host-Schlüssel aktiv" && ok "Rekey SFTP cm2 (Manager, zweiphasig)" || { bad "Rekey SFTP cm2"; echo "$out" | tail -4; }
+c1=$(fp 1 cfmd-cm2)
+[ -n "$c1" ] && [ "$c0" != "$c1" ] && ok "cm1: cfmd-cm2 mit neuem Schlüssel" || bad "cfmd-cm2 unverändert"
+expect 2 '[:len [/user/ssh-keys/find where user=cfm]] = 2 and [:len [/user/ssh-keys/find where user=cfm and fingerprint="'"$c1"'"]] = 1' "sw1: Trust-Keys cm1 + neuer cm2, alter weg"
+expect 3 '[:len [/user/ssh-keys/private/find where user=cfm]] = 1 and [:len [/file/find where name~"^cfm-rk"]] = 0' "cm2: ein privater Schlüssel für cfm, keine Schlüsseldateien"
+mirror | grep -q MIR=true && ok "cm2 spiegelt mit dem neuen Schlüssel" || bad "cm2 spiegelt nach der Rotation nicht"
+t0=$(stat cm2 t); mgr '$cfmPush host=cm2 force=yes' >/dev/null
+# fällt der Lauf in den eigenen Spiegel-Sync, dauert er gut 3 min (D58)
+for _ in $(seq 1 75); do [ "$(stat cm2 t)" != "$t0" ] && break; sleep 4; done
+[ "$(stat cm2 t)" != "$t0" ] && [ "$(stat cm2 res)" = ok ] && ok "cm2: Agent zieht mit dem neuen Schlüssel" || bad "cm2 nach Rekey SFTP: $(stat cm2 res)"
+# Primary cm1 selbst: danach muss jeder Push mit dem neuen Schlüssel gehen (Schritt 15: auch als netadmin)
+p0=$(fp 1 cfmd-cm1)
+out=$(mgr '$cfmBootstrap; $cfmRekey host=cm1 sftp=yes')
+echo "$out" | grep -q "Rekey SFTP cm1: Manager-Schlüssel auf 3 Geräten, alter entfernt" && ok "Rekey SFTP cm1 (Primary)" || { bad "Rekey SFTP cm1"; echo "$out" | tail -4; }
+p1=$(fp 1 cfmd-cm1)
+[ -n "$p1" ] && [ "$p0" != "$p1" ] && expect 2 '[:len [/user/ssh-keys/find where user=cfm]] = 2 and [:len [/user/ssh-keys/find where user=cfm and fingerprint="'"$p1"'"]] = 1 and [:len [/user/ssh-keys/find where user=cfm and fingerprint="'"$p0"'"]] = 0' "sw1: neuer Schlüssel von cm1, alter weg" || bad "cfmd-cm1 unverändert"
+expect 1 '[:len [/user/ssh-keys/private/find where user=netadmin]] = 1 and [:len [/user/ssh-keys/private/find where user=cfm]] = 1' "cm1: netadmin und cfm je ein privater Schlüssel"
+expect 1 '[:typeof [:find [/file/get cfm/cfm-bootstrap.rsc contents] [:pick [/file/get cfm/meta/keys/cm1.pem contents] 27 70]]] = "num"' "cm1: Bootstrap-Datei mit dem neuen Schlüssel"
+for h in sw1 cm1; do
+  t0=$(stat $h t); mgr "\$cfmPush host=$h force=yes" >/dev/null
+  for _ in $(seq 1 40); do [ "$(stat $h t)" != "$t0" ] && break; sleep 4; done
+  [ "$(stat $h t)" != "$t0" ] && [ "$(stat $h res)" = ok ] && ok "$h: Push und Apply nach der Rotation von cm1" || bad "$h nach Rekey cm1: $(stat $h res)"
+done
+mirror | grep -q MIR=true && ok "cm2 spiegelt nach der Rotation von cm1" || bad "cm2 spiegelt nach der Rotation von cm1 nicht"
+kill $npid 2>/dev/null
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

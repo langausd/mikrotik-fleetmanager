@@ -20,6 +20,9 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
 * **Rückkanal:** Der Manager holt von jedem Gerät Status (JSON) und aktive Config (`/export`, ohne
   Secrets) nach `state/<name>/`. Geräte haben am Manager nur Lesezugriff. Ein Hook stößt eine
   externe Git-Sicherung an.
+* **Benachrichtigungen:** Zustandswechsel (Apply-Fehler, stumme Geräte, APs ohne CAPsMAN,
+  gescheiterte Updates und Onboardings, CHR-Lizenz) gehen per HTTP-POST an einen Webhook, z.B. von
+  Home Assistant (`notify` in `global.rsc`, D66).
 * **WLAN:** Ein Gerät mit der Rolle `capsman` (ohne sie der Primary-Manager) ist wifi-CAPsMAN für
   alle SSIDs (lokales Forwarding mit VLAN, WPA2/WPA3, 802.11r/k/v, 6 GHz). Fällt er aus, senden die
   APs mit einer lokalen Kopie der Haupt-SSID weiter.
@@ -73,7 +76,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
 | `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
-| `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, Lab-Overlays `seed/`, `seed-vrrp/` |
+| `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, Empfänger für Meldungen `notify-sink.py` |
 
 Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `live/m/`, `state/<name>/`, `vault/`.
 
@@ -173,7 +176,9 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 ## Sicherheitsmodell (Kurzfassung)
 
 * Geräte authentifizieren sich am Manager per **ed25519-Host-Key** (Onboarding exportiert ihn; der
-  Manager importiert nur den Public Key für den User `cfmd-<name>`, Gruppe `ssh,ftp,read`).
+  Manager importiert nur den Public Key für den User `cfmd-<name>`, Gruppe `ssh,ftp,read`; der
+  Backup-Manager hält dieselben User gesperrt bereit, bis er befördert wird). Erneuern: `$cfmRekey … sftp=yes`
+  (ändert den Host-Key mit; Manager-Schlüssel zweiphasig, D67).
 * Der Manager steuert Geräte über den User `cfm` mit **seinem** Key (Push, Secrets, Audit, Enroll).
 * Geräte haben am Manager **nur Lesezugriff** (Schreiben würde `write` erfordern und damit
   SSH-Konfigurationsrechte). Status und Export holt der Manager selbst ab.

@@ -1,6 +1,7 @@
-# Gast-WLAN aus Home Assistant schalten
+# Gast-WLAN aus Home Assistant schalten, Meldungen von cfm empfangen
 
-Anleitung für die Einbindung in Home Assistant (HA). Sie setzt kein Wissen über cfm oder RouterOS
+Anleitung für die Einbindung in Home Assistant (HA): Abschnitte 1–6 schalten das Gast-WLAN,
+[Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (D66). Sie setzt kein Wissen über cfm oder RouterOS
 voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidung D64), die
 konkreten Werte bekommst du von ihm.
 
@@ -213,3 +214,63 @@ dann nur `host` in `cfm_ssid.json` zu ändern (und in der Integration „Mikroti
 * Der Port ist am CAPsMAN nur für die Adressen aus `capsmanApi.from` offen.
 * Wer `cfm_ssid.json` lesen kann, kann das Gast-WLAN schalten und die Konfiguration des CAPsMAN
   lesen (ohne Passwörter der WLANs).
+
+## 7. Benachrichtigungen von cfm
+
+Der Netz-Manager meldet Probleme der MikroTik-Geräte per HTTP-POST an einen **Webhook** von HA:
+Konfigurationsfehler, stumme Geräte, APs ohne CAPsMAN, gescheiterte Updates, die Lizenz des Managers.
+Jede Meldung kommt einmal beim Eintreten und einmal, wenn es wieder in Ordnung ist. HA leitet sie
+z.B. aufs Handy weiter.
+
+**Ablauf:** Du legst die Automation an und gibst dem Netz-Admin die URL; er trägt sie in cfm ein
+(`global.rsc` `notify.url`, Admin-Guide 8.9) und schickt eine Probemeldung (`$cfmNotify test=yes`).
+
+1. Eine zufällige Webhook-ID wählen (sie wirkt wie ein Passwort), z.B. `cfm-` plus 24 Zeichen aus
+   `openssl rand -hex 12`.
+2. Automation anlegen (YAML-Modus oder `automations.yaml`); `notify.mobile_app_…` ist der Dienst
+   deiner Companion-App:
+
+   ```yaml
+   - alias: "cfm: Netzwerk-Meldung"
+     mode: queued
+     triggers:
+       - trigger: webhook
+         webhook_id: "cfm-<zufällige-id>"
+         allowed_methods: [POST]
+         local_only: true
+     actions:
+       - action: notify.mobile_app_<handy>
+         data:
+           title: "Netz {{ trigger.json.site }}"
+           message: >-
+             {{ '✅ ' if trigger.json.state == 'off' else '⚠️ ' }}{{ trigger.json.text }}
+   ```
+
+3. URL an den Netz-Admin: `http://<HA-Adresse>:8123/api/webhook/cfm-<zufällige-id>`.
+
+**Felder** (`trigger.json`):
+
+| Feld | Inhalt |
+|---|---|
+| `site` | Standort (z.B. `Haus`) |
+| `host` | betroffenes Gerät (leer bei der Probemeldung) |
+| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `test` |
+| `state` | `on` = eingetreten, `off` = wieder in Ordnung, `once` = einmalig (Onboarding, Probe) |
+| `msg` | Beschreibung ohne Standort und Gerät |
+| `text` | fertiger Text: `<site>: <host> - <msg>` |
+| `time` | Zeit des Managers |
+| `level` | `error`, `warning` (auch jedes „wieder ok“), `action` (Admin-Eingriff nötig: Update gescheitert, Lizenz, neue RouterOS-Version), `info` (Probe) |
+| `device` | betroffenes Gerät (bei Probe und neuer RouterOS-Version der Manager) |
+| `message` | wie `text` |
+
+Ein Empfänger, der nur `level`, `device` und `message` auswertet (etwa `info` nur ins Log,
+`action` als Aufgabe), funktioniert ohne Anpassung.
+
+Nur Wichtiges aufs Handy, z.B. ohne „wieder ok“: Bedingung
+`{{ trigger.json.state != 'off' }}` vor die Aktion setzen. `local_only: true` lässt nur Aufrufe aus
+dem lokalen Netz zu; der Manager schickt aus dem LAN.
+
+**Fehlersuche:** Kommt nichts an, steht im Log des Managers `cfm: Meldung nicht zugestellt …`
+(Netzweg, Port 8123, falsche ID). HA beantwortet auch eine unbekannte Webhook-ID mit `200` – ein
+Tippfehler in der ID fällt also nur dadurch auf, dass die Automation nicht auslöst (Trace der
+Automation ansehen).

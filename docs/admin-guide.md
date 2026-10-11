@@ -220,6 +220,7 @@ irgendetwas ausgerollt wird.
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
 | `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `reverse-proxy`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet – auch `reverse-proxy`, den RouterOS 7.2x ab Werk auf Port 443 ohne Adressbeschränkung einschaltet. `$cfmCheck` meldet unbekannte Namen und doppelte Ports als Fehler | `ssh`, `winbox` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
+| `notify` | Benachrichtigungen (D66, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
 
 ### `vlans.rsc`
 
@@ -819,6 +820,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`,
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN, z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
+| SFTP-/Host-Schlüssel erneuern | `$cfmRekey host=<name> sftp=yes` bzw. `all=yes sftp=yes` (10, D67) |
 | Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
 | Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
 | Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
@@ -1030,6 +1032,37 @@ o.ä.) – sonst überlagert die Route das eigene lokale Netz des Laptops, falls
 ist. Bei mehreren WireGuard-Verbindungen (z.B. weitere Standorte) auf sich nicht überschneidende
 `allowed-ips` achten.
 
+### 8.9 Benachrichtigungen (D66)
+
+Der Primary-Manager meldet Zustandswechsel per HTTP-POST an `global.rsc` `notify.url`, am Ende jedes
+Manager-Ticks (`mgrTick`). Gemeldet wird jeweils einmal beim Eintreten (`"state":"on"`) und einmal,
+wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `meta/notify.dat`.
+
+| `ev` | wann |
+|---|---|
+| `apply` | Gerät meldet einen Apply-Fehler, Rollback (`failed …`, `rollback-watchdog`) oder eine noch aktuelle `bad`-Version |
+| `stumm` | kein neuer Status seit `notify.stale` (Standard 30 min; Uhr des Geräts wie bei `$cfmStatus`) |
+| `wlan` | AP läuft im lokalen Fallback (kein CAPsMAN verbunden, D46) |
+| `update` | RouterOS-Update fehlgeschlagen, Fenster verpasst oder zu wenig Platz |
+| `lizenz` | CHR-Lizenz des Managers: `next-renewal-at` mindestens einen Tag überfällig, oder `deadline-at` näher als `notify.licWarn` (Standard 14 Tage) |
+| `onboard` | Onboarding gescheitert oder abgelaufen (`"state":"once"`, kein „wieder ok“) |
+| `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), solange ein aufgenommenes Gerät älter ist; je Version einmal (`"state":"once"`) |
+
+Zusätzlich trägt jede Meldung `level`, `device` und `message` für einfache Empfänger: `level` ist
+`error` (`apply`, `onboard`, `stumm`), `warning` (`wlan` und jedes „wieder ok“), `action`
+(Admin-Eingriff nötig: `update`, `lizenz`, `ros`) oder `info` (Probemeldung); `device` ist das
+betroffene Gerät (bei `ros` der Manager), `message` gleich `text`. Für `ros` braucht der Manager
+einen Weg zu `upgrade.mikrotik.com` (HTTPS).
+
+Body (UTF-8):
+`{"site":"Haus","host":"ap1","ev":"apply","state":"on","msg":"Apply-Fehler: failed …","text":"Haus: ap1 - Apply-Fehler: failed …","time":"2026-10-08 12:00:00","level":"error","device":"ap1","message":"Haus: ap1 - Apply-Fehler: failed …"}`.
+`text` ist fertig zum Anzeigen. Kommt eine Meldung nicht an (Log `cfm: Meldung nicht zugestellt`),
+bleibt sie offen und der nächste Tick versucht es erneut. Probe: `$cfmNotify test=yes`. Die Adresse des
+Empfängers muss der Manager erreichen (Route, Firewall des Gateways); das MGMT-VLAN braucht dafür kein
+Internet. Einrichtung in Home Assistant: [home-assistant.md](home-assistant.md#7-benachrichtigungen-von-cfm).
+Zum Ausprobieren ohne Home Assistant: `tools/chr-lab/notify-sink.py <port> <datei> --bind 0.0.0.0`
+schreibt jede Meldung als JSON-Zeile.
+
 ---
 
 ## 9. Sicherheitsnetze und Notfälle
@@ -1040,7 +1073,7 @@ ist. Bei mehreren WireGuard-Verbindungen (z.B. weitere Standorte) auf sich nicht
 | Gerät nach dem Apply unerreichbar | Watchdog rollt nach 5 min zurück, Ergebnis `rollback-watchdog` | Ursache (Ports/VLANs) im Hostfile beheben |
 | Fehlerhafte Version schon in Ring 0 | Ringe 1 und 2 bekommen sie nicht | reparieren oder `$cfmRollback ver=<N>` |
 | Zurück auf einen alten Stand | – | `$cfmRollback ver=<N> [all=yes]`. **Achtung:** überschreibt `work/` mit dem alten Stand |
-| Primary-Manager fällt aus | Geräte ziehen vom Backup; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager`, dann `managers` tauschen und releasen |
+| Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (D67) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
 | Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
 | CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, D54, auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
@@ -1065,6 +1098,17 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   seinen Geräteschlüssel kennt (`ssh-exec` prüft keine Host-Schlüssel). Ein Gerät, das sich nur
   unter der IP ausgibt, bekommt keine Secrets. `$cfmRekey` erneuert Geräteschlüssel, zum Beispiel
   bei Verdacht auf eine Kompromittierung.
+* **SFTP-/Host-Schlüssel erneuern (D67):** `$cfmRekey host=<n> sftp=yes` (bzw. `all=yes sftp=yes`,
+  Manager zuletzt) erzeugt auf dem Gerät einen neuen ed25519-Host-Key – er ist zugleich sein
+  SFTP-Schlüssel am Manager. Deine SSH-Clients melden den Host-Key danach einmal als geändert
+  (`ssh-keygen -R <ip>`). Bei einem Manager kommt der neue Schlüssel zuerst auf **alle** aufgenommenen
+  Geräte (User `cfm`); ist eines nicht erreichbar, bricht der Befehl ab und der alte gilt weiter.
+  Danach haben `cfm` und die Admin-User aus `users` den neuen Schlüssel, `$cfmTrust` entfernt den
+  alten, und eine vorhandene `cfm-bootstrap.rsc` wird neu geschrieben. Ein Git-Host (`hook`) braucht
+  den neuen Manager-Schlüssel von Hand (`meta/keys/<manager>.pem`, umwandeln mit
+  `ssh-keygen -i -m PKCS8 -f <datei>`). Der Backup-Manager übernimmt neue Geräteschlüssel mit seinem
+  nächsten Spiegel (spätestens nach etwa 10 min); seine Geräte-User bleiben bis zu einer Beförderung
+  gesperrt.
 * **Minimale Firewall:** Switches, APs und Manager lassen nur Antworten, ICMP und Verbindungen aus
   den Management-Netzen zu (MGMT, `mgmtAccess`, `mgmtExtra`), Manager zusätzlich DHCP für das
   Onboarding. Der Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
@@ -1227,6 +1271,8 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmSecretPush [host=<n>]` | Secrets sofort verteilen |
 | `$cfmVaultBackup` | verschlüsseltes Manager-Backup nach `vault/` |
 | `$cfmRekey host=<n>\|all=yes` | Geräteschlüssel erneuern |
+| `$cfmRekey host=<n>\|all=yes sftp=yes` | SFTP-/Host-Schlüssel erneuern (Manager zweiphasig, D67) |
+| `$cfmNotify test=yes` | Probemeldung an `notify.url` (D66) |
 | `$cfmUpgrade ver=<x.y.z> host=<n>\|ring=<r>\|all=yes [at="YYYY-MM-DD HH:MM"]` | RouterOS-Update oder -Downgrade, sofort oder im Wartungsfenster |
 | `$cfmUpgrade ver=<x.y.z> host=…\|ring=…\|all=yes check=yes` | Probe ohne Download und Auftrag: Bedarf, freier Platz, fehlende Pakete |
 | `$cfmUpgrade ver=<x.y.z> host=…\|ring=… via=internet\|via=mirror mirror=<IP>` | eingebautes Update des Geräts, auch bei 16 MB Flash (D63, Spiegel: `tools/upgrade-mirror.py`) |
@@ -1257,7 +1303,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
 | `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
 | `pkg/<ver>/` | RouterOS-Pakete für `$cfmUpgrade` (oder unter `pkgPath`) |
-| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat` |
+| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat`, `notify.dat` (offene Meldungen, D66) |
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
 | `state/netzplan.md` | Netzplan (Mermaid + Tabelle), auf Anforderung `netzplan.dot` und `netzplan.csv` |
 | `state/wifiscan.json` | letzte Messung von `$cfmWifiScan` (ein Band; nur mit gemessenen Netzen) |

@@ -234,7 +234,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     isolierte Zonen über mehrere APs zusätzlich einen Bridge-Filter auf den APs (nur zum Gateway).
 21. ~~**Weniger `/file/find` im Manager-Tick**~~ – *erledigt (D59):* Zugriffe auf bekannte Dateinamen per
     `/file/get <Name>` statt Suche (CHR, 600 Dateien: 0,05 statt 8 ms), `cfmMB` je Sitzung gemerkt,
-    `archiveKeep` standardmäßig 5, `$cfmRelease` lädt den Prüfer aus `work/`. Offen: auf Geräten mit
+    `archiveKeep` standardmäßig 5, `$cfmRelease` lädt den Prüfer aus `work/`. Nachtrag 2026-10-11:
+    auch die Geräte prüfen bekannte Namen per `get`; schneller wird das Apply erst durch D69 (DECISIONS,
+    „Straffung und Laufzeit“). Offen: auf Geräten mit
     USB-Stick prüfen, ob er die Dateiliste bremst. – Hardware-Befund (CRS418, RouterOS 7.22.2): eine
     `/file/find`-Suche kostet ca. 0,23 ms je Datei in `/file` (624 Dateien: 120 ms, 351: 80 ms).
     Fast jede Funktion (`cfmMB`, `cfmWrite`, `cfmRead`, `cfmJson`) sucht sich ihre Datei so;

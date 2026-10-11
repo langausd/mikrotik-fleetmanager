@@ -602,14 +602,25 @@ expect 1 '[:len [/log/find where message~"^cfm: Meldung nicht zugestellt"]] >= 1
 sink; setst >/dev/null
 nwait '"state": "on"' 8 && ok "Empfänger zurück: Meldungen nachgeholt" || bad "nicht nachgeholt: $(grep -c '"state": "on"' "$NL")"
 rest >/dev/null; nwait '"state": "off"' 8 || bad "wieder ok nach dem Nachholen fehlt"
-mgr ':global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG' >/dev/null
-
-step "14g. SFTP-User auf dem Backup, Ernstfall, Schlüssel erneuern (D67)"
 # Spiegel auf cm2 sofort anstoßen: als User cfm (dessen Schlüssel braucht der SFTP-Abruf) im Hintergrund,
 # ssh-exec selbst liefe vorher in seine Zeitgrenze; Ergebnis in e2e-mir.txt auf cm2
 mirror() { local f="e2e-mir-$RANDOM.txt"
   mgr ':global cfmExec; $cfmExec ip=192.168.10.3 cmd=(":execute script=\"/system script run cfm-mgr; :global cfmMirT; :set cfmMirT 0; :global cfmMirror; /file/add name='"$f"' contents=(\\\"MIR=\\\" . [\\\$cfmMirror])\"")' >/dev/null
   for _ in $(seq 1 60); do o=$(r 3 ':onerror e in={ :put ("F=" . [/file/get '"$f"' contents]) } do={ :put none }' | tail -1); [ "${o#F=}" != "$o" ] && { echo "${o#F=}"; r 3 "/file/remove $f" >/dev/null; return; }; sleep 4; done; echo MIR=timeout; }
+# Backup überwacht den Primary (ev primary, level error): auf cm2 als User cfm, letzter Spiegel-Abruf bzw.
+# Uhr künstlich versetzt; der echte Tick von cm2 kann dazwischen funken, deshalb nur auf Inhalte prüfen
+bk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.3 cmd=("/system script run cfm-mgr; :global cfmMirLast; :set cfmMirLast ([:tonsec [:timestamp]] / 1000000000 + '"$1"'); :global cfmNotifyBackupTick; :put (\"NB=\" . [\$cfmNotifyBackupTick skew='"$2"'])")]; :put ($r->"output")' | grep -o 'NB=[0-9]*'; }
+mirror | grep -q MIR=true || bad "Spiegel auf cm2 vor der Primary-Überwachung"   # cm2 braucht das Release mit notify
+bk -7200 0 >/dev/null
+nwait '"ev": "primary", "state": "on"' && grep '"ev": "primary", "state": "on"' "$NL" | grep -q '"host": "cm1".*"msg": "Primary nicht erreichbar: Spiegel-Abruf per SFTP seit 120 min.*"level": "error", "device": "cm1"' && ok "Backup: Primary per SFTP nicht erreichbar gemeldet (error)" || { bad "Meldung Primary nicht erreichbar"; grep '"ev": "primary' "$NL" | tail -2 | cut -c1-220; }
+bk 3600 3600 >/dev/null
+nwait '"ev": "primary-tick", "state": "on"' && grep '"ev": "primary-tick", "state": "on"' "$NL" | grep -q '"msg": "Primary erreichbar, aber sein Tick steht: neuester Gerätestatus [0-9]* min alt' && grep -q '"ev": "primary", "state": "off"' "$NL" && ok "Backup: Tick des Primary steht (Status zu alt), SFTP wieder ok" || { bad "Meldung Tick steht"; grep '"ev": "primary' "$NL" | tail -3 | cut -c1-220; }
+bk 0 0 >/dev/null
+nwait '"ev": "primary-tick", "state": "off"' && expect 3 '[:len ([:deserialize from=json [/file/get cfm/meta/notify-b.dat contents]]->"act")] = 0' "Backup: Tick wieder ok, keine offenen Zustände" || bad "Backup: Entwarnung Tick fehlt"
+expect 1 '[:len [/file/find where name="cfm/meta/notify-b.dat"]] = 0' "Primary: keine Zustandsdatei des Backups"
+mgr ':global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG' >/dev/null
+
+step "14g. SFTP-User auf dem Backup, Ernstfall, Schlüssel erneuern (D67)"
 fp() { r "$1" ":put [/user/ssh-keys/get [:pick [find where user=\"$2\"] 0] fingerprint]" | head -1; }
 mirror | grep -q MIR=true && ok "Spiegel auf cm2 angestoßen" || bad "Spiegel auf cm2"
 expect 3 '[:len [/user/find where name~"^cfmd-(cm1|sw1)\$" and group="cfm-dev" and comment~" k=" and disabled]] = 2 and [:len [/user/ssh-keys/find where user="cfmd-sw1"]] = 1 and [:len [/user/find where name="cfmd-cm2"]] = 0' "cm2: SFTP-User von cm1 und sw1 gesperrt, je ein Schlüssel, keiner für sich selbst"

@@ -12,15 +12,16 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
 * **RouterOS 7.25:** seit etwa 2026-10-01 als 7.25rc1 im Kanal `testing` (stable: 7.24.5). Den
-  Labortest aller Skripte erst mit 7.25 stable (entschieden 2026-10-04).
+  Labortest aller Skripte mit 7.25 stable (entschieden 2026-10-04); ist sie bis zum geplanten Termin
+  (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
 * **Erledigt am 2026-10-08:** 2 (Benachrichtigungen per HTTP-POST, D66), 8 Rest (SFTP-/Host-Schlüssel
   rotieren, Manager zweiphasig, D67); beim Sichten gefunden und behoben: Der Backup-Manager hatte
   keine Geräte-User `cfmd-<name>`, Geräte konnten auch nach der Beförderung nicht von ihm ziehen
   (D67: gesperrt bereit, `$cfmPromoteManager` schaltet frei; Labor: `e2e.sh` 14g). Dazu `level`/`device`/`message` für einfache Webhook-Empfänger und der Hinweis auf neue
-  RouterOS-Versionen (`ros`). Offen: Benachrichtigung am Backup, wenn der Primary ausfällt (bisher
-  meldet nur der Primary).
+  RouterOS-Versionen (`ros`). Seit 2026-10-11 meldet auch der Backup-Manager, wenn der Primary per
+  SFTP weg ist oder sein Tick steht.
 * **Erledigt am 2026-10-04:** 19 (Admin-SSH-Keys je Person, D65), 46 (`$cfmWifiScan` mit den eigenen
   Radios des CAPsMAN), 40 (`slaves-static` nur bei Bedarf), 23 (Warnung bei `wifi-qcom-ac`; die
   Unterstützung selbst bleibt offen), `$cfmStatus` blendet eine veraltete `bad`-Version aus. Im Labor
@@ -160,8 +161,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
    per `/file get` nur etwa 60 KB, `$cfmRelease` lehnt größere Dateien ab).
 2. ~~**Benachrichtigungen**~~ – *erledigt (D66):* `global.rsc` `notify` (HTTP-POST mit JSON, z.B. an
    einen Webhook von Home Assistant), je Zustandswechsel: Apply-Fehler/Rollback, stumm, WLAN lokal,
-   Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz; Labor: `e2e.sh` Schritt 14f. Offen: der
-   Backup-Manager meldet nicht, wenn der Primary ausfällt. – (E-Mail oder Push-Dienst wie
+   Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz; Labor: `e2e.sh` Schritt 14f. Der
+   Backup-Manager meldet einen stummen Primary (SFTP weg oder Tick steht). – (E-Mail oder Push-Dienst wie
    ntfy/Telegram) bei Fehler/Rollback, stummen Geräten, gescheitertem Onboarding, CAPs im lokalen
    Fallback (D46).
 3. ~~**Archiv aufräumen**~~ – *erledigt (D27):* nach jedem Release und auf dem Backup-Spiegel;

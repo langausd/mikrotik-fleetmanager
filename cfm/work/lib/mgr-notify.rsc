@@ -4,6 +4,7 @@
 #   $cfmNotify test=yes                                       Probemeldung an notify.url
 #   $cfmNotifyTick                                            Zustände prüfen, Wechsel melden
 #                                                             (aus $cfmTick, nur auf dem Primary)
+#   $cfmNotifyBackupTick                                      auf dem Backup: Primary stumm? (ev primary)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # Ziel: global.rsc "notify"={"url"=…;"stale"="30m";"licWarn"="14d"}, url leer = aus.
 # Der Body ist JSON: {"site","host","ev","state","msg","text","time"} - z.B. für einen
@@ -51,7 +52,7 @@
   :set t ($t . $m)
   :local tm ([/system/clock/get date] . " " . [/system/clock/get time])
   :local lv "warning"
-  :if ($e ~ "^(apply|onboard|stumm)\$") do={ :set lv "error" }
+  :if ($e ~ "^(apply|onboard|stumm|primary|primary-tick)\$") do={ :set lv "error" }
   :if ($e ~ "^(update|lizenz|ros)\$") do={ :set lv "action" }
   :if ($s = "off") do={ :set lv "warning" }
   :if ($e = "test") do={ :set lv "info" }
@@ -129,10 +130,85 @@
   :return $v
 }
 
+# Abgleich: cur = aktuelle Probleme ("<art>:<gerät>" -> Text), a0 = gemeldete (aus der Zustandsdatei).
+# Meldet Neues (on) und Erledigtes (off); nach dem ersten Zustellfehler keine weiteren Versuche.
+# -> {"act";"n";"down";"chg"}
+:global cfmNotifySync do={
+  :global cfmNotify
+  :local act $a0
+  :if ([:typeof $act] != "array") do={ :set act ({}) }
+  :local down false
+  :local n 0
+  :local chg false
+  :foreach k,m in=$cur do={
+    :if (!$down and [:typeof ($act->$k)] != "array") do={
+      :local p [:find $k ":"]
+      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="on" msg=$m]) do={
+        :set ($act->$k) ({"t"=$now;"m"=$m})
+        :set n ($n + 1)
+        :set chg true
+      } else={ :set down true }
+    }
+  }
+  :local gone ({})
+  :foreach k,a in=$act do={
+    :if (!$down and [:typeof ($cur->$k)] = "nothing") do={
+      :local p [:find $k ":"]
+      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="off" msg=("wieder ok (war: " . [:tostr ($a->"m")] . ")")]) do={
+        :set ($gone->$k) 1
+        :set n ($n + 1)
+      } else={ :set down true }
+    }
+  }
+  :foreach k,x in=$gone do={ :set ($act->$k); :set chg true }
+  :return ({"act"=$act;"n"=$n;"down"=$down;"chg"=$chg})
+}
+
+# ---------- Backup-Manager: Primary überwachen (D66, Nutzer 2026-10-11) ----------
+# Zwei Meldungen (ev primary, level error): Der Spiegel-Abruf per SFTP scheitert seit notify.stale, oder
+# der Primary ist erreichbar, aber sein Tick steht - der neueste gespiegelte Gerätestatus ist älter als
+# notify.stale (der Primary holt die Status in jedem Tick ab). Zustand in meta/notify-b.dat (meta/notify.dat
+# gehört dem Primary). cfmMirLast setzt $cfmMirror nach jedem erfolgreichen Abruf; nach einem Neustart des
+# Backups gilt der Start als letzter Erfolg. skew= (Sekunden) nur fürs Labor.
+:global cfmNotifyBackupTick do={
+  :global cfmG; :global cfmLoadData; :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmNow
+  :global cfmEnrolled; :global cfmWrite; :global cfmNotifySync; :global cfmMirLast; :global cfmConf
+  $cfmLoadData
+  :local nc ($cfmG->"notify")
+  :if ([:len [:tostr ($nc->"url")]] = 0) do={ :return 0 }
+  :local stale 1800
+  :if ([:len [:tostr ($nc->"stale")]] > 0) do={ :set stale ([:tonsec [:totime ($nc->"stale")]] / 1000000000) }
+  :local now ([$cfmNow] + [:tonum $skew])
+  :if ([:typeof $cfmMirLast] != "num") do={ :set cfmMirLast [$cfmNow] }
+  :local b [$cfmMB]
+  :local inv [$cfmInvLoad]
+  :local pip [:tostr [:pick ($cfmG->"managers") 0]]
+  :local pn $pip
+  :foreach name,d in=$inv do={ :if ([:tostr ($d->"ip")] = $pip) do={ :set pn $name } }
+  :local cur ({})
+  :if (($now - $cfmMirLast) > $stale) do={
+    :set ($cur->("primary:" . $pn)) ("Primary nicht erreichbar: Spiegel-Abruf per SFTP seit " . (($now - $cfmMirLast) / 60) . " min gescheitert (Geräte laufen mit ihrem Stand weiter; bei längerem Ausfall \$cfmPromoteManager)")
+  } else={
+    :local nw 0
+    :foreach name,d in=$inv do={
+      :if ([$cfmEnrolled $d]) do={
+        :local sn [:tonum ([$cfmJson ($b . "/state/" . $name . "/status.dat")]->"seen")]
+        :if ([:typeof $sn] = "num" and $sn > $nw) do={ :set nw $sn }
+      }
+    }
+    :if ($nw > 0 and ($now - $nw) > $stale) do={ :set ($cur->("primary-tick:" . $pn)) ("Primary erreichbar, aber sein Tick steht: neuester Gerätestatus " . (($now - $nw) / 60) . " min alt (Scheduler cfm-mgr-tick und Log auf dem Primary prüfen)") }
+  }
+  :local f ($b . "/meta/notify-b.dat")
+  :local nj [$cfmJson $f]
+  :local sr [$cfmNotifySync cur=$cur a0=($nj->"act") now=$now]
+  :if ($sr->"chg") do={ :set ($nj->"act") ($sr->"act"); $cfmWrite $f [:serialize to=json $nj] }
+  :return ($sr->"n")
+}
+
 :global cfmNotifyTick do={
   :global cfmG; :global cfmLoadData; :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmNow
   :global cfmEnrolled; :global cfmRings; :global cfmWrite; :global cfmNotify; :global cfmNotifyLic
-  :global cfmRosLatest; :global cfmVerGe
+  :global cfmRosLatest; :global cfmVerGe; :global cfmNotifySync
   $cfmLoadData
   :local nc ($cfmG->"notify")
   :if ([:len [:tostr ($nc->"url")]] = 0) do={ :return 0 }
@@ -172,33 +248,11 @@
   # Wechsel gegen meta/notify.dat melden
   :local f ($b . "/meta/notify.dat")
   :local nj [$cfmJson $f]
-  :local act ($nj->"act")
-  :if ([:typeof $act] != "array") do={ :set act ({}) }
-  :local down false
-  :local n 0
-  :local chg false
-  :foreach k,m in=$cur do={
-    :if (!$down and [:typeof ($act->$k)] != "array") do={
-      :local p [:find $k ":"]
-      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="on" msg=$m]) do={
-        :set ($act->$k) ({"t"=$now;"m"=$m})
-        :set n ($n + 1)
-        :set chg true
-      } else={ :set down true }
-    }
-  }
-  :local gone ({})
-  :foreach k,a in=$act do={
-    :if (!$down and [:typeof ($cur->$k)] = "nothing") do={
-      :local p [:find $k ":"]
-      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="off" msg=("wieder ok (war: " . [:tostr ($a->"m")] . ")")]) do={
-        :set ($gone->$k) 1
-        :set n ($n + 1)
-      } else={ :set down true }
-    }
-  }
-  :foreach k,x in=$gone do={ :set ($act->$k); :set chg true }
-  :set ($nj->"act") $act
+  :local sr [$cfmNotifySync cur=$cur a0=($nj->"act") now=$now]
+  :local n ($sr->"n")
+  :local down ($sr->"down")
+  :local chg ($sr->"chg")
+  :set ($nj->"act") ($sr->"act")
   # neue RouterOS-Version: einmal am Tag fragen, je Version einmal melden (als Text gespeichert -
   # :deserialize machte aus "7.24.5" eine IP-Adresse, deshalb mit Präfix v)
   :local rst [:tonum ($nj->"rost")]

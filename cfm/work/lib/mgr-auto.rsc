@@ -81,7 +81,10 @@
   :local u ($cfmConf->"user")
   # Flag statt :return im :onerror-Block (dort verlässt :return die Funktion nicht)
   :local get do={ :local ok false; :onerror e in={ /tool/fetch url=($s . $r) user=$u dst-path=$l as-value; :set ok true } do={}; :return $ok }
-  :foreach f in={"meta/rings.dat";"meta/inventory.rsc";"meta/vault.dat"} do={ $get s=$src u=$u r=$f l=($b . "/" . $f) }
+  # erfolgreicher Abruf = Primary erreichbar (Überwachung durch den Backup, $cfmNotifyBackupTick)
+  :global cfmMirLast
+  :if ([$get s=$src u=$u r="meta/rings.dat" l=($b . "/meta/rings.dat")]) do={ :set cfmMirLast $now }
+  :foreach f in={"meta/inventory.rsc";"meta/vault.dat"} do={ $get s=$src u=$u r=$f l=($b . "/" . $f) }
   :local rg [$cfmRings]
   :foreach r in={"r0";"r1";"r2";"latest"} do={
     :local v ($rg->$r)
@@ -155,7 +158,10 @@
       # als String vergleichen: [:tonum nothing] ist nil, und "3 != nil" ist weder wahr noch falsch
       :if ([:tostr ($vj->"ver")] != [:tostr ($vj->"bver")] and [:len [$cfmVaultGet "vaultpw"]] > 0) do={ $cfmVaultBackup }
       :log info "cfm: tick ende"
-    } else={ $cfmMirror }
+    } else={
+      $cfmMirror
+      :global cfmNotifyBackupTick; $cfmNotifyBackupTick
+    }
   } do={ :log warning ("cfm: tick: " . $e) }
 }
 

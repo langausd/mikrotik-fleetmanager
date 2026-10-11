@@ -1046,13 +1046,17 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 | `update` | RouterOS-Update fehlgeschlagen, Fenster verpasst oder zu wenig Platz |
 | `lizenz` | CHR-Lizenz des Managers: `next-renewal-at` mindestens einen Tag überfällig, oder `deadline-at` näher als `notify.licWarn` (Standard 14 Tage) |
 | `onboard` | Onboarding gescheitert oder abgelaufen (`"state":"once"`, kein „wieder ok“) |
+| `primary` | nur vom **Backup-Manager**: Spiegel-Abruf per SFTP beim Primary scheitert seit `notify.stale` (`device` = Primary) |
+| `primary-tick` | nur vom Backup-Manager: Primary erreichbar, aber der neueste gespiegelte Gerätestatus ist älter als `notify.stale` – sein Manager-Tick steht |
 | `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), solange ein aufgenommenes Gerät älter ist; je Version einmal (`"state":"once"`) |
 
 Zusätzlich trägt jede Meldung `level`, `device` und `message` für einfache Empfänger: `level` ist
-`error` (`apply`, `onboard`, `stumm`), `warning` (`wlan` und jedes „wieder ok“), `action`
+`error` (`apply`, `onboard`, `stumm`, `primary`, `primary-tick`), `warning` (`wlan` und jedes „wieder ok“), `action`
 (Admin-Eingriff nötig: `update`, `lizenz`, `ros`) oder `info` (Probemeldung); `device` ist das
 betroffene Gerät (bei `ros` der Manager), `message` gleich `text`. Für `ros` braucht der Manager
-einen Weg zu `upgrade.mikrotik.com` (HTTPS).
+einen Weg zu `upgrade.mikrotik.com` (HTTPS). Der Backup-Manager meldet nur `primary`/`primary-tick`
+(Zustand in `meta/notify-b.dat`) und braucht dafür ebenfalls einen Weg zu `notify.url`. `stale` muss
+größer sein als das Agent-Intervall `interval`, sonst gelten Geräte zwischen zwei Läufen als stumm.
 
 Body (UTF-8):
 `{"site":"Haus","host":"ap1","ev":"apply","state":"on","msg":"Apply-Fehler: failed …","text":"Haus: ap1 - Apply-Fehler: failed …","time":"2026-10-08 12:00:00","level":"error","device":"ap1","message":"Haus: ap1 - Apply-Fehler: failed …"}`.

@@ -49,7 +49,7 @@ Inbetriebnahme, tägliche Arbeit, Notfälle, eigene Templates, Befehlsreferenz).
 ```
 
 Ablauf pro Gerät (`cfm-agent`, beim Boot, alle 15 min, per Push):
-Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512 prüfen → `backup save`
+Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateien laden, SHA-512 prüfen → `backup save`
 → Watchdog scharf → `lib` + Daten + Hostfile + Rollen importieren → verwaiste Objekte entfernen
 → Erreichbarkeit bestätigen → Status/Export nach `cfm/out/` (der Manager holt sie in seinem Tick ab, `mgrTick`, Standard 10 min).
 
@@ -66,7 +66,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → Dateien laden, SHA-512
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
-| `cfm/work/lib/` | Reconciler (`lib.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
+| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`), Bootstrap-Rumpf |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
 | `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |

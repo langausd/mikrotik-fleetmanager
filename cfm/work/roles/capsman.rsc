@@ -8,4 +8,5 @@
 #  Ohne Gerät mit dieser Rolle bleibt der Primary-Manager CAPsMAN (Übergang, $cfmCheck warnt).
 # ============================================================
 :global cfmCapsmanOn
+:if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
 $cfmCapsmanOn

@@ -255,6 +255,7 @@
           :if ($rl ~ ("," . $r . ",") or ($r = "manager" and $rl ~ ",manager-backup,")) do={ :set hit true }
         }
         :if ($rel ~ "^lib/mgr-" and $rl ~ ",manager") do={ :set hit true }
+        :if ($rel = "lib/lib-wifi.rsc" and $rl ~ ",(ap|capsman|manager),") do={ :set hit true }
       }
       :if ($hit) do={ :set aff ($aff . " " . $name) }
     }

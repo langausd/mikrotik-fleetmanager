@@ -245,7 +245,11 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
 :global cfmStat; :global cfmWarn; :global cfmShowAll; :global cfmShowObj
 :foreach u,grp in=($cfmG->"users") do={
   :local akf ($cfmDl . "/authorized_keys." . $u)
-  :if ([:len [/file/find where name=$akf]] > 0 and [:len [/user/find where name=$u]] > 0) do={
+  # per Name statt /file/find (D59, auf dem Manager Hunderte Dateien); eine gelöschte Datei liefert
+  # /file/get u.U. weiter als Eintrag ohne Namen
+  :local akx false
+  :onerror e in={ :set akx ([:len [/file/get $akf name]] > 0) } do={}
+  :if ($akx and [:len [/user/find where name=$u]] > 0) do={
     :local lines ({})
     :local t ([/file/get $akf contents] . "\n")
     :while ([:len $t] > 0) do={

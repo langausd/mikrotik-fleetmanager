@@ -79,7 +79,8 @@ sofort bei einem Push vom Manager:
 1. Manifest `live/m/<Seriennummer>.mf` per SFTP vom ersten erreichbaren Manager holen
    (Fallback-Liste `managers`) und dessen MAC mit dem Geräteschlüssel prüfen.
 2. Nur wenn sich etwas geändert hat (oder einmal täglich, `reapply`): Dateien laden, SHA-512
-   prüfen, verschlüsseltes Backup ziehen, Watchdog scharf schalten.
+   prüfen, verschlüsseltes Backup ziehen, Watchdog scharf schalten. Geladen werden nur Dateien, die
+   nicht schon mit diesem Hash in `cfm/dl/` liegen (D69): Jeder SFTP-Abruf dauert mindestens 1 s.
 3. Bibliothek, Daten, Hostfile und Rollen importieren; verwaiste Objekte entfernen.
 4. Erreichbarkeit des Managers bestätigen. Sonst rollt der Watchdog nach 5 Minuten (`watchdog`)
    per `/system backup load` zurück.
@@ -792,7 +793,8 @@ $cfmDiff ver=40 to=41          # zwischen zwei Releases (to=work ist der Standar
 ```
 
 Ausgabe: geänderte, neue und entfernte Dateien, die betroffenen Geräte (bei gemeinsamen Dateien
-wie `global.rsc` oder `lib/lib.rsc` alle), für Datendateien (`global`, `vlans`, `profiles`,
+wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `ap`, `capsman` oder
+`manager`), für Datendateien (`global`, `vlans`, `profiles`,
 `wifi`, `wireguard`, `leases`, `hosts/*`, `authorized_keys.*`) die geänderten Zeilen
 (`@@ Zeile <alt> / <neu>`, `-` alt, `+` neu). `lib/` und `roles/` erscheinen nur als Datei.
 
@@ -1163,6 +1165,8 @@ $cfmEnsure m="/ip/dns/static" k="dns:nas" p=({"name"="nas.lan";"address"="192.16
 ```
 
 Neue Menüs, die aufgeräumt werden sollen, gehören in die Liste `cfmMenus` in `lib/lib.rsc`.
+Der WLAN-Teil (`$cfmWifiRender`, `$cfmCapsmanOn` …) steht in `lib/lib-wifi.rsc` und ist nur auf
+Geräten mit Rolle `ap`, `capsman` oder `manager` geladen (D68).
 
 **Probelauf beachten:** `$cfmPlan` führt die Rollen mit `cfmDry=true` aus. `$cfmEnsure`,
 `$cfmSet` und `$cfmBlock` ändern dann nichts, direkte Befehle dagegen schon. Schreibe sie deshalb

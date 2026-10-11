@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-08)
+## Übersicht offener Punkte (Stand 2026-10-11)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -14,8 +14,15 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **RouterOS 7.25:** seit etwa 2026-10-01 als 7.25rc1 im Kanal `testing` (stable: 7.24.5). Den
   Labortest aller Skripte mit 7.25 stable (entschieden 2026-10-04); ist sie bis zum geplanten Termin
   (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
+* **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
+  ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-11:** WLAN-Teil der Gerätebibliothek ausgelagert (`lib/lib-wifi.rsc`, D68;
+  `lib.rsc` 46 → 23 KB), Apply lädt nur geänderte Dateien (D69; Labor: Reapply 1 s statt 16 s auf
+  einem Switch, 48 s auf dem Manager). Beim Sichten gefunden und behoben: Der Agent merkte sich die
+  geflashte RouterBOARD-Firmware so, dass `:deserialize` sie zur IP-Adresse machte – der Schutz gegen
+  wiederholtes Flashen und Neustarten griff nie (DECISIONS, Abschnitt „Straffung und Laufzeit“).
 * **Erledigt am 2026-10-08:** 2 (Benachrichtigungen per HTTP-POST, D66), 8 Rest (SFTP-/Host-Schlüssel
   rotieren, Manager zweiphasig, D67); beim Sichten gefunden und behoben: Der Backup-Manager hatte
   keine Geräte-User `cfmd-<name>`, Geräte konnten auch nach der Beförderung nicht von ihm ziehen
@@ -481,3 +488,19 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Geräte mit Rolle `ap`. Funkt der CAPsMAN selbst mit (`capsmanRadios`), fehlt er in der Rechnung;
     seine Radios lassen sich direkt scannen (auch abgeschaltet, Hardware 2026-10-03). Einbauen, damit
     ein Vorschlag alle Sender kennt.
+47. **Erstes Release nach dem Update auf D68 (einmalig je bestehender Installation)** – Das erste Release nach
+    dem Hochladen baut noch der installierte Manager-Code. Der kennt `lib/lib-wifi.rsc` nicht, die
+    Manifeste der WLAN-Geräte (Rollen `ap`, `capsman`, `manager`) nennen die Datei dann nicht. Geräte,
+    die seit ihrem letzten Apply neu gestartet sind, haben die WLAN-Funktionen nicht mehr im Speicher
+    und brechen mit „lib/lib-wifi.rsc fehlt im Manifest (D68)“ ab: Rollback mit Neustart, die
+    Version gilt als `bad`. Die übrigen laufen mit den Funktionen aus dem Speicher durch. Vorgehen:
+    1. Framework wie gewohnt hochladen.
+    2. Am Manager vor dem Release den neuen Manifest-Bau aus `work/` laden:
+       `/system script run cfm-mgr; /import cfm/work/lib/mgr-core.rsc verbose=no`
+    3. Gleich danach in derselben Sitzung `$cfmRelease msg="…"` (ringweise oder `all=yes`); der
+       Manager-Tick lädt sonst wieder den installierten Code.
+    4. Prüfen: `$cfmStatus` ohne Fehler; das Manifest eines AP nennt den WLAN-Teil, z.B.
+       `:put [:find [/file/get cfm/live/m/<Seriennummer>.mf contents] "lib-wifi"]` (Zahl, nicht leer).
+    Falls Schritt 2 vergessen wurde: Sobald der Manager die Version angewendet hat, `$cfmManifests`,
+    dann je zurückgerolltem Gerät `$cfmPush host=<name> force=yes`. Im Labor (2026-10-11) mit dem
+    Stand von v19 durchgespielt: alle drei Geräte ok, nur der Manager bekam den WLAN-Teil.

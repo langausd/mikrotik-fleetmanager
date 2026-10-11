@@ -263,6 +263,9 @@
       :local rl ("," . ($d->"role") . ",")
       :local want ({})
       :set ($want->[:len $want]) ({"lib/lib.rsc";1;1})
+      # WLAN-Teil der Bibliothek (D68) nur für Geräte, die WLAN rendern (der CAPsMAN aus cm hat eine dieser
+      # Rollen); optional: Versionen vor D68 haben ihn noch in lib.rsc
+      :if ($rl ~ ",(ap|capsman|manager),") do={ :set ($want->[:len $want]) ({"lib/lib-wifi.rsc";1;0}) }
       :set ($want->[:len $want]) ({"lib/agent.rsc";0;1})
       # Manager-Funktionen: alle Module lib/mgr-*.rsc der Version (installiert die Rolle manager)
       :if ($rl ~ ",manager") do={

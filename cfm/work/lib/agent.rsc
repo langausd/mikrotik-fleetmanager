@@ -172,31 +172,45 @@
   :return [:deserialize from=json $body]
 }
 
-# Dateien eines Manifests (mf=) nach d= laden und per SHA-512 prüfen (mgr= bevorzugt)
+# Dateien eines Manifests (mf=) nach d= laden und per SHA-512 prüfen (mgr= bevorzugt). Was dort vom
+# letzten Lauf schon mit dem richtigen Hash liegt, bleibt (D69): Jeder SFTP-Abruf dauert mindestens
+# 1 s, auch für kleine Dateien - ein Apply lud sonst jedes Mal alle Dateien neu. Dateien, die das
+# Manifest nicht nennt, kommen weg (base prüft z.B. nur, ob authorized_keys.<user> da ist).
 :global cfmGetFiles do={
   :global cfmFetch
-  :foreach f in=[/file/find where name~("^" . $d . "/") and type!="directory"] do={ /file/remove $f }
+  :local need ({})
+  :foreach fe in=($mf->"files") do={ :set ($need->($d . "/" . ($fe->0))) ($fe->1) }
+  :foreach f in=[/file/find where name~("^" . $d . "/") and type!="directory"] do={
+    :local fn [/file/get $f name]
+    :local ok false
+    :if ([:typeof ($need->$fn)] != "nothing") do={
+      :onerror e in={ :set ok ([:convert [/file/get $f contents] transform=sha512 to=hex] = ($need->$fn)) } do={}
+    }
+    :if ($ok) do={ :set ($need->$fn) } else={ /file/remove $f }
+  }
   :local src [:tostr ($mf->"src")]
   :if ([:len $src] = 0) do={ :set src ("archive/v" . ($mf->"v")) }
   :foreach fe in=($mf->"files") do={
     :local lp ($d . "/" . ($fe->0))
-    # bis zu fünf Versuche: ein Download kann unvollständig gelesen werden; nach einem Fehlschlag
-    # exponentiell warten (8/16/32/64 s, zusammen 2 min) - solange ein Backup-Manager seinen Spiegel
-    # zieht (~1 min), beantwortet der SFTP-Server des Primary keine weiteren Downloads (TODO 44)
-    :local ok false
-    :local info ""
-    :local w 8s
-    :for t from=1 to=5 do={
-      :if (!$ok) do={
-        :if ($t > 1) do={ :delay $w; :set w ($w * 2) }
-        :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] != "") do={
-          :delay 300ms
-          :local c [/file/get $lp contents]
-          :if ([:convert $c transform=sha512 to=hex] = ($fe->1)) do={ :set ok true } else={ :set info ("gelesen " . [:len $c] . " Byte, Versuch " . $t) }
-        } else={ :set info ("Download fehlgeschlagen, Versuch " . $t) }
+    :if ([:typeof ($need->$lp)] != "nothing") do={
+      # bis zu fünf Versuche: ein Download kann unvollständig gelesen werden; nach einem Fehlschlag
+      # exponentiell warten (8/16/32/64 s, zusammen 2 min) - solange ein Backup-Manager seinen Spiegel
+      # zieht (~1 min), beantwortet der SFTP-Server des Primary keine weiteren Downloads (TODO 44)
+      :local ok false
+      :local info ""
+      :local w 8s
+      :for t from=1 to=5 do={
+        :if (!$ok) do={
+          :if ($t > 1) do={ :delay $w; :set w ($w * 2) }
+          :if ([$cfmFetch r=($src . "/" . ($fe->0)) l=$lp prefer=$mgr] != "") do={
+            :delay 300ms
+            :local c [/file/get $lp contents]
+            :if ([:convert $c transform=sha512 to=hex] = ($fe->1)) do={ :set ok true } else={ :set info ("gelesen " . [:len $c] . " Byte, Versuch " . $t) }
+          } else={ :set info ("Download fehlgeschlagen, Versuch " . $t) }
+        }
       }
+      :if (!$ok) do={ :error ("Hash stimmt nicht: " . ($fe->0) . " (" . $info . ")") }
     }
-    :if (!$ok) do={ :error ("Hash stimmt nicht: " . ($fe->0) . " (" . $info . ")") }
   }
   :return true
 }
@@ -262,7 +276,8 @@
 
 /system/script/run cfm-conf
 :local dir "cfm"
-:if ([:len [/file/find where name="flash" and type="directory"]] > 0) do={ :set dir "flash/cfm" }
+# per Name statt /file/find: die Suche prüft jede Datei (auf dem Manager Hunderte, D59)
+:onerror e in={ :if ([/file/get flash type] = "directory") do={ :set dir "flash/cfm" } } do={}
 :set cfmDir $dir
 :set cfmDl ($dir . "/dl")
 :local now ([:tonsec [:timestamp]] / 1000000000)
@@ -293,6 +308,8 @@
   # Dateiname des Manifests: "/" (System-ID einer CHR) wie am Manager durch "_" ersetzt (TODO 42)
   :local sfn ""
   :for i from=0 to=([:len $serial] - 1) do={ :local c [:pick $serial $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
+  :local mfr ("live/m/" . $sfn . ".mf")
+  :local mfl ($dir . "/mf.mf")
   :local key ""
   :local sv ""
   :onerror e in={
@@ -347,7 +364,7 @@
   }
 
   # --- Manifest holen ---
-  :local mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+  :local mgr [$cfmFetch r=$mfr l=$mfl prefer=($st->"mgr")]
   :if ($mgr = "") do={
     # Von Hand aus einer Admin-Sitzung gestartet (TODO 35): /tool/fetch nimmt den privaten Schlüssel
     # des aufrufenden Users, den nur cfm hat - Wiederholen hilft dann nicht
@@ -380,7 +397,7 @@
     :delay 2s
     :foreach ifn in=$bp do={ /interface/ethernet/enable [find where name=$ifn] }
     :delay 15s
-    :set mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+    :set mgr [$cfmFetch r=$mfr l=$mfl prefer=($st->"mgr")]
     :if ($mgr != "") do={ :log warning "cfm: Manager nach dem Neustart der Bridge-Ports wieder erreichbar" }
   }
   # Wiederholungen mit exponentieller Pause (8/16/32/64 s, zusammen 2 min, TODO 44): Solange ein
@@ -391,7 +408,7 @@
     :log info ("cfm: Manifest nicht abrufbar - neuer Versuch in " . [:tostr $w])
     :delay $w
     :set w ($w * 2)
-    :set mgr [$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf.mf") prefer=($st->"mgr")]
+    :set mgr [$cfmFetch r=$mfr l=$mfl prefer=($st->"mgr")]
   }
 
   # --- Watchdog-Lauf: Apply bestätigen oder zurückrollen ---
@@ -418,7 +435,7 @@
   :set ($st->"mgr") $mgr
 
   # --- Manifest prüfen ---
-  :local mf [$cfmMfRead ($dir . "/mf.mf") key=$key]
+  :local mf [$cfmMfRead $mfl key=$key]
   :set cfmMf $mf
   :local v ($mf->"v")
   # Hash ohne RouterOS-Auftrag: ein neuer oder erledigter Auftrag löst keinen Apply aus
@@ -472,7 +489,7 @@
     :set ($st->"au") [:tostr $cfmAU]
     :set applied true
     # Erreichbarkeit direkt bestätigen (sonst entscheidet der Watchdog)
-    :if ([$cfmFetch r=("live/m/" . $sfn . ".mf") l=($dir . "/mf2.mf") prefer=$mgr] != "") do={
+    :if ([$cfmFetch r=$mfr l=($dir . "/mf2.mf") prefer=$mgr] != "") do={
       :set ($st->"pending")
       /system/scheduler/remove [find where name="cfm-watchdog"]
     }
@@ -489,6 +506,7 @@
   # IP-Adresse (7.24.0.1) und aus "2026-10-01 02:00" einen Zeitwert
   :local tv ""
   :if ([:typeof $ro] = "array") do={ :set tv [:pick [:tostr ($ro->"rv")] 1 99] }
+  :local clean false
   :if ([:len $tv] > 0 and $tv != $cur) do={
     :local tag ("cfm-sys:upgrade " . $tv . " " . [:tostr ($ro->"id")])
     :local planned false
@@ -501,12 +519,7 @@
           :log error ("cfm: RouterOS " . $tv . " nicht installiert - Auftrag fehlgeschlagen")
           :set ($st->"upg") ("fehlgeschlagen " . $tv)
         }
-        :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
-        # Spiegel des eingebauten Updates (D63) nicht stehen lassen
-        /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"]
-        :if ([:tostr ($st->"upm")] = "spiegel") do={
-          :if ([:tostr [/system/package/update/get mode]] = "https") do={ :set ($st->"upm") } else={ /system/package/update/set mode=https }
-        }
+        :set clean true
       } else={
        :local act ""
        :local fl ({})
@@ -591,12 +604,17 @@
       }
     }
   } else={
-    # kein offener Auftrag (mehr): geplanten Neustart und geladene Pakete verwerfen
+    # kein offener Auftrag (mehr): geplanten Neustart verwerfen
     :if ([:len $upn] > 0) do={ /system/scheduler/remove $upn; :log info "cfm: geplantes RouterOS-Update verworfen" }
+    :set ($st->"upa"); :set ($st->"upg")
+    :set clean true
+  }
+  # Auftrag erledigt, gescheitert oder verworfen: geladene Pakete und den befristeten Spiegel des
+  # eingebauten Updates (D63) nicht stehen lassen
+  :if ($clean) do={
     :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
-    :set ($st->"upf"); :set ($st->"upa"); :set ($st->"upg")
-    # befristeten Spiegel des eingebauten Updates (D63) zurücknehmen
-    :if ([:len [/ip/dns/static/find where comment="cfm-sys:upgrade-mirror"]] > 0) do={ /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"] }
+    :set ($st->"upf")
+    /ip/dns/static/remove [find where comment="cfm-sys:upgrade-mirror"]
     # mode=https erst als erledigt merken, wenn ein späterer Lauf es vorfindet: direkt nach dem Neustart
     # in die neue Version blieb es auf einem hEX (7.24.5) trotz set auf http (Hardware 2026-10-03)
     :if ([:tostr ($st->"upm")] = "spiegel") do={
@@ -621,12 +639,14 @@
     # auto-upgrade flasht nur beim Neustart direkt nach einem RouterOS-Update. Lief das Update vor
     # dem ersten Apply (Onboarding), flasht nie etwas, und ein bloßer Neustart dreht sich im Kreis
     # (hAP ax², 2026-09-23: Neustart alle 1-2 min). Deshalb selbst flashen und je Firmware-Version
-    # höchstens einmal neu starten; "fw" merkt sich die Version über den Neustart hinweg.
+    # höchstens einmal neu starten; "fw" merkt sich die Version über den Neustart hinweg - mit Präfix
+    # "v": :deserialize machte aus "7.24.5" die IP-Adresse 7.24.0.5, der Vergleich schlug dann immer fehl
+    :local fwv ("v" . $rbUpg)
     :if ([:len $rbUpg] > 0 and $rbUpg != $rbCur) do={
-      :if ([:tostr ($st->"fw")] = $rbUpg) do={
-        :if ([:tostr ($st->"fwe")] != $rbUpg) do={
+      :if ([:tostr ($st->"fw")] = $fwv) do={
+        :if ([:tostr ($st->"fwe")] != $fwv) do={
           :log error ("cfm: RouterBOARD-Firmware " . $rbUpg . " nach dem Neustart nicht aktiv (aktuell " . $rbCur . ") - kein weiterer Neustart, /system/routerboard/upgrade von Hand")
-          :set ($st->"fwe") $rbUpg
+          :set ($st->"fwe") $fwv
         }
       } else={
         :onerror e in={
@@ -634,7 +654,7 @@
           $fx
           :delay 10s
         } do={ :log error ("cfm: RouterBOARD-Firmware " . $rbUpg . " flashen fehlgeschlagen: " . $e) }
-        :set ($st->"fw") $rbUpg
+        :set ($st->"fw") $fwv
         :log warning ("cfm: RouterBOARD-Firmware " . $rbUpg . " geflasht (aktuell " . $rbCur . ") - Neustart zum Aktivieren")
         :set boot "/system/reboot"
       }

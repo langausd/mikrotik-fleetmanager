@@ -11,6 +11,7 @@
 # ============================================================
 :global cfmG; :global cfmMf; :global cfmEnsure; :global cfmSet; :global cfmLog; :global cfmDry
 :global cfmWifi; :global cfmWifiRender
+:if ([:typeof $cfmWifiRender] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
 
 :local mv [:tostr ($cfmG->"mgmtVlan")]
 

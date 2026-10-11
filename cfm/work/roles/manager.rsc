@@ -106,4 +106,7 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
 :global cfmIsCapsman; :global cfmHas; :global cfmCapsmanOn
 # Rest der früheren Übernahme durch den Backup (Netwatch-Down-Skript), falls noch vorhanden
 :if ($cfmDry != true) do={ :onerror e in={ /system/scheduler/remove [find where name="cfm-takeover"] } do={} }
-:if (!$backup and [$cfmIsCapsman] and ![$cfmHas "capsman"]) do={ $cfmCapsmanOn }
+:if (!$backup and [$cfmIsCapsman] and ![$cfmHas "capsman"]) do={
+  :if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
+  $cfmCapsmanOn
+}

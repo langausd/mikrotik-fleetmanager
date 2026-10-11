@@ -446,6 +446,7 @@ invrole "manager-backup" "manager-backup,ap"
 out=$(mgr ':global cfmCheck; /file/add name="cfm/meta/inv2.rsc" contents=[/file/get [/file/find name="cfm/meta/inventory.rsc"] contents]; :local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "\"role\"=\"manager\""]; /file/set $f contents=([:pick $c 0 $p] . "\"role\"=\"manager,capsman\"" . [:pick $c ($p + 16) [:len $c]]); :foreach e in=([$cfmCheck]->"err") do={ :put $e }; /file/set $f contents=[/file/get [/file/find name="cfm/meta/inv2.rsc"] contents]; /file/remove [/file/find name="cfm/meta/inv2.rsc"]')
 echo "$out" | grep -q "Rolle capsman mehrfach vergeben" && ok "Prüfung: nur ein CAPsMAN (Rolle capsman doppelt = Fehler)" || { bad "doppelte Rolle capsman nicht erkannt"; echo "$out" | tail -3; }
 applied sw1 && ok "sw1 als switch,router,capsman angewendet" || bad "sw1 capsman: $(stat sw1 res)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "sw1 (capsman): WLAN-Teil lib/lib-wifi.rsc geladen (D68)"
 # Kam der Secret-Sync des Manager-Ticks (1 min) schon dazwischen (langsames Labor), ist der CAPsMAN bereits mit PSK an
 expect 2 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2 and (([:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [/ppp/secret/get [find name="cfm:key"] comment] ~ "sv=0\$") or ([:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [:len [/interface/wifi/security/get [find name="cfm-main"] passphrase]] > 0))' "sw1: CAPsMAN gerendert, bleibt aus bis zur PSK (Secret-Push angefordert)"
 mgr '$cfmSecretPush host=sw1' >/dev/null
@@ -480,6 +481,7 @@ echo "$out" | grep -q "W inventory: cm2 hat das Paket wifi-qcom-ac" && ok "\$cfm
 nc=$(r 3 ':put [:len [/certificate/find where trust-store=capsman]]' | tail -1 | tr -dc 0-9)
 invrole "switch,router,capsman" "switch,router"
 applied sw1 && ok "sw1 ohne Rolle capsman angewendet" || bad "sw1: $(stat sw1 res)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 0 and [:len [/file/find where name="cfm/dl/lib/lib.rsc"]] = 1' "sw1 ohne WLAN-Rolle: lib-wifi.rsc nicht mehr im Manifest, aus dl/ entfernt (D68, D69)"
 expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0' "sw1: CAPsMAN aus und abgeräumt"
 applied cm1 && ok "cm1 wieder CAPsMAN (Übergangsregel)" || bad "cm1: $(stat cm1 res)"
 mgr '$cfmSecretPush host=cm1' >/dev/null
@@ -543,8 +545,12 @@ expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 2 and [:len [/user/
 expect 2 '[:len [/user/ssh-keys/find where user!=netadmin and info~"e2e@"]] = 0' "sw1: andere User ohne Datei unangetastet"
 out=$(ssh -p $((LABPORT+20)) "${O[@]}" -o BatchMode=yes -i "$LAB/e2e_k2" netadmin@127.0.0.1 ':put keyok' 2>&1 | tr -d '\r')
 echo "$out" | grep -q keyok && ok "sw1: Login als netadmin mit dem zweiten Key" || bad "Key-Login netadmin: $(echo "$out" | tail -1)"
+lm0=$(r 2 ':put [/file/get cfm/dl/roles/base.rsc last-modified]' | tail -1)
 applied sw1 || true
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Keys idempotent (zweiter Apply ohne Änderung)" || bad "Keys idempotent: $(stat sw1 stats)"
+lm1=$(r 2 ':put [/file/get cfm/dl/roles/base.rsc last-modified]' | tail -1)
+[ -n "$lm0" ] && [ "$lm0" = "$lm1" ] && ok "Reapply lädt unveränderte Dateien nicht neu (D69)" || bad "Reapply lud roles/base.rsc neu ($lm0 -> $lm1)"
+expect 1 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "cm1 (manager): WLAN-Teil lib/lib-wifi.rsc im Manifest (D68)"
 # alle Keys einer Person entziehen = Datei leeren; danach Datei weg (Schritt 15 meldet netadmin per Passwort an)
 echo "# entzogen" > "$LAB/ak.netadmin"; echo "put $LAB/ak.netadmin cfm/work/authorized_keys.netadmin" | put 1
 rv=$(mgr '$cfmRelease msg=" Admin-Keys entzogen" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
@@ -569,6 +575,8 @@ out=$(mgr ':global cfmCheck; :global e2eG; /file/set [/file/find name="cfm/work/
 echo "$out" | grep -q "ERR global.rsc: notify url ftp://x ist keine http(s)-URL" && echo "$out" | grep -q "ERR global.rsc: notify stale=bald ist keine Zeitangabe" && ok "\$cfmCheck: notify-URL und Zeitangabe geprüft" || { bad "\$cfmCheck notify"; echo "$out" | tail -3; }
 rv=$(mgr '$cfmRelease msg=" notify" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
+# 14e hat authorized_keys.netadmin aus work/ gelöscht: Die Datei darf nicht in dl/ liegen bleiben (D69)
+expect 2 '[:len [/file/find where name="cfm/dl/authorized_keys.netadmin"]] = 0 and [:len [/file/find where name="cfm/dl/roles/base.rsc"]] = 1' "sw1: gelöschte authorized_keys.netadmin auch aus dl/ entfernt (D65, D69)"
 out=$(mgr '$cfmNotify test=yes; $cfmNotify ev="e2e" host="sw1" st="once" msg=("Pr\C3\BCfung \C3\A4\C3\B6\C3\BC \"x\"")')
 echo "$out" | grep -q "zugestellt an http://10.0.2.2:$NP/hook" && nwait '"ev": "test"' && ok "Probemeldung zugestellt" || { bad "Probemeldung"; echo "$out" | tail -2; }
 nwait '"ev": "e2e"' && grep '"ev": "e2e"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "e2e", "state": "once", "msg": "Prüfung äöü \\"x\\"", "text": "Labor: sw1 - Prüfung äöü \\"x\\""' && grep '"ev": "e2e"' "$NL" | grep -q '"_ct": "application/json"' && ok "JSON mit Umlauten und Anführungszeichen, Content-Type application/json" || { bad "JSON der Meldung"; tail -1 "$NL"; }

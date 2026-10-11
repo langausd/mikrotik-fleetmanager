@@ -411,7 +411,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
-| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt |
+| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, D67) |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
 zusätzlich `local-forward`, zum Beispiel per `hosts/<name>.post.rsc`. Sie greifen vor dem finalen
@@ -1288,7 +1288,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmBootstrap` | Bootstrap-Datei für die manuelle Aufnahme |
 | `$cfmEnroll name= ip= [role=] [ring=] [rekey=yes] [noapply=yes]` | Gerät aufnehmen (manuell); `noapply=yes`: ohne ersten Apply, Scheduler aus (7.3) |
 | `$cfmTrust [host=<n>]` | Manager-Schlüssel an Geräte verteilen |
-| `$cfmPromoteManager` | auf dem Backup: zum Primary befördern |
+| `$cfmPromoteManager` | auf dem Backup: zum Primary befördern, schaltet die SFTP-User der Geräte frei (D67) |
 
 ---
 

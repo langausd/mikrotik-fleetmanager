@@ -62,6 +62,11 @@
 :if ([:len [/file/find where name=$mu]] > 0) do={ :set stage "u" }
 :if ([:len [/file/find where name=$m3]] > 0) do={ :set stage "3" }
 
+# RouterOS 7.25: Der SSH-Client prüft Host-Keys, nach Reset und Neuinstallation standardmäßig an –
+# die Übergabe per SFTP an sich selbst und später jeder Pull scheiterten sonst ("host key not
+# trusted"). cfm sichert Manifeste selbst ab (D71); 7.24 kennt die Property nicht
+:if ([:typeof ([/ip/ssh/get]->"known-hosts-validation")] != "nothing") do={ /ip/ssh/set known-hosts-validation=no }
+
 # MGMT erreichbar machen (wie bei jedem Gerät): in Stufe 2 und im Bootstrap
 :local mgmt do={
   :local br "bridge"

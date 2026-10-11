@@ -297,6 +297,7 @@
     :if ($tn = 0) do={ :put "keine Messung mit Netzen in state/wifiscan.json - erst ohne data=yes scannen"; :return false }
     :set bd [:tostr ($sc->"band")]
   } else={
+    # rsc-check: erlaubt json-typ (t nur für Menschen, cfm liest es nicht zurück)
     :set sc ({"band"=$bd;"t"=([/system/clock/get date] . " " . [/system/clock/get time]);"own"=({});"aps"=({})})
     # host=: in die letzte Messung desselben Bands einfügen (die übrigen APs müssen nicht neu scannen)
     :if ([:len $host] > 0) do={

@@ -11,6 +11,8 @@
 #   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels)
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
 #   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (D66)
+#   mgr-mf       Manifest-Regeln (welche Dateien ein Gerät bekommt); lädt $cfmManifests aus der
+#                jeweiligen Version (D70)
 # Die Module hängen nur beim Aufruf voneinander ab (:global in den Funktionen), die
 # Ladereihenfolge ist daher egal.
 #
@@ -20,6 +22,8 @@
 #                                      (force=yes: trotz Fehlern der inhaltlichen Prüfung)
 #   $cfmCheck                          inhaltliche Prüfung von work/ (läuft auch beim Release)
 #   $cfmPlan host=<n>                  Probelauf: was würde ein Release von work/ ändern?
+#   $cfmPlan host=<n> from=<verz> role=<rollen>   dasselbe für einen anderen Stand (<mgrPath>/<verz>/)
+#                                      und/oder andere Rollen, z.B. das Zielbild eines Umbaus
 #   $cfmPromote [ring=1|2]             Version des vorigen Rings freigeben
 #   $cfmRollback ver=<N> [all=yes]     alten Stand als neue Version freigeben
 #   $cfmStatus                         Flottenübersicht
@@ -159,7 +163,8 @@
   :local v $ver
   :if ([:len [:tostr $v]] = 0) do={ :set v ([$cfmRings]->"latest") }
   :local d ($b . "/archive/v" . $v)
-  :if ($v = 0) do={ :set d ($b . "/work") }
+  # ver=0: Arbeitsstand work/ bzw. dir=<verzeichnis> ($cfmPlan from=)
+  :if ($v = 0) do={ :set d ($b . "/work"); :if ([:len [:tostr $dir]] > 0) do={ :set d ($b . "/" . $dir) } }
   # Zur Version gehörende Gerätebibliothek mitladen: Manager-Funktionen nutzen ihre Helfer
   # ($cfmNet, $cfmTarget). Global sind sie sonst erst nach einem Apply des Agents - direkt nach
   # Bootstrap oder Neustart fehlen sie, und RouterOS meldet den Aufruf einer unbekannten Funktion
@@ -227,10 +232,14 @@
 }
 
 # ---------- Manifeste (pro Gerät, mit MAC) ----------
-# plan=<host>: nur für diesen Host ein Plan-Manifest aus dem Schnappschuss plan/ ($cfmPlan)
+# plan=<host>: nur für diesen Host ein Plan-Manifest aus dem Schnappschuss plan/ ($cfmPlan);
+# role=<rollen>: dabei statt der Rollen aus dem Inventar (Probe eines Rollenwechsels)
+# Welche Dateien ein Gerät bekommt, regelt $cfmMfWant aus lib/mgr-mf.rsc der Version, die es bekommt
+# (D70): je Version einmal geladen. Versionen ohne die Datei baut die installierte Fassung (Skript
+# cfm-mgr-mf), fehlt auch die, die der neuesten Version (Übergang vom Manager-Code vor D70).
 :global cfmManifests do={
   :global cfmMB; :global cfmRings; :global cfmInvLoad; :global cfmVaultGet; :global cfmWrite
-  :global cfmJson; :global cfmG; :global cfmLoadData; :global cfmCapsmen
+  :global cfmJson; :global cfmG; :global cfmLoadData; :global cfmCapsmen; :global cfmFileEx
   :local b [$cfmMB]
   :local rg [$cfmRings]
   :local pl [:len $plan]
@@ -246,72 +255,94 @@
   }
   :local ord [$cfmJson ($b . "/meta/upgrade.dat")]
   :local cnt 0
+  # Version je Gerät, Quellen sammeln (archive/vN bzw. plan)
+  :local dv ({})
+  :local srcs ({})
   :foreach name,d in=$inv do={
    :if ($pl = 0 or $plan = $name) do={
     :local ring [:tostr ($d->"ring")]
     :if ([:len $ring] = 0) do={ :set ring "2" }
     :local v ($rg->("r" . $ring))
-    :local src ("archive/v" . $v)
-    # Dateiname aus der Seriennummer: Die System-ID einer CHR kann "/" enthalten (TODO 42)
-    :local sfn ""
-    :for i from=0 to=([:len ($d->"serial")] - 1) do={ :local c [:pick ($d->"serial") $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
-    :local out ($b . "/live/m/" . $sfn . ".mf")
-    :if ($pl > 0) do={ :set v 0; :set src "plan"; :set out ($b . "/plan/m/" . $sfn . ".mf") }
-    :local key [$cfmVaultGet ("mac." . ($d->"serial"))]
-    :if ([:len $key] > 0 and [:len [:tostr $v]] > 0) do={
-      :local fx ([$cfmJson ($b . "/" . $src . "/index.dat")]->"files")
-      :local rl ("," . ($d->"role") . ",")
-      :local want ({})
-      :set ($want->[:len $want]) ({"lib/lib.rsc";1;1})
-      # WLAN-Teil der Bibliothek (D68) nur für Geräte, die WLAN rendern (der CAPsMAN aus cm hat eine dieser
-      # Rollen); optional: Versionen vor D68 haben ihn noch in lib.rsc
-      :if ($rl ~ ",(ap|capsman|manager),") do={ :set ($want->[:len $want]) ({"lib/lib-wifi.rsc";1;0}) }
-      :set ($want->[:len $want]) ({"lib/agent.rsc";0;1})
-      # Manager-Funktionen: alle Module lib/mgr-*.rsc der Version (installiert die Rolle manager)
-      :if ($rl ~ ",manager") do={
-        :foreach p,h in=$fx do={ :if ($p ~ "^lib/mgr-") do={ :set ($want->[:len $want]) ({$p;0;1}) } }
-      }
-      :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ :set ($want->[:len $want]) ({$f;1;1}) }
-      # optional (D62): ältere Versionen haben keine leases.rsc - Ringe auf einer solchen bleiben gültig
-      :set ($want->[:len $want]) ({"leases.rsc";1;0})
-      # authorized_keys.<user> (D65, persönliche Admin-SSH-Keys je User): optional, kein /import (kein
-      # RouterOS-Skript); base liest nur die Dateien der User aus users
-      :foreach p,h in=$fx do={ :if ($p ~ "^authorized_keys\\.") do={ :set ($want->[:len $want]) ({$p;0;0}) } }
-      :set ($want->[:len $want]) ({("hosts/" . $name . ".rsc");1;0})
-      :set ($want->[:len $want]) ({"roles/base.rsc";1;1})
-      :if ($rl ~ ",manager-backup,") do={ :set ($want->[:len $want]) ({"roles/manager.rsc";0;1}) }
-      :foreach r in=[:toarray ($d->"role")] do={ :set ($want->[:len $want]) ({("roles/" . $r . ".rsc");1;1}) }
-      :set ($want->[:len $want]) ({("hosts/" . $name . ".post.rsc");1;0})
-      :local fl ({})
-      :local ok true
-      :foreach w in=$want do={
-        :local h ($fx->($w->0))
-        :if ([:len $h] > 0) do={ :set ($fl->[:len $fl]) ({($w->0);$h;($w->1)}) } else={
-          :if (($w->2) = 1) do={ :set ok false; :log warning ("cfm: " . $name . ": Pflichtdatei fehlt in " . $src . ": " . ($w->0)) }
-        }
-      }
-      :if ($ok) do={
-        :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=($d->"role");"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"cm"=$cms;"files"=$fl})
-        :if ($rl ~ ",router,") do={ :set ($m->"dns") $dnsH }
-        # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
-        :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
-        :local body [:serialize to=json $m]
-        :local mac [:convert ($key . [:convert $body transform=sha512 to=hex]) transform=sha512 to=hex]
-        $cfmWrite $out ($body . "\n# mac=" . $mac . "\n")
-        :set cnt ($cnt + 1)
-      }
+    :if ($pl > 0) do={ :set v 0 }
+    :if ([:len [:tostr $v]] > 0) do={
+      :set ($dv->$name) ({$v;$ring})
+      :if ($pl > 0) do={ :set ($srcs->"plan") 1 } else={ :set ($srcs->("archive/v" . $v)) 1 }
     }
    }
+  }
+  :foreach src,x in=$srcs do={
+    # Manifest-Regeln dieser Version laden (D70)
+    :local how ""
+    :local mf ($b . "/" . $src . "/lib/mgr-mf.rsc")
+    :if ([$cfmFileEx $mf]) do={
+      :onerror e in={ /import file-name=$mf verbose=no; :set how $src } do={ :log warning ("cfm: Manifest-Regeln aus " . $src . " nicht geladen: " . $e) }
+    }
+    :if ([:len $how] = 0 and [:len [/system/script/find where name="cfm-mgr-mf"]] > 0) do={
+      :onerror e in={ /system/script/run cfm-mgr-mf; :set how "installiert" } do={}
+    }
+    :if ([:len $how] = 0) do={
+      :local lf ($b . "/archive/v" . ($rg->"latest") . "/lib/mgr-mf.rsc")
+      :if ([$cfmFileEx $lf]) do={ :onerror e in={ /import file-name=$lf verbose=no; :set how "neueste" } do={} }
+    }
+    :global cfmMfWant
+    :if ([:len $how] = 0 or [:typeof $cfmMfWant] = "nothing") do={
+      :log warning ("cfm: keine Manifest-Regeln für " . $src . " (lib/mgr-mf.rsc) - deren Manifeste bleiben unverändert")
+    } else={
+     :local fx ([$cfmJson ($b . "/" . $src . "/index.dat")]->"files")
+     :foreach name,vr in=$dv do={
+      :local d ($inv->$name)
+      :local v ($vr->0)
+      :local ring ($vr->1)
+      :local isrc ("archive/v" . $v)
+      :if ($pl > 0) do={ :set isrc "plan" }
+      :if ($isrc = $src) do={
+       # Dateiname aus der Seriennummer: Die System-ID einer CHR kann "/" enthalten (TODO 42)
+       :local sfn ""
+       :for i from=0 to=([:len ($d->"serial")] - 1) do={ :local c [:pick ($d->"serial") $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
+       :local out ($b . "/live/m/" . $sfn . ".mf")
+       :if ($pl > 0) do={ :set out ($b . "/plan/m/" . $sfn . ".mf") }
+       :local key [$cfmVaultGet ("mac." . ($d->"serial"))]
+       :if ([:len $key] > 0) do={
+        :local rol [:tostr ($d->"role")]
+        :if ($pl > 0 and [:len $role] > 0) do={ :set rol $role }
+        :local want ({})
+        :onerror e in={ :set want [$cfmMfWant name=$name role=$rol fx=$fx] } do={ :log warning ("cfm: " . $name . ": Manifest-Regeln aus " . $how . " fehlgeschlagen: " . $e) }
+        :local fl ({})
+        :local ok ([:len $want] > 0)
+        :foreach w in=$want do={
+          :local h ($fx->($w->0))
+          :if ([:len $h] > 0) do={ :set ($fl->[:len $fl]) ({($w->0);$h;($w->1)}) } else={
+            :if (($w->2) = 1) do={ :set ok false; :log warning ("cfm: " . $name . ": Pflichtdatei fehlt in " . $src . ": " . ($w->0)) }
+          }
+        }
+        :if ($ok) do={
+          :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=$rol;"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"cm"=$cms;"files"=$fl})
+          :local rl ("," . $rol . ",")
+          :if ($rl ~ ",router,") do={ :set ($m->"dns") $dnsH }
+          # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
+          :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
+          :local body [:serialize to=json $m]
+          :local mac [:convert ($key . [:convert $body transform=sha512 to=hex]) transform=sha512 to=hex]
+          $cfmWrite $out ($body . "\n# mac=" . $mac . "\n")
+          :set cnt ($cnt + 1)
+        }
+       }
+      }
+     }
+    }
   }
   :return $cnt
 }
 
 # work/-Dateien auf Größe (/file get liest nur ~60 KB) und Syntax (:parse) prüfen -> "" oder Liste
+# dir=<verzeichnis>: statt work/ ($cfmPlan from=)
 :global cfmParseWork do={
   :global cfmMB
   :local b [$cfmMB]
+  :local w "work"
+  :if ([:len [:tostr $dir]] > 0) do={ :set w $dir }
   :local bad ""
-  :foreach f in=[/file/find where name~("^" . $b . "/work/") and type!="directory"] do={
+  :foreach f in=[/file/find where name~("^" . $b . "/" . $w . "/") and type!="directory"] do={
     :local n [/file/get $f name]
     :if ([/file/get $f size] > 60000) do={ :set bad ($bad . " " . $n . " (>60KB)") } else={
       :if ($n ~ "\\.rsc\$") do={ :onerror e in={ :local x [:parse [/file/get $f contents]] } do={ :set bad ($bad . " " . $n . " (" . $e . ")") } }
@@ -353,6 +384,7 @@
     $cfmWrite ($b . "/archive/v" . $v . "/" . $rel) $c
     :set ($idx->$rel) [:convert $c transform=sha512 to=hex]
   }
+  # rsc-check: erlaubt json-typ (date nur für Menschen, cfm liest es nicht zurück)
   :local ix ({"v"=$v;"msg"=[:tostr $msg];"date"=([/system/clock/get date] . " " . [/system/clock/get time]);"files"=$idx})
   $cfmWrite ($b . "/archive/v" . $v . "/index.dat") [:serialize to=json $ix]
   :local now [$cfmNow]

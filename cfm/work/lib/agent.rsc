@@ -75,7 +75,17 @@
   :set ($s->"serial") $serial
   :set ($s->"target") $target
   :set ($s->"sv") $sv
-  :set ($s->"ros") [/system/resource/get version]
+  # RouterOS 7.25 meldet die Version ohne Kanal ("7.25.1" statt "7.24.5 (stable)"); :deserialize machte
+  # beim Manager daraus eine IP-Adresse (7.25.0.1, "7.25" -> 7.0.0.25). Mit dem Kanal bleibt sie Text,
+  # der Manager schneidet beim ersten Leerzeichen ab
+  :local ros [/system/resource/get version]
+  :if ([:typeof [:find $ros " "]] = "nil") do={
+    :local ch "-"
+    :onerror e in={ :set ch [/system/package/update/get channel] } do={}
+    :set ros ($ros . " (" . $ch . ")")
+  }
+  # rsc-check: erlaubt json-typ (Kanal dahinter, siehe oben)
+  :set ($s->"ros") $ros
   :set ($s->"model") [/system/resource/get board-name]
   :set ($s->"seen") $now
   # Architektur + installierte Pakete: daraus stellt der Manager RouterOS-Pakete bereit

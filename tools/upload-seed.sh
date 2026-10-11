@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Lädt die Vorlage (cfm/work + cfm/meta) einmalig auf den Primary-Manager.
-# Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz.
-#   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm]
+# Lädt die Vorlage (cfm/work + cfm/meta) auf den Primary-Manager.
+# Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz (D4). Die
+# Site-Daten (global.rsc, vlans.rsc, … , hosts/, authorized_keys.<user>) pflegt der Manager selbst
+# (z.B. im WebFig-Terminal per /file/edit); ein normaler Upload bringt nur den Framework-Code
+# (lib/, roles/), tools/pull-site.sh holt die Site-Daten als Sicherung ins Overlay (D72).
+#   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm] [--site]
 #                        [--seed-inventory [--force]] [--bootstrap DATEI]
+# --site:   auch die Site-Daten hochladen und damit die auf dem Manager ersetzen (vorher werden die
+#           Dateien genannt, die dort anders sind). Ohne --site bleiben sie auf dem Manager unberührt.
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
 #            die Vorlage, z.B. site/ (eigene Standortdaten, von Git ignoriert, anlegen mit
 #            tools/new-site.py) oder tools/chr-lab/seed für das Testlabor. Hochgeladen werden
@@ -11,7 +16,8 @@
 # --bootstrap: zusätzlich diese Bootstrap-Datei ins Wurzelverzeichnis des Geräts legen (nicht nach
 #            work/ - dort landet nur, was an die Flotte verteilt wird). Ohne Pfad wird
 #            <overlay>/bootstrap-manager.rsc genommen. Danach auf dem Gerät: /import <datei>.
-# --seed-inventory: meta/inventory.rsc mit hochladen (nur beim allerersten Aufsetzen sinnvoll).
+# --seed-inventory: meta/inventory.rsc mit hochladen (nur beim allerersten Aufsetzen sinnvoll,
+#            schließt --site ein).
 #            Enthält das Inventar auf dem Gerät schon echte Seriennummern (also aufgenommene
 #            Geräte), bricht das Skript ab - mit --force trotzdem überschreiben.
 #            Ohne dieses Flag bleibt inventory.rsc auf dem Gerät unangetastet, weil es laut
@@ -20,10 +26,11 @@
 #            Ringe wieder auf die lokale Vorlage zurücksetzen.
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
-port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""
+port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""; site=""
 while [ $# -gt 0 ]; do case $1 in
   --port) port=$2; shift 2;; --overlay) overlay=$2; shift 2;; --base) base=$2; shift 2;;
-  --seed-inventory) seed_inventory=1; shift;;
+  --seed-inventory) seed_inventory=1; site=1; shift;;
+  --site) site=1; shift;;
   --force) force=1; shift;;
   # --bootstrap ohne Pfad: Datei aus dem Overlay nehmen (erst nach dem Parsen auflösbar)
   --bootstrap) if [ $# -ge 2 ] && [ -f "$2" ]; then bootstrap=$2; shift 2; else bootstrap="-"; shift; fi;;
@@ -67,6 +74,8 @@ if [ -n "$overlay" ]; then
   done
   [ -n "$skipped" ] && echo "nicht hochgeladen (nur lokal):$skipped"
 fi
+# Editor-Sicherungen auch in hosts/, roles/, lib/ (z.B. sw1.rsc~ von tools/pull-site.sh) nie hochladen
+find "$stage" -type f \( -name '*~' -o -name '#*#' -o -name '.#*' \) -delete
 # Vorlage über ein gepflegtes Inventar zu legen wirft echte Seriennummern weg; die Geräte finden
 # ihr Manifest dann nicht mehr (es liegt unter der Seriennummer).
 if [ -n "$seed_inventory" ] && [ -z "$force" ]; then
@@ -83,6 +92,25 @@ if [ -n "$seed_inventory" ] && [ -z "$force" ]; then
     fi
   fi
   rm -f "$remote"
+fi
+# Site-Daten (D72): Dateien direkt in work/ und hosts/. Ohne --site bleiben sie auf dem Manager, wie
+# sie sind; mit --site nennen, welche dort anders sind und ersetzt werden.
+if [ -z "$site" ]; then
+  find "$stage/work" -maxdepth 1 -type f -delete
+  rm -rf "$stage/work/hosts"
+  echo "Site-Daten nicht hochgeladen (führt der Manager; --site lädt sie hoch, tools/pull-site.sh holt sie)"
+elif [ -z "$seed_inventory" ]; then
+  remote=$(mktemp -d)
+  (cd "$stage/work" && { find . -maxdepth 1 -type f; find ./hosts -type f 2>/dev/null; }) | sed 's|^\./||' | sort > "$remote/liste"
+  mkdir -p "$remote/hosts"
+  sed "s|.*|-get $base/work/& $remote/&|" "$remote/liste" | sftp -q -b - -P "$port" ${SFTP_OPTS:-} "$dest" >/dev/null 2>&1 || true
+  anders=""; neu=""
+  while IFS= read -r f; do
+    if [ ! -f "$remote/$f" ]; then neu="$neu $f"; elif ! cmp -s "$remote/$f" "$stage/work/$f"; then anders="$anders $f"; fi
+  done < "$remote/liste"
+  rm -rf "$remote"
+  if [ -n "$anders" ]; then echo "--site ersetzt auf dem Manager (dort anders):$anders"; fi
+  if [ -n "$neu" ]; then echo "--site legt auf dem Manager neu an:$neu"; fi
 fi
 if [ -z "$seed_inventory" ] && [ -f "$stage/meta/inventory.rsc" ]; then
   rm -f "$stage/meta/inventory.rsc"

@@ -11,13 +11,22 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   drei Radios, gepinnt, Gast-Schalter schaltet sie mit, 2026-10-03).
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
-* **RouterOS 7.25:** seit etwa 2026-10-01 als 7.25rc1 im Kanal `testing` (stable: 7.24.5). Den
+* **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
+* **RouterOS 7.25 (Termin):** seit etwa 2026-10-01 als 7.25rc1 im Kanal `testing` (stable: 7.24.5). Den
   Labortest aller Skripte mit 7.25 stable (entschieden 2026-10-04); ist sie bis zum geplanten Termin
   (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-11/13 (fünfte Remote-Runde):** Manifest-Regeln je Version aus dem Archiv (D70,
+  schließt die Lücke von TODO 47 bei `$cfmPromote`), RouterOS 7.25: Host-Key-Prüfung des SSH-Clients aus
+  (D71) und Versionsmeldung mit Kanal (sonst IP-Adresse beim Manager), Site-Daten führt der Manager
+  (D72: `upload-seed.sh` ohne `--site` nur Framework-Code, `tools/pull-site.sh`), Editor als WebFig-
+  Lesezeichen über die REST-API (D73, `tools/editor/`), Regel `json-typ` in `tools/rsc-check.py`,
+  `$cfmPlan from=<verzeichnis> role=<rollen>` (Probelauf eines Umbaus, z.B. des Router-Umzugs). Labor
+  7.24.5: `e2e.sh` 290, Onboarding 14/15/18, `e2e-vrrp.sh` 79, alles grün; Übergang vom Stand vor D68
+  durchgespielt (TODO 47). Labor auf 7.25rc1 siehe 48.
 * **Erledigt am 2026-10-11:** WLAN-Teil der Gerätebibliothek ausgelagert (`lib/lib-wifi.rsc`, D68;
   `lib.rsc` 46 → 23 KB), Apply lädt nur geänderte Dateien (D69; Labor: Reapply 1 s statt 16 s auf
   einem Switch, 48 s auf dem Manager). Beim Sichten gefunden und behoben: Der Agent merkte sich die
@@ -135,6 +144,15 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
+* **Labor 2026-10-11, ungeklärt: cm1 nimmt keine Anmeldung mehr an.** Im ersten `e2e.sh`-Lauf mit D70/D71
+  (7.24.5, parallel zu einem zweiten Labor) scheiterte ab Schritt 14 jede Anmeldung an cm1: admin
+  (leeres Passwort) und netadmin per SSH und an der seriellen Konsole, `cfmd-sw1` per SFTP-Key von sw1,
+  `/system/ssh-exec` von cm2 als `cfm`.
+  Der Manager-Tick von cm1 lief weiter, er meldete sich alle 10 min per Key an cm2 und sw1 an. Mit demselben
+  Code und Diagnose alle 5 s (freier Speicher 40 MB, Platz 68 MB) lief Schritt 14 danach fehlerfrei. Die
+  VM-Disks gingen mit dem nächsten `fresh` verloren. Tritt es wieder auf: VM nicht neu aufsetzen, Disk
+  sichern (`qemu-img convert`), dann zuerst prüfen, ob cm1 neu gestartet ist (Uptime im Status) und ob
+  ein Rollback lief (Log von cm2/sw1 und `cfm/state/cm1/status.dat` im Spiegel von cm2).
 * ~~**Manager-Ticks starten gleichzeitig:**~~ – *erledigt (D57):* Der allgemeine Tick wartet bis zu
   60 s auf einen laufenden Onboarding-Tick und setzt während seiner Arbeit `cfmTickBusy`, der
   Onboarding-Tick wartet bis zu 30 s darauf und lässt dann seine Minute aus. – `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (jede
@@ -500,9 +518,33 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     2. Am Manager vor dem Release den neuen Manifest-Bau aus `work/` laden:
        `/system script run cfm-mgr; /import cfm/work/lib/mgr-core.rsc verbose=no`
     3. Gleich danach in derselben Sitzung `$cfmRelease msg="…"` (ringweise oder `all=yes`); der
-       Manager-Tick lädt sonst wieder den installierten Code.
+       Manager-Tick lädt sonst wieder den installierten Code. **Korrektur 2026-10-11:** Schritt 2 gilt
+       vor **jedem** Befehl, der Manifeste baut (`$cfmRelease`, `$cfmPromote`, `$cfmEnroll`,
+       `$cfmUpgrade`), bis der Manager die neue Version selbst angewendet hat (`$cfmStatus`). Ein
+       `$cfmPromote ring=1` aus einer neuen Sitzung baute sonst mit dem alten Code alle Manifeste neu,
+       ohne `lib-wifi` auch für Ring 0. Ab D70 (Regeln je Version aus dem Archiv) entfällt der Handgriff
+       bei künftigen Updates; für den ersten Sprung auf D70 bleibt er nötig. Achtung `ringSoak`: Nach
+       dessen erstem Wert befördert der Manager-Tick den nächsten Ring selbst, mit dem installierten
+       Code. Ring 1 und 2 deshalb vorher von Hand befördern (je mit dem Import) oder gleich `all=yes`.
     4. Prüfen: `$cfmStatus` ohne Fehler; das Manifest eines AP nennt den WLAN-Teil, z.B.
        `:put [:find [/file/get cfm/live/m/<Seriennummer>.mf contents] "lib-wifi"]` (Zahl, nicht leer).
     Falls Schritt 2 vergessen wurde: Sobald der Manager die Version angewendet hat, `$cfmManifests`,
     dann je zurückgerolltem Gerät `$cfmPush host=<name> force=yes`. Im Labor (2026-10-11) mit dem
     Stand von v19 durchgespielt: alle drei Geräte ok, nur der Manager bekam den WLAN-Teil.
+48. **RouterOS 7.25 (Labor mit 7.25rc1, 2026-10-11)** – Changelog-Punkte und Laborbefunde, die cfm
+    berühren:
+    * ~~SSH-Client prüft Host-Keys~~ – *erledigt (D71).* Ein frisches oder zurückgesetztes 7.25 brach den
+      Bootstrap ab („host key not trusted“), nach einem Update bleibt die Prüfung aus.
+    * ~~Version ohne Kanal~~ – *erledigt:* Der Agent meldet `7.25.1 (stable)`; ohne Kanal machte
+      `:deserialize` beim Manager eine IP-Adresse daraus (DECISIONS, Labor-Eigenheiten).
+    * **PoE-Firmware:** 7.25 aktualisiert die PoE-Firmware der 802.3at/bt-Geräte, laut Changelog mit
+      kurzer Unterbrechung an allen PoE-Ports. Betrifft Switches, die APs per PoE versorgen: Update im
+      Wartungsfenster, die APs starten mit.
+    * **FT für MLD-Geräte** („wifi - add fast transition support for MLD devices“): D48 hat MLO
+      abgeschaltet, weil der hAP be³ als MLD kein FT anbot. Nach dem Update auf 7.25 mit einem Client
+      prüfen, ob MLO mit FT jetzt geht (`wifi.rsc` `mlo`).
+    * **Globals über die API** („console - expose globals in the API“): D64 verwarf `:global cfmSsid<key>`
+      für Home Assistant, weil die API Globals nicht zeigte. Mit 7.25 erneut prüfen, ob das den
+      Gast-Schalter vereinfacht (heute Zustand aus den Regeln, `cfm_ssid.py`).
+    * **WebFig** zeigt Dateiinhalte weiter nicht an (D73, Lesezeichen-Editor).
+

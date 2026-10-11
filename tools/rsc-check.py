@@ -47,11 +47,23 @@ REGELN = {
     "dateigroesse": "RouterOS liest per /file get nur ca. 60 KB; $cfmRelease weist größere Dateien "
                     "unter work/ ab.",
     "dotfile": "Dateien mit führendem Punkt erscheinen nicht in /file und fehlen damit im Release.",
+    "json-typ": "Version, Datum oder Uhrzeit ungeschützt in ein Array, das als JSON gespeichert wird: "
+                ":deserialize deutet den Text beim Lesen um (\"7.25.1\" -> IP 7.25.0.1, \"7.25\" -> "
+                "7.0.0.25, \"2026-10-11\" -> Zeitwert). Präfix davor (\"v\" . $x) oder Text mit "
+                "Leerzeichen dahinter.",
 }
 
 # Menüs, die es nur auf bestimmten Geräten oder mit Zusatzpaketen gibt
 GERAETEMENUES = re.compile(r"^/(system/routerboard|system/gps|interface/ethernet/switch|"
                            r"interface/ethernet/poe|interface/wireless|interface/lte|interface/w60g)(/|$)")
+# Quellen, deren Text :deserialize umdeutet (Version -> IP, Datum/Uhrzeit -> Zeitwert)
+JSON_QUELLE = (r"\[\s*/system[/ ](?:resource[/ ]get\s+version|routerboard[/ ]get\s+[\w-]*firmware"
+               r"|clock[/ ]get\s+(?:date|time)|package[/ ](?:update[/ ])?get\s+[\w-]*version)\s*\]")
+JSON_VAR = re.compile(r":(?:local|set)\s+(\w+)\s+" + JSON_QUELLE)
+# auch über :parse (Menüs, die es nicht überall gibt): :local f [:parse ":return [/system/…]"] … [$f]
+JSON_FN = re.compile(r':(?:local|set)\s+(\w+)\s+\[\s*:parse\s+"[^"]*?' + JSON_QUELLE.replace(r"\[", r"\[", 1))
+# Wert eines Array-Felds: :set ($a->"k") <Wert> bzw. "k"=<Wert> in einem Array-Literal
+JSON_FELD = re.compile(r':set\s+\(\$\w+->"[^"]*"\)\s+|(?<!\\)"[\w.-]+"=')
 GROESSE_MAX = 60000        # wie cfmParseWork in cfm/work/lib/mgr-core.rsc
 GROESSE_HINWEIS = 50000
 ERLAUBT = re.compile(r"rsc-check:\s*erlaubt\s+([\w,-]+)")
@@ -227,6 +239,29 @@ def check_rsc(path, text):
     for line, _txt in comments:
         if any(a <= line < e for a, e in daten):
             add(line, "kommentar-im-array")
+
+    # json-typ: nur in Dateien, die JSON schreiben; Variablen je Abschnitt (Funktion :global … do={
+    # bis zur "}" am Zeilenanfang), damit gleichnamige Locals anderswo nicht zählen
+    if ":serialize" in text:
+        quelle = re.compile(JSON_QUELLE)
+        zeilen = text.split("\n")
+        start = sorted({i for i, z in enumerate(zeilen) if re.match(r":global\s+\w+\s+do=", z)}
+                       | {i + 1 for i, z in enumerate(zeilen) if re.match(r"\}\s*$", z)})
+        for a, e in zip([0] + start, start + [len(zeilen)]):
+            abschnitt = "\n".join(zeilen[a:e])
+            names = set(JSON_VAR.findall(abschnitt))
+            for fn in set(JSON_FN.findall(abschnitt)):
+                names |= set(re.findall(r":(?:local|set)\s+(\w+)\s+\[\s*\$" + re.escape(fn) + r"\s*\]", abschnitt))
+            var = re.compile(r"\$(" + "|".join(map(re.escape, sorted(names))) + r")\b") if names else None
+            for no in range(a, e):
+                zeile = zeilen[no]
+                if zeile.lstrip().startswith("#"):
+                    continue
+                for m in JSON_FELD.finditer(zeile):
+                    wert = zeile[m.end():].lstrip()
+                    wert = wert[1:].lstrip() if wert.startswith("(") else wert
+                    if quelle.match(wert) or (var and var.match(wert)):
+                        add(no + 1, "json-typ")
 
     erlaubt = {}
     for line, txt in comments:

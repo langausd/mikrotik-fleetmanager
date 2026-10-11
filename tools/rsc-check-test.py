@@ -137,6 +137,28 @@ class Ausnahme(unittest.TestCase):
         self.assertEqual(rules('# rsc-check: erlaubt syntax\n[$f]\n'), ["klammer-anfang"])
 
 
+class JsonTyp(unittest.TestCase):
+    def test_fund(self):
+        self.assertEqual(lines(':local s ({})\n:set ($s->"ros") [/system/resource/get version]\n:put [:serialize to=json $s]\n'),
+                         [(2, "json-typ")])
+        self.assertEqual(lines(':local v [/system routerboard get upgrade-firmware]\n:set ($st->"fw") $v\n'
+                               ':put [:serialize to=json $st]\n'), [(2, "json-typ")])
+        # über eine :parse-Funktion (Menü fehlt auf CHR) wie beim Fehler der Firmware-Sperre
+        self.assertEqual(lines(':local fu [:parse ":return [/system/routerboard/get upgrade-firmware]"]\n'
+                               ':set u [$fu]\n:set ($st->"fw") $u\n:put [:serialize to=json $st]\n'),
+                         [(3, "json-typ")])
+        self.assertEqual(rules(':local ix ({"d"=([/system/clock/get date] . " x")})\n:put [:serialize to=json $ix]\n'),
+                         ["json-typ"])
+
+    def test_kein_fund(self):
+        # Präfix davor, kein JSON in der Datei, gleichnamige Local in einer anderen Funktion
+        self.assertEqual(rules(':set ($s->"fw") ("v" . [/system/resource/get version])\n:put [:serialize to=json $s]\n'), [])
+        self.assertEqual(rules(':set ($s->"ros") [/system/resource/get version]\n'), [])
+        self.assertEqual(rules(':global a do={\n  :local cur [/system/resource/get version]\n}\n'
+                               ':global b do={\n  :set ($s->"f") $cur\n  :put [:serialize to=json $s]\n}\n'), [])
+        self.assertEqual(rules('# rsc-check: erlaubt json-typ\n:set ($s->"ros") [/system/resource/get version]\n'
+                               ':put [:serialize to=json $s]\n'), [])
+
 class Dateien(unittest.TestCase):
     def test_groesse(self):
         big = "# " + "x" * (rc.GROESSE_MAX + 10) + "\n"

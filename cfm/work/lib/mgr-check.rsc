@@ -15,13 +15,15 @@
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
   :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp
   :local b [$cfmMB]
+  # dir=<verzeichnis>: statt work/ prüfen ($cfmPlan from=)
   :local w ($b . "/work")
+  :if ([:len [:tostr $dir]] > 0) do={ :set w ($b . "/" . $dir) }
   :local err ({}); :local warn ({})
   :local le ""
   # Datei vorhanden? Über den Namen statt /file/find (TODO 21). Lokal statt $cfmFileEx, weil
   # $cfmRelease diesen Prüfer aus work/ lädt, während noch die alten Manager-Module laufen
   :local fex do={ :local r false; :onerror e in={ :if ([:len [/file/get $1 name]] > 0) do={ :set r true } } do={}; :return $r }
-  :onerror e in={ $cfmLoadData ver=0 } do={ :set le $e }
+  :onerror e in={ $cfmLoadData ver=0 dir=$dir } do={ :set le $e }
   # Helfer aus lib/lib.rsc (lädt $cfmLoadData mit): fehlen sie, liefern Aufrufe stillschweigend
   # nichts und die Prüfung liefe halb blind
   :if ([:typeof $cfmNet] = "nothing" or [:typeof $cfmTarget] = "nothing") do={
@@ -361,7 +363,7 @@
   }
 
   # Hostfiles setzen u.U. Overrides in cfmG -> Daten neu laden
-  :onerror e in={ $cfmLoadData ver=0 } do={}
+  :onerror e in={ $cfmLoadData ver=0 dir=$dir } do={}
   :return ({"err"=$err;"warn"=$warn})
 }
 
@@ -370,30 +372,45 @@
 # die Rollen im Trockenlauf aus (cfmDry, *.post.rsc übersprungen) und schreibt die Änderungen
 # nach cfm/out/plan.txt. Gestartet per :execute (ssh-exec bricht lange Befehle ab), das
 # Ergebnis holt der Manager per SFTP ab und erkennt es an einer Kennung (id).
+# from=<verzeichnis>: Schnappschuss aus <mgrPath>/<verzeichnis>/ statt work/ (ein vollständiger
+# Stand wie work/, z.B. das Zielbild eines Umbaus), role=<rollen>: statt der Rollen aus dem Inventar.
+# Beides wirkt nur auf diesen Probelauf; work/ und das Inventar bleiben unberührt.
 :global cfmPlan do={
   :global cfmMB; :global cfmInvLoad; :global cfmWrite; :global cfmExec; :global cfmManifests
-  :global cfmCheck; :global cfmParseWork
-  :if ([:len $host] = 0) do={ :error "Aufruf: \$cfmPlan host=<name>" }
+  :global cfmCheck; :global cfmParseWork; :global cfmFileEx
+  :if ([:len $host] = 0) do={ :error "Aufruf: \$cfmPlan host=<name> [from=<verzeichnis>] [role=<rollen>]" }
   :local d ([$cfmInvLoad]->$host)
   :if ([:typeof $d] != "array") do={ :error ("unbekannter Host " . $host) }
   :local b [$cfmMB]
-  :local bad [$cfmParseWork]
+  :local src "work"
+  :if ([:len $from] > 0) do={
+    :if (!($from ~ "^[A-Za-z0-9_-]+\$") or $from ~ "^(work|plan|archive|live|meta|state|pkg|out|dl)\$") do={ :error ("from=" . $from . ": nur ein eigenes Verzeichnis unter " . $b . "/ (Buchstaben, Ziffern, - und _)") }
+    :if (![$cfmFileEx ($b . "/" . $from . "/lib/mgr-core.rsc")] or ![$cfmFileEx ($b . "/" . $from . "/global.rsc")]) do={ :error ($b . "/" . $from . "/ ist kein vollständiger Stand (lib/mgr-core.rsc, global.rsc fehlen)") }
+    :set src $from
+  }
+  :if ([:len $role] > 0 and !($role ~ "^[a-z-]+(,[a-z-]+)*\$")) do={ :error ("role=" . $role . ": Rollen kommagetrennt, z.B. switch,router") }
+  :if ($src != "work" or [:len $role] > 0) do={
+    :local rr [:tostr ($d->"role")]
+    :if ([:len $role] > 0) do={ :set rr $role }
+    :put ("Probelauf aus " . $b . "/" . $src . "/, Rollen " . $rr . " (work/ und Inventar bleiben unberührt)")
+  }
+  :local bad [$cfmParseWork dir=$src]
   :if ([:len $bad] > 0) do={ :error ("Probelauf abgebrochen:" . $bad) }
-  :local ck [$cfmCheck]
+  :local ck [$cfmCheck dir=$src]
   :foreach e in=($ck->"err") do={ :put ("Fehler (ein Release würde abbrechen): " . $e) }
   :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
-  # Schnappschuss work/ -> plan/
+  # Schnappschuss work/ (bzw. from=) -> plan/
   :foreach f in=[/file/find where name~("^" . $b . "/plan/") and type!="directory"] do={ /file/remove $f }
   :local idx ({})
-  :foreach f in=[/file/find where name~("^" . $b . "/work/") and type!="directory"] do={
+  :foreach f in=[/file/find where name~("^" . $b . "/" . $src . "/") and type!="directory"] do={
     :local n [/file/get $f name]
-    :local rel [:pick $n ([:len $b] + 6) [:len $n]]
+    :local rel [:pick $n ([:len $b] + [:len $src] + 2) [:len $n]]
     :local c [/file/get $f contents]
     $cfmWrite ($b . "/plan/" . $rel) $c
     :set ($idx->$rel) [:convert $c transform=sha512 to=hex]
   }
   $cfmWrite ($b . "/plan/index.dat") [:serialize to=json ({"v"=0;"msg"="plan";"files"=$idx})]
-  :if ([$cfmManifests plan=$host] = 0) do={ :error ("kein Plan-Manifest für " . $host . " (Geräteschlüssel oder Pflichtdateien fehlen, siehe Log)") }
+  :if ([$cfmManifests plan=$host role=$role] = 0) do={ :error ("kein Plan-Manifest für " . $host . " (Geräteschlüssel oder Pflichtdateien fehlen, siehe Log)") }
   :local id [:rndstr length=12 from="0123456789abcdef"]
   # show=yes: alle Soll-Objekte statt der Änderungen ($cfmShow objects=yes, D61)
   :local sh ""

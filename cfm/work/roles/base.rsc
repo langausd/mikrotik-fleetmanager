@@ -168,6 +168,10 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
   }
 }
 $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
+# Host-Key-Prüfung des SSH-Clients (RouterOS 7.25, nach Reset an) aus wie nach einem Update: Pull und
+# ssh-exec liefen sonst nur mit gepflegten known-hosts; Manifeste sind signiert, der Secret-Push prüft
+# die Identität (D28, D71)
+:if ([:typeof ([/ip/ssh/get]->"known-hosts-validation")] != "nothing") do={ $cfmSet m="/ip/ssh" p=({"known-hosts-validation"="no"}) }
 
 # --- Minimale Firewall (D31). Nicht-Router bekommen einen input-Block, Router haben die
 #     Zonen-Firewall der Rolle router. Erlaubt: Antworten, ICMP, Management-Netze (MGMT-Netz,

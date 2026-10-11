@@ -440,7 +440,8 @@ WLAN). So bleiben deine Daten aus dem Repo, und neue Versionen des Frameworks la
 Logbuch (neueste Einträge oben), die nächsten Schritte und offene Punkte; ausführliche Analysen
 gehören in eine `BEFUNDE.md` daneben. `tools/upload-seed.sh` lädt aus dem Overlay nur die Daten
 (`*.rsc`, `authorized_keys.<user>`, `hosts/`, `meta/` …); Notizen wie diese oder eigene CSV-Listen bleiben
-lokal. Die Bootstrap-Datei
+lokal. Die Site-Daten lädt es nur beim ersten Aufsetzen (`--seed-inventory`) oder mit `--site` hoch;
+danach führt sie der Manager, und ein normaler Upload bringt nur neuen Framework-Code (D72, 8.1). Die Bootstrap-Datei
 gehört nicht nach `work/` (das wird an die Flotte verteilt), sondern ins Wurzelverzeichnis des
 Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad die
 `bootstrap-manager.rsc` aus dem Overlay.
@@ -736,11 +737,28 @@ das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – de
 ### 8.1 Dateien bearbeiten
 
 Alle Befehle laufen im Terminal des Primary-Managers nach `/system script run cfm-mgr`.
-Die Dateien unter `cfm/work/` bearbeitest du auf einem dieser Wege:
-* im Terminal: `/file edit cfm/work/vlans.rsc contents`;
+Die Site-Daten unter `cfm/work/` (`global.rsc`, `vlans.rsc`, …, `hosts/`, `authorized_keys.<user>`)
+führt der Manager (D72). Du bearbeitest sie auf einem dieser Wege:
+* **im Browser mit dem cfm-Editor** (D73): `tools/editor/install.html` öffnen und den Knopf
+  „cfm-Editor“ in die Lesezeichen-Leiste ziehen. Dann WebFig des Managers öffnen, das Lesezeichen
+  anklicken und mit einem RouterOS-User der Gruppe full anmelden. Links die Datei wählen, ändern,
+  Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
+  fragt er nach). Die Knöpfe oben: „Prüfen“ (`$cfmParseWork`, `$cfmCheck`), „Diff zum Release“
+  (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten
+  geht). `lib/` und `roles/` zeigt er nur an. Voraussetzung: Dienst `www` bzw. `www-ssl` in `services`;
+  das Lesezeichen lädt nichts aus dem Netz. Nach einer neuen Version von `cfm-editor.js`:
+  `tools/editor/build.py`, Lesezeichen ersetzen;
+* im Terminal (auch im WebFig-Terminal): `/file edit cfm/work/vlans.rsc contents` (Strg+O speichert).
+  Vorhandene Umlaute bleiben erhalten, neue lassen sich dort nicht eintippen;
 * in Winbox unter Files;
 * per SFTP vom Admin-PC (`sftp admin@<manager>`: `get`, lokal editieren, `put`).
   Achtung: Dateien, die auf `.auto.rsc` enden, führt RouterOS beim Upload sofort aus.
+
+Das lokale Overlay (`site-…/`) ist Sicherung und Referenz: `tools/pull-site.sh admin@<manager>
+--overlay site-…` holt Site-Daten und Inventar vom Manager (geänderte lokale Fassungen bleiben als
+`datei~`, `--dry-run` zeigt nur die Unterschiede). `tools/upload-seed.sh` lädt ohne `--site` nur den
+Framework-Code (`lib/`, `roles/`) hoch; `--site` ersetzt die Site-Daten auf dem Manager und nennt
+vorher, welche Dateien dort anders sind.
 
 ### 8.2 Release und Rollout
 
@@ -770,6 +788,13 @@ vorab. Der Probelauf überspringt `hosts/*.post.rsc`, weil dort beliebige Befehl
 Die cfm-Objekte, die diese Datei beim letzten echten Apply angelegt hat, behält er trotzdem
 (`… im Probelauf übersprungen, N Objekte daraus beibehalten`); Änderungen an der `.post.rsc`
 selbst zeigt er nicht.
+
+Einen Umbau probt `$cfmPlan host=<n> from=<verzeichnis> role=<rollen>`: Er nimmt den Stand aus
+`cfm/<verzeichnis>/` statt `work/` (ein vollständiger Stand wie `work/`, etwa ein Zielbild, per SFTP
+hochgeladen) und für dieses Gerät die angegebenen Rollen statt der aus dem Inventar, z.B.
+`$cfmPlan host=sw1 from=umzug role=switch,router`. `work/`, Inventar und Releases bleiben
+unberührt; die inhaltliche Prüfung läuft gegen das Verzeichnis, rollenabhängige Prüfungen aber mit
+den Rollen aus dem Inventar.
 Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 
 **Effektive Konfiguration eines Geräts** (D61):
@@ -1266,6 +1291,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmRelease [msg="…"] [all=yes] [force=yes]` | `work/` prüfen und als neue Version an Ring 0 (bzw. alle) freigeben; `force=yes` trotz inhaltlicher Prüffehler |
 | `$cfmCheck` | inhaltliche Prüfung von `work/` (läuft bei jedem Release) |
 | `$cfmPlan host=<n>` | Probelauf: was ein Release von `work/` auf dem Gerät ändern würde |
+| `$cfmPlan host=<n> from=<verz> role=<rollen>` | Probelauf eines anderen Stands (`cfm/<verz>/`) bzw. mit anderen Rollen, ohne `work/` und Inventar zu ändern |
 | `$cfmShow host=<n> [ver=<N>] [objects=yes]` | effektive Konfiguration: zusammengeführte Daten bzw. Soll-Objekte vom Gerät (8.3) |
 | `$cfmDiff [ver=<A>] [to=<B>\|work]` | Unterschiede zwischen zwei Ständen: Dateien, betroffene Geräte, Zeilen der Datendateien (8.3) |
 | `$cfmArchivePrune [keep=<n>]` | alte Versionen löschen (automatisch nach jedem Release) |

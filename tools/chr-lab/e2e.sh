@@ -58,9 +58,10 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 9' "cm1: 9 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 10' "cm1: 10 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
+expect 1 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "cm1: SSH-Client ohne Host-Key-Prüfung (ab 7.25 nach dem Reset an, D71)"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
 
 step "2. Geräte-Bootstrap sw1 + Enroll"
@@ -78,6 +79,8 @@ expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 8 and [/i
 expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 8' "sw1: minimale Firewall IPv6 (8 Regeln)"
 expect 2 '[/ip/neighbor/discovery-settings/get discover-interface-list] = "DISC" and [:len [/interface/list/member/find where list="DISC" and interface="ether2"]] = 1' "sw1: Nachbarsuche auf den Bridge-Ports (Liste DISC)"
 expect 2 '[/ip/service/get [:pick [find where name="reverse-proxy" and !dynamic] 0] disabled]' "sw1: Dienst reverse-proxy aus (ab Werk offen auf 443, TODO 30)"
+expect 2 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "sw1: SSH-Client ohne Host-Key-Prüfung (D71)"
+case "$(stat sw1 ros)" in *" ("*) ok "sw1: RouterOS-Version mit Kanal gemeldet (bleibt beim Manager Text, 7.25)";; *) bad "sw1: ros=$(stat sw1 ros)";; esac
 
 step "3. Secrets-Push & Idempotenz"
 sleep 70
@@ -124,6 +127,15 @@ expect 2 '[:len [/interface/bridge/vlan/find where comment="cfm:bv:99"]] = 0' "s
 out=$(mgr '$cfmPlan host=sw1; $cfmPlan host=sw1')
 [ "$(echo "$out" | grep -c '# Plan sw1')" = 2 ] && ! echo "$out" | grep -q "no such item" && ok "zwei Probeläufe direkt hintereinander" || { bad "zwei Probeläufe hintereinander"; echo "$out" | grep -E "no such|Plan sw1" | head -3; }
 mgr ':global e2eV; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV' >/dev/null
+# Probe eines Umbaus (from=, role=): Stand aus cfm/umzug/, Rolle router nur für diesen Probelauf
+mgr ':global cfmWrite; :foreach f in=[/file/find where name~"^cfm/work/" and type!="directory"] do={ :local n [/file/get $f name]; $cfmWrite ("cfm/umzug/" . [:pick $n 9 [:len $n]]) [/file/get $f contents] }; :global e2eV [/file/get [/file/find name="cfm/umzug/vlans.rsc"] contents]; /file/set [/file/find name="cfm/umzug/vlans.rsc"] contents=($e2eV . ":set (\$cfmVlans->\"98\") {\"name\"=\"UMZUG\";\"zone\"=\"lan\"}\n")' >/dev/null
+out=$(mgr '$cfmPlan host=sw1 from=umzug role=switch,router')
+echo "$out" | grep -q "Probelauf aus cfm/umzug/, Rollen switch,router" && echo "$out" | grep -q "bv:98" && echo "$out" | grep -q "il:Z-" && ok "Probelauf aus cfm/umzug/ mit Rolle router (VLAN 98, Zonen-Listen)" || { bad "Probelauf from=/role="; echo "$out" | tail -6; }
+expect 1 '[:typeof [:find [/file/get [/file/find name="cfm/work/vlans.rsc"] contents] "UMZUG"]] = "nil"' "work/ bleibt beim Probelauf aus cfm/umzug/ unverändert"
+[ "$(stat sw1 v)" = "$v0" ] && expect 2 '[:len [/interface/list/find where comment~"^cfm:il:Z-"]] = 0' "sw1: Probelauf mit role=router hat nichts angewendet" || bad "sw1: Version nach dem Probelauf geändert"
+out=$(mgr ':onerror e in={ $cfmPlan host=sw1 from=work } do={ :put ("ERR " . $e) }')
+echo "$out" | grep -q "ERR from=work" && ok "from=work abgelehnt (nur eigene Verzeichnisse)" || { bad "from=work nicht abgelehnt"; echo "$out" | tail -2; }
+mgr ':foreach f in=[/file/find where name~"^cfm/umzug"] do={ :onerror e in={ /file/remove $f } do={} }' >/dev/null
 
 step "7. Kaputte Version -> Prüfung stoppt, mit force: Rollback + bad"
 # unbekannter Dienstname und doppelter Port (www-ssl und reverse-proxy auf 443) sind Fehler (TODO 30)
@@ -238,8 +250,11 @@ echo "$out" | grep "^sw1 " | grep -q "frei [0-9]" && ok "sw1 meldet den freien P
 # Vorabversionen (TODO 36): alpha < beta < rc < fertig, Zusätze wie " (stable)" zählen nicht
 out=$(mgr ':global cfmVerGe; :local n 0; :foreach c in={{"7.25beta5";"7.24.4";true};{"7.24.4";"7.25beta5";false};{"7.25rc1";"7.25beta5";true};{"7.25";"7.25rc2";true};{"7.25rc2";"7.25";false};{"7.25.1";"7.25";true};{"7.25beta10";"7.25beta9";true};{"7.25alpha1";"7.25beta1";false};{"7.24.5 (stable)";"7.24.5";true};{"7.24";"7.24.0";true};{"7.9";"7.24.5";false};{"7.25beta5";"7.25beta5";true}} do={ :if ([$cfmVerGe ($c->0) ($c->1)] = ($c->2)) do={ :set n ($n + 1) } else={ :put ("FALSCH " . ($c->0) . " >= " . ($c->1)) } }; :put ("VG=" . $n)')
 echo "$out" | grep -q "VG=12" && ok "\$cfmVerGe: 12 Fälle mit Vorabversionen" || { bad "\$cfmVerGe"; echo "$out" | grep FALSCH; }
-out=$(mgr '$cfmUpgrade ver=7.25beta5 host=sw1 check=yes')
-echo "$out" | grep "^sw1 " | grep -q "upgrade" && ok "check=yes: Beta der nächsten Version ist ein Upgrade, kein Downgrade" || { bad "Richtung bei 7.25beta5"; echo "$out" | grep "^sw1"; }
+# Beta der nächsten Unterversion des Images (7.24.x -> 7.25beta5, 7.25rc1 -> 7.26beta5)
+mi=$(r 2 ':put [/system/resource/get version]' | head -1 | sed -E 's/^7\.([0-9]+).*/\1/')
+nb="7.$((mi + 1))beta5"
+out=$(mgr "\$cfmUpgrade ver=$nb host=sw1 check=yes")
+echo "$out" | grep "^sw1 " | grep -q "upgrade" && ok "check=yes: Beta der nächsten Version ($nb) ist ein Upgrade, kein Downgrade" || { bad "Richtung bei $nb"; echo "$out" | grep "^sw1"; }
 # (a) sw1: Wartungsfenster in einer Stunde -> Paket wird sofort geladen, Neustart geplant
 now=$(r 1 ':put ([/system/clock/get date] . " " . [/system/clock/get time])' | head -1)
 at=$(date -d "@$(( $(date -d "$now" +%s) + 3600 ))" '+%Y-%m-%d %H:%M')
@@ -696,6 +711,29 @@ for h in sw1 cm1; do
 done
 mirror | grep -q MIR=true && ok "cm2 spiegelt nach der Rotation von cm1" || bad "cm2 spiegelt nach der Rotation von cm1 nicht"
 kill $npid 2>/dev/null
+
+step "14h. Manifest-Regeln je Version (D70)"
+# Eine Regel, die nur die neue Version kennt: Ring 0 bekommt sie mit dem Release, Ring 2 erst mit dem
+# Aufstieg - auch wenn $cfmPromote in einer neuen Sitzung mit dem installierten (älteren) Code läuft
+mfhas() { # mfhas <host> <text>: true/false, ob das Manifest des Hosts den Text enthält
+  mgr ':local r "kein Manifest"; :foreach f in=[/file/find where name~"^cfm/live/m/.*\\.mf\$"] do={ :local c [/file/get $f contents]; :local j [:deserialize from=json [:pick $c 0 [:find $c "\n# mac="]]]; :if (($j->"name") = "'"$1"'") do={ :set r ([:typeof [:find $c "'"$2"'"]] = "num") } }; :put ("MF=" . $r)' | sed -n 's/^MF=//p' | head -1; }
+sed 's|^  :return \$want$|  :set ($want->[:len $want]) ({"e2e-mark.txt";0;0})\n  :return $want|' "$ROOT/cfm/work/lib/mgr-mf.rsc" > "$LAB/mgr-mf-e2e.rsc"
+echo "D70" > "$LAB/e2e-mark.txt"
+printf 'put %s cfm/work/lib/mgr-mf.rsc\nput %s cfm/work/e2e-mark.txt\n' "$LAB/mgr-mf-e2e.rsc" "$LAB/e2e-mark.txt" | put 1
+rv=$(mgr '$cfmRelease msg=" e2e D70"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+[ -n "$rv" ] && ok "Release v$rv mit einer Regel nur in dieser Version" || bad "Release mit neuer Regel"
+a=$(mfhas sw1 e2e-mark); [ "$a" = true ] && ok "sw1 (Ring 0): Manifest nach den Regeln von v$rv" || bad "sw1 (Ring 0): Regel der neuen Version fehlt ($a)"
+a=$(mfhas cm1 e2e-mark); [ "$a" = false ] && ok "cm1 (Ring 2): Manifest nach den Regeln seiner Version" || bad "cm1 (Ring 2): Regel vor dem Aufstieg ($a)"
+expect 1 '[:typeof [:find [/system/script/get cfm-mgr-mf source] "e2e-mark"]] = "nil"' "cm1: installierte Regeln noch ohne die neue"
+mgr '$cfmPromote ring=1' >/dev/null; mgr '$cfmPromote ring=2' >/dev/null
+a=$(mfhas cm1 e2e-mark); [ "$a" = true ] && ok "cm1 nach \$cfmPromote aus neuer Sitzung: Regel aus v$rv (nicht aus dem installierten Code)" || bad "cm1 nach \$cfmPromote: Regel fehlt ($a)"
+a=$(mfhas sw1 e2e-mark); [ "$a" = true ] && ok "sw1: Regel bleibt beim Neubau durch \$cfmPromote" || bad "sw1 nach \$cfmPromote: Regel fehlt ($a)"
+agentwait 2 "$rv" sw1 && expect 2 '[:len [/file/find where name="cfm/dl/e2e-mark.txt"]] = 1' "sw1: Datei der neuen Regel geladen" || bad "sw1 Apply v$rv: $(stat sw1 res)"
+agentwait 1 "$rv" cm1 60 && expect 1 '[:typeof [:find [/system/script/get cfm-mgr-mf source] "e2e-mark"]] = "num"' "cm1: nach dem Apply die Regeln von v$rv installiert" || bad "cm1 Apply v$rv: $(stat cm1 res)"
+echo "put $ROOT/cfm/work/lib/mgr-mf.rsc cfm/work/lib/mgr-mf.rsc" | put 1
+rv=$(mgr '/file/remove cfm/work/e2e-mark.txt; $cfmRelease all=yes msg=" e2e D70 zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && expect 2 '[:len [/file/find where name="cfm/dl/e2e-mark.txt"]] = 0' "sw1: Datei nach dem Rückbau der Regel entfernt (D69)" || bad "sw1 Apply v$rv: $(stat sw1 res)"
+agentwait 1 "$rv" cm1 60 && [ "$(stat cm1 res)" = ok ] && ok "cm1 wieder auf den Regeln aus dem Seed (v$rv)" || bad "cm1 Apply v$rv: $(stat cm1 res)"
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

@@ -37,6 +37,9 @@
   /user/ssh-keys/import user=cfm public-key-file=("cfm-mgr" . $i . ".pem")
 }
 /ip/service/set [find where name=ssh and !dynamic] disabled=no
+# RouterOS 7.25 prüft im SSH-Client Host-Keys (nach Reset an): Der erste Pull des Agents vom Manager
+# scheiterte sonst mit "host key not trusted" (D71); 7.24 kennt die Property nicht
+:if ([:typeof ([/ip/ssh/get]->"known-hosts-validation")] != "nothing") do={ /ip/ssh/set known-hosts-validation=no }
 :local s ""
 :onerror e in={ :set s [/system routerboard get serial-number] } do={}
 :if ([:len $s] = 0) do={ :onerror e in={ :set s [/system/license/get system-id] } do={} }

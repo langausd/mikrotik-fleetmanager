@@ -25,8 +25,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (D72: `upload-seed.sh` ohne `--site` nur Framework-Code, `tools/pull-site.sh`), Editor als WebFig-
   Lesezeichen über die REST-API (D73, `tools/editor/`), Regel `json-typ` in `tools/rsc-check.py`,
   `$cfmPlan from=<verzeichnis> role=<rollen>` (Probelauf eines Umbaus, z.B. des Router-Umzugs). Labor
-  7.24.5: `e2e.sh` 290, Onboarding 14/15/18, `e2e-vrrp.sh` 79, alles grün; Übergang vom Stand vor D68
-  durchgespielt (TODO 47). Labor auf 7.25rc1 siehe 48.
+  7.24.5: `e2e.sh` 292, Onboarding 14/15/18, `e2e-vrrp.sh` 79, alles grün (auch 7.25rc1: e2e 292, Onboarding 14/15/18); Übergang vom Stand vor D68
+  durchgespielt (TODO 47). Labor auf 7.25rc1 siehe 48. Beim Probelauf des Router-Umzugs gefunden und
+  behoben: Probelauf der Rolle `router` brach vor dem ersten VRRP ab; im Labor unter Last gefunden und
+  behoben: Wettlauf zwischen Apply des Managers und `$cfmLoadData` (Sperre `cfmApplyBusy`).
 * **Erledigt am 2026-10-11:** WLAN-Teil der Gerätebibliothek ausgelagert (`lib/lib-wifi.rsc`, D68;
   `lib.rsc` 46 → 23 KB), Apply lädt nur geänderte Dateien (D69; Labor: Reapply 1 s statt 16 s auf
   einem Switch, 48 s auf dem Manager). Beim Sichten gefunden und behoben: Der Agent merkte sich die
@@ -144,7 +146,12 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
-* **Labor 2026-10-11, ungeklärt: cm1 nimmt keine Anmeldung mehr an.** Im ersten `e2e.sh`-Lauf mit D70/D71
+* ~~**Labor 2026-10-11: cm1 nimmt keine Anmeldung mehr an.**~~ – *geklärt und behoben 2026-10-12:* Wettlauf
+  zwischen dem Apply des Managers und `$cfmLoadData` (DECISIONS, Umsetzungsentscheidungen, Sperre
+  `cfmApplyBusy`); nachgestellt in Labor B (Push an cm1 plus paralleles `$cfmLoadData` → `adminUser`
+  aus `global.rsc` statt aus dem Hostfile), mit der Sperre nicht mehr, `e2e.sh` Schritt 14i. Der
+  Fehler bestand schon vorher; unter Last (zwei Labore parallel) wurde das Fenster groß genug.
+  Ursprünglicher Befund: Im ersten `e2e.sh`-Lauf mit D70/D71
   (7.24.5, parallel zu einem zweiten Labor) scheiterte ab Schritt 14 jede Anmeldung an cm1: admin
   (leeres Passwort) und netadmin per SSH und an der seriellen Konsole, `cfmd-sw1` per SFTP-Key von sw1,
   `/system/ssh-exec` von cm2 als `cfm`.

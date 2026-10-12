@@ -158,7 +158,13 @@
 }
 # globale Daten (cfmG, cfmVlans, cfmWifi …) der Version ver (Default: neueste; 0 = work/)
 :global cfmLoadData do={
-  :global cfmMB; :global cfmRings
+  :global cfmMB; :global cfmRings; :global cfmApplyBusy
+  # Nicht mitten in einen Apply des Agents auf diesem Gerät importieren: beide nutzen cfmG und die
+  # Bibliothek global, der Apply verlöre die Werte aus dem Hostfile (Labor 2026-10-11). Warten,
+  # solange er läuft (Sperre gesetzt und Job vorhanden), höchstens 120 s
+  :local aw 0
+  :while ($cfmApplyBusy = true and [:len [/system/script/job/find where script="cfm-agent"]] > 0 and $aw < 120) do={ :delay 1s; :set aw ($aw + 1) }
+  :if ($aw >= 120) do={ :log warning "cfm: Daten geladen, obwohl der Agent noch anwendet (120 s gewartet)" }
   :local b [$cfmMB]
   :local v $ver
   :if ([:len [:tostr $v]] = 0) do={ :set v ([$cfmRings]->"latest") }

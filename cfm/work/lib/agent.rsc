@@ -230,7 +230,11 @@
 # Die cfm-Objekte, die eine *.post.rsc anlegt, merkt sich der echte Lauf in <cfm>/post.json.
 # Der Probelauf behält genau diese, statt sie als verwaist zu melden (D29).
 # Rückgabe: "" oder "<datei>: <fehler>"
+# cfmApplyBusy: Auf dem Manager teilen sich Apply und Manager-Funktionen die globalen Variablen
+# (cfmG, Bibliothek); $cfmLoadData wartet, solange sie gesetzt ist (Labor 2026-10-11: ein Import
+# von global.rsc mitten im Apply nahm cm1 die Werte seines Hostfiles, base sperrte admin)
 :global cfmImportAll do={
+  :global cfmApplyBusy; :set cfmApplyBusy true
   :global cfmHost; :set cfmHost ({})
   # optionale Datendatei (D62): ohne sie keine alten Werte aus einem früheren Lauf behalten
   :global cfmLeases; :set cfmLeases ({})
@@ -281,6 +285,7 @@
     :set cur "prune"
     :global cfmPrune; $cfmPrune
   } do={ :set err ($cur . ": " . $e) }
+  :set cfmApplyBusy false
   :return $err
 }
 

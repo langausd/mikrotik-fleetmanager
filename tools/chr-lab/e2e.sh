@@ -128,9 +128,11 @@ out=$(mgr '$cfmPlan host=sw1; $cfmPlan host=sw1')
 [ "$(echo "$out" | grep -c '# Plan sw1')" = 2 ] && ! echo "$out" | grep -q "no such item" && ok "zwei Probeläufe direkt hintereinander" || { bad "zwei Probeläufe hintereinander"; echo "$out" | grep -E "no such|Plan sw1" | head -3; }
 mgr ':global e2eV; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV' >/dev/null
 # Probe eines Umbaus (from=, role=): Stand aus cfm/umzug/, Rolle router nur für diesen Probelauf
-mgr ':global cfmWrite; :foreach f in=[/file/find where name~"^cfm/work/" and type!="directory"] do={ :local n [/file/get $f name]; $cfmWrite ("cfm/umzug/" . [:pick $n 9 [:len $n]]) [/file/get $f contents] }; :global e2eV [/file/get [/file/find name="cfm/umzug/vlans.rsc"] contents]; /file/set [/file/find name="cfm/umzug/vlans.rsc"] contents=($e2eV . ":set (\$cfmVlans->\"98\") {\"name\"=\"UMZUG\";\"zone\"=\"lan\"}\n")' >/dev/null
+mgr ':global cfmWrite; :foreach f in=[/file/find where name~"^cfm/work/" and type!="directory"] do={ :local n [/file/get $f name]; $cfmWrite ("cfm/umzug/" . [:pick $n 9 [:len $n]]) [/file/get $f contents] }; :global e2eV [/file/get [/file/find name="cfm/umzug/vlans.rsc"] contents]; /file/set [/file/find name="cfm/umzug/vlans.rsc"] contents=($e2eV . ":set (\$cfmVlans->\"98\") {\"name\"=\"UMZUG\";\"zone\"=\"lan\";\"dhcp\"=\"100-199\"}\n")' >/dev/null
 out=$(mgr '$cfmPlan host=sw1 from=umzug role=switch,router')
-echo "$out" | grep -q "Probelauf aus cfm/umzug/, Rollen switch,router" && echo "$out" | grep -q "bv:98" && echo "$out" | grep -q "il:Z-" && ok "Probelauf aus cfm/umzug/ mit Rolle router (VLAN 98, Zonen-Listen)" || { bad "Probelauf from=/role="; echo "$out" | tail -6; }
+# VLAN 98 mit DHCP: VRRP-Interface und DHCP-Server gibt es im Probelauf noch nicht (router.rsc fragte
+# den VRRP-Zustand ab und brach ab, gefunden beim Probelauf des Router-Umzugs 2026-10-11)
+echo "$out" | grep -q "Probelauf aus cfm/umzug/, Rollen switch,router" && echo "$out" | grep -q "bv:98" && echo "$out" | grep -q "il:Z-" && echo "$out" | grep -q "vrrp:98" && echo "$out" | grep -q "dhcp:98" && ! echo "$out" | grep -q "FEHLER" && ok "Probelauf aus cfm/umzug/ mit Rolle router (VLAN 98 mit VRRP und DHCP, Zonen-Listen, ohne Fehler)" || { bad "Probelauf from=/role="; echo "$out" | tail -6; }
 expect 1 '[:typeof [:find [/file/get [/file/find name="cfm/work/vlans.rsc"] contents] "UMZUG"]] = "nil"' "work/ bleibt beim Probelauf aus cfm/umzug/ unverändert"
 [ "$(stat sw1 v)" = "$v0" ] && expect 2 '[:len [/interface/list/find where comment~"^cfm:il:Z-"]] = 0' "sw1: Probelauf mit role=router hat nichts angewendet" || bad "sw1: Version nach dem Probelauf geändert"
 out=$(mgr ':onerror e in={ $cfmPlan host=sw1 from=work } do={ :put ("ERR " . $e) }')
@@ -734,6 +736,16 @@ echo "put $ROOT/cfm/work/lib/mgr-mf.rsc cfm/work/lib/mgr-mf.rsc" | put 1
 rv=$(mgr '/file/remove cfm/work/e2e-mark.txt; $cfmRelease all=yes msg=" e2e D70 zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && expect 2 '[:len [/file/find where name="cfm/dl/e2e-mark.txt"]] = 0' "sw1: Datei nach dem Rückbau der Regel entfernt (D69)" || bad "sw1 Apply v$rv: $(stat sw1 res)"
 agentwait 1 "$rv" cm1 60 && [ "$(stat cm1 res)" = ok ] && ok "cm1 wieder auf den Regeln aus dem Seed (v$rv)" || bad "cm1 Apply v$rv: $(stat cm1 res)"
+
+step "14i. Apply auf dem Manager parallel zu Manager-Befehlen (Sperre cfmApplyBusy)"
+# Ohne Sperre importierte $cfmLoadData (fast jeder Manager-Befehl, der Tick) mitten im Apply von cm1
+# global.rsc neu: cm1 verlor die Werte seines Hostfiles (adminUser keep, mgmtExtra), Labor 2026-10-11
+for round in 1 2; do
+  mgr ':global cfmAU; :set cfmAU "x"; $cfmPush host=cm1 force=yes' >/dev/null
+  for i in $(seq 1 12); do mgr ':global cfmLoadData; $cfmLoadData' >/dev/null; done
+  a=""; for _ in $(seq 1 30); do a=$(mgr ':global cfmAU; :put ("AU=" . $cfmAU)' | grep -o 'AU=.*'); [ "$a" != "AU=x" ] && break; sleep 3; done
+  [ "$a" = "AU=keep" ] && ok "cm1: Hostfile gilt im ganzen Apply trotz paralleler Manager-Befehle (Runde $round)" || { bad "cm1: Apply mit parallelem \$cfmLoadData: '$a'"; break; }
+done
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

@@ -228,6 +228,18 @@ erkannt. Jetzt hängt der Agent den Kanal an. `tools/rsc-check.py` meldet solche
 
 ## Umsetzungsentscheidungen (technisch begründet, nicht separat abgefragt)
 
+* **Sperre `cfmApplyBusy` (Labor 2026-10-11/12):** Auf dem Manager teilen sich der Agent und die
+  Manager-Funktionen dieselben globalen Variablen (`$cfmG`, Bibliothek). `$cfmLoadData` (fast jeder
+  Manager-Befehl, der Tick) importierte `global.rsc` neu – fiel das in einen Apply des Managers selbst,
+  lief `base` ohne die Werte aus seinem Hostfile (`adminUser`, `mgmtExtra`, Ports): Im Labor sperrte
+  cm1 so admin und den Zugang vom Host, nachgestellt mit Push plus parallelem `$cfmLoadData`.
+  `$cfmImportAll` setzt die Sperre für die Dauer des Apply (auch im Probelauf), `$cfmLoadData` wartet,
+  solange sie gesetzt ist und ein Job `cfm-agent` läuft (höchstens 120 s, dann Warnung). Keine Rolle
+  ruft Manager-Funktionen auf, eine Selbstblockade gibt es nicht. Labor: `e2e.sh` Schritt 14i.
+* **Probelauf der Rolle `router` vor dem ersten VRRP (Probelauf des Router-Umzugs, 2026-10-11):** Die
+  Rolle fragte für den DHCP-Server den Zustand des VRRP-Interface ab; im Probelauf ist es noch nicht
+  angelegt, der Lauf brach ab. Fehlt es, gilt das Gerät jetzt als „nicht Master“ (DHCP aus), wie beim
+  ersten echten Apply bis zur VRRP-Wahl. Labor: `e2e.sh` Schritt 6 (VLAN mit DHCP, kein Fehler).
 * **Eigene Radios eines Wi-Fi-7-CAPsMAN (D53, 2026-10-03):** Ab Werk hängen die Radios des hAP be³
   am statischen, abgeschalteten MLD `mld1`; ohne MLO blieben sie nach dem Provisionieren aus. Wie die
   Rolle `ap` (D46) löst `$cfmCapsmanOn` sie davon, bevor sie die eigenen Radios provisioniert.

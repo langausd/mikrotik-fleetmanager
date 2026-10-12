@@ -94,7 +94,12 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         :if ([:len $lt] = 0) do={ :set lt "30m" }
         $cfmEnsure m="/ip/dhcp-server" k=("dhcp:" . $vid) n=({"name"=("dhcp" . $vid)}) p=({"name"=("dhcp" . $vid);"interface"=$ifn;"address-pool"=("pool" . $vid);"lease-time"=$lt}) a=({"disabled"="yes"})
         :local on "yes"
-        :if ($vr) do={ :set on [:tostr [/interface/vrrp/get [find name=("vrrp" . $vid)] running]] ; :if ($on = "true") do={ :set on "yes" } else={ :set on "no" } }
+        # Das VRRP-Interface fehlt im Probelauf, solange es noch nicht angelegt ist: dann nicht Master
+        :if ($vr) do={
+          :local vi [/interface/vrrp/find where name=("vrrp" . $vid)]
+          :set on "no"
+          :if ([:len $vi] > 0) do={ :if ([:tostr [/interface/vrrp/get [:pick $vi 0] running]] = "true") do={ :set on "yes" } }
+        }
         :local dis "yes"
         :if ($on = "yes") do={ :set dis "no" }
         $cfmSet m="/ip/dhcp-server" n=({"name"=("dhcp" . $vid)}) p=({"disabled"=$dis})

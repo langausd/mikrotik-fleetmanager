@@ -25,7 +25,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (D72: `upload-seed.sh` ohne `--site` nur Framework-Code, `tools/pull-site.sh`), Editor als WebFig-
   Lesezeichen über die REST-API (D73, `tools/editor/`), Regel `json-typ` in `tools/rsc-check.py`,
   `$cfmPlan from=<verzeichnis> role=<rollen>` (Probelauf eines Umbaus, z.B. des Router-Umzugs). Labor
-  7.24.5: `e2e.sh` 292, Onboarding 14/15/18, `e2e-vrrp.sh` 79, alles grün (auch 7.25rc1: e2e 292, Onboarding 14/15/18); Übergang vom Stand vor D68
+  7.24.5: `e2e.sh` 292, Onboarding 14/15/18, `e2e-vrrp.sh` 79, alles grün (auch 7.25rc1: e2e 292, Onboarding 14/15/18, VRRP 79); Übergang vom Stand vor D68
   durchgespielt (TODO 47). Labor auf 7.25rc1 siehe 48. Beim Probelauf des Router-Umzugs gefunden und
   behoben: Probelauf der Rolle `router` brach vor dem ersten VRRP ab; im Labor unter Last gefunden und
   behoben: Wettlauf zwischen Apply des Managers und `$cfmLoadData` (Sperre `cfmApplyBusy`).
@@ -554,4 +554,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       für Home Assistant, weil die API Globals nicht zeigte. Mit 7.25 erneut prüfen, ob das den
       Gast-Schalter vereinfacht (heute Zustand aus den Regeln, `cfm_ssid.py`).
     * **WebFig** zeigt Dateiinhalte weiter nicht an (D73, Lesezeichen-Editor).
+    * **Labor mit 7.25rc1 (2026-10-12):** alle Skripte grün – `e2e.sh` 292, Onboarding 14/15/18,
+      `e2e-vrrp.sh` 79. Mit 7.25 stable nur `e2e.sh` wiederholen, sofern der Changelog nichts Neues
+      zu SSH, fetch, Skripten oder `/file` nennt.
 

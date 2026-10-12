@@ -12,9 +12,12 @@
 :if ([:len $snoop] = 0) do={ :set snoop "no" }
 $cfmSet m="/interface/bridge" n=({"name"="bridge"}) p=({"igmp-snooping"=$igmp;"dhcp-snooping"=$snoop})
 
-:if ($snoop = "yes" and [:typeof ($cfmHost->"ports")] = "array") do={
-  :foreach p,spec in=($cfmHost->"ports") do={
-    :local pr [$cfmProfile $spec]
+# Ports samt Bonds und MLAG-Peer aus der Rolle base (cfmPortMap, D74/D75)
+:global cfmPortMap
+:if ($snoop = "yes" and [:typeof $cfmPortMap] = "array") do={
+  :foreach p,spec in=$cfmPortMap do={
+    :local pr ({"bridge"=true;"untag"=""})
+    :if ($spec != "*mlag-peer") do={ :set pr [$cfmProfile $spec] }
     :if ($pr->"bridge") do={
       :local tr "no"
       :if ([:len ($pr->"untag")] = 0) do={ :set tr "yes" }

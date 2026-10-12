@@ -8,6 +8,10 @@
 #  dns    DNS-Server für DHCP-Clients (Default = Gateway)
 #  lease  DHCP-Lease-Zeit (Default 30m)
 #  l3     "no" = Router legt kein Interface/IP an (reines L2-VLAN)
+#  onboard "yes" = Onboarding-VLAN (genau eins, siehe unten)
+#  isolate "yes" = Clients erreichen nur Gateway und Broadcast, nicht einander - auch nicht über
+#         verschiedene APs oder Switches (D76)
+#  isolateAllow  Ausnahmen der Isolation: Namen aus leases.rsc oder MACs, z.B. "drucker,02:00:00:00:00:30"
 # VLAN entfernen = Zeile löschen -> Reconciler räumt überall auf.
 # ============================================================
 :global cfmVlans {

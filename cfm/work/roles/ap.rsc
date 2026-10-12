@@ -185,3 +185,21 @@ $cfmPskMissing
     }
   }
 }
+
+# Isolierte VLANs (D76): WLAN-Interfaces, deren Bridge-Port in einem isolierten VLAN liegt, in die Liste
+# cfm-iso - sofern der Datapath sie nicht schon selbst einträgt (ob der CAPsMAN interface-list an die CAPs
+# weitergibt, zeigt erst der Test vor Ort). Gilt für Interfaces, die beim Apply bestehen.
+:global cfmVlans
+:local isv ({})
+:foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($isv->$vid) 1 } }
+:if ([:len $isv] > 0) do={
+  :foreach bp in=[/interface/bridge/port/find where dynamic] do={
+    :local nm [:tostr [/interface/bridge/port/get $bp interface]]
+    :local pv [:tostr [/interface/bridge/port/get $bp pvid]]
+    :if ([:typeof ($isv->$pv)] != "nothing" and [:len [/interface/wifi/find where name=$nm]] > 0) do={
+      :if ([:len [/interface/list/member/find where list="cfm-iso" and interface=$nm and dynamic]] = 0) do={
+        $cfmEnsure m="/interface/list/member" k=("ilm:ISO:" . $nm) n=({"list"="cfm-iso";"interface"=$nm}) p=({"list"="cfm-iso";"interface"=$nm})
+      }
+    }
+  }
+}

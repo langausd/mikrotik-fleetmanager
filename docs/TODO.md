@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-11)
+## Übersicht offener Punkte (Stand 2026-10-12)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -19,6 +19,15 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-12 (sechste Remote-Runde):** 10 (Bonds im Hostfile, D74; MLAG-Paare in
+  `mlag.rsc`, D75), 20 bis auf den Proxy (isolierte VLANs über APs und Switches hinweg, Freigaben mit
+  Ports je Eintrag, D76). Review von D70–D73 vor dem nächsten Framework-Update einer Site: Die Sperre `cfmApplyBusy` wirkte nur
+  in eine Richtung – jetzt wartet auch ein Apply, der während `$cfmCheck`/`$cfmShow` startet
+  (`cfmMgrData`, `e2e.sh` 14j; im Labor nicht nachgestellt, das Fenster ist klein). RouterOS 7.25rc1:
+  Globals über die API geprüft (48), 7.26beta1: `e2e.sh` grün, Changelog gesichtet (49). Labor: `lab.sh`
+  mit freier Topologie (`LABLINKS`) und Kartentyp (`LABNIC`), neuer Test `e2e-mlag.sh`; 7.24.5 und
+  7.25rc1: `e2e.sh` 294, `e2e-mlag.sh` alles grün. Bei der Durchsicht der Doku gefunden und behoben:
+  `$cfmDiff` kannte `mlag.rsc` nicht als gemeinsame Datendatei.
 * **Erledigt am 2026-10-11/13 (fünfte Remote-Runde):** Manifest-Regeln je Version aus dem Archiv (D70,
   schließt die Lücke von TODO 47 bei `$cfmPromote`), RouterOS 7.25: Host-Key-Prüfung des SSH-Clients aus
   (D71) und Versionsmeldung mit Kanal (sonst IP-Adresse beim Manager), Site-Daten führt der Manager
@@ -53,7 +62,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   D58), „Manager-Ticks starten gleichzeitig“ (D57); Labortest des Watchdog-Rollbacks (`e2e.sh`
   Schritt 14d) und Probe des Router-Umzugs mit drei VRRP-Routern (`e2e-vrrp.sh`). Am 2026-09-30:
   28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
-* **Größere Ausbauten:** 10, 13–15, 18, 20 sowie Netinstall/Branding (Onboarding).
+* **Vorbereitet, Test nur mit Hardware:** MLAG auf CRS3xx (Hardware-Offload, Ausfall eines Knotens,
+  Umbau im laufenden Betrieb), isolierte VLANs an echten APs (gibt der CAPsMAN `interface-list` an die
+  CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`.
+* **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -141,6 +153,14 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   `tools/home-assistant/cfm_ssid.py` ([home-assistant.md](home-assistant.md)), Auto-Aus. Im Labor
   per API geprüft (2026-10-03): Starten mit `read,api,test` + `dont-require-permissions`, Zustand aus
   den Regeln, Ablauf aus der Datei; `:global cfmSsid<key>` ist für HA nicht lesbar (D64).
+* **MLAG (D75)** auf CRS3xx: Offload im Switch-Chip, Ausfall eines Knotens (Strom aus, nicht nur Link),
+  Umbau eines Uplinks, über den der Weg zum Manager läuft (Labor: ein 802.3ad-Port ohne Gegenstelle
+  leitet weiter), `mlag-lacp-fallback` ab 7.25.
+* **Isolierte VLANs (D76)** an echten APs: Gibt der CAPsMAN `interface-list` des Datapath an die CAPs
+  weiter (sonst trägt die Rolle `ap` die Interfaces beim Apply ein – neu verbundene erst beim nächsten
+  Apply)? Sieht der Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000
+  `vlan`; die MAC-Regeln greifen in beiden Fällen)? Trennt Client-Isolation auch zwischen den Radios
+  eines AP? An Switches: `hw=no` an isolierten Access-Ports (Durchsatz über die CPU).
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
 
@@ -217,7 +237,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
    Hardware bestätigt: hAP AX² blieb nach einem RouterOS-Update sonst dauerhaft auf der alten
    Firmware stehen) und stößt selbst einen weiteren Neustart an. Zusatzpakete (`wifi-qcom-be`,
    `container`, `iot`, `ups` …) auf arm und arm64 auf Hardware gelaufen (2026-09-26). Offen: Pakete
-   auf den Backup-Manager spiegeln; Vorabversionen im Labortest (TODO 36).
+   auf den Backup-Manager spiegeln. ~~Vorabversionen im Labortest~~ (TODO 36, erledigt).
 8. ~~**Identitätsprüfung vor dem Secret-Push**~~ – *erledigt (D28):* Challenge-Response mit dem
    Geräteschlüssel; Erneuerung per `$cfmRekey`. ~~Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
    (bisher nur per `$cfmEnroll … rekey=yes`).~~ – *erledigt (D67):* `$cfmRekey … sftp=yes`, bei
@@ -225,7 +245,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
    die Geräte-User aus dem Spiegel selbst an. Labor: `e2e.sh` Schritt 14g.
 9. ~~**Minimale Firewall auf allen Geräten**~~ – *erledigt (D31):* Default-Drop auf Nicht-Routern,
    IPv6-input auf allen Geräten. Offen: IPv6-Forward auf Routern (mit Punkt 13).
-10. **Link-Bündel (Bonding/LACP) als Port-Profil** für Uplinks.
+10. ~~**Link-Bündel (Bonding/LACP) als Port-Profil** für Uplinks.~~ – *erledigt 2026-10-12:* Hostfile
+    `bonds` (D74), MLAG-Paare zentral in `mlag.rsc` (D75). Labor: `e2e-mlag.sh` (fünf VMs, e1000). Offen:
+    Test auf Hardware (CRS3xx mit Marvell-Chip: MLAG im Switch-Chip), Verhalten beim Umbau eines
+    Uplinks, über den der Weg zum Manager läuft.
 11. ~~**Feste DHCP-Leases und DNS-Namen aus zentralen Daten**~~ – *erledigt (D62):* `leases.rsc` je
     VLAN, die Rolle `router` legt Leases und DNS-Namen `<name>.<domain>` (Leases und aufgenommene
     Geräte) an; Standard-Domain `internal`. Labor: `e2e.sh` Schritt 9.
@@ -252,7 +275,11 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `authorized_keys`-Datei für ALLE User aus `global.rsc` `users`; bei mehreren Admins sollte
     jeder Benutzer nur seine eigenen Keys bekommen (z.B. `authorized_keys.<user>` oder Zuordnung
     innerhalb der Datei), inkl. Revocation pro Person statt nur global.
-20. **IoT-Isolation ausbauen** (nach D38/D39): gerätespezifische Freigaben über kleinere Zonen
+20. **IoT-Isolation ausbauen** – *bis auf den Proxy erledigt 2026-10-12 (D76):* `isolate="yes"` am VLAN
+    mit Ausnahmen `isolateAllow`, Filter am Eingang der Client-Ports (Access-Ports mit `hw=no`,
+    WLAN über die Liste `cfm-iso`), Freigaben mit Ports je Eintrag (`"ziel:tcp/443"`). Labor:
+    `e2e-mlag.sh` Schritt 10, `e2e.sh` Schritt 9. Offen: Test an echten APs und Switches (siehe
+    „Noch nicht mit echter Hardware getestet“), Proxy als Ziel. – (nach D38/D39): gerätespezifische Freigaben über kleinere Zonen
     erproben (eigenes VLAN/PPSK-Gruppe je Gerätegruppe); Freigaben nur für bestimmte Ports;
     Proxy als Ziel (transparent, Filter nach Domain) für Geräte, deren Cloud-Adressen häufig
     wechseln. WLAN-Client-Isolation trennt laut MikroTik nur Clients am selben AP – für
@@ -550,11 +577,25 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * **FT für MLD-Geräte** („wifi - add fast transition support for MLD devices“): D48 hat MLO
       abgeschaltet, weil der hAP be³ als MLD kein FT anbot. Nach dem Update auf 7.25 mit einem Client
       prüfen, ob MLO mit FT jetzt geht (`wifi.rsc` `mlo`).
-    * **Globals über die API** („console - expose globals in the API“): D64 verwarf `:global cfmSsid<key>`
-      für Home Assistant, weil die API Globals nicht zeigte. Mit 7.25 erneut prüfen, ob das den
-      Gast-Schalter vereinfacht (heute Zustand aus den Regeln, `cfm_ssid.py`).
+    * ~~**Globals über die API**~~ – *geprüft 2026-10-12 (7.25rc1 gegen 7.24.5):* Ein über die API
+      gestartetes Skript setzt jetzt `:global`-Variablen in der gemeinsamen Umgebung (7.24.5: nicht).
+      Lesen kann `/system/script/environment` weiterhin nur ein User mit `write` und `policy` (getestet
+      mit read+api+rest-api+test, +policy, +write, +sensitive: „not enough permissions“). Für den
+      Gast-Schalter (D64) ändert sich nichts: HA liest den Zustand weiter aus den Regeln; `cfmSsid<key>`
+      auf der Konsole stimmt ab 7.25 auch nach dem Schalten aus HA.
     * **WebFig** zeigt Dateiinhalte weiter nicht an (D73, Lesezeichen-Editor).
     * **Labor mit 7.25rc1 (2026-10-12):** alle Skripte grün – `e2e.sh` 292, Onboarding 14/15/18,
       `e2e-vrrp.sh` 79. Mit 7.25 stable nur `e2e.sh` wiederholen, sofern der Changelog nichts Neues
-      zu SSH, fetch, Skripten oder `/file` nennt.
-
+      zu SSH, fetch, Skripten oder `/file` nennt. Abends mit D74–D76: `e2e.sh` 294, `e2e-mlag.sh` grün.
+49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün (2026-10-12, 292).
+    Punkte aus dem Changelog, die cfm berühren können:
+    * „l3hw - add VRRP hardware offloading support“: D37 schaltet für VRRP das Routing im Switch-Chip
+      ab. Mit 7.26 prüfen, ob ein CRS als VRRP-Router im Chip routen kann (Zonen-Firewall bleibt aber in
+      der CPU – also nur für Netze ohne Filter interessant).
+    * „switch - add interface-list support to port isolation“: Alternative für isolierte Kabel-Ports
+      (D76) im Switch-Chip statt `hw=no`.
+    * „bridge - add a per-VLAN DHCP snooping option“ (Rolle `switch`, `dhcpSnoop`).
+    * „cmr - add initial implementation of centralised platform for RouterOS devices, allowing updates,
+      monitoring, alerts“: eine zentrale Verwaltung von MikroTik selbst – beobachten, wie weit sie reicht.
+    * „wifi - add a default-country parameter in radio settings“, „ethernet - move the port bandwidth
+      setting to the switch port menu“ (cfm setzt beides nicht).

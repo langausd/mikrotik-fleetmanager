@@ -1,5 +1,7 @@
 # sw1 – Access-Switch (Beispiel: CRS326-24G-2S+)
 # Alle nicht genannten Ports: access im LAN-VLAN 20.
+# Uplink aus zwei Kabeln (LACP, D74): "bonds"={"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}} und
+# "bond1"="trunk" unter ports. Redundant über zwei Switches (MLAG): mlag.rsc.
 :global cfmHost {
   "portDefault"="access:20";
   "ports"={

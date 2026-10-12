@@ -200,10 +200,16 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :foreach h in=($cfmG->"onboard"->"mtHosts") do={
   $cfmEnsure m="/ip/firewall/address-list" k=("al:mt:" . $h) p=({"list"="cfm-mtupdate";"address"=$h})
 }
-# Freigabelisten (D39): Hostnamen löst RouterOS dynamisch auf, IPs/Netze gelten direkt
+# Freigabelisten (D39): Hostnamen löst RouterOS dynamisch auf, IPs/Netze gelten direkt. Einträge mit
+# Ports ("ziel:tcp/443,8883", D76) kommen je Port-Kombination in eine eigene Liste mit eigener Regel
+:global cfmAllowEntry
+:local alg ({})
 :foreach ln,lst in=($cfmG->"allow") do={
+  :set ($alg->$ln) ({})
   :foreach h in=$lst do={
-    $cfmEnsure m="/ip/firewall/address-list" k=("al:allow:" . $ln . ":" . $h) p=({"list"=("cfm-allow-" . $ln);"address"=$h})
+    :local ae [$cfmAllowEntry $ln $h]
+    $cfmEnsure m="/ip/firewall/address-list" k=("al:allow:" . $ln . ":" . $h) p=({"list"=($ae->"l");"address"=($ae->"h")})
+    :set ($alg->$ln->($ae->"l")) ({"p"=($ae->"p");"d"=($ae->"d")})
   }
 }
 :foreach n in=($cfmG->"mgmtExtra") do={
@@ -255,21 +261,30 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
         :set dl "cfm-mtupdate"
         :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$dl})
       }
-      # Freigabeliste: Ziele überall (Internet oder z.B. ein Proxy in einer anderen Zone)
+      # Freigabeliste: Ziele überall (Internet oder z.B. ein Proxy in einer anderen Zone); je Adressliste
+      # eine Regel, mit Ports nur für diese (D76). NAT-Regeln je Liste, siehe unten (dls)
+      :local dls ({})
       :if ([:pick $t 0 6] = "allow:") do={
-        :set dl ("cfm-allow-" . [:pick $t 6 [:len $t]])
-        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"dst-address-list"=$dl})
+        :foreach gl,gp in=($alg->[:pick $t 6 [:len $t]]) do={
+          :local fr ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"dst-address-list"=$gl})
+          :if ([:len ($gp->"p")] > 0) do={ :set ($fr->"protocol") ($gp->"p"); :set ($fr->"dst-port") ($gp->"d") }
+          :set ($r->[:len $r]) $fr
+          :set ($dls->[:len $dls]) $gl
+        }
       }
       :if (($zones->$t) = 1) do={ :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"=("Z-" . $t)}) }
       # NAT nur Richtung WAN und nur, wenn gekennzeichnet
       :local nat [:tostr ($pt->"nat")]
-      :if ([:len $nat] > 0 and [:len $dl] > 0) do={
-        :set ($natZ->$from) 1
-        :local nr ({"chain"="srcnat";"src-address-list"=("cfm-z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$dl})
-        :if ($nat = "masq") do={ :set ($nr->"action") "masquerade" } else={
-          :set ($nr->"action") "src-nat"; :set ($nr->"to-addresses") $nat; :set ($natA->$nat) 1
+      :if ([:len $dl] > 0) do={ :set ($dls->[:len $dls]) $dl }
+      :if ([:len $nat] > 0) do={
+        :foreach ndl in=$dls do={
+          :set ($natZ->$from) 1
+          :local nr ({"chain"="srcnat";"src-address-list"=("cfm-z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$ndl})
+          :if ($nat = "masq") do={ :set ($nr->"action") "masquerade" } else={
+            :set ($nr->"action") "src-nat"; :set ($nr->"to-addresses") $nat; :set ($natA->$nat) 1
+          }
+          :set ($natR->[:len $natR]) $nr
         }
-        :set ($natR->[:len $natR]) $nr
       }
     }
   }

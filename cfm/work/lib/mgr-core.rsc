@@ -165,6 +165,10 @@
   :local aw 0
   :while ($cfmApplyBusy = true and [:len [/system/script/job/find where script="cfm-agent"]] > 0 and $aw < 120) do={ :delay 1s; :set aw ($aw + 1) }
   :if ($aw >= 120) do={ :log warning "cfm: Daten geladen, obwohl der Agent noch anwendet (120 s gewartet)" }
+  # Gegenrichtung: Ein Apply, der jetzt startet, wartet, solange cfmMgrData jünger als 30 s ist (der
+  # Agent liest dieselben globalen Variablen). hold=yes: nicht freigeben, der Aufrufer importiert
+  # danach noch Hostfiles und frischt den Zeitstempel selbst auf ($cfmCheck, $cfmShow)
+  :global cfmMgrData; :set cfmMgrData ([:tonsec [:timestamp]] / 1000000000)
   :local b [$cfmMB]
   :local v $ver
   :if ([:len [:tostr $v]] = 0) do={ :set v ([$cfmRings]->"latest") }
@@ -180,6 +184,10 @@
   # leases.rsc (D62) ist optional: ältere Versionen im Archiv haben sie nicht
   :global cfmLeases; :set cfmLeases ({})
   :onerror e in={ /import file-name=($d . "/leases.rsc") verbose=no } do={}
+  # mlag.rsc (D75) ebenso optional
+  :global cfmMlag; :set cfmMlag ({})
+  :onerror e in={ /import file-name=($d . "/mlag.rsc") verbose=no } do={}
+  :if ($hold != "yes") do={ :set cfmMgrData 0 }
   :return $v
 }
 
@@ -261,6 +269,22 @@
   }
   :local ord [$cfmJson ($b . "/meta/upgrade.dat")]
   :local cnt 0
+  # MACs der Router (D76): Die Filter isolierter VLANs erkennen das Gateway an ihnen (ein Bridge-Filter
+  # kann IP-Adressen nicht zuverlässig prüfen). Nur, wenn ein VLAN isoliert ist - sonst bliebe jedes
+  # Manifest gleich
+  :global cfmVlans
+  :local rmac ({})
+  :local anyIso false
+  :foreach vid,vv in=$cfmVlans do={ :if ([:tostr ($vv->"isolate")] = "yes") do={ :set anyIso true } }
+  :if ($anyIso) do={
+    :foreach rn,rd in=$inv do={
+      :if (("," . [:tostr ($rd->"role")] . ",") ~ ",router,") do={
+        :local rm ""
+        :onerror e in={ :set rm [:tostr ([$cfmJson ($b . "/state/" . $rn . "/status.dat")]->"mac")] } do={}
+        :if ([:len $rm] > 0) do={ :set ($rmac->[:len $rmac]) $rm } else={ :log warning ("cfm: isoliertes VLAN, aber keine MAC von Router " . $rn . " im Status") }
+      }
+    }
+  }
   # Version je Gerät, Quellen sammeln (archive/vN bzw. plan)
   :local dv ({})
   :local srcs ({})
@@ -325,6 +349,7 @@
           :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=$rol;"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"cm"=$cms;"files"=$fl})
           :local rl ("," . $rol . ",")
           :if ($rl ~ ",router,") do={ :set ($m->"dns") $dnsH }
+          :if ([:len $rmac] > 0) do={ :set ($m->"rmac") $rmac }
           # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
           :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
           :local body [:serialize to=json $m]

@@ -24,7 +24,7 @@
 }
 
 :global cfmWifiRender do={
-  :global cfmWifi; :global cfmEnsure; :global cfmLog; :global cfmDry
+  :global cfmWifi; :global cfmEnsure; :global cfmLog; :global cfmDry; :global cfmVlans
   :local w $cfmWifi
   :local d ($w->"defaults")
   :local mk ($w->"master")
@@ -97,7 +97,19 @@
     }
     # Beim CAPsMAN gehen davon vlan-id und client-isolation an die CAPs; "bridge" gilt nur für
     # eigene Radios, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, D41)
-    $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
+    :local dpp ({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
+    # Isoliertes VLAN (D76): Client-Isolation an, Interfaces in die Liste cfm-iso (dort filtert die Bridge
+    # des AP). Ob der CAPsMAN interface-list an die CAPs weitergibt, ist auf Hardware offen; die Rolle ap
+    # trägt die Interfaces sonst selbst ein, lokale Datapaths (Fallback) haben die Liste ohnehin
+    :local isoS ([:tostr ($cfmVlans->[:tostr ($s->"vlan")]->"isolate")] = "yes")
+    :if ($isoS) do={ :set ($dpp->"client-isolation") "yes"; :set ($dpp->"interface-list") "cfm-iso" }
+    $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=$dpp
+    :if (!$isoS and $cfmDry != true) do={
+      :onerror e in={
+        :local il [:tostr [/interface/wifi/datapath/get [find where name=$nm] interface-list]]
+        :if ([:len $il] > 0 and $il != "none") do={ /interface/wifi/datapath/unset [find where name=$nm] interface-list; $cfmLog ("Datapath " . $nm . ": nicht mehr isoliert") }
+      } do={}
+    }
     $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
     :foreach b,c in=($w->"channels") do={
       :if ([:typeof ($bcf->$b)] != "nothing" and ($k = $mk or (("," . ($s->"bands") . ",") ~ ("," . $b . ",")))) do={

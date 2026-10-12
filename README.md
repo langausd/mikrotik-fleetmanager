@@ -63,6 +63,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
+| `cfm/work/mlag.rsc` | MLAG-Paare: zwei Switches, Peer-Ports, doppelt angebundene Geräte (D75) |
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
@@ -78,7 +79,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
 | `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
-| `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, Empfänger für Meldungen `notify-sink.py` |
+| `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, LACP/MLAG und isolierte VLANs `e2e-mlag.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, `seed-mlag*/`, Empfänger für Meldungen `notify-sink.py` |
 
 Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `live/m/`, `state/<name>/`, `vault/`.
 
@@ -86,7 +87,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 
 | Rolle | Inhalt |
 |---|---|
-| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Agent |
+| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus) |
@@ -104,7 +105,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
    `bootstrap-manager.rsc`. Die Beispieldaten sind ein
    fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
    `global.rsc` (Manager-IPs, MGMT-VLAN, User, Domain – Standard `internal`), `vlans.rsc`, `wifi.rsc`,
-   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc` und `authorized_keys.<user>`.
+   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc`, `mlag.rsc` und `authorized_keys.<user>`.
 2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory --bootstrap`
    (das Inventar nur beim ersten Mal; `--bootstrap` nimmt `site/bootstrap-manager.rsc` mit ins
    Wurzelverzeichnis), dann auf dem Gerät `/import bootstrap-manager.rsc`.
@@ -126,6 +127,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Vorher sehen, was sich ändert | `$cfmDiff`: geänderte Dateien, betroffene Geräte und Zeilen (letztes Release → `work/`); `$cfmPlan host=sw1`: Probelauf gegen `work/`, das Gerät ändert nichts |
 | Effektive Konfiguration eines Geräts | `$cfmShow host=sw1` (Daten: Rollen, Ports mit Profil, VLANs, WLAN, Leases); `objects=yes`: alle Soll-Objekte vom Gerät |
 | Feste Adresse + DNS-Name für ein Gerät | `leases.rsc` → `$cfmRelease` (wirkt auf Routern) |
+| Uplink aus zwei Kabeln (LACP), redundant über zwei Switches (MLAG) | Hostfile `bonds` bzw. `mlag.rsc` → `$cfmRelease … all=yes` |
+| IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
 | SSH-Key einer Person | Zeile in `authorized_keys.<user>` ergänzen/löschen → `$cfmRelease` (alle entziehen: Datei leeren) |
@@ -216,7 +219,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2 und 7.24.5. Auf Hardware im Einsatz an zwei
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1 und 7.26beta1. Auf Hardware im Einsatz an zwei
   Standorten (7.23.1 bis 7.25beta5): CRS418 als Router und Manager, Manager als CHR in einer VM,
   CRS328 als Core-Switch, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX, L009. Ab 7.24
   brauchen Skripte, die aus Winbox gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.

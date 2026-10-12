@@ -4,13 +4,14 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 (zuvor 7.24.2) laufen der Gesamttest (217
-> Prüfungen, darunter Manager-Bootstrap mit Reset, Probelauf, `$cfmShow`/`$cfmDiff`, Firewall,
-> Schlüsselwechsel, Backup-Manager, Router-Rolle mit festen Leases und DNS-Namen, Netzplan, PPSK,
-> CAPsMAN-Rolle, Admin-Keys je User, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update
-> von einem Spiegel), der
-> Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter einem nicht
-> verwalteten Switch) und die Probe mit drei VRRP-Routern (79 Prüfungen) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 und 7.25rc1 (zuvor 7.24.2, der Gesamttest auch
+> mit 7.26beta1) laufen der Gesamttest (294 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
+> festen Leases und DNS-Namen, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
+> Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
+> Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
+> einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (79 Prüfungen) und der Test von
+> LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
 > und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit neun Geräten – der
 > Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset, routet noch
 > selbst), ein hAP be³ als CAPsMAN mit eigenen Radios, APs (hAP be³, hAP ax³, cAP ax) mit lokalem
@@ -21,8 +22,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 > Fehler sind behoben, siehe [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 > **Noch nicht** mit echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager,
 > das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, feste Leases und
-> DNS-Namen, weitere SSIDs im lokalen Fallback, Steering/Mindestsignal und das eingebaute Update
-> mit `via=internet`; offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> DNS-Namen, weitere SSIDs im lokalen Fallback, Steering/Mindestsignal, das eingebaute Update
+> mit `via=internet`, LACP-Bonds, MLAG und isolierte VLANs (D74–D76); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -38,7 +39,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 ## 1. Was cfm macht
 
 * Ein **Config-Manager** (ein MikroTik) hält die Soll-Konfiguration der ganzen Flotte: VLANs,
-  Port-Profile, Firewall-Zonen, WLAN, Benutzer, Gerätespezifika.
+  Port-Profile, Link-Bündel (LACP, MLAG über zwei Switches), Firewall-Zonen, WLAN, Benutzer,
+  Gerätespezifika.
 * Jedes Gerät gleicht sich selbst regelmäßig mit dieser Soll-Konfiguration ab. Änderungen gehen
   in **Canary-Ringen** raus, jedes Gerät sichert sich vorher und rollt bei Problemen selbst zurück.
 * Ein Gerät mit der Rolle `capsman` ist **wifi-CAPsMAN** für alle APs (mehrere SSIDs, WPA2/WPA3,
@@ -52,10 +54,13 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 * Jedes Gerät bekommt eine **minimale Firewall**, die nur Management-Zugriffe zulässt.
 * Die **Verkabelung** wird per LLDP erfasst und gegen einen Soll-Stand geprüft; daraus entsteht
   ein Netzplan.
+* **Zustandswechsel** (Apply-Fehler, stumme Geräte, APs ohne CAPsMAN, gescheiterte Updates …)
+  meldet der Manager per Webhook, z.B. an Home Assistant (8.9).
 
-**Was cfm nicht macht:** kein Monitoring oder Alerting (es gibt Status, Logs und Syslog), keine
-grafische Oberfläche (Terminal-Befehle am Manager), keine RouterOS-Updates ohne deinen Befehl,
-und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
+**Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
+und die Meldungen bei Zustandswechseln), keine eigene grafische Oberfläche (Terminal-Befehle am
+Manager, dazu der cfm-Editor als Lesezeichen in WebFig, 8.1), keine RouterOS-Updates ohne deinen
+Befehl, und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
 
 ---
@@ -104,12 +109,13 @@ Konsequenz: **Eine Zeile aus den Daten löschen genügt**, damit das Objekt auf 
 verschwindet, zum Beispiel ein VLAN. Hand-Änderungen an verwalteten Objekten werden beim
 nächsten Apply zurückgesetzt.
 
-Aufräumen und Audit umfassen die Menüs aus `cfmMenus` im Kopf von `lib/lib.rsc` (Bridge, VLANs,
-Adressen, Routen und Routing-Tabellen, DHCP samt statischer Leases, Firewall inkl. Mangle, DNS,
-WLAN, Benutzer, Skripte, Scheduler …). Seit D62 gehören statische DHCP-Leases, Mangle-Regeln und
-Routing-Tabellen dazu: Auf einem Bestandsgerät, das noch selbst DHCP macht, zeigt `$cfmAudit` die
-von Hand angelegten festen Leases deshalb als unverwaltet – sie bleiben, solange du sie nicht per
-`op=purge` entfernst.
+Aufräumen und Audit umfassen die Menüs aus `cfmMenus` im Kopf von `lib/lib.rsc` (Bonds, Bridge
+samt Bridge-Filter, VLANs, Adressen, Routen und Routing-Tabellen, DHCP samt statischer Leases,
+Firewall inkl. Mangle, DNS, WLAN, Benutzer, Skripte, Scheduler …). Seit D62 gehören statische
+DHCP-Leases, Mangle-Regeln und Routing-Tabellen dazu, seit D74/D76 Bonds und Bridge-Filter: Auf
+einem Bestandsgerät zeigt `$cfmAudit` von Hand angelegte feste Leases, Bonds oder Filterregeln
+(z.B. eine DHCP-Sperre am Uplink) deshalb als unverwaltet – sie bleiben, solange du sie nicht per
+`op=purge` entfernst. Vorsicht mit `op=purge sel=all`.
 
 ### Rollen, Hostfile und Inventar
 
@@ -161,6 +167,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
 | Admin-Benutzer | `global.rsc`: `users`; Passwörter per `$cfmSecret` |
 | SSIDs, VLANs der SSIDs, Kanäle | `wifi.rsc` |
 | Welche Ports haben welches Profil? | Hostfiles |
+| Uplinks aus mehreren Kabeln, Geräte redundant an zwei Switches? | Hostfile `bonds`, `mlag.rsc` |
+| Welche VLANs trennen ihre Clients voneinander (IoT)? | `vlans.rsc`: `isolate`, `isolateAllow` |
 | Ring je Gerät, Name je Gerät | Inventar |
 | Git-Sicherung gewünscht? | `global.rsc`: `hook`; Git-Host einrichten |
 | Platz für RouterOS-Pakete (ca. 20 MB je Architektur und Version) | `global.rsc`: `pkgPath` (leer = Flash des Managers) |
@@ -180,8 +188,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
 
 **Hardware und Software:**
-* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2 und 7.24.5, auf Hardware 7.23.1 bis 7.25beta5
-  (siehe Teststand oben).
+* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1 und 7.26beta1, auf
+  Hardware 7.23.1 bis 7.25beta5 (siehe Teststand oben).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
   Internetzugang für die Paket-Downloads (ohne Internet: Pakete von Hand ablegen, 8.6).
@@ -214,7 +222,7 @@ irgendetwas ausgerollt wird.
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
 | `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server), `allow:<Liste>` (nur die Ziele der Liste). **NAT nur mit Kennzeichen:** `*wan` = masquerade, `wan@<Adresse>` = feste NAT-Adresse (bei VRRP wandert sie mit dem Master); gilt auch für `mtupdate` und `allow:…`. `wan` ohne Kennzeichen wird geroutet, der Upstream braucht eine Route zurück. Zonen ohne `*`/`wan`: DNS an externe Server wird auf den Router umgeleitet | |
-| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}` | `{}` |
+| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}`; nur bestimmte Ports mit `":tcp/443,8883"` bzw. `":udp/123"` am Eintrag (D76), z.B. `"cloud.example.com:tcp/443"` – je Port-Kombination eine eigene Adressliste `cfm-allow-<Liste>-tcp443` mit eigener Regel, Einträge ohne Ports gelten wie bisher für alle | `{}` |
 | `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.22` |
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
@@ -235,6 +243,21 @@ Schlüssel ist die VLAN-ID als String.
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
+| `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (D76) |
+| `isolateAllow` | Ausnahmen der Isolation: Namen aus `leases.rsc` (desselben VLANs) oder MAC-Adressen, z.B. `"zigbee-hub,drucker"`; diese Geräte erreichen alle Clients und umgekehrt |
+
+**Isolierte VLANs (D76).** Gefiltert wird am Eingang jedes Client-Ports: reine Access-Ports des
+VLANs (Profil mit nur diesem VLAN ungetaggt; sie bekommen `hw=no`, ihr Verkehr läuft über die CPU,
+sonst sähe der Bridge-Filter ihn im Switch-Chip nicht) und die WLAN-Interfaces der SSIDs in diesem
+VLAN (Client-Isolation wird dort mit eingeschaltet, Datapath mit `interface-list=cfm-iso`). Erlaubt
+sind Broadcast (ARP, DHCP), Frames an die VRRP-MAC und an die Router (deren Bridge-MACs meldet der
+Agent, der Manager schreibt sie ins Manifest), IP aus dem eigenen Netz nach außerhalb und zu den
+Router-Adressen sowie die Ausnahmen; Multicast zwischen Clients nicht, IPv6 auch nicht (cfm routet
+noch kein IPv6). Was die Clients ins Internet oder in andere Zonen dürfen, regelt weiter `policy`.
+Hybrid-Ports mit dem isolierten VLAN ungetaggt werden nicht isoliert (`$cfmCheck` warnt), ebenso
+PPSK-Gruppen, die anders isoliert sind als ihre SSID. Nach dem Tausch eines Routers ein Release, damit
+seine neue MAC in die Manifeste kommt. Offen auf Hardware: ob der CAPsMAN die Interface-Liste an die
+CAPs weitergibt (sonst trägt die Rolle `ap` die WLAN-Interfaces beim Apply selbst ein).
 
 ### `profiles.rsc` – Port-Profile
 
@@ -334,6 +357,37 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
 * Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
 * Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).
 
+### `mlag.rsc`
+
+MLAG-Paare (D75): zwei Switches, an denen Geräte per LACP über beide hängen. Fällt ein Switch aus,
+läuft der Verkehr über den anderen weiter.
+
+```
+:global cfmMlag {
+  "core"={"nodes"="sw1,sw2";"primary"="sw1";"peer"="sfp-sfpplus3,sfp-sfpplus4";"stpPrio"="0x4000";
+    "bonds"={"pve1"={"id"=11;"ports"="ether1";"profile"="trunk"};
+             "nas"={"id"=12;"ports"={"sw1"="ether2";"sw2"="ether5"};"profile"="access:177"}}}
+}
+```
+
+* `nodes`: die beiden Knoten (Inventar, **gleicher Ring**), `primary` bekommt `mlag-priority` 50.
+* `peer`: Ports der direkten Verbindung beider Knoten. cfm bündelt sie zum Bond `peer-<Paar>` (LACP),
+  der alle VLANs getaggt trägt und nur getaggte Frames annimmt.
+* `bonds`: je doppelt angebundenem Gerät ein Bond mit derselben `id` (mlag-id) auf beiden Knoten,
+  Profil wie unter `ports`. Ports als Text gelten auf beiden Knoten, sonst je Knoten.
+* optional `stpPrio` (gilt auf beiden Knoten statt des Hostfiles), ab RouterOS 7.25 `lacpFallback`
+  (`mlag-lacp-fallback`) und `initDelay` (`mlag-init-delay`).
+* Die Ports aus `mlag.rsc` gehören nicht mehr ins Hostfile. Das Gegenüber (Server, Switch) braucht einen
+  LACP-Bond über beide Links, bei einem cfm-Gerät im Hostfile unter `bonds`.
+* Voraussetzungen: RouterOS 7.22 oder neuer (MLAG an der Bridge), kein L3-Hardware-Offloading (`base`
+  schaltet es ab – ein Core, der heute im Switch-Chip routet, routet danach in der CPU).
+* Ausrollen: beide Knoten und die doppelt angebundenen cfm-Geräte im selben Release, am besten mit
+  `all=yes` im Wartungsfenster. Ein 802.3ad-Port ohne LACP-Gegenstelle leitet weiter, der Weg zum
+  Manager reißt also nicht ab, solange erst eine Seite umgestellt ist (Labor; auf Hardware zu bestätigen).
+* `$cfmCheck` prüft Ring, Primary, eindeutige mlag-ids, Ports nicht zugleich im Hostfile, gleiche
+  STP-Priorität und kein `stp="none"`; `$cfmShow host=<knoten>` zeigt Peer- und MLAG-Bonds.
+* Ohne Paare steht dort `:global cfmMlag ({})`. Ältere Releases ohne die Datei bleiben gültig.
+
 ### `authorized_keys.<user>` (optional)
 
 Persönliche Admin-SSH-Keys **je User** (D65), eine Datei je Person: `authorized_keys.alice` gilt nur
@@ -386,6 +440,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 |---|---|
 | `ports` | Port → Profil |
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
+| `bonds` | Link-Bündel (D74): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
 | `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe D40). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
@@ -406,9 +461,9 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Agent |
-| `switch` | IGMP-Snooping, DHCP-Snooping (bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
+| `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln; DNS; NTP-Server; NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
@@ -599,8 +654,9 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
   Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`;
 * das Skript `cfm-ssid-check` (Scheduler alle 10 min), das nach `autoOff` abschaltet, und die
   Variable `:global cfmSsid<key>` (`on`/`off`) für die Konsole. Für HA taugt sie nicht: Die API zeigt
-  `/system/script/environment` nur Usern mit `write` und `policy`, und ein über die API gestartetes
-  Skript ändert sie nicht (Labor 7.24.5); sie folgt erst mit dem nächsten `cfm-ssid-check`.
+  `/system/script/environment` nur Usern mit `write` und `policy` (auch mit 7.25rc1). Ein über die API
+  gestartetes Skript ändert sie unter 7.24.5 nicht, dann folgt sie erst mit dem nächsten
+  `cfm-ssid-check`; ab 7.25 setzt es sie gleich.
 
 In HA: **Anleitung [home-assistant.md](home-assistant.md)**, ein `command_line`-Schalter mit dem
 Hilfsskript `tools/home-assistant/cfm_ssid.py` (nur Python-Standardbibliothek). Es startet die
@@ -800,7 +856,7 @@ Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 **Effektive Konfiguration eines Geräts** (D61):
 
 ```
-$cfmShow host=sw1              # Daten: Rollen, Ring, Hostfile, Ports mit Profil, VLANs, WLAN, Leases
+$cfmShow host=sw1              # Daten: Rollen, Ring, Hostfile, Ports mit Profil, Bonds, VLANs, WLAN, Leases
 $cfmShow host=sw1 ver=41       # dasselbe aus Release 41 statt aus work/
 $cfmShow host=sw1 objects=yes  # Soll-Objekte: jedes Objekt, das cfm dort verlangt (Probelauf)
 ```
@@ -820,7 +876,7 @@ $cfmDiff ver=40 to=41          # zwischen zwei Releases (to=work ist der Standar
 Ausgabe: geänderte, neue und entfernte Dateien, die betroffenen Geräte (bei gemeinsamen Dateien
 wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `ap`, `capsman` oder
 `manager`), für Datendateien (`global`, `vlans`, `profiles`,
-`wifi`, `wireguard`, `leases`, `hosts/*`, `authorized_keys.*`) die geänderten Zeilen
+`wifi`, `wireguard`, `leases`, `mlag`, `hosts/*`, `authorized_keys.*`) die geänderten Zeilen
 (`@@ Zeile <alt> / <neu>`, `-` alt, `+` neu). `lib/` und `roles/` erscheinen nur als Datei.
 
 ### 8.4 Rezepte
@@ -844,6 +900,10 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Vorher sehen, was sich ändert | `$cfmDiff` (Dateien und Zeilen), `$cfmPlan host=<name>` (Objekte auf dem Gerät) |
 | Effektive Konfiguration eines Geräts | `$cfmShow host=<name>` bzw. `objects=yes` |
 | Feste Adresse und DNS-Name für ein Gerät im VLAN | `leases.rsc` → Release (nur mit Rolle `router`) |
+| Uplink aus zwei Kabeln (LACP) | Hostfile `bonds` und Profil unter `ports` auf beiden Seiten → Release beider Geräte zugleich (D74) |
+| Server oder Switch redundant an zwei Switches | Paar in `mlag.rsc`, Ports aus den Hostfiles nehmen, Gegenstelle mit LACP-Bond → Release mit `all=yes` im Wartungsfenster (D75) |
+| IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
+| Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN, z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
@@ -1106,6 +1166,7 @@ schreibt jede Meldung als JSON-Zeile.
 | Zurück auf einen alten Stand | – | `$cfmRollback ver=<N> [all=yes]`. **Achtung:** überschreibt `work/` mit dem alten Stand |
 | Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (D67) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
 | Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
+| Ein Switch eines MLAG-Paars fällt aus | doppelt angebundene Geräte laufen über den anderen Knoten weiter (LACP, D75; auf Hardware noch nicht geprüft) | Gerät tauschen bzw. aufnehmen (7.4), beide Knoten im selben Ring lassen |
 | CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, D54, auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
 | Release stoppt mit „Prüfung“ | nichts wurde ausgerollt | Fehler beheben oder bewusst `force=yes` |
@@ -1256,6 +1317,7 @@ cd tools/chr-lab
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
 ./e2e-vrrp.sh             # Router-Umzug: drei VRRP-Router hinter einem Internet-Router im LAN (4 VMs)
+./e2e-mlag.sh             # LACP-Bonds, MLAG-Paar und isolierte VLANs (5 VMs, e1000-Karten)
 ./lab.sh stop
 ```
 
@@ -1264,6 +1326,12 @@ Router, vm4 als nicht verwalteter Internet-Router mit je einer VRF als Client in
 (Daten in `seed-vrrp/`). Geprüft werden VIPs und DHCP nur auf dem Master, die Zonen-Policy samt
 fester NAT-Adresse der Gäste, Ausfall und Rückkehr des Masters, sein Neustart und der Ausfall von
 zwei Routern.
+`e2e-mlag.sh` verbindet fünf VMs frei per `LABLINKS` (Paare von VM-Nummern, ein Paar je Kabel; ohne
+Angabe Stern) und nutzt e1000-Karten (`LABNIC=e1000`): Mit virtio meldet RouterOS keine
+Geschwindigkeit, LACP bündelt dann nur einen Port. sw1/sw2 bilden das MLAG-Paar, srv1 hängt per LACP
+an beiden, vm5 trägt drei Clients (VRFs) im IoT-VLAN. Geprüft werden `$cfmCheck`, Umbau, Zustand,
+Ausfall eines Links (im Labor an beiden Enden abgeschaltet: Socket-Verbindungen melden keinen
+Link-Ausfall), Idempotenz und Rückbau, danach die Isolation (Daten in `seed-mlag*/`).
 `lab.sh` nimmt das neueste `chr-*.img` im Labor-Verzeichnis; eine andere Version per
 `CHR_IMG=…/chr-7.24.2.img ./e2e.sh fresh`. Zwei Labore gleichzeitig brauchen ein eigenes
 Verzeichnis und eigene Port-Basen, z.B. `LAB=~/.cache/cfm-chr-lab-b LABPORT=2300 LABSOCK=13000
@@ -1349,7 +1417,9 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 `cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
 `cfm/dl/`, `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
 den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
-`cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); während eines Applys der Scheduler
+`cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); Bonds
+`cfm:bond:<name>` (Peer-Bond eines MLAG-Paars `peer-<Paar>`); mit isolierten VLANs die Interface-Liste
+`cfm-iso` und der Bridge-Filter-Block `cfm:iso…`; während eines Applys der Scheduler
 `cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
 Wurzelverzeichnis, beim eingebauten Update über einen Spiegel der DNS-Eintrag `cfm-sys:upgrade-mirror`.
@@ -1402,6 +1472,11 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | Onboarding bleibt in `wait` | Gerät nicht erreichbar: Kabel, Router an `ether1`, falsches Aufkleber-Passwort | `$cfmOnboardStatus`, Log am Manager, Registrierung prüfen |
 | Onboarding: „Seriennummer passt nicht“ | anderes Gerät am Port | Registrierung oder Gerät prüfen |
 | Onboarding: „RouterOS … älter als …“ | kein Update möglich (Internet über den Router?) | Router-Rolle/`policy` `onboard`, notfalls von Hand updaten |
+| Log `cfm: Apply wartete N s auf einen Manager-Befehl` (Manager) | gewollt: ein Manager-Befehl (`$cfmCheck`, `$cfmShow` …) importierte gerade Daten, der Apply wartet darauf (`cfmMgrData`, höchstens 120 s) | nichts zu tun; bei „120 s gewartet“ den Befehl prüfen, der so lange lief |
+| Apply: „MLAG (mlag.rsc) braucht RouterOS 7.22 oder neuer“ | Knoten eines MLAG-Paars mit älterem RouterOS | Knoten aktualisieren, bis dahin das Paar aus `mlag.rsc` nehmen |
+| Log `Port … ist Slave von …: Profil … gilt nicht` | Port steht unter `ports`, gehört aber zu einem Bond | Eintrag aus `ports` nehmen, das Profil gilt am Bond |
+| Isolierte Clients erreichen das Gateway nicht | Manifest ohne Router-MAC (Log am Gerät „keine Router-MACs im Manifest“, am Manager „keine MAC von Router … im Status“), etwa nach einem Router-Tausch | `$cfmCollect`, dann Release (die MAC kommt aus dem Status des Routers) |
+| Log `isolateAllow <name> (VLAN …): keine MAC in leases.rsc` | Ausnahme ohne Lease mit MAC | Lease in `leases.rsc` anlegen oder die MAC direkt angeben |
 
 Hilfreich auf dem Gerät: `/log print where message~"cfm"` und `:put [/file get cfm/state.json contents]`.
 Auf dem Manager: `$cfmStatus`, `$cfmOnboardStatus` und `/log print where message~"cfm"`.

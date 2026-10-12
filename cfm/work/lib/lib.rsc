@@ -46,11 +46,11 @@
 
 # Verwaltete Menüs in Abhängigkeitsreihenfolge (GC läuft rückwärts)
 :global cfmMenus {
-  "/interface/bridge";"/interface/bridge/port";"/interface/vlan";"/interface/bridge/vlan";
+  "/interface/bonding";"/interface/bridge";"/interface/bridge/port";"/interface/vlan";"/interface/bridge/vlan";
   "/interface/vrrp";"/interface/list";"/interface/list/member";
   "/ip/address";"/routing/table";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";
   "/ip/dhcp-server/lease";"/ip/dhcp-client";
-  "/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
+  "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";
   "/interface/wifi/steering";"/interface/wifi/access-list";"/interface/wifi/configuration";"/interface/wifi/provisioning";
@@ -445,6 +445,49 @@
   :local ed [:tostr ($pr->"edge")]
   :if ([:len $ed] = 0) do={ :set ed "auto" }
   :return {"tag"=$tg;"untag"=$u;"bridge"=$br;"edge"=$ed;"disabled"=$dis;"frame"=$fr}
+}
+
+# Eintrag einer Freigabeliste (global.rsc allow, D39) zerlegen: "ziel" oder "ziel:tcp/443,8883" (Ports je
+# Eintrag, D76) -> {"h"=Ziel;"p"=Protokoll|"";"d"=Ports|"";"l"=Adressliste}. $1 = Listenname, $2 = Eintrag.
+# Einträge ohne Ports bleiben in cfm-allow-<Liste>, mit Ports je Kombination eine eigene Liste
+:global cfmAllowEntry do={
+  :local e [:tostr $2]
+  :local r ({"h"=$e;"p"="";"d"="";"l"=("cfm-allow-" . $1)})
+  :local c -1
+  :for i from=0 to=([:len $e] - 1) do={ :if ([:pick $e $i] = ":") do={ :set c $i } }
+  :if ($c > 0) do={
+    :local sp [:pick $e ($c + 1) [:len $e]]
+    :if ($sp ~ "^(tcp|udp)/[0-9][0-9,-]*\$") do={
+      :local sl [:find $sp "/"]
+      :local pr [:pick $sp 0 $sl]
+      :local pt [:pick $sp ($sl + 1) [:len $sp]]
+      :local tag ""
+      :for i from=0 to=([:len $pt] - 1) do={ :local ch [:pick $pt $i]; :if ($ch = ",") do={ :set ch "_" }; :set tag ($tag . $ch) }
+      :set r ({"h"=[:pick $e 0 $c];"p"=$pr;"d"=$pt;"l"=("cfm-allow-" . $1 . "-" . $pr . $tag)})
+    }
+  }
+  :return $r
+}
+
+# MLAG-Paar eines Geräts ($1 = Name) aus mlag.rsc (D75): ({}) oder {"pair";"partner";"primary" (bool);
+# "peer" (Name des Peer-Bonds);"peerSlaves";"stp";"fallback";"initDelay";"bonds"={Name={"id";"slaves";"profile"}}}.
+# Ports: Text = auf beiden Knoten gleich, Array = je Knoten ({"sw1"="ether1";"sw2"="ether3"})
+:global cfmMlagOf do={
+  :global cfmMlag
+  :local r ({})
+  :local pk do={ :if ([:typeof $1] = "array") do={ :return [:tostr ($1->$2)] }; :return [:tostr $1] }
+  :if ([:typeof $cfmMlag] != "array") do={ :return $r }
+  :foreach pn,p in=$cfmMlag do={
+    :local nodes [:toarray ($p->"nodes")]
+    :if ([:typeof [:find $nodes $1]] != "nil") do={
+      :local other ""
+      :foreach n in=$nodes do={ :if ($n != $1) do={ :set other $n } }
+      :local bs ({})
+      :foreach bn,b in=($p->"bonds") do={ :set ($bs->$bn) ({"id"=[:tonum ($b->"id")];"slaves"=[$pk ($b->"ports") $1];"profile"=[:tostr ($b->"profile")]}) }
+      :set r ({"pair"=$pn;"partner"=$other;"primary"=([:tostr ($p->"primary")] = $1);"peer"=("peer-" . $pn);"peerSlaves"=[$pk ($p->"peer") $1];"stp"=[:tostr ($p->"stpPrio")];"fallback"=[:tostr ($p->"lacpFallback")];"initDelay"=[:tostr ($p->"initDelay")];"bonds"=$bs})
+    }
+  }
+  :return $r
 }
 
 # ---------- Audit: von Hand angelegte Objekte ----------

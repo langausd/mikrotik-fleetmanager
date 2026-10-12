@@ -13,7 +13,8 @@
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
-  :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp
+  :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp; :global cfmMgrData
+  :global cfmMlag; :global cfmMlagOf
   :local b [$cfmMB]
   # dir=<verzeichnis>: statt work/ prüfen ($cfmPlan from=)
   :local w ($b . "/work")
@@ -23,13 +24,31 @@
   # Datei vorhanden? Über den Namen statt /file/find (TODO 21). Lokal statt $cfmFileEx, weil
   # $cfmRelease diesen Prüfer aus work/ lädt, während noch die alten Manager-Module laufen
   :local fex do={ :local r false; :onerror e in={ :if ([:len [/file/get $1 name]] > 0) do={ :set r true } } do={}; :return $r }
-  :onerror e in={ $cfmLoadData ver=0 dir=$dir } do={ :set le $e }
+  # hold=yes: Ein Apply auf diesem Gerät wartet, bis die Prüfung durch ist - sie importiert gleich alle
+  # Hostfiles in cfmHost, den der Apply liest (cfmMgrData, Gegenstück zu cfmApplyBusy)
+  :onerror e in={ $cfmLoadData ver=0 dir=$dir hold="yes" } do={ :set le $e }
   # Helfer aus lib/lib.rsc (lädt $cfmLoadData mit): fehlen sie, liefern Aufrufe stillschweigend
   # nichts und die Prüfung liefe halb blind
   :if ([:typeof $cfmNet] = "nothing" or [:typeof $cfmTarget] = "nothing") do={
     :set ($err->[:len $err]) "lib/lib.rsc nicht geladen: Prüfung von VLAN-Netzen und Policy-Zielen nicht möglich"
   }
-  :if ([:len $le] > 0) do={ :set ($err->0) ("Daten in work/ nicht ladbar: " . $le); :return ({"err"=$err;"warn"=$warn}) }
+  :if ([:len $le] > 0) do={ :set cfmMgrData 0; :set ($err->0) ("Daten in work/ nicht ladbar: " . $le); :return ({"err"=$err;"warn"=$warn}) }
+  # mlag.rsc (D75) selbst laden: $cfmLoadData des installierten Managers kennt sie vor D75 nicht
+  :set cfmMlag ({})
+  :if ([$fex ($w . "/mlag.rsc")]) do={ :onerror e in={ /import file-name=($w . "/mlag.rsc") verbose=no } do={ :set ($err->[:len $err]) ("mlag.rsc: " . $e) } }
+  # Profil gültig? -> "" oder Fehlertext (Hostfile-Ports, Bonds, MLAG-Bonds)
+  :local profOk do={
+    :global cfmProfiles; :global cfmVlans
+    :local sp [:tostr $1]; :local pn $sp; :local arg ""
+    :local c [:find $sp ":"]
+    :if ([:typeof $c] != "nil") do={ :set pn [:pick $sp 0 $c]; :set arg [:pick $sp ($c + 1) [:len $sp]] }
+    :local pr ($cfmProfiles->$pn)
+    :if ([:typeof $pr] != "array") do={ :return ("unbekanntes Port-Profil " . $sp) }
+    :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :return ("VLAN " . $arg . " fehlt in vlans.rsc") }
+    :return ""
+  }
+  # MLAG-Knoten: wirksame STP-Priorität je Knoten (Vergleich unten)
+  :local mstp ({})
   :local zones ({})
   :foreach vid,v in=$cfmVlans do={ :set ($zones->[:tostr ($v->"zone")]) 1 }
   # VLAN-Spezifikation ("*", Zonen, VIDs, "!x") -> unbekannte Einträge
@@ -173,6 +192,33 @@
   :foreach hn,hd in=[$cfmInvLoad] do={
     :if ([:typeof ($lName->$hn)] != "nothing") do={ :set ($err->[:len $err]) ("leases.rsc: Name " . $hn . " ist auch ein Gerät (gleicher DNS-Name)") }
   }
+  # Isolierte VLANs (D76): isolate yes/no, Ausnahmen auflösbar (Name mit MAC in leases.rsc oder MAC),
+  # nicht das Onboarding-VLAN, ohne Router nur Broadcast und Ausnahmen
+  :foreach vid,v in=$cfmVlans do={
+    :local is [:tostr ($v->"isolate")]
+    :local vw ("vlans.rsc: VLAN " . $vid . ": ")
+    :if ([:len $is] > 0 and $is != "yes" and $is != "no") do={ :set ($err->[:len $err]) ($vw . "isolate " . $is . " (yes oder no)") }
+    :if ($is = "yes") do={
+      :if ([:tostr ($v->"onboard")] = "yes") do={ :set ($err->[:len $err]) ($vw . "das Onboarding-VLAN nicht isolieren") }
+      :if ([:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ($vw . "isolate ohne Router (l3=no) - die Clients erreichen nur Broadcast und die Ausnahmen") }
+      :foreach a in=[:toarray ($v->"isolateAllow")] do={
+        :local mac [:tostr $a]
+        :local ok ([:len $mac] = 17 and $mac ~ "^[0-9A-Fa-f][0-9A-Fa-f](:[0-9A-Fa-f][0-9A-Fa-f])+\$")
+        :if (!$ok and [:len [:tostr ($cfmLeases->$vid->$a->"mac")]] = 0) do={ :set ($err->[:len $err]) ($vw . "isolateAllow " . $a . ": weder MAC-Adresse noch Name mit MAC in leases.rsc (VLAN " . $vid . ")") }
+      }
+    } else={
+      :if ([:len [:tostr ($v->"isolateAllow")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . "isolateAllow wirkt nur mit isolate=yes") }
+    }
+  }
+  # PPSK: Das WLAN-Interface filtert alle Clients einer SSID gleich - Gruppen anders isoliert als die SSID
+  :foreach k,ents in=($cfmWifi->"ppsk") do={
+    :local sv [:tostr ($cfmWifi->"ssids"->$k->"vlan")]
+    :local si ([:tostr ($cfmVlans->$sv->"isolate")] = "yes")
+    :foreach e,o in=$ents do={
+      :local gv [:tostr ($o->"vlan")]
+      :if (([:tostr ($cfmVlans->$gv->"isolate")] = "yes") != $si) do={ :set ($warn->[:len $warn]) ("wifi.rsc: ppsk " . $k . "." . $e . ": VLAN " . $gv . " anders isoliert als VLAN " . $sv . " der SSID - es gilt die Isolation der SSID (D76)") }
+    }
+  }
   # IP-Dienste: nur RouterOS-Namen (http/https blieben stillschweigend wirkungslos), jeder Port nur
   # einmal (www-ssl und reverse-proxy stehen ab Werk beide auf 443)
   :local svp ({})
@@ -203,7 +249,18 @@
     }
   }
   :foreach ln,lst in=($cfmG->"allow") do={
-    :if ([:typeof $lst] != "array") do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . " ist keine Liste") }
+    :if ([:typeof $lst] != "array") do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . " ist keine Liste") } else={
+      # Ports je Eintrag (D76): "ziel:tcp/443,8883" bzw. "ziel:udp/123"; ein anderer Zusatz nach ":" ist ein
+      # Tippfehler (sonst würde er als Hostname aufgelöst)
+      :foreach h in=$lst do={
+        :local e [:tostr $h]
+        :local c [:find $e ":"]
+        :if ([:typeof $c] != "nil") do={
+          :local sp [:pick $e ($c + 1) [:len $e]]
+          :if (!($sp ~ "^(tcp|udp)/[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*\$") or [:typeof [:find $sp ":"]] != "nil") do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . ": " . $e . " - Ports als ziel:tcp/443,8883 oder ziel:udp/123") }
+        }
+      }
+    }
   }
   :foreach z in=[:toarray ($cfmG->"mgmtAccess")] do={
     :if ([:typeof ($zones->$z)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: mgmtAccess nennt unbekannte Zone " . $z) }
@@ -230,6 +287,7 @@
     }
     :local hf ($w . "/hosts/" . $n . ".rsc")
     :if (![$fex $hf]) do={ :set ($warn->[:len $warn]) ("inventory: " . $n . " hat kein hosts/" . $n . ".rsc") } else={
+      :set cfmMgrData ([:tonsec [:timestamp]] / 1000000000)
       :set cfmHost ({})
       :local he ""
       :onerror e in={ /import file-name=$hf verbose=no } do={ :set he $e }
@@ -251,6 +309,8 @@
           :local pr ($cfmProfiles->$pn)
           :if ([:typeof $pr] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": unbekanntes Port-Profil " . $sp) } else={
             :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": VLAN " . $arg . " fehlt in vlans.rsc") }
+            # isoliertes VLAN ungetaggt an einem Port mit weiteren getaggten VLANs: kein Client-Port (D76)
+            :if ([:tostr ($pr->"untag")] = "arg" and [:tostr ($cfmVlans->$arg->"isolate")] = "yes" and [:len [:tostr ($pr->"tag")]] > 0) do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": isoliertes VLAN " . $arg . " an einem Port mit getaggten VLANs - dort wird nicht isoliert (nur reine Access-Ports)") }
             :if ($nostp) do={
               :if ([:tostr ($pr->"untag")] = "arg") do={
                 :if ([:typeof ($uvid->$arg)] != "nothing") do={
@@ -264,6 +324,44 @@
         :if ([:len $trunks] > 1) do={
           :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: mehrere Ports mit getaggten VLANs bei stp=none; mit stp=none faengt keine Bridge die Schleife ab")
         }
+        # Bonds (D74): Modus, Slaves (nicht doppelt, nicht zugleich unter ports), Profil unter ports
+        :local hsl ({})
+        :foreach bn,bd in=($cfmHost->"bonds") do={
+          :local bw ("hosts/" . $n . ".rsc: bonds " . $bn . ": ")
+          :local md [:tostr ($bd->"mode")]
+          :if ([:len $md] > 0 and $md != "802.3ad" and $md != "active-backup") do={ :set ($err->[:len $err]) ($bw . "mode " . $md . " (802.3ad oder active-backup)") }
+          :if ([:len [:tostr ($bd->"slaves")]] = 0) do={ :set ($err->[:len $err]) ($bw . "slaves fehlt") }
+          :foreach x in=[:toarray ($bd->"slaves")] do={
+            :if ([:typeof ($hsl->$x)] != "nothing") do={ :set ($err->[:len $err]) ($bw . "Port " . $x . " steckt schon in " . ($hsl->$x)) }
+            :set ($hsl->$x) $bn
+            :if ([:typeof ($cfmHost->"ports"->$x)] != "nothing") do={ :set ($warn->[:len $warn]) ($bw . "Port " . $x . " ist Slave, sein Eintrag unter ports gilt nicht") }
+          }
+          :local pp [:tostr ($bd->"primary")]
+          :if ([:len $pp] > 0 and [:typeof ($hsl->$pp)] = "nothing") do={ :set ($err->[:len $err]) ($bw . "primary " . $pp . " ist kein Slave") }
+          :if ([:typeof ($cfmHost->"ports"->$bn)] = "nothing") do={ :set ($warn->[:len $warn]) ($bw . "kein Profil unter ports - der Bond kommt nicht in die Bridge") }
+        }
+        # MLAG (D75): Ports aus mlag.rsc nicht zugleich im Hostfile, kein stp=none
+        :local hm [$cfmMlagOf $n]
+        :if ([:len $hm] > 0) do={
+          :local mw ("mlag.rsc: " . ($hm->"pair") . ": " . $n . ": ")
+          :local mps ({})
+          :foreach x in=[:toarray ($hm->"peerSlaves")] do={ :set ($mps->$x) ($hm->"peer") }
+          :foreach bn,bd in=($hm->"bonds") do={
+            :foreach x in=[:toarray ($bd->"slaves")] do={
+              :if ([:typeof ($mps->$x)] != "nothing") do={ :set ($err->[:len $err]) ($mw . "Port " . $x . " steckt in " . ($mps->$x) . " und " . $bn) }
+              :set ($mps->$x) $bn
+            }
+            :if ([:typeof ($cfmHost->"bonds"->$bn)] != "nothing" or [:typeof ($cfmHost->"ports"->$bn)] != "nothing") do={ :set ($err->[:len $err]) ($mw . "Bond " . $bn . " steht auch im Hostfile") }
+          }
+          :foreach x,bn in=$mps do={
+            :if ([:typeof ($hsl->$x)] != "nothing" or [:typeof ($cfmHost->"ports"->$x)] != "nothing") do={ :set ($err->[:len $err]) ($mw . "Port " . $x . " (" . $bn . ") steht auch im Hostfile unter ports/bonds") }
+          }
+          :if ([:tostr ($cfmHost->"stp")] = "none") do={ :set ($err->[:len $err]) ($mw . "stp=none - MLAG braucht auf beiden Knoten dieselbe STP-Einstellung") }
+          :local sp [:tostr ($hm->"stp")]
+          :if ([:len $sp] = 0) do={ :set sp [:tostr ($cfmHost->"stpPrio")] }
+          :if ([:len $sp] = 0) do={ :set sp "0x8000" }
+          :set ($mstp->$n) [:tonum $sp]
+        }
         # erwartete Verkabelung ("links", D33): Gegenstelle sollte im Inventar stehen
         :foreach lp,lw in=($cfmHost->"links") do={
           :local pe [:tostr $lw]
@@ -276,6 +374,40 @@
           :local rl ("," . [:tostr ($d->"role")] . ",")
           :if (!($rl ~ ",capsman,") and !($rl ~ ",manager,")) do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: capsmanRadios ohne Rolle capsman - wirkt nur auf dem CAPsMAN") }
         }
+      }
+    }
+  }
+  # MLAG-Paare (D75): zwei Knoten aus dem Inventar im selben Ring, Primary einer davon, Peer- und
+  # Bond-Ports je Knoten, mlag-id eindeutig, gleiche STP-Priorität, Knoten nur in einem Paar
+  :local mnode ({})
+  :foreach pn,p in=$cfmMlag do={
+    :local mw ("mlag.rsc: " . $pn . ": ")
+    :local pk do={ :if ([:typeof $1] = "array") do={ :return [:tostr ($1->$2)] }; :return [:tostr $1] }
+    :local nodes [:toarray ($p->"nodes")]
+    :if ([:len $nodes] != 2) do={ :set ($err->[:len $err]) ($mw . "nodes braucht genau zwei Geräte") } else={
+      :foreach x in=$nodes do={
+        :if ([:typeof ($inv->$x)] != "array") do={ :set ($err->[:len $err]) ($mw . $x . " steht nicht im Inventar") }
+        :if ([:typeof ($mnode->$x)] != "nothing") do={ :set ($err->[:len $err]) ($mw . $x . " ist schon Knoten von " . ($mnode->$x)) }
+        :set ($mnode->$x) $pn
+        :if ([:len [$pk ($p->"peer") $x]] = 0) do={ :set ($err->[:len $err]) ($mw . "peer: keine Ports für " . $x) }
+      }
+      :local n0 [:pick $nodes 0]; :local n1 [:pick $nodes 1]
+      :local r0 [:tostr ($inv->$n0->"ring")]; :local r1 [:tostr ($inv->$n1->"ring")]
+      :if ([:len $r0] = 0) do={ :set r0 "2" }
+      :if ([:len $r1] = 0) do={ :set r1 "2" }
+      :if ($r0 != $r1) do={ :set ($err->[:len $err]) ($mw . $n0 . " (Ring " . $r0 . ") und " . $n1 . " (Ring " . $r1 . ") in denselben Ring legen - sonst läuft ein Knoten mit MLAG, der andere ohne") }
+      :if ([:typeof [:find $nodes [:tostr ($p->"primary")]]] = "nil") do={ :set ($err->[:len $err]) ($mw . "primary muss " . $n0 . " oder " . $n1 . " sein") }
+      :if ([:typeof ($mstp->$n0)] = "num" and [:typeof ($mstp->$n1)] = "num" and ($mstp->$n0) != ($mstp->$n1)) do={ :set ($err->[:len $err]) ($mw . "STP-Priorität von " . $n0 . " und " . $n1 . " verschieden - stpPrio im Paar setzen") }
+      :local ids ({})
+      :foreach bn,bd in=($p->"bonds") do={
+        :local id [:tonum ($bd->"id")]
+        :if ([:typeof $id] != "num" or $id < 1) do={ :set ($err->[:len $err]) ($mw . "bonds " . $bn . ": id fehlt (Zahl ab 1)") } else={
+          :if ([:typeof ($ids->[:tostr $id])] != "nothing") do={ :set ($err->[:len $err]) ($mw . "mlag-id " . $id . " doppelt (" . ($ids->[:tostr $id]) . ", " . $bn . ")") }
+          :set ($ids->[:tostr $id]) $bn
+        }
+        :foreach x in=$nodes do={ :if ([:len [$pk ($bd->"ports") $x]] = 0) do={ :set ($err->[:len $err]) ($mw . "bonds " . $bn . ": keine Ports für " . $x) } }
+        :local pe [$profOk ($bd->"profile")]
+        :if ([:len $pe] > 0) do={ :set ($err->[:len $err]) ($mw . "bonds " . $bn . ": " . $pe) }
       }
     }
   }

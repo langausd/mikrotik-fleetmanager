@@ -87,6 +87,9 @@
   # rsc-check: erlaubt json-typ (Kanal dahinter, siehe oben)
   :set ($s->"ros") $ros
   :set ($s->"model") [/system/resource/get board-name]
+  # Bridge-MAC (D76): Daran erkennen die Filter isolierter VLANs die Router (der Manager schreibt die MACs
+  # der Router ins Manifest). Bleibt bei :deserialize Text (Labor 2026-10-12)
+  :onerror e in={ :set ($s->"mac") [:tostr [/interface/bridge/get [find where name="bridge"] mac-address]] } do={}
   :set ($s->"seen") $now
   # Architektur + installierte Pakete: daraus stellt der Manager RouterOS-Pakete bereit
   :set ($s->"arch") [/system/resource/get architecture-name]
@@ -233,11 +236,21 @@
 # cfmApplyBusy: Auf dem Manager teilen sich Apply und Manager-Funktionen die globalen Variablen
 # (cfmG, Bibliothek); $cfmLoadData wartet, solange sie gesetzt ist (Labor 2026-10-11: ein Import
 # von global.rsc mitten im Apply nahm cm1 die Werte seines Hostfiles, base sperrte admin)
+# cfmMgrData: Gegenrichtung. Ein Manager-Befehl, der gerade Daten oder Hostfiles importiert ($cfmCheck,
+# $cfmShow, $cfmLoadData), setzt einen Zeitstempel; der Apply wartet, solange er jünger als 30 s ist
+# (höchstens 120 s). Sonst bekäme der Apply z.B. das Hostfile eines anderen Geräts in cfmHost.
 :global cfmImportAll do={
+  :global cfmMgrData
+  :local mw 0
+  :while ([:typeof $cfmMgrData] = "num" and $cfmMgrData > 0 and (([:tonsec [:timestamp]] / 1000000000) - $cfmMgrData) < 30 and $mw < 120) do={ :delay 1s; :set mw ($mw + 1) }
+  :if ($mw >= 120) do={ :log warning "cfm: Apply startet, obwohl ein Manager-Befehl noch Daten importiert (120 s gewartet)" } else={
+    :if ($mw > 0) do={ :log info ("cfm: Apply wartete " . $mw . " s auf einen Manager-Befehl") }
+  }
   :global cfmApplyBusy; :set cfmApplyBusy true
   :global cfmHost; :set cfmHost ({})
   # optionale Datendatei (D62): ohne sie keine alten Werte aus einem früheren Lauf behalten
   :global cfmLeases; :set cfmLeases ({})
+  :global cfmMlag; :set cfmMlag ({})
   :global cfmSeen; :global cfmDir; :global cfmWrite; :global cfmLog
   :local pf ($cfmDir . "/post.json")
   :local cur ""

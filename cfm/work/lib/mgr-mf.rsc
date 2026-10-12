@@ -23,6 +23,8 @@
   :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ :set ($want->[:len $want]) ({$f;1;1}) }
   # optional (D62): ältere Versionen haben keine leases.rsc - Ringe auf einer solchen bleiben gültig
   :set ($want->[:len $want]) ({"leases.rsc";1;0})
+  # optional (D75): MLAG-Paare; ältere Versionen haben keine mlag.rsc
+  :set ($want->[:len $want]) ({"mlag.rsc";1;0})
   # authorized_keys.<user> (D65, persönliche Admin-SSH-Keys je User): optional, kein /import (kein
   # RouterOS-Skript); base liest nur die Dateien der User aus users
   :foreach p,h in=$fx do={ :if ($p ~ "^authorized_keys\\.") do={ :set ($want->[:len $want]) ({$p;0;0}) } }

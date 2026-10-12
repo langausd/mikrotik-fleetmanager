@@ -6,6 +6,8 @@
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmDl; :global cfmWg
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
 :global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
+:global cfmFind; :global cfmRun; :global cfmIndex; :global cfmIdx; :global cfmVids; :global cfmMlagOf
+:global cfmLeases; :global cfmMacUp
 
 :local br "bridge"
 :local mv [:tostr ($cfmG->"mgmtVlan")]
@@ -22,7 +24,11 @@ $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 #     Ports blockieren; die VM streute außerdem BPDUs in jedes dieser VLANs. Die Trennung leistet
 #     dort das VLAN-Filtering. $cfmCheck warnt, wenn zwei Ports desselben Geräts im selben VLAN
 #     liegen - dann wäre die Schleife echt (D40).
+# MLAG-Paar dieses Geräts (mlag.rsc, D75): beide Knoten brauchen dieselbe STP-Priorität, stpPrio des
+# Paars gilt deshalb vor der aus dem Hostfile
+:local ml [$cfmMlagOf ($cfmMf->"name")]
 :local stp [:tostr ($cfmHost->"stpPrio")]
+:if ([:len [:tostr ($ml->"stp")]] > 0) do={ :set stp ($ml->"stp") }
 :if ([:len $stp] = 0) do={ :set stp "0x8000" }
 :local proto "rstp"
 :if ([:tostr ($cfmHost->"stp")] = "none") do={ :set proto "none" }
@@ -32,27 +38,129 @@ $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 :if ($proto = "none") do={ :set brp ({"name"=$br;"protocol-mode"=$proto}) }
 $cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=$brp a=({"vlan-filtering"="no"})
 
-# --- Ports nach Profil (portDefault gilt für alle nicht genannten Ethernet-Ports) ---
+# --- Bonds (D74) und MLAG (D75) ---
+#     Hostfile bonds={"bond1"={"slaves"="sfp1,sfp2";"mode"="802.3ad"|"active-backup";"hash"=…;"primary"=…}},
+#     das Profil steht wie bei jedem Port unter ports ("bond1"="trunk"). Ist das Gerät Knoten eines Paars
+#     in mlag.rsc, kommen der Peer-Bond peer-<Paar> (alle VLANs getaggt) und die MLAG-Bonds (mlag-id,
+#     Profil aus mlag.rsc) dazu. Bonds, die es nicht mehr geben soll, werden schon hier entfernt und
+#     die Slaves verlassen die Bridge: Unten bei den Ports wären sie sonst noch belegt.
+:local brc ({})
+:onerror e in={ :set brc [/interface/bridge/get [find where name=$br and !dynamic]] } do={}
+:local hasMl ([:typeof ($brc->"mlag-peer-port")] != "nothing")
+:if ([:len $ml] > 0 and !$hasMl) do={ :error "MLAG (mlag.rsc) braucht RouterOS 7.22 oder neuer" }
+:if ($hasMl and [:len $ml] = 0 and [:tostr ($brc->"mlag-peer-port")] != "none") do={ $cfmSet m="/interface/bridge" n=({"name"=$br}) p=({"mlag-peer-port"="none"}) }
+:local bonds ({})
+:local bspec ({})
+:foreach bn,b in=($cfmHost->"bonds") do={
+  :local md [:tostr ($b->"mode")]
+  :if ([:len $md] = 0) do={ :set md "802.3ad" }
+  :local hs [:tostr ($b->"hash")]
+  :if ([:len $hs] = 0) do={ :set hs "layer-2-and-3" }
+  :local bp ({"name"=$bn;"slaves"=[:toarray ($b->"slaves")];"mode"=$md;"lacp-rate"="1sec";"transmit-hash-policy"=$hs})
+  :if ([:len [:tostr ($b->"primary")]] > 0) do={ :set ($bp->"primary") [:tostr ($b->"primary")] }
+  :set ($bonds->$bn) $bp
+}
+:if ([:len $ml] > 0) do={
+  :set ($bonds->($ml->"peer")) ({"name"=($ml->"peer");"slaves"=[:toarray ($ml->"peerSlaves")];"mode"="802.3ad";"lacp-rate"="1sec";"transmit-hash-policy"="layer-2-and-3"})
+  :set ($bspec->($ml->"peer")) "*mlag-peer"
+  :foreach bn,b in=($ml->"bonds") do={
+    :set ($bonds->$bn) ({"name"=$bn;"slaves"=[:toarray ($b->"slaves")];"mode"="802.3ad";"lacp-rate"="1sec";"transmit-hash-policy"="layer-2-and-3";"mlag-id"=($b->"id")})
+    :set ($bspec->$bn) ($b->"profile")
+  }
+}
+:local slv ({})
+:foreach bn,b in=$bonds do={ :foreach x in=($b->"slaves") do={ :set ($slv->[:tostr $x]) $bn } }
+$cfmIndex "/interface/bonding"
+$cfmIndex "/interface/bridge/port"
+:foreach k,id in=($cfmIdx->"/interface/bonding") do={
+  :local bn [:pick $k 5 [:len $k]]
+  :if ([:pick $k 0 5] = "bond:" and [:typeof ($bonds->$bn)] = "nothing") do={
+    :local bpid ($cfmIdx->"/interface/bridge/port"->("bp:" . $bn))
+    :if ($cfmDry != true) do={
+      :if ([:typeof $bpid] != "nothing") do={ /interface/bridge/port/remove $bpid }
+      /interface/bonding/remove $id
+    }
+    :set ($cfmIdx->"/interface/bridge/port"->("bp:" . $bn))
+    :set ($cfmIdx->"/interface/bonding"->$k)
+    $cfmLog ("Bond " . $bn . " entfernt, seine Ports bekommen wieder ihr eigenes Profil")
+  }
+}
+:foreach x,bn in=$slv do={
+  :foreach pid in=[/interface/bridge/port/find where interface=$x and !dynamic] do={
+    :if ($cfmDry != true) do={ /interface/bridge/port/remove $pid }
+    $cfmLog ("Port " . $x . " aus der Bridge genommen (Slave von " . $bn . ")")
+  }
+  :set ($cfmIdx->"/interface/bridge/port"->("bp:" . $x))
+  :if ([:len [/interface/ethernet/find where name=$x]] > 0) do={ $cfmSet m="/interface/ethernet" n=({"name"=$x}) p=({"disabled"="no"}) }
+}
+:foreach bn,b in=$bonds do={ $cfmEnsure m="/interface/bonding" k=("bond:" . $bn) n=({"name"=$bn}) p=$b }
+# MLAG verträgt kein L3-Hardware-Offloading (MikroTik-Doku): wie bei der Rolle router (D37) aus
+:if ([:len $ml] > 0) do={
+  :local sws ({})
+  :onerror e in={ :set sws [$cfmFind "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
+  :foreach sw in=$sws do={
+    :local sc [$cfmRun "/interface/ethernet/switch/get" I=$sw]
+    :if ([:typeof ($sc->"l3-hw-offloading")] != "nothing") do={ $cfmSet m="/interface/ethernet/switch" n=({"name"=($sc->"name")}) p=({"l3-hw-offloading"="no"}) }
+  }
+}
+
+# --- Ports nach Profil (portDefault gilt für alle nicht genannten Ethernet-Ports, nicht für Slaves) ---
 :local ports ({})
 :local def [:tostr ($cfmHost->"portDefault")]
 :if ([:len $def] > 0) do={
-  :foreach i in=[/interface/ethernet/find] do={ :set ($ports->[/interface/ethernet/get $i name]) $def }
+  :foreach i in=[/interface/ethernet/find] do={
+    :local en [/interface/ethernet/get $i name]
+    :if ([:typeof ($slv->$en)] = "nothing") do={ :set ($ports->$en) $def }
+  }
 }
 :if ([:typeof ($cfmHost->"ports")] = "array") do={
-  :foreach p,spec in=($cfmHost->"ports") do={ :set ($ports->$p) $spec }
+  :foreach p,spec in=($cfmHost->"ports") do={
+    :if ([:typeof ($slv->$p)] = "nothing") do={ :set ($ports->$p) $spec } else={ $cfmLog ("Port " . $p . " ist Slave von " . ($slv->$p) . ": Profil " . $spec . " gilt nicht") }
+  }
 }
+:foreach bn,sp in=$bspec do={ :set ($ports->$bn) $sp }
+# für spätere Rollen (switch: DHCP-Snooping vertraut den Trunks)
+:global cfmPortMap; :set cfmPortMap $ports
+
+# --- Isolierte VLANs (D76): isolate="yes" in vlans.rsc ---
+#     Clients eines isolierten VLANs erreichen nur das Gateway (Adressen der Router im VLAN und alles
+#     außerhalb des eigenen Netzes), Broadcast (ARP, DHCP) und die Ausnahmen aus isolateAllow (Namen aus
+#     leases.rsc oder MAC-Adressen); Multicast zwischen Clients nicht. Gefiltert wird am Eingang der
+#     Client-Ports (Liste cfm-iso): reine Access-Ports des VLANs - mit hw=no, sonst sähe der Bridge-Filter
+#     den Verkehr im Switch-Chip nicht - und WLAN-Interfaces isolierter SSIDs (Datapath interface-list,
+#     Rolle ap). Ein Frame von Client zu Client endet damit schon am Gerät des Absenders.
+:local iso ({})
+:foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($iso->$vid) 1 } }
+# Ports, die zuletzt isoliert waren (hw=no zurücknehmen, wenn sie es nicht mehr sind)
+:local wasIso ({})
+$cfmIndex "/interface/list/member"
+:foreach k,id in=($cfmIdx->"/interface/list/member") do={ :if ([:pick $k 0 8] = "ilm:ISO:") do={ :set ($wasIso->[:pick $k 8 [:len $k]]) 1 } }
+:if ([:len $iso] > 0) do={ $cfmEnsure m="/interface/list" k="il:ISO" n=({"name"="cfm-iso"}) p=({"name"="cfm-iso"}) }
+:local hasHw false
+:onerror e in={ :set hasHw ([:typeof ([/interface/bridge/port/get [:pick [/interface/bridge/port/find where !dynamic] 0]]->"hw")] != "nothing") } do={}
+:local nIso 0
 :local tagged ({}); :local untagged ({})
 # Nachbarsuche (LLDP/MNDP/CDP) auf allen Bridge-Ports + MGMT-VLAN: Grundlage für $cfmLinks (D33)
 $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"})
 :foreach p,spec in=$ports do={
-  :local pr [$cfmProfile $spec]
+  :local pr
+  # Peer-Bond eines MLAG-Paars: alle VLANs getaggt, keine ungetaggten Frames (MikroTik-Doku)
+  :if ($spec = "*mlag-peer") do={ :set pr ({"tag"=[$cfmVids "*"];"untag"="";"bridge"=true;"edge"="auto";"disabled"=false;"frame"="admit-only-vlan-tagged"}) } else={ :set pr [$cfmProfile $spec] }
   :if ($pr->"bridge") do={
     $cfmEnsure m="/interface/list/member" k=("ilm:DISC:" . $p) n=({"list"="DISC";"interface"=$p}) p=({"list"="DISC";"interface"=$p})
     :local pv 1
     :if ([:len ($pr->"untag")] > 0) do={ :set pv [:tonum ($pr->"untag")] }
     :local bpdu "no"
     :if (($pr->"edge") = "yes") do={ :set bpdu "yes" }
-    $cfmEnsure m="/interface/bridge/port" k=("bp:" . $p) n=({"interface"=$p}) p=({"bridge"=$br;"interface"=$p;"pvid"=$pv;"frame-types"=($pr->"frame");"ingress-filtering"="yes";"edge"=($pr->"edge");"bpdu-guard"=$bpdu})
+    :local bpp ({"bridge"=$br;"interface"=$p;"pvid"=$pv;"frame-types"=($pr->"frame");"ingress-filtering"="yes";"edge"=($pr->"edge");"bpdu-guard"=$bpdu})
+    # reiner Access-Port eines isolierten VLANs (D76): Client-Port, Verkehr über die CPU (Bridge-Filter)
+    :local isoP ([:len ($pr->"untag")] > 0 and [:typeof ($iso->[:tostr ($pr->"untag")])] != "nothing" and [:len [$cfmKeys ($pr->"tag")]] = 0)
+    :if ($isoP) do={
+      :set nIso ($nIso + 1)
+      $cfmEnsure m="/interface/list/member" k=("ilm:ISO:" . $p) n=({"list"="cfm-iso";"interface"=$p}) p=({"list"="cfm-iso";"interface"=$p})
+      :if ($hasHw) do={ :set ($bpp->"hw") "no" }
+    } else={ :if ($hasHw and [:typeof ($wasIso->$p)] != "nothing") do={ :set ($bpp->"hw") "yes" } }
+    $cfmEnsure m="/interface/bridge/port" k=("bp:" . $p) n=({"interface"=$p}) p=$bpp
     :foreach vid,m in=($pr->"tag") do={
       :if ($m = 1) do={
         :if ([:typeof ($tagged->$vid)] != "array") do={ :set ($tagged->$vid) ({}) }
@@ -79,6 +187,49 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
     $cfmSet m="/interface/ethernet" n=({"name"=$p}) p=({"disabled"=$dis})
   }
 }
+
+# Filter der isolierten VLANs (D76), nur wo Client-Ports sein können (Access-Ports, WLAN)
+:local fl ({})
+:if ([:len $iso] > 0 and ($nIso > 0 or [$cfmHas "ap"] or [$cfmHas "capsman"] or [$cfmHas "manager"])) do={
+  :local am ({})
+  :local ipr ({})
+  :foreach vid,x in=$iso do={
+    :local nn [$cfmNet $vid]
+    :local net [:tostr ($nn->"net")]
+    :if ([:len $net] > 0) do={
+      # Router im VLAN: VIP bzw. Gateway .gw und die realen Adressen .250+routerId (D15)
+      :local rips ({})
+      :set ($rips->[:tostr ($nn->"gw")]) 1
+      :for r from=1 to=4 do={ :set ($rips->[:tostr (($nn->"addr") + 250 + $r)]) 1 }
+      :set ($ipr->[:len $ipr]) ({"chain"="forward";"in-interface-list"="cfm-iso";"mac-protocol"="ip";"src-address"=$net;"dst-address"=("!" . $net);"action"="accept"})
+      :foreach ip,y in=$rips do={
+        :set ($ipr->[:len $ipr]) ({"chain"="forward";"in-interface-list"="cfm-iso";"mac-protocol"="ip";"src-address"=$net;"dst-address"=($ip . "/32");"action"="accept"})
+        :set ($ipr->[:len $ipr]) ({"chain"="forward";"in-interface-list"="cfm-iso";"mac-protocol"="arp";"arp-src-address"=$net;"arp-dst-address"=($ip . "/32");"action"="accept"})
+      }
+    }
+    :foreach a in=[:toarray ($cfmVlans->$vid->"isolateAllow")] do={
+      :local mac [:tostr $a]
+      :if (!([:len $mac] = 17 and $mac ~ "^[0-9A-Fa-f][0-9A-Fa-f](:[0-9A-Fa-f][0-9A-Fa-f])+\$")) do={ :set mac [:tostr ($cfmLeases->$vid->$a->"mac")] }
+      :if ([:len $mac] > 0) do={ :set ($am->[$cfmMacUp $mac]) 1 } else={ $cfmLog ("isolateAllow " . $a . " (VLAN " . $vid . "): keine MAC in leases.rsc") }
+    }
+  }
+  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"="FF:FF:FF:FF:FF:FF/FF:FF:FF:FF:FF:FF";"action"="accept"})
+  :foreach mac,y in=$am do={
+    :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"=($mac . "/FF:FF:FF:FF:FF:FF");"action"="accept"})
+    :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"src-mac-address"=($mac . "/FF:FF:FF:FF:FF:FF");"action"="accept"})
+  }
+  # Multicast vor den IP-Regeln: eine Multicast-Adresse liegt außerhalb des eigenen Netzes
+  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"="01:00:00:00:00:00/01:00:00:00:00:00";"action"="drop"})
+  # Gateway: VRRP-MAC und die MACs der Router aus dem Manifest. Je nach Gerät sieht der Bridge-Filter
+  # einen ungetaggt angekommenen Frame als ip oder als vlan (Labor: virtio ip, e1000 vlan) - IP-Matcher
+  # greifen dann nicht, MAC-Matcher immer. Die IP-Regeln danach ergänzen nur.
+  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"="00:00:5E:00:01:00/FF:FF:FF:FF:FF:00";"action"="accept"})
+  :foreach mac in=($cfmMf->"rmac") do={ :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"=([$cfmMacUp $mac] . "/FF:FF:FF:FF:FF:FF");"action"="accept"}) }
+  :if ([:len ($cfmMf->"rmac")] = 0) do={ $cfmLog "isolierte VLANs: keine Router-MACs im Manifest - Clients erreichen das Gateway nur, wenn der Filter IP-Adressen sieht" }
+  :foreach r in=$ipr do={ :set ($fl->[:len $fl]) $r }
+  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"action"="drop"})
+}
+$cfmBlock m="/interface/bridge/filter" k="iso" l=$fl
 
 # --- Bridge-VLAN-Tabelle: aus Profilen abgeleitet ---
 #     Hostfile cpuVlans={177;...}: die Bridge (CPU) bleibt in diesen VLANs getaggt, obwohl das Gerät
@@ -376,3 +527,12 @@ $cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}
 :local bfr "admit-only-vlan-tagged"
 :if ([:len [:tostr ($cfmHost->"bridgeFrames")]] > 0) do={ :set bfr [:tostr ($cfmHost->"bridgeFrames")] }
 $cfmSet m="/interface/bridge" n=({"name"=$br}) p=({"vlan-filtering"="yes";"frame-types"=$bfr})
+# MLAG erst mit VLAN-Filtering (Peer-Port im Bridge-Menü seit 7.22); Primary = mlag-priority 50
+:if ([:len $ml] > 0) do={
+  :local mp ({"mlag-peer-port"=($ml->"peer");"mlag-priority"=128})
+  :if ($ml->"primary") do={ :set ($mp->"mlag-priority") 50 }
+  # ab 7.25: LACP-Fallback und Startverzögerung, nur wenn in mlag.rsc gesetzt
+  :if ([:len ($ml->"fallback")] > 0 and [:typeof ($brc->"mlag-lacp-fallback")] != "nothing") do={ :set ($mp->"mlag-lacp-fallback") ($ml->"fallback") }
+  :if ([:len ($ml->"initDelay")] > 0 and [:typeof ($brc->"mlag-init-delay")] != "nothing") do={ :set ($mp->"mlag-init-delay") ($ml->"initDelay") }
+  $cfmSet m="/interface/bridge" n=({"name"=$br}) p=$mp
+}

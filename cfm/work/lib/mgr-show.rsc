@@ -12,7 +12,7 @@
 :global cfmShow do={
   :global cfmInvLoad; :global cfmLoadData; :global cfmMB; :global cfmRings; :global cfmEnrolled
   :global cfmFileEx; :global cfmG; :global cfmVlans; :global cfmHost; :global cfmProfile; :global cfmWifi
-  :global cfmLeases; :global cfmNet; :global cfmPlan; :global cfmPad
+  :global cfmLeases; :global cfmNet; :global cfmPlan; :global cfmPad; :global cfmMlagOf; :global cfmVids
   :if ([:len $host] = 0) do={ :error "Aufruf: \$cfmShow host=<name> [ver=<N>] [objects=yes]" }
   :local d ([$cfmInvLoad]->$host)
   :if ([:typeof $d] != "array") do={ :error ("unbekannter Host " . $host) }
@@ -23,7 +23,8 @@
   :local dir ($b . "/work")
   :if ($v > 0) do={ :set dir ($b . "/archive/v" . $v) }
   :if (![$cfmFileEx ($dir . "/global.rsc")]) do={ :error ("Stand nicht vorhanden: " . $dir) }
-  $cfmLoadData ver=$v
+  # hold=yes: Ein Apply auf diesem Gerät wartet, bis das Hostfile gelesen ist (cfmMgrData, $cfmLoadData)
+  $cfmLoadData ver=$v hold="yes"
   :set cfmHost ({})
   :local hasHf [$cfmFileEx ($dir . "/hosts/" . $host . ".rsc")]
   :if ($hasHf) do={ /import file-name=($dir . "/hosts/" . $host . ".rsc") verbose=no }
@@ -43,11 +44,32 @@
   :local def [:tostr ($cfmHost->"portDefault")]
   :if ([:len $def] > 0) do={ :set ($pl->"(übrige)") $def }
   :foreach p,spec in=($cfmHost->"ports") do={ :set ($pl->$p) $spec }
+  # Bonds (D74) und MLAG (D75)
+  :local hm [$cfmMlagOf $host]
+  :if ([:len ($cfmHost->"bonds")] > 0 or [:len $hm] > 0) do={
+    :put "Bonds"
+    :foreach bn,bd in=($cfmHost->"bonds") do={
+      :local md [:tostr ($bd->"mode")]
+      :if ([:len $md] = 0) do={ :set md "802.3ad" }
+      :put ("  " . [$cfmPad $bn 12] . $md . ", Slaves " . [:tostr ($bd->"slaves")])
+    }
+    :if ([:len $hm] > 0) do={
+      :local pri "secondary"
+      :if ($hm->"primary") do={ :set pri "primary" }
+      :put ("  " . [$cfmPad ($hm->"peer") 12] . "MLAG-Peer zu " . ($hm->"partner") . " (" . $pri . "), Slaves " . ($hm->"peerSlaves"))
+      :set ($pl->($hm->"peer")) "*mlag-peer"
+      :foreach bn,bd in=($hm->"bonds") do={
+        :put ("  " . [$cfmPad $bn 12] . "MLAG-Bond, mlag-id " . ($bd->"id") . ", Slaves " . ($bd->"slaves"))
+        :set ($pl->$bn) ($bd->"profile")
+      }
+    }
+  }
   :put "Ports"
   :foreach p,spec in=$pl do={
     :local t ""
     :onerror e in={
-      :local pr [$cfmProfile $spec]
+      :local pr
+      :if ($spec = "*mlag-peer") do={ :set pr ({"tag"=[$cfmVids "*"];"untag"="";"bridge"=true;"edge"="auto";"disabled"=false;"frame"="admit-only-vlan-tagged"}) } else={ :set pr [$cfmProfile $spec] }
       :if (!($pr->"bridge")) do={ :set t "nicht in der Bridge" } else={
         :local u [:tostr ($pr->"untag")]
         :if ([:len $u] > 0) do={ :set t ("untagged " . $u); :set ($vl->$u) "Port" }
@@ -72,6 +94,7 @@
   :foreach vid,why in=$vl do={
     :local vv ($cfmVlans->$vid)
     :local t ([$cfmPad $vid 6] . [$cfmPad [:tostr ($vv->"name")] 12] . [$cfmPad ("Zone " . [:tostr ($vv->"zone")]) 16] . "(" . $why . ")")
+    :if ([:tostr ($vv->"isolate")] = "yes") do={ :set t ($t . ", isoliert (D76)") }
     :if ($rl ~ ",router," and [:tostr ($vv->"l3")] != "no") do={
       :local nn [$cfmNet $vid]
       :if ([:len ($nn->"net")] > 0) do={ :set t ($t . "  " . ($nn->"net") . " Gateway " . [:tostr ($nn->"gw")]) }
@@ -107,6 +130,7 @@
     :if ([:typeof $pin] = "array") do={ :put ("  Pins: " . [:tostr $pin]) }
   }
   :if ([$cfmFileEx ($dir . "/hosts/" . $host . ".post.rsc")]) do={ :put ("hosts/" . $host . ".post.rsc: freie Befehle, hier nicht ausgewertet") }
+  :global cfmMgrData; :set cfmMgrData 0
   :return ""
 }
 
@@ -239,7 +263,7 @@
   :if ([:len $ch] = 0) do={ :put "keine Unterschiede"; :return false }
   :foreach rel,t in=$ch do={ :put ("  " . $t . ": " . $rel) }
   # betroffene Geräte - wie die Manifeste die Dateien zuordnen
-  :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
+  :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"mlag.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
   :local all false
   # authorized_keys.<user> (D65): jedes Gerät mit diesem User
   :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing" or $rel ~ "^authorized_keys\\.") do={ :set all true } }
@@ -264,7 +288,7 @@
   }
   # geänderte Zeilen der Datendateien (lib/ und roles/ nur als Datei)
   :foreach rel,t in=$ch do={
-    :if ($rel ~ "^(global|vlans|profiles|wifi|wireguard|leases)\\.rsc\$" or $rel ~ "^hosts/" or $rel ~ "^authorized_keys\\.") do={
+    :if ($rel ~ "^(global|vlans|profiles|wifi|wireguard|leases|mlag)\\.rsc\$" or $rel ~ "^hosts/" or $rel ~ "^authorized_keys\\.") do={
       :put ""
       :put ($rel . ":")
       :local ta ""

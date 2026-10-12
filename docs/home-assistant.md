@@ -172,10 +172,10 @@ statt `guest` usw.). Für jede SSID einen eigenen `switch`-Block anlegen, mit ei
 
 * **Zustand über die globale Variable `cfmSsidguest`** (in der Integration „Mikrotik Router“
   als „Environment variable sensors“): Der Lese-User sieht `/system/script/environment` gar nicht,
-  RouterOS zeigt globale Variablen über die API nur Usern mit `write` **und** `policy`. Außerdem
-  ändert ein über die API gestartetes Skript die Variable nicht, sie käme erst nach bis zu 10 min
-  nach. Beides im Labor geprüft (RouterOS 7.24.5). Mehr Rechte für den HA-User sind keine Lösung,
-  `policy` erlaubt die Benutzerverwaltung.
+  RouterOS zeigt globale Variablen über die API nur Usern mit `write` **und** `policy` (Labor:
+  7.24.5 und 7.25rc1). Unter 7.24.5 ändert ein über die API gestartetes Skript die Variable außerdem
+  nicht, sie käme erst nach bis zu 10 min nach; ab 7.25 setzt es sie gleich. Mehr Rechte für den
+  HA-User sind keine Lösung, `policy` erlaubt die Benutzerverwaltung.
 * **Nur die Taster der Integration „Mikrotik Router“** („Script switches“: Taster
   `cfm-ssid-guest-on`/`-off`): Schalten geht damit, aber HA kennt den Zustand nicht. Für reines
   Schalten ohne Anzeige reicht das, für einen Schalter mit Zustand braucht es Abschnitt 3.

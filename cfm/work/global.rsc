@@ -27,7 +27,7 @@
     "guest"="*wan";
     "onboard"="*mtupdate"
   };
-  "allow"={"iot-cloud"={"cloud.example.com";"203.0.113.10"}};
+  "allow"={"iot-cloud"={"cloud.example.com";"203.0.113.10";"203.0.113.20:tcp/443,8883"}};
   "rosChannel"="stable";
   "rosMin"="7.22";
   "onboard"={"timeout"="60m";"mtHosts"={"upgrade.mikrotik.com";"download.mikrotik.com";"cdn.mikrotik.com"}};
@@ -56,7 +56,8 @@
 #             "mtupdate" und "allow:…". Internet für eine Zone mit "*" per "*,*wan".
 #             Zonen ohne "*" oder "wan": DNS-Anfragen an externe Server gehen an den Router.
 #  allow      Freigabelisten für policy "allow:<Name>": Hostnamen (RouterOS löst sie
-#             regelmäßig auf), IPs oder Netze.
+#             regelmäßig auf), IPs oder Netze; nur bestimmte Ports mit ":tcp/443,8883" bzw.
+#             ":udp/123" am Eintrag (D76), sonst alle Ports.
 #  rosChannel Update-Kanal beim Onboarding; rosMin = Mindestversion (sonst Abbruch).
 #  onboard    timeout = maximale Dauer einer Onboarding-Sitzung (Port fällt danach zurück).
 #  mgmtAccess Zonen, aus denen Geräte-Management (SSH/Winbox) erlaubt ist.

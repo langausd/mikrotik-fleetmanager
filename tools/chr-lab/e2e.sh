@@ -178,12 +178,15 @@ expect 2 '[:len [/interface/vrrp/find where comment~"^cfm:vrrp"]] >= 4' "sw1: VR
 expect 2 '[:len [/ip/dhcp-server/find where comment~"^cfm:dhcp"]] = 2' "sw1: DHCP für IoT + Gast"
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 0' "sw1: minimale Firewall durch Router-Firewall ersetzt"
 # NAT je Policy-Ziel (D38): Beispiel-policy mgmt/lan/iot/onboard mit *, Gäste per Hostfile wan@10.0.2.99
-expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="masquerade"]] = 4' "sw1: masquerade nur für gekennzeichnete Ziele (4)"
+# Die Freigabeliste iot-cloud hat zwei Adresslisten (mit und ohne Ports, D76) - je eine NAT-Regel
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="masquerade"]] = 5' "sw1: masquerade nur für gekennzeichnete Ziele (5)"
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="src-nat" and src-address-list="cfm-z-guest"]] = 1 and [:tostr [/ip/firewall/nat/get [find where comment~"^cfm:nat" and action="src-nat"] to-addresses]] = "10.0.2.99"' "sw1: feste NAT-Adresse für Gäste (wan@)"
 expect 2 '[:len [/ip/address/find where address="10.0.2.99/32" and interface="ether1" and comment~"^cfm:"]] = 1' "sw1: NAT-Adresse am WAN"
 expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-z-guest" and address="192.168.40.0/24"]] = 1' "sw1: Quellnetz-Liste der NAT-Zone"
 # Freigabeliste (D39) und DNS-Umleitung für Zonen ohne Internet (iot, onboard: je udp+tcp)
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-address-list="cfm-allow-iot-cloud"]] = 1 and [:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud" and comment~"^cfm:"]] = 2' "sw1: Freigabeliste als Policy-Ziel"
+# Eintrag mit Ports (D76): eigene Liste, Regel nur für tcp 443 und 8883
+expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud-tcp443_8883" and address=203.0.113.20]] = 1 and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-address-list="cfm-allow-iot-cloud-tcp443_8883" and protocol="tcp" and dst-port="443,8883"]] = 1' "sw1: Freigabe mit Ports (eigene Liste, tcp 443,8883)"
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and dst-port="53"]] = 4' "sw1: DNS-Umleitung für Zonen ohne Internet"
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
@@ -746,6 +749,25 @@ for round in 1 2; do
   a=""; for _ in $(seq 1 30); do a=$(mgr ':global cfmAU; :put ("AU=" . $cfmAU)' | grep -o 'AU=.*'); [ "$a" != "AU=x" ] && break; sleep 3; done
   [ "$a" = "AU=keep" ] && ok "cm1: Hostfile gilt im ganzen Apply trotz paralleler Manager-Befehle (Runde $round)" || { bad "cm1: Apply mit parallelem \$cfmLoadData: '$a'"; break; }
 done
+
+step "14j. Manager-Befehl läuft schon, dann startet der Apply auf dem Manager (Sperre cfmMgrData)"
+# Gegenrichtung zu 14i: $cfmCheck und $cfmShow importieren die Hostfiles aller Geräte in cfmHost, den
+# ein laufender Apply liest. Ohne Sperre bekäme cm1 z.B. die Ports von sw1 (ether3 zu cm2 fiele aus
+# der Bridge) oder stp="none" von cm2
+brz() { r 1 ':local b [/interface/bridge/find where name=bridge]; :put ("P=" . [:len [/interface/bridge/port/find where !dynamic]] . " M=" . [/interface/bridge/get $b protocol-mode] . " I=" . [/interface/bridge/get $b igmp-snooping])' | grep -o 'P=.*'; }
+b0=$(brz)
+r 1 ':global cfmT14j; :set cfmT14j "busy"; :execute script="/system script run cfm-mgr; :global cfmCheck; :global cfmShow; :global cfmT14j; :for i from=1 to=6 do={ :local x [\$cfmCheck]; \$cfmShow host=sw1; \$cfmShow host=cm2 }; :set cfmT14j \"fertig\""' >/dev/null
+sleep 4
+mgr ':global cfmAU; :set cfmAU "x"; $cfmPush host=cm1 force=yes' >/dev/null
+a=""; for _ in $(seq 1 60); do a=$(mgr ':global cfmAU; :put ("AU=" . $cfmAU)' | grep -o 'AU=.*'); [ "$a" != "AU=x" ] && break; sleep 3; done
+for _ in $(seq 1 60); do [ "$(r 1 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1)" = 0 ] && break; sleep 2; done
+for _ in $(seq 1 90); do r 1 ':global cfmT14j; :put $cfmT14j' | grep -q fertig && break; sleep 2; done
+b1=$(brz)
+[ -n "$b0" ] && [ "$b0" = "$b1" ] && [ "$a" = "AU=keep" ] && [ "$(stat cm1 res)" = ok ] \
+  && ok "cm1: Apply während \$cfmCheck/\$cfmShow mit eigenem Hostfile ($b1)" \
+  || { bad "cm1: Apply während \$cfmCheck/\$cfmShow: vorher '$b0', nachher '$b1', $a, res $(stat cm1 res)"; diag step14j; }
+w=$(r 1 ':foreach i in=[/log/find where message~"^cfm: Apply wartete"] do={ :put [/log/get $i message] }' | tail -1)
+[ -n "$w" ] && echo "    ($w)" || echo "    (Apply fiel in eine Lücke zwischen zwei Befehlen, dort ohne Wartezeit)"
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

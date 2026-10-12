@@ -8,7 +8,7 @@
 #
 # Netz: nic0 = QEMU-User-Net (ether1, DHCP 10.0.2.x, SSH-Forward auf 22<i>0; 10.0.2.100:80 führt zu
 #       127.0.0.1:LABPORT+90 auf dem Host, dort lauscht im Test tools/upgrade-mirror.py, D63),
-#       Stern: vm1 ether2..etherN <-> vm2..vmN ether2 (Trunks, siehe topo()).
+#       Stern: vm1 ether2..etherN <-> vm2..vmN ether2 (Trunks), andere Topologien per LABLINKS (topo()).
 #       vm1 muss zuerst starten (lauscht), "start" startet in dieser Reihenfolge.
 # Voraussetzung: CHR-Image (raw .img) in $CHR_IMG oder im Arbeitsverzeichnis $LAB.
 set -euo pipefail
@@ -26,19 +26,24 @@ port() { echo $((LABPORT + $1 * 10)); }
 # Weiterleitung 10.0.2.100:80 -> Host LABPORT+90 (Spiegel für das eingebaute Update), nur mit nc
 gfwd() { command -v nc >/dev/null && echo ",guestfwd=tcp:10.0.2.100:80-cmd:nc 127.0.0.1 $((LABPORT + 90))"; }
 
-# Stern-Topologie: vm1 (Manager) hat ether2..etherN je als Punkt-zu-Punkt-Link zu
-# vm2..vmN (TCP-Socket). Kein Multicast-Hub: der spiegelt jeder VM ihre eigenen
-# Frames zurück, RSTP sieht dann eine Schleife und blockiert den Port.
+# Topologie: Punkt-zu-Punkt-Links (TCP-Socket), Standard Stern: vm1 (Manager) hat ether2..etherN
+# zu vm2..vmN (je ether2). LABLINKS="1-2 2-3 2-3 2-4 3-4" legt die Links frei fest (je Link ein
+# Paar VM-Nummern, kleinere zuerst; doppelt = zwei Kabel); die Ports zählen je VM in der Reihenfolge
+# der Liste ab ether2. Kein Multicast-Hub: der spiegelt jeder VM ihre eigenen Frames zurück, RSTP
+# sieht dann eine Schleife und blockiert den Port.
+links() { # links <anzahl>
+  if [ -n "${LABLINKS:-}" ]; then echo "$LABLINKS"; else local j; for j in $(seq 2 "$1"); do printf '1-%s ' "$j"; done; fi
+}
 topo() { # topo <vm> <anzahl>
-  local i=$1 n=$2 j a=""
-  if [ "$i" = 1 ]; then
-    for j in $(seq 2 "$n"); do
-      a="$a -netdev socket,id=t$j,listen=127.0.0.1:$((LABSOCK + j)) -device virtio-net-pci,netdev=t$j,mac=52:54:00:00:01:0$j"
-    done
-  else
-    a="-netdev socket,id=t1,connect=127.0.0.1:$((LABSOCK + i)) -device virtio-net-pci,netdev=t1,mac=52:54:00:00:0$i:02"
-  fi
-  echo "$a"
+  local i=$1 n=$2 l a b k=0 e=1 m args=""
+  for l in $(links "$n"); do
+    k=$((k + 1)); a=${l%-*}; b=${l#*-}
+    [ "$a" -lt "$b" ] || { echo "LABLINKS: $l - kleinere VM zuerst (sie lauscht und startet vorher)" >&2; exit 1; }
+    [ "$a" = "$i" ] || [ "$b" = "$i" ] || continue
+    e=$((e + 1)); m=connect; [ "$a" = "$i" ] && m=listen
+    args="$args -netdev socket,id=t$k,$m=127.0.0.1:$((LABSOCK + k)) -device ${LABNIC:-virtio-net-pci},netdev=t$k,mac=$(printf '52:54:00:00:%02x:%02x' "$i" "$e")"
+  done
+  echo "$args"
 }
 
 askpass() { # leeres Passwort fuer frische CHRs

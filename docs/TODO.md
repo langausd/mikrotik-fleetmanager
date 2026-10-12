@@ -19,6 +19,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-12 abends:** Lesezeichen „cfm-WLAN“ (D77): Clients je AP live und Roaming als
+  Zeitleiste, für Standorte ohne Home Assistant. Getestet gegen eine Attrappe der REST-API; offen ist
+  der Test mit echten Clients (siehe „Noch nicht mit echter Hardware getestet“).
 * **Erledigt am 2026-10-12 (sechste Remote-Runde):** 10 (Bonds im Hostfile, D74; MLAG-Paare in
   `mlag.rsc`, D75), 20 bis auf den Proxy (isolierte VLANs über APs und Switches hinweg, Freigaben mit
   Ports je Eintrag, D76). Review von D70–D73 vor dem nächsten Framework-Update einer Site: Die Sperre `cfmApplyBusy` wirkte nur
@@ -64,7 +67,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
 * **Vorbereitet, Test nur mit Hardware:** MLAG auf CRS3xx (Hardware-Offload, Ausfall eines Knotens,
   Umbau im laufenden Betrieb), isolierte VLANs an echten APs (gibt der CAPsMAN `interface-list` an die
-  CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`.
+  CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`; Lesezeichen
+  cfm-WLAN mit echten Clients (D77).
+* **Zur Entscheidung:** 50 (Broadcasts füllen das Log der Nicht-Router).
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -161,6 +166,11 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   Apply)? Sieht der Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000
   `vlan`; die MAC-Regeln greifen in beiden Fällen)? Trennt Client-Isolation auch zwischen den Radios
   eines AP? An Switches: `hw=no` an isolierten Access-Ports (Durchsatz über die CPU).
+* **Lesezeichen cfm-WLAN (D77)** mit echten Clients: Feldnamen der Registrierungstabelle per REST
+  (`interface`, `mac-address`, `signal`, `uptime`, `band`, `tx-rate`/`rx-rate` angenommen; beim
+  Nachsehen am 2026-10-12 hing an keinem AP ein Client), Format der Log-Zeilen beim Verbinden,
+  Trennen und Roaming (Parser erwartet `<MAC>@<Interface> connected|disconnected|roamed …`), ob die
+  Ereignisse im Log des CAPsMAN oder nur der CAPs stehen; Roaming-Test mit offener Ansicht.
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
 
@@ -599,3 +609,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       monitoring, alerts“: eine zentrale Verwaltung von MikroTik selbst – beobachten, wie weit sie reicht.
     * „wifi - add a default-country parameter in radio settings“, „ethernet - move the port bandwidth
       setting to the switch port menu“ (cfm setzt beides nicht).
+50. **Broadcasts füllen das Log der Nicht-Router** (Befund 2026-10-12) – Die minimale Firewall (D31)
+    loggt jedes verworfene Paket an die eigenen VLAN-Interfaces, auch Broadcasts, die nur das Gerät
+    selbst treffen (z.B. Discovery von Medienservern, UDP 32412/32414, alle paar Sekunden). An einem
+    Standort waren auf APs und CAPsMAN über 80 % der 1000 Zeilen des RAM-Logs solche Einträge, das Log
+    reichte nur etwa 7 h zurück – WLAN-Ereignisse (D77) und Fehler fallen früh heraus, über Syslog
+    entsteht dieselbe Menge. Vorschlag zur Entscheidung: Broadcast/Multicast ohne Log verwerfen
+    (`dst-address-type=broadcast,multicast`) oder das Log enger begrenzen.

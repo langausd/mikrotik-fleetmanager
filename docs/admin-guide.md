@@ -616,7 +616,8 @@ Radios zurück) und beim neuen setzen.
 ### 6.7 Clients je AP in Home Assistant (D47)
 
 Die Registration-Tabelle des CAPsMAN zeigt alle Clients aller APs. Für einen Monitoring-Host (z.B.
-Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für dessen Adresse:
+Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für dessen Adresse (ohne Home
+Assistant: Lesezeichen „cfm-WLAN“, 8.10):
 
 1. `global.rsc`: `"capsmanApi"={"from"={"<ip-des-HA>/32"};"user"="homeassistant"}`, Passwort in den
    Vault: `$cfmSecret key=user.homeassistant value=…`, `$cfmRelease` (bzw. Ringe durchlaufen lassen).
@@ -912,6 +913,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
 | Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle ansehen | `$cfmChannels` |
+| Clients je AP und Roaming verfolgen | Lesezeichen „cfm-WLAN“ in WebFig des CAPsMAN (8.10) |
 | Kanalplan für 2,4 GHz neu bestimmen | `$cfmWifiScan` (Clients wechseln kurz), Vorschlag prüfen, Zeile `radios` in `wifi.rsc` übernehmen → Release (8.7) |
 
 ### 8.5 Überblick
@@ -1153,6 +1155,30 @@ Empfängers muss der Manager erreichen (Route, Firewall des Gateways); das MGMT-
 Internet. Einrichtung in Home Assistant: [home-assistant.md](home-assistant.md#7-benachrichtigungen-von-cfm).
 Zum Ausprobieren ohne Home Assistant: `tools/chr-lab/notify-sink.py <port> <datei> --bind 0.0.0.0`
 schreibt jede Meldung als JSON-Zeile.
+
+### 8.10 WLAN-Clients und Roaming ansehen (D77)
+
+Ohne Home Assistant (6.7) zeigt das Lesezeichen **cfm-WLAN** die Clients aller APs direkt in WebFig
+des CAPsMAN:
+
+1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm-WLAN“ in die
+   Lesezeichen-Leiste ziehen (dieselbe Seite wie der cfm-Editor, 8.1).
+2. WebFig des **CAPsMAN** öffnen (Gerät mit Rolle `capsman`, ohne sie der Primary-Manager), das
+   Lesezeichen anklicken und anmelden – ein User mit Leserecht genügt. Voraussetzung ist der Dienst
+   `www` in `services`.
+3. Oben je AP eine Kachel mit Frequenzen und den verbundenen Clients (Band, Signal in dBm, seit
+   wann; nach einem Wechsel kurz gelb mit dem vorigen AP). Darunter die Zeitleiste: eine Zeile je
+   Client, Farbe = AP (kräftig 5/6 GHz, blass 2,4 GHz), Linie = Signal von −90 bis −30 dBm, ▼ =
+   Wechsel; der Tooltip nennt Interface, Zeitraum und Signalbereich. Ganz unten die Ereignisse
+   (Wechsel, verbunden, getrennt).
+
+Abfrage alle 5, 10 oder 30 s, Zeitraum 15 min bis 24 h. Das Lesezeichen ändert nichts am Gerät.
+Aufgezeichnet wird nur, solange die Ansicht offen ist; das Aufgezeichnete bleibt 24 h im Browser
+(`localStorage`), auch über ein Neuladen hinweg. Was vor dem Öffnen geschah, liest es aus dem Log
+des CAPsMAN (schmale Abschnitte); das reicht nur so weit zurück wie dessen RAM-Puffer (1000 Zeilen). Namen kommen aus den DHCP-Leases
+des Geräts (Name aus `leases.rsc`, sonst der Hostname des Clients), sonst steht die MAC da; ein Klick
+auf den Namen vergibt einen eigenen (nur im Browser). Zum Roaming-Test die Ansicht beim Durchlaufen
+des Gebäudes offen lassen, Abfrage alle 5 s.
 
 ---
 

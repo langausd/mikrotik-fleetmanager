@@ -381,6 +381,20 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
     :if ([:len $lid] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmremote" topics=$t }
   }
 }
+# RAM-Log ohne system,info (D79): RouterOS loggt jede Konfig-Änderung (bei Skripten samt Quelltext) und
+# jede Anmeldung als system,info - ein Framework-Update verdrängte so die Hälfte der 1000 Zeilen des
+# Managers. logMemory = Topics der Regel info -> memory (RouterOS-Standard "info"); Syslog bekommt alles.
+:global cfmStat
+:local lm [:tostr ($cfmG->"logMemory")]
+:if ([:len $lm] = 0) do={ :set lm "info,!system" }
+:foreach id in=[/system/logging/find where action="memory"] do={
+  :local t [/system/logging/get $id topics]
+  :if ([:pick $t 0] = "info" and [:tostr $t] != [:tostr [:toarray $lm]]) do={
+    $cfmRun "/system/logging/set" I=$id P=({"topics"=$lm})
+    :set ($cfmStat->"set") (($cfmStat->"set") + 1)
+    $cfmLog ("gesetzt: /system/logging: topics=" . $lm)
+  }
+}
 
 # --- Admin-Benutzer (Passwort + Aktivierung kommen per Secret-Push) ---
 :foreach u,grp in=($cfmG->"users") do={

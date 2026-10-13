@@ -11,6 +11,7 @@
   "ntp"="192.168.10.1";
   "dns"="192.168.10.1";
   "syslog"="192.168.10.2";
+  "logMemory"="info,!system";
   "interval"="15m";
   "reapply"="1d";
   "watchdog"="5m";

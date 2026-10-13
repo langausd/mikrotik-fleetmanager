@@ -19,6 +19,12 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-13 nachmittags:** RAM-Log ohne `system,info` (D79): Nach einem Framework-Update
+  bestand der Puffer des Managers zur Hälfte aus Skript-Quelltext (RouterOS loggt Konfig-Änderungen samt
+  Wert); Schlüssel `logMemory` in `global.rsc`.
+  Dazu `tools/upgrade-mirror.py`: Zwei gleichzeitige Anfragen nach einer noch nicht zwischengespeicherten
+  Datei schrieben dieselbe `.part`-Datei, die zweite brach ab (Labor mit leerem Zwischenspeicher, das
+  eingebaute Update scheiterte); jetzt lädt eine Sperre jede Datei nur einmal.
 * **Erledigt am 2026-10-13:** 50 (D78): MNDP mit Quelle `0.0.0.0` verwirft der input-Block still (an
   der Quelle nicht ohne Verlust abstellbar, siehe D78); ein Gerät mit eigener Adresse in einem
   Client-VLAN verwirft dort still (Site-Regel in der `post.rsc`).

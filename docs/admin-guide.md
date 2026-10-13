@@ -215,6 +215,7 @@ irgendetwas ausgerollt wird.
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
 | `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, D62). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
 | `tz`, `ntp`, `dns`, `syslog` | Zeitzone, NTP/DNS für Nicht-Router, Syslog-Ziel | |
+| `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (D79). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
 | `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (D57) | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |

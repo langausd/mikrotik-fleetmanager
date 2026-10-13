@@ -79,6 +79,8 @@ expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 9 and [/i
 expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 8' "sw1: minimale Firewall IPv6 (8 Regeln)"
 expect 2 '[/ip/neighbor/discovery-settings/get discover-interface-list] = "DISC" and [:len [/interface/list/member/find where list="DISC" and interface="ether2"]] = 1' "sw1: Nachbarsuche auf den Bridge-Ports (Liste DISC)"
 expect 2 '[/ip/service/get [:pick [find where name="reverse-proxy" and !dynamic] 0] disabled]' "sw1: Dienst reverse-proxy aus (ab Werk offen auf 443, TODO 30)"
+r 2 '/system/script/add name=cfm-e2e-x source=":put 1"; /system/script/remove cfm-e2e-x; :log info "cfm-e2e-b"' >/dev/null
+expect 2 '[:tostr [/system/logging/get [find where action="memory" and default and topics~"info"] topics]] = "info;!system" and [:len [/log/find where message="cfm-e2e-b"]] = 1 and [:len [/log/find where topics~"system" and message~"cfm-e2e-x"]] = 0' "sw1: RAM-Log ohne system,info, script,info kommt an (D79)"
 expect 2 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "sw1: SSH-Client ohne Host-Key-Prüfung (D71)"
 case "$(stat sw1 ros)" in *" ("*) ok "sw1: RouterOS-Version mit Kanal gemeldet (bleibt beim Manager Text, 7.25)";; *) bad "sw1: ros=$(stat sw1 ros)";; esac
 

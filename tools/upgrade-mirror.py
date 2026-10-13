@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 import urllib.request
 
@@ -50,6 +51,10 @@ class Mirror:
     def __init__(self, ver, cache, offline=False):
         self.ver, self.cache, self.offline = ver, cache, offline
         self.newest = f"{ver} {int(time.time())}\n".encode()
+        # Der Server bedient Anfragen parallel (RouterOS fragt HEAD und GET derselben Datei zugleich):
+        # ohne Sperre schrieben beide dieselbe .part-Datei, und der zweite fand sie nach dem Umbenennen
+        # nicht mehr (Labor 2026-10-13, leerer Zwischenspeicher)
+        self.lock = threading.Lock()
 
     def local(self, rel):
         return os.path.join(self.cache, "routeros", rel)
@@ -61,6 +66,12 @@ class Mirror:
             return path
         if self.offline:
             return None
+        with self.lock:
+            return self._download(rel, path)
+
+    def _download(self, rel, path):
+        if os.path.isfile(path):                            # inzwischen von einer anderen Anfrage geladen
+            return path
         os.makedirs(os.path.dirname(path), exist_ok=True)
         tmp = path + ".part"
         try:

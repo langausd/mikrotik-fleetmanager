@@ -19,6 +19,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
+* **Erledigt am 2026-10-13:** 50 an der Quelle (D78): VMs mit `stp="none"` suchen Nachbarn ohne MNDP;
+  ein Gerät mit eigener Adresse in einem Client-VLAN verwirft dort still (Site-Regel in der `post.rsc`).
 * **Erledigt am 2026-10-12 abends:** Lesezeichen „cfm-WLAN“ (D77): Clients je AP live und Roaming als
   Zeitleiste, für Standorte ohne Home Assistant. Getestet gegen eine Attrappe der REST-API; offen ist
   der Test mit echten Clients (siehe „Noch nicht mit echter Hardware getestet“).
@@ -69,7 +71,6 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Umbau im laufenden Betrieb), isolierte VLANs an echten APs (gibt der CAPsMAN `interface-list` an die
   CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`; Lesezeichen
   cfm-WLAN mit echten Clients (D77).
-* **Zur Entscheidung:** 50 (Broadcasts füllen das Log der Nicht-Router).
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -609,7 +610,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       monitoring, alerts“: eine zentrale Verwaltung von MikroTik selbst – beobachten, wie weit sie reicht.
     * „wifi - add a default-country parameter in radio settings“, „ethernet - move the port bandwidth
       setting to the switch port menu“ (cfm setzt beides nicht).
-50. **Broadcasts füllen das Log der Nicht-Router** (Befund 2026-10-12) – Die minimale Firewall (D31)
+50. ~~**Broadcasts füllen das Log der Nicht-Router**~~ – *erledigt 2026-10-13 an der Quelle (D78):* VMs mit
+    `stp="none"` ohne MNDP (LLDP/CDP bleiben, der Netzplan zeigt weiter den Host der VM); das Gerät mit
+    eigener Adresse im Client-VLAN verwirft dort per `local-input` still (Site-Regel, an dem Standort
+    ausgerollt: kein `cfm-drop` mehr aus dem VLAN). Befund 2026-10-12: Die minimale Firewall (D31)
     loggt jedes verworfene Paket an das Gerät selbst (Chain `input`), auch Broadcasts. Weitergeleitet
     wird davon alles normal: Der Filter sieht nur, was an das Gerät geht, nicht den Verkehr der Clients
     untereinander. Zwei Quellen an einem Standort, jeweils über 80 % der 1000 Zeilen des RAM-Logs (es
@@ -622,5 +626,5 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * **Gerät mit eigener Adresse in einem Client-VLAN** (z.B. ein AP mit NAT-Käfig per `post.rsc`):
       bekommt jeden Broadcast dieses VLANs zugestellt (Discovery von Medienservern UDP 32412/32414,
       SSDP, NetBIOS, MNDP anderer Geräte).
-    Vorschlag zur Entscheidung: Broadcast/Multicast an das Gerät ohne Log verwerfen
-    (`dst-address-type=broadcast,multicast` vor der Log-Regel), oder das Log enger begrenzen.
+    Verworfen: Broadcast/Multicast an das Gerät ohne Log verwerfen bzw. das Log enger begrenzen
+    (behandelt nur die Wirkung, der Nutzer wollte die Ursachen beheben).

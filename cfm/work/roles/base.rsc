@@ -269,7 +269,12 @@ $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($c
 $cfmEnsure m="/interface/list" k="il:MGMT" n=({"name"="MGMT"}) p=({"name"="MGMT"})
 $cfmEnsure m="/interface/list/member" k="ilm:MGMT" n=({"list"="MGMT";"interface"=$mif}) p=({"list"="MGMT";"interface"=$mif})
 $cfmEnsure m="/interface/list/member" k="ilm:DISC:mgmt" n=({"list"="DISC";"interface"=$mif}) p=({"list"="DISC";"interface"=$mif})
-$cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="DISC"})
+# VM mit Karte je VLAN (stp="none", D40): ohne MNDP. Über die Karten (Bridge-Ports ohne Adresse) ginge
+# es mit Quelle 0.0.0.0 an alle Geräte des VLANs, deren Firewall es verwirft und loggt (TODO 50); LLDP
+# und CDP sind kein IP und zeigen im Netzplan weiter den Host der VM
+:local dproto "cdp,lldp,mndp"
+:if ($proto = "none") do={ :set dproto "cdp,lldp" }
+$cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="DISC";"protocol"=$dproto})
 $cfmSet m="/tool/mac-server" p=({"allowed-interface-list"="none"})
 $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 

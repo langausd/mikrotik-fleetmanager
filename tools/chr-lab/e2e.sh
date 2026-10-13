@@ -332,6 +332,10 @@ for _ in $(seq 1 40); do [ -n "$(stat sw1 nb)" ] && [ -n "$(stat cm2 nb)" ] && [
 out=$(mgr '$cfmLinks')
 echo "$out" | grep -qE "^(cm1 +ether2 +sw1 +ether2|sw1 +ether2 +cm1 +ether2) +ok" && ok "Link cm1:ether2 - sw1:ether2 (beide Seiten melden)" || { bad "Link cm1-sw1 fehlt"; echo "$out" | tail -8; }
 echo "$out" | grep -qE "^(cm1 +ether3 +cm2 +ether2|cm2 +ether2 +cm1 +ether3) +ok" && ok "Link cm1:ether3 - cm2:ether2 (beide Seiten melden)" || bad "Link cm1-cm2 fehlt"
+# cm2 hat stp="none" (VM mit Karte je VLAN, D40): ohne MNDP (Quelle 0.0.0.0 über die Karten, TODO 50),
+# der Link oben kommt per LLDP; sw1 behält MNDP
+expect 3 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]] = "nil" and [:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "lldp"]] = "num"' "cm2 (stp=none): Nachbarsuche ohne MNDP, LLDP bleibt (D78)"
+expect 2 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]] = "num"' "sw1: Nachbarsuche mit MNDP"
 expect 1 '[/file/get [find where name="cfm/state/netzplan.md"] contents] ~ "graph LR"' "netzplan.md mit Mermaid-Diagramm"
 mgr '$cfmLinks accept=yes' | grep -q "Baseline gespeichert: 2 Links" && ok "Baseline mit 2 Links eingefroren" || bad "Baseline"
 mgr ':global e2eH [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eH . ":set (\$cfmHost->\"links\") {\"ether2\"=\"cm1:ether3\"}\n")' >/dev/null

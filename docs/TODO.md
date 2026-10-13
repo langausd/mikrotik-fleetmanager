@@ -17,6 +17,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
+* **Neu (Idee, 2026-10-13):** 51 (Kanalplanung mit Zigbee, Thread, Bluetooth und Milight: andere Netze
+  bei der Wahl der WLAN-Kanäle berücksichtigen, Kanal für neue 802.15.4-Netze vorschlagen).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
 * **Erledigt am 2026-10-13 nachmittags:** RAM-Log ohne `system,info` (D79): Nach einem Framework-Update
@@ -642,3 +644,43 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Verworfen: Broadcast/Multicast allgemein ohne Log verwerfen bzw. das Log enger begrenzen
     (behandelt nur die Wirkung, der Nutzer wollte die Ursachen beheben); für MNDP mit Quelle `0.0.0.0`
     blieb nur der Empfänger, und die Regel trifft genau diese Pakete.
+
+51. **Kanalplanung mit den anderen Funknetzen im 2,4-GHz-Band** (Idee des Nutzers, 2026-10-13) –
+    `$cfmWifiScan`/`$cfmChannels` (D56) sehen nur WLAN. Im selben Haus funken oft auch Zigbee, Thread,
+    Bluetooth (classic und LE) und proprietäre Funkbrücken (z.B. Milight). Beides berücksichtigen:
+    * **Andere Netze bei der Wahl der WLAN-Kanäle:** Site-Daten (z.B. ein Schlüssel in `wifi.rsc`)
+      nennen die Netze mit Art und Kanal; `$cfmChannels` rechnet sie in die Kosten ein oder schließt
+      WLAN-Kanäle aus, die ein Netz mit festem Kanal überdecken, und warnt, wenn ein Pin das tut.
+    * **Kanalvorschlag für neue Netze:** Für ein 802.15.4-Netz mit Kanal `auto` (ein neues Thread- oder
+      Zigbee-Netz) den Kanal mit dem größten Abstand zu den WLAN-Kanälen des Plans und zu den übrigen
+      802.15.4-Netzen vorschlagen; 26 nur nachrangig (manche Geräte beherrschen ihn nicht oder nur mit
+      weniger Leistung).
+
+    | Funk | Kanäle | Verhalten |
+    |---|---|---|
+    | WLAN 20 MHz | Mitte 2407 + 5·n MHz, belegt Mitte ±10 MHz | fester Kanal je AP (Pins) |
+    | 802.15.4 (Zigbee, Thread) | 11–26: 2405 + 5·(k−11) MHz, je etwa 2 MHz | fester Kanal je Netz, jedes Netz einen eigenen. Zigbee wechselt mit Aufwand (schlafende Endgeräte folgen erst beim Aufwachen, manche gar nicht), Thread über das Pending Dataset ohne Neuanlernen |
+    | Bluetooth classic | 79 × 1 MHz, 2402–2480 MHz | springt, AFH meidet belegte Kanäle von selbst |
+    | Bluetooth LE | 40 × 2 MHz, Advertising 37/38/39 = 2402/2426/2480 MHz | Advertising auf festen Kanälen, Daten springen nach Kanalliste |
+    | Milight (LT8900/PL1167) | 2402 + n MHz, je Gerätetyp drei feste Kanäle: RGBW 9/40/71 (2411/2442/2473 MHz), CCT 4/39/74, RGB+CCT 8/39/70 | jeder Befehl auf allen drei Kanälen, ohne Rückmeldung |
+
+    Folgerungen für die beiden Kanalsätze von D56:
+    * **1/5/9/13** deckt 2402–2482 MHz lückenlos ab, jeder 802.15.4-Kanal liegt in einem WLAN-Kanal.
+      Frei wird einer nur, wenn ein WLAN-Kanal im ganzen Haus frei bleibt. Ohne 13 (also **1/5/9**)
+      sind 24–26 frei, 23 liegt nur 2 MHz über WLAN 9. Ein dritter Kanalsatz 1/5/9 (oder allgemein:
+      Sätze aus den geschützten Frequenzen ableiten) fehlt in `$cfmChannels` heute.
+    * **1/6/11:** 15 und 20 liegen in den Lücken, 25 und 26 über 11 (11 endet 2 MHz vor 25). Daher
+      stammt die übliche Zigbee-Empfehlung 15/20/25. Auch BLE 38 und 39 liegen außerhalb.
+    * Milight RGBW: unter 1/5/9/13 liegen alle drei Kanäle in WLAN-Kanälen, unter 1/5/9 ist 2473 MHz frei.
+    * Ein AP direkt neben einem Koordinator kann dessen Empfänger auch auf einem freien Kanal
+      übersteuern: 1–2 m Abstand.
+
+    Offen zur Entscheidung: harter Ausschluss oder Kosten, wo die Daten stehen, ob Bluetooth nur als
+    Hinweis zählt (AFH), ob Messungen der Koordinatoren einfließen (Energie-Scan je 802.15.4-Kanal aus
+    den ZHA-Diagnosedaten bzw. `commissioner energy` in OpenThread; die MikroTik-Radios sehen nur WLAN).
+    Quellen: [Zigbee2MQTT, Zigbee-Netz](https://www.zigbee2mqtt.io/guide/configuration/zigbee-network.html),
+    [OpenThread Channel Manager](https://docs.silabs.com/openthread/2.5.0/openthread-api/api-channel-manager),
+    [TI SWRA475A, BLE-Koexistenz mit WLAN](https://www.ti.com/document-viewer/lit/html/SWRA475A/coexistence-swra4755506),
+    [Argenox, BLE Advertising](https://argenox.com/library/bluetooth-low-energy/ble-advertising-primer),
+    [esp8266_milight_hub, Funkparameter](https://github.com/sidoh/esp8266_milight_hub/blob/master/lib/Radio/MiLightRadioConfig.cpp),
+    [Milight-Funkprotokoll (Hackaday)](https://hackaday.io/project/5888-reverse-engineering-the-milight-on-air-protocol/log/18456-in-the-radio-domain).

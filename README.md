@@ -206,8 +206,9 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Vor jedem Secret-Push beweist das Gerät per **Challenge-Response**, dass es seinen Geräteschlüssel
   kennt. Ein Gerät, das sich nur unter der IP ausgibt, bekommt keine Secrets.
 * **Minimale Firewall** auf Switches, APs und Managern: nur Antworten, ICMP und Management-Netze
-  (MGMT, `mgmtAccess`, `mgmtExtra`), Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. IPv6
-  auf allen Geräten nur ICMPv6 und Link-Local aus dem MGMT-VLAN. Eigene Regeln: Chain `local-input`.
+  (MGMT, `mgmtAccess`, `mgmtExtra`), MNDP mit Quelle `0.0.0.0` still verworfen, der Rest begrenzt
+  geloggt (`cfm-drop`) und verworfen. IPv6 auf allen Geräten nur ICMPv6 und Link-Local aus dem
+  MGMT-VLAN. Eigene Regeln: Chain `local-input`.
 * RouterOS-Pakete lädt nur der Manager; Geräte holen sie per SFTP, RouterOS prüft die Signatur.
   Ausnahme ist das eingebaute Update (`via=internet|mirror`, für Geräte mit wenig Flash): Dort lädt
   das Gerät selbst, beim Spiegel befristet per HTTP über einen statischen DNS-Eintrag – die Signatur

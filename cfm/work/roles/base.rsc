@@ -269,12 +269,9 @@ $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($c
 $cfmEnsure m="/interface/list" k="il:MGMT" n=({"name"="MGMT"}) p=({"name"="MGMT"})
 $cfmEnsure m="/interface/list/member" k="ilm:MGMT" n=({"list"="MGMT";"interface"=$mif}) p=({"list"="MGMT";"interface"=$mif})
 $cfmEnsure m="/interface/list/member" k="ilm:DISC:mgmt" n=({"list"="DISC";"interface"=$mif}) p=({"list"="DISC";"interface"=$mif})
-# VM mit Karte je VLAN (stp="none", D40): ohne MNDP. Über die Karten (Bridge-Ports ohne Adresse) ginge
-# es mit Quelle 0.0.0.0 an alle Geräte des VLANs, deren Firewall es verwirft und loggt (TODO 50); LLDP
-# und CDP sind kein IP und zeigen im Netzplan weiter den Host der VM
-:local dproto "cdp,lldp,mndp"
-:if ($proto = "none") do={ :set dproto "cdp,lldp" }
-$cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="DISC";"protocol"=$dproto})
+# Alle drei Protokolle auf allen Geräten: Winbox findet Geräte nur per MNDP. MNDP über Bridge-Ports
+# ohne Adresse (Quelle 0.0.0.0) verwirft der input-Block der Empfänger still (D78)
+$cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="DISC";"protocol"="cdp,lldp,mndp"})
 $cfmSet m="/tool/mac-server" p=({"allowed-interface-list"="none"})
 $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 
@@ -351,6 +348,9 @@ $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
   }
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"dst-address"="127.0.0.1"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
+  # MNDP über Bridge-Ports ohne Adresse (Quelle 0.0.0.0) still verwerfen, sonst füllt es das Log: Hinter
+  # einem Access-Port (z.B. die Karten einer VM, D40) erreicht es jedes Gerät im VLAN (D78)
+  :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"protocol"="udp";"dst-port"="5678";"src-address"="0.0.0.0"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="log";"log-prefix"="cfm-drop";"limit"="10/1m,5:packet"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="drop"})
   $cfmBlock m="/ip/firewall/filter" k="fwb" l=$r

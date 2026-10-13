@@ -442,7 +442,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
 | `bonds` | Link-Bündel (D74): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
-| `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe D40). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. Die Nachbarsuche läuft dann ohne MNDP, nur LLDP/CDP (D78): Über die Karten ginge MNDP sonst mit Quelle `0.0.0.0` an alle Geräte der VLANs |
+| `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe D40). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
 | `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` |
@@ -1229,7 +1229,8 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   gesperrt.
 * **Minimale Firewall:** Switches, APs und Manager lassen nur Antworten, ICMP und Verbindungen aus
   den Management-Netzen zu (MGMT, `mgmtAccess`, `mgmtExtra`), Manager zusätzlich DHCP für das
-  Onboarding. Der Rest wird begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
+  Onboarding. MNDP mit Quelle `0.0.0.0` (Bridge-Ports ohne Adresse, z.B. hinter den Karten einer VM)
+  wird still verworfen (D78), der Rest begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
   Geräten: nur Antworten, ICMPv6 und Link-Local aus dem MGMT-VLAN. Router behalten ihre
   Zonen-Firewall.
 * **Nachbarsuche:** LLDP/MNDP/CDP läuft auch an Access-Ports; Endgeräte sehen Modell, Version und
@@ -1468,7 +1469,7 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
-| Log voller `cfm-drop input: in:vlan<VID> … 0.0.0.0:5678->255.255.255.255:5678` | MNDP einer VM mit Karte je VLAN ohne `stp="none"` im Hostfile bzw. vor D78, oder eines Geräts außerhalb von cfm | Hostfile der VM: `stp="none"`; fremdes Gerät: dort MNDP abschalten |
+| Log voller `cfm-drop input: in:vlan<VID> … 0.0.0.0:5678->255.255.255.255:5678` | MNDP über einen Bridge-Port ohne Adresse hinter einem Access-Port, z.B. die Karten einer VM (D40); das Gerät hat den Framework-Stand vor D78 | Framework-Update mit Release: der input-Block verwirft es dann still (D78) |
 | Log voller `cfm-drop input: in:vlan<VID>` mit Broadcasts aus einem Client-VLAN | das Gerät hat dort eine eigene Adresse (z.B. Ausgang eines NAT-Käfigs per `post.rsc`) und bekommt jeden Broadcast zugestellt | in der `post.rsc` `{"chain"="local-input";"action"="drop";"in-interface"="vlan<VID>"}` (still, nach den Freigaben, D78) |
 | Agent meldet „kein Manager erreichbar - der Agent läuft als …“ (bzw. nur „kein Manager erreichbar“ und SFTP „authentication failure“) nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
 | Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |

@@ -19,8 +19,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   ausgelagerten WLAN-Teil, D68).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
-* **Erledigt am 2026-10-13:** 50 an der Quelle (D78): VMs mit `stp="none"` suchen Nachbarn ohne MNDP;
-  ein Gerät mit eigener Adresse in einem Client-VLAN verwirft dort still (Site-Regel in der `post.rsc`).
+* **Erledigt am 2026-10-13:** 50 (D78): MNDP mit Quelle `0.0.0.0` verwirft der input-Block still (an
+  der Quelle nicht ohne Verlust abstellbar, siehe D78); ein Gerät mit eigener Adresse in einem
+  Client-VLAN verwirft dort still (Site-Regel in der `post.rsc`).
 * **Erledigt am 2026-10-12 abends:** Lesezeichen „cfm-WLAN“ (D77): Clients je AP live und Roaming als
   Zeitleiste, für Standorte ohne Home Assistant. Getestet gegen eine Attrappe der REST-API; offen ist
   der Test mit echten Clients (siehe „Noch nicht mit echter Hardware getestet“).
@@ -610,8 +611,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       monitoring, alerts“: eine zentrale Verwaltung von MikroTik selbst – beobachten, wie weit sie reicht.
     * „wifi - add a default-country parameter in radio settings“, „ethernet - move the port bandwidth
       setting to the switch port menu“ (cfm setzt beides nicht).
-50. ~~**Broadcasts füllen das Log der Nicht-Router**~~ – *erledigt 2026-10-13 an der Quelle (D78):* VMs mit
-    `stp="none"` ohne MNDP (LLDP/CDP bleiben, der Netzplan zeigt weiter den Host der VM); das Gerät mit
+50. ~~**Broadcasts füllen das Log der Nicht-Router**~~ – *erledigt 2026-10-13 (D78):* MNDP mit Quelle
+    `0.0.0.0` verwirft der input-Block `fwb` still, vor dem Log. Zuerst an der Quelle (`7635c5e`: VMs mit
+    `stp="none"` ohne MNDP), am selben Tag zurückgenommen: Die VM fehlte dann in Winbox, und gezielt nur
+    für die Karte geht es nicht (Labor, D78); das Gerät mit
     eigener Adresse im Client-VLAN verwirft dort per `local-input` still (Site-Regel, an dem Standort
     ausgerollt: kein `cfm-drop` mehr aus dem VLAN). Befund 2026-10-12: Die minimale Firewall (D31)
     loggt jedes verworfene Paket an das Gerät selbst (Chain `input`), auch Broadcasts. Weitergeleitet
@@ -626,5 +629,6 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * **Gerät mit eigener Adresse in einem Client-VLAN** (z.B. ein AP mit NAT-Käfig per `post.rsc`):
       bekommt jeden Broadcast dieses VLANs zugestellt (Discovery von Medienservern UDP 32412/32414,
       SSDP, NetBIOS, MNDP anderer Geräte).
-    Verworfen: Broadcast/Multicast an das Gerät ohne Log verwerfen bzw. das Log enger begrenzen
-    (behandelt nur die Wirkung, der Nutzer wollte die Ursachen beheben).
+    Verworfen: Broadcast/Multicast allgemein ohne Log verwerfen bzw. das Log enger begrenzen
+    (behandelt nur die Wirkung, der Nutzer wollte die Ursachen beheben); für MNDP mit Quelle `0.0.0.0`
+    blieb nur der Empfänger, und die Regel trifft genau diese Pakete.

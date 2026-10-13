@@ -129,8 +129,8 @@ Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und C
 einem PVE-Cluster, Karte je VLAN – dabei kamen D40 (`stp="none"`, Profil `vport`), die
 Namensprüfung im Bootstrap, der Host-Key-Typ nach Reset und der Schutz des Inventars dazu.
 Rollout an einem zweiten Standort (ab 2026-09-26): neun Geräte – CRS328 als Core-Switch ohne Reset
-übernommen (routet noch selbst, D43), hAP be³ als CAPsMAN (D45) und AP (Wi-Fi 7, D44/D48), hAP ax³,
-cAP ax, hEX und L009 als Switches; Onboarding im CAPs-Modus, CAPsMAN-Umzug, lokaler Fallback (D46)
+übernommen (routet noch selbst, D43), hAP be³ als CAPsMAN (D45) und AP (Wi-Fi 7, D44/D48), hAP ax³
+und cAP ax als APs, hEX und L009 als Switches; Onboarding im CAPs-Modus, CAPsMAN-Umzug, lokaler Fallback (D46)
 und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Fehler sind behoben
 ([DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten)). Offen bleiben:
 
@@ -207,9 +207,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   Minute) haben beide `start-time=startup` und laufen deshalb zur selben Sekunde los, im Labor mit
   `mgrTick=1m` jede Minute. Bisher nur als Zeitversatz beobachtet (Onboarding-Test: Status von ob1
   und Rückstellung des Onboarding-Ports einige Sekunden später, einmal ein leerer Status beim Lesen).
-  Vorschlag: Start des Onboarding-Ticks versetzen oder beide Ticks gegenseitig ausschließen.
-  *Teilweise erledigt (D42):* Jeder Tick überspringt sich, solange sein eigener Vorlauf noch läuft;
-  gegeneinander sind die beiden Ticks weiterhin nicht gesperrt.
+  Vorschlag damals: Start des Onboarding-Ticks versetzen oder beide Ticks gegenseitig ausschließen.
+  Vor D57 (D42) übersprang sich nur jeder Tick selbst, solange sein eigener Vorlauf noch lief.
 * ~~**WireGuard-Fernzugang: Rückweg zu cm1 selbst startet nicht zuverlässig ohne Anstoß.**~~ –
   *erledigt, am 2026-09-24 auf Hardware bestätigt:* Nach frischem `nmcli connection up` läuft der
   Verkehr zum MGMT-Netz sofort durch den Tunnel (Quelle ist die Tunnel-Adresse), SSH zu cm1 klappt

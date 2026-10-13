@@ -1076,7 +1076,15 @@ fremden Netz) sinken die Fremdkosten auf 0.
 Grenzen: Gemessen wird am AP, nicht bei den Clients. Fremde Netze mit 40 MHz zählen nur mit ihrem
 Hauptkanal, und fremde APs mit automatischer Kanalwahl wechseln womöglich später. Die Kosten
 bilden die Auslastung der fremden Netze nicht ab, nur ihre Stärke. Den Vorschlag deshalb als
-Anhaltspunkt nehmen und im Betrieb vergleichen (Paketverlust und Abbrüche auf 2,4 GHz).
+Anhaltspunkt nehmen und im Betrieb vergleichen (Paketverlust und Abbrüche auf 2,4 GHz). Die Formel
+wertet einen fremden AP auf demselben Kanal als die stärkste Störung; in der Praxis teilen sich
+Netze auf demselben Kanal die Sendezeit geordnet, halb überlappende stören sich eher.
+
+Andere Funknetze im 2,4-GHz-Band (Zigbee, Thread, Bluetooth, Funkbrücken wie Milight) sieht der
+Scan nicht, sie fehlen in den Kosten (TODO 51). Zigbee und Thread nutzen die Kanäle 11–26 (2405 +
+5 · (k − 11) MHz, je etwa 2 MHz breit). Das Raster 1/5/9/13 überdeckt das ganze Band; funkt im Haus
+ein Zigbee- oder Thread-Netz auf 25 oder 26, Kanal 13 im ganzen Haus frei lassen: 1/6/11 schlägt
+`$cfmWifiScan` direkt vor, 1/5/9 von Hand aus den Kosten wählen.
 
 ### 8.8 WireGuard-Fernzugang
 
@@ -1332,7 +1340,8 @@ aus. Auf GitHub prüft die Action `rsc-check` jeden Push. Das Skript ersetzt wed
 ## 12. Testlabor
 
 `tools/chr-lab/` betreibt RouterOS-CHR-VMs in QEMU/KVM (Stern-Topologie: vm1 ist Manager und
-„Switch“, vm2/vm3 hängen an dessen `ether2`/`ether3`).
+„Switch“, vm2/vm3 hängen an dessen `ether2`/`ether3`). Schritt für Schritt für den Einstieg
+(Voraussetzungen, Image, Ergebnis lesen, Fehlersuche): [tools/chr-lab/README.md](../tools/chr-lab/README.md).
 
 ```bash
 cd tools/chr-lab

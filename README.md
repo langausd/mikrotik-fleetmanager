@@ -81,6 +81,8 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
 | `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, LACP/MLAG und isolierte VLANs `e2e-mlag.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, `seed-mlag*/`, Empfänger für Meldungen `notify-sink.py` |
 
+Anleitung zu jedem Werkzeug: [tools/README.md](tools/README.md), zum Testlabor: [tools/chr-lab/README.md](tools/chr-lab/README.md).
+
 Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `live/m/`, `state/<name>/`, `vault/`.
 
 ## Rollen
@@ -117,7 +119,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
    (Winbox → Files), IP/Uplink oben anpassen, `/import cfm-bootstrap.rsc`. Dann am Manager:
    `$cfmEnroll name=sw1 ip=192.168.10.21 role=switch ring=1`.
 5. **Backup-Manager:** wie ein Gerät, mit `role=switch,manager-backup` enrollen.
-6. **Git-Sicherung (optional):** siehe Kopf von `tools/git-host/cfm-git-sync`, dann `hook` in `global.rsc` setzen.
+6. **Git-Sicherung (optional):** siehe Kopf von `tools/git-host/cfm-git-sync` ([tools/README.md](tools/README.md#git-hostcfm-git-sync)), dann `hook` in `global.rsc` setzen.
 
 ## Tägliche Arbeit (im Terminal des Managers, nach `/system script run cfm-mgr`)
 

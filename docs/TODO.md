@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-12)
+## Übersicht offener Punkte (Stand 2026-10-13)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -12,7 +12,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
 * **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
-* **RouterOS 7.25 (Termin):** seit etwa 2026-10-01 als 7.25rc1 im Kanal `testing` (stable: 7.24.5). Den
+* **RouterOS 7.25 (Termin):** seit etwa 2026-10-01 im Kanal `testing` (7.25rc1, seit 2026-10-09 7.25rc2;
+  stable: 7.24.5). Den
   Labortest aller Skripte mit 7.25 stable (entschieden 2026-10-04); ist sie bis zum geplanten Termin
   (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
@@ -611,6 +612,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * **Labor mit 7.25rc1 (2026-10-12):** alle Skripte grün – `e2e.sh` 292, Onboarding 14/15/18,
       `e2e-vrrp.sh` 79. Mit 7.25 stable nur `e2e.sh` wiederholen, sofern der Changelog nichts Neues
       zu SSH, fetch, Skripten oder `/file` nennt. Abends mit D74–D76: `e2e.sh` 294, `e2e-mlag.sh` grün.
+    * **Labor mit 7.25rc2 (2026-10-13):** alle Skripte grün – `e2e.sh` 298 (mit D79), Onboarding
+      14/15/18, `e2e-vrrp.sh` 79, `e2e-mlag.sh` 72; kein neuer Befund zu cfm.
 49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün (2026-10-12, 292).
     Punkte aus dem Changelog, die cfm berühren können:
     * „l3hw - add VRRP hardware offloading support“: D37 schaltet für VRRP das Routing im Switch-Chip

@@ -462,7 +462,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog; Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog, RAM-Log ohne `system,info` (`logMemory`, D79); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
@@ -928,7 +928,8 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
   und das Alter der letzten Meldung.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
-* Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`).
+* Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`). Konfig-Änderungen
+  und Anmeldungen (`system,info`) stehen nur im Syslog, nicht im RAM-Puffer (`logMemory`, D79).
 * `$cfmCollect host=<name>` holt Status und Export sofort statt beim nächsten Tick.
 
 ### 8.6 RouterOS-Updates

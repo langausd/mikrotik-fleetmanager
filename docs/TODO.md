@@ -296,6 +296,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Proxy als Ziel (transparent, Filter nach Domain) für Geräte, deren Cloud-Adressen häufig
     wechseln. WLAN-Client-Isolation trennt laut MikroTik nur Clients am selben AP – für
     isolierte Zonen über mehrere APs zusätzlich einen Bridge-Filter auf den APs (nur zum Gateway).
+    – **Freigaben je Client** (Wunsch 2026-10-13): eine Freigabeliste nur für einzelne Clients einer
+    Zone gelten lassen (Quelle = Namen aus `leases.rsc` oder IPs), statt für die ganze Zone und ohne
+    eigenes VLAN. Anlass: Ein einzelnes Gerät braucht seine Cloud (z.B. ein PV-Wechselrichter),
+    `iot="*allow:<Liste>"` erlaubt diese Ziele aber jedem Gerät der Zone. Bis dahin gilt sie zonenweit.
 21. ~~**Weniger `/file/find` im Manager-Tick**~~ – *erledigt (D59):* Zugriffe auf bekannte Dateinamen per
     `/file/get <Name>` statt Suche (CHR, 600 Dateien: 0,05 statt 8 ms), `cfmMB` je Sitzung gemerkt,
     `archiveKeep` standardmäßig 5, `$cfmRelease` lädt den Prüfer aus `work/`. Nachtrag 2026-10-11:

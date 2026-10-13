@@ -610,9 +610,17 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * „wifi - add a default-country parameter in radio settings“, „ethernet - move the port bandwidth
       setting to the switch port menu“ (cfm setzt beides nicht).
 50. **Broadcasts füllen das Log der Nicht-Router** (Befund 2026-10-12) – Die minimale Firewall (D31)
-    loggt jedes verworfene Paket an die eigenen VLAN-Interfaces, auch Broadcasts, die nur das Gerät
-    selbst treffen (z.B. Discovery von Medienservern, UDP 32412/32414, alle paar Sekunden). An einem
-    Standort waren auf APs und CAPsMAN über 80 % der 1000 Zeilen des RAM-Logs solche Einträge, das Log
-    reichte nur etwa 7 h zurück – WLAN-Ereignisse (D77) und Fehler fallen früh heraus, über Syslog
-    entsteht dieselbe Menge. Vorschlag zur Entscheidung: Broadcast/Multicast ohne Log verwerfen
-    (`dst-address-type=broadcast,multicast`) oder das Log enger begrenzen.
+    loggt jedes verworfene Paket an das Gerät selbst (Chain `input`), auch Broadcasts. Weitergeleitet
+    wird davon alles normal: Der Filter sieht nur, was an das Gerät geht, nicht den Verkehr der Clients
+    untereinander. Zwei Quellen an einem Standort, jeweils über 80 % der 1000 Zeilen des RAM-Logs (es
+    reichte nur etwa 7 h zurück, WLAN-Ereignisse (D77) und Fehler fallen früh heraus, über Syslog
+    entsteht dieselbe Menge):
+    * **MNDP des Managers in einer VM:** Die Nachbarsuche läuft auf allen Bridge-Ports (D33). Über seine
+      Karte im MGMT-VLAN (D40, ohne eigene Adresse an der Karte) sendet er MNDP (UDP 5678) mit Quelle
+      `0.0.0.0` an 255.255.255.255, alle 30 s. Jedes Gerät im MGMT-VLAN verwirft das (Quelle nicht in
+      `cfm-mgmt`) und loggt es; die MNDP-Pakete mit seiner MGMT-Adresse kommen durch.
+    * **Gerät mit eigener Adresse in einem Client-VLAN** (z.B. ein AP mit NAT-Käfig per `post.rsc`):
+      bekommt jeden Broadcast dieses VLANs zugestellt (Discovery von Medienservern UDP 32412/32414,
+      SSDP, NetBIOS, MNDP anderer Geräte).
+    Vorschlag zur Entscheidung: Broadcast/Multicast an das Gerät ohne Log verwerfen
+    (`dst-address-type=broadcast,multicast` vor der Log-Regel), oder das Log enger begrenzen.

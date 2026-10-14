@@ -56,8 +56,10 @@
 
   // ---------- REST ----------
   async function rest(method, path, body) {
+    // cache: RouterOS schickt zu REST-Antworten Cache-Control max-age=31536000 (7.24.5) - ohne no-store
+    // lieferte der Browser z.B. eine alte Dateiliste oder Job-Liste
     const r = await fetch('/rest' + path, {
-      method, headers: { Authorization: S.auth, 'Content-Type': 'application/json' },
+      method, cache: 'no-store', headers: { Authorization: S.auth, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const t = await r.text();

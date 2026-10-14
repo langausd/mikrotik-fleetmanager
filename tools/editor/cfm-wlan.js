@@ -88,8 +88,10 @@
 
   // ---------- REST ----------
   async function rest(method, path, body) {
+    // cache: RouterOS schickt zu REST-Antworten Cache-Control max-age=31536000 (7.24.5) - ohne no-store
+    // lieferte der Browser alte Registrierungstabellen und eine alte Uhrzeit
     const r = await fetch('/rest' + path, {
-      method, headers: { Authorization: S.auth, 'Content-Type': 'application/json' },
+      method, cache: 'no-store', headers: { Authorization: S.auth, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const t = await r.text();
@@ -150,13 +152,18 @@
     if (!d || isNaN(d)) return 0;
     return raw ? d.getTime() : d.getTime() + S.off;
   }
-  // WLAN-Ereignisse aus dem Log, z.B. "AA:BB:CC:DD:EE:FF@ap1-5g connected, signal strength -61"
+  // WLAN-Ereignisse aus dem Log (CAPsMAN 7.24, Interface mit SSID in Klammern), z.B.
+  // "AA:BB:CC:DD:EE:FF@ap1-5g(Demo) connected, signal strength -61"
+  // "AA:BB:CC:DD:EE:FF@ap1-5g(Demo) roamed to AA:BB:CC:DD:EE:FF@ap2-6g(Demo), signal strength -77"
+  // Bei roamed ist iface das neue Interface, prev das alte.
   async function loadLog() {
     let l;
     try { l = await rest('POST', '/log/print', { '.proplist': ['.id', 'time', 'topics', 'message'] }); } catch (e) { l = await rest('GET', '/log'); }
+    const MI = '([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})@([^\\s,(]+)(?:\\([^)]*\\))?';
+    const re = new RegExp(MI + '[:,]?\\s+(connected|disconnected|roamed)\\b(?:\\s+to\\s+' + MI + ')?[,:]?\\s*(.*)$');
     for (const x of l || []) {
       const msg = String(x.message || '');
-      const m = msg.match(/([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})@([^\s,]+?)[:,]?\s+(connected|disconnected|roamed)\b[,:]?\s*(.*)$/);
+      const m = msg.match(re);
       if (!m) continue;
       const k = x['.id'] + '|' + msg;
       if (S.logKeys[k]) continue;
@@ -164,7 +171,8 @@
       const t = devTime(x.time);
       if (!t) continue;
       const sg = msg.match(/signal(?: strength)?[:=]?\s*(-\d+)/i);
-      S.logEv.push({ t, mac: m[1].toUpperCase(), iface: m[2], kind: m[3], sig: sg ? +sg[1] : null, txt: m[4] });
+      const to = m[3] === 'roamed' && m[5];
+      S.logEv.push({ t, mac: m[1].toUpperCase(), iface: to || m[2], prev: to ? m[2] : '', kind: m[3], sig: sg ? +sg[1] : null, txt: m[6] });
     }
     S.logEv = S.logEv.filter((e) => e.t > Date.now() - KEEP).sort((a, b) => a.t - b.t);
   }
@@ -357,11 +365,18 @@
       };
       logSegs(mac).forEach((s) => seg(s, true));
       (S.hist[mac] || []).forEach((s) => seg(s, false));
-      for (const e of S.ev) {
-        if (e.mac !== mac || e.t < t0 || (e.kind !== 'roam' && e.kind !== 'reconnect')) continue;
-        const l = sv('path', { d: 'M' + x(e.t) + ' ' + (y - 2) + 'l-4 -5h8z', fill: '#1d2321' });
-        l.append(tip(hms(e.t) + ' ' + evTxt(e)));
+      const mark = (t, txt) => {
+        const l = sv('path', { d: 'M' + x(t) + ' ' + (y - 2) + 'l-4 -5h8z', fill: '#1d2321' });
+        l.append(tip(hms(t) + ' ' + txt));
         g.append(l);
+      };
+      const live = S.ev.filter((e) => e.mac === mac && e.t >= t0 && (e.kind === 'roam' || e.kind === 'reconnect'));
+      live.forEach((e) => mark(e.t, evTxt(e)));
+      // Wechsel aus dem Log, sofern nicht schon live erkannt (Abfrageabstand + Spielraum)
+      for (const e of S.logEv) {
+        if (e.mac !== mac || e.t < t0 || e.kind !== 'roamed') continue;
+        if (live.some((v) => Math.abs(v.t - e.t) <= (S.every + 10) * 1000)) continue;
+        mark(e.t, logTxt(e));
       }
     });
     if (!rows.length) g.append(sv('text', { x: LW, y: TOP + 14, class: 'ax' }, 'noch keine Daten in diesem Zeitraum'));
@@ -376,10 +391,10 @@
   }
   // Log-Ereignis wie die übrigen: AP und Band statt Interface, Grund ohne Signalangabe
   function logTxt(e) {
-    const f = S.ifs[e.iface];
-    const w = f ? f.ap + ' ' + bandTxt(f.band) : e.iface;
+    const ifTxt = (n) => { const f = S.ifs[n]; return f ? f.ap + ' ' + bandTxt(f.band) : n; };
+    const w = (e.prev ? ifTxt(e.prev) + ' → ' : '') + ifTxt(e.iface);
     const r = e.txt.replace(/,?\s*signal(?: strength)?[:=]?\s*-\d+/i, '').replace(/^[,\s]+/, '');
-    return { connected: 'verbunden an ', disconnected: 'getrennt von ', roamed: 'gewechselt zu ' }[e.kind] + w +
+    return { connected: 'verbunden an ', disconnected: 'getrennt von ', roamed: 'Wechsel ' }[e.kind] + w +
       (e.sig !== null ? ' (' + e.sig + ' dBm)' : '') + (r ? ': ' + r : '');
   }
   function events() {

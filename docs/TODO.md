@@ -79,8 +79,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   28, 29, 30, 31, 35, 37, 38 (Vorab-Prüfung).
 * **Vorbereitet, Test nur mit Hardware:** MLAG auf CRS3xx (Hardware-Offload, Ausfall eines Knotens,
   Umbau im laufenden Betrieb), isolierte VLANs an echten APs (gibt der CAPsMAN `interface-list` an die
-  CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`; Lesezeichen
-  cfm-WLAN mit echten Clients (D77).
+  CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -177,11 +176,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   Apply)? Sieht der Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000
   `vlan`; die MAC-Regeln greifen in beiden Fällen)? Trennt Client-Isolation auch zwischen den Radios
   eines AP? An Switches: `hw=no` an isolierten Access-Ports (Durchsatz über die CPU).
-* **Lesezeichen cfm-WLAN (D77)** mit echten Clients: Feldnamen der Registrierungstabelle per REST
-  (`interface`, `mac-address`, `signal`, `uptime`, `band`, `tx-rate`/`rx-rate` angenommen; beim
-  Nachsehen am 2026-10-12 hing an keinem AP ein Client), Format der Log-Zeilen beim Verbinden,
-  Trennen und Roaming (Parser erwartet `<MAC>@<Interface> connected|disconnected|roamed …`), ob die
-  Ereignisse im Log des CAPsMAN oder nur der CAPs stehen; Roaming-Test mit offener Ansicht.
+* ~~**Lesezeichen cfm-WLAN (D77)** mit echten Clients~~ – *erledigt 2026-10-14* (zwei Standorte mit vier bzw.
+  zwei APs): Zuordnung, Signal, Wechsel live und aus dem Log des CAPsMAN
+  (`<MAC>@<Interface>(<SSID>) roamed to <MAC>@<Interface>(<SSID>), signal strength …`), Uhrzeit stimmt
+  mit `cache: 'no-store'`. Wechsel erscheinen in den Ereignissen doppelt (live und „Log“).
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
 

@@ -110,6 +110,18 @@
   :while ([:len $s] < $2) do={ :set s ($s . " ") }
   :return $s
 }
+# mehrzeiligen Text zeilenweise ausgeben: Ein :put mit "\n" im Text bricht im SSH-Terminal nur mit
+# Linefeed um (ohne Wagenrücklauf), die Folgezeilen stehen dann treppenförmig versetzt
+:global cfmPutLines do={
+  :local t [:tostr $1]
+  :while ([:len $t] > 0) do={
+    :local p [:find $t "\n"]
+    :local l $t
+    :if ([:typeof $p] = "nil") do={ :set t "" } else={ :set l [:pick $t 0 $p]; :set t [:pick $t ($p + 1) [:len $t]] }
+    :if ([:len $l] > 0 and [:pick $l ([:len $l] - 1) [:len $l]] = "\r") do={ :set l [:pick $l 0 ([:len $l] - 1)] }
+    :put $l
+  }
+}
 
 # ---------- Daten laden (vom Manager selbst geschrieben -> vertrauenswürdig) ----------
 :global cfmRings do={

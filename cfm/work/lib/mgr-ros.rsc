@@ -264,7 +264,7 @@
     :put ([$cfmPad $name 12] . [$cfmPad (($pl->"cur") . " -> " . $ver) 20] . [$cfmPad ($pl->"how") 10] . [$cfmPad ($pl->"arch") 8] . [$cfmPad $ntxt 18] . [$cfmPad $fstxt 16] . $vd)
   }
   :if ($chk) do={
-    :if ([:len $mhint] > 0) do={ :put $mhint } else={ :put ("alle Pakete liegen in " . $pdir . "/") }
+    :if ([:len $mhint] > 0) do={ :global cfmPutLines; $cfmPutLines $mhint } else={ :put ("alle Pakete liegen in " . $pdir . "/") }
     :put "Probe (check=yes): kein Auftrag erteilt"
     :return ""
   }

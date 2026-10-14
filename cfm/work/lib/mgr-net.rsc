@@ -196,7 +196,7 @@
   }
   :if ($quiet = "yes") do={ :return $dev }
   :put ([$cfmPad "GERAET" 10] . [$cfmPad "PORT" 14] . [$cfmPad "NACHBAR" 18] . [$cfmPad "PORT" 14] . "STATUS")
-  :put $term
+  :global cfmPutLines; $cfmPutLines $term
   :if (!$hasBl) do={ :put "Noch keine Baseline: \$cfmLinks accept=yes friert den aktuellen Stand ein." }
   :foreach x in=$dev do={ :put ("Abweichung: " . $x) }
   :put ("geschrieben: " . $mf)
@@ -250,7 +250,7 @@
     :return $warn
   }
   :put ([$cfmPad "AP" 10] . [$cfmPad "RADIO" 10] . [$cfmPad "KANAL" 22] . "SWITCH")
-  :put $rows
+  :global cfmPutLines; $cfmPutLines $rows
   :foreach x in=$warn do={ :put ("Warnung: " . $x) }
   :return $warn
 }

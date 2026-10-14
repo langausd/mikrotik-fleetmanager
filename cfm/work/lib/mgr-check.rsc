@@ -568,7 +568,7 @@
   }
   :if (!$got) do={ :error "keine Antwort vom Probelauf (Agent beschäftigt?) - später erneut" }
   :local pc [/file/get [find where name=$lf] contents]
-  :put $pc
+  :global cfmPutLines; $cfmPutLines $pc
   :if ($show = "yes" and [:typeof [:find $pc "# Soll-Objekte"]] = "nil") do={ :put ("Hinweis: Der Agent auf " . $host . " kennt die Objektliste noch nicht (erst nach dem nächsten Release) - oben steht der normale Plan") }
   :return ""
 }

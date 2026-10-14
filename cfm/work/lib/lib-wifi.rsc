@@ -204,12 +204,16 @@
     :local b ($r->"b")
     :local sl ({})
     :local rk ("wprov:" . [:pick [:tostr (100 + [:len $pl])] 1 3])
-    :foreach k,s in=($w->"ssids") do={
-      :if ($k != $mk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={
-        :local cn ("cfm-" . $k)
-        :if ([:typeof ($bcf->$b)] != "nothing") do={ :set cn ("cfm-" . $k . "-" . $b . "g") }
-        :if ([:typeof ($cfmSsidSw->$k)] = "array") do={ :set ($cfmSsidSw->$k->$rk) $cn }
-        :if ([:tostr ($son->$k)] != "off") do={ :set ($sl->[:len $sl]) $cn }
+    # schaltbare SSIDs immer hinter den festen (wie im Skript cfm-ssid-<key>-on): Schalten verschiebt
+    # sonst die Nummern der übrigen virtuellen Interfaces, und Home Assistant verliert die Zuordnung
+    :foreach sw in={false;true} do={
+      :foreach k,s in=($w->"ssids") do={
+        :if ($k != $mk and ([:typeof ($cfmSsidSw->$k)] = "array") = $sw and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={
+          :local cn ("cfm-" . $k)
+          :if ([:typeof ($bcf->$b)] != "nothing") do={ :set cn ("cfm-" . $k . "-" . $b . "g") }
+          :if ($sw) do={ :set ($cfmSsidSw->$k->$rk) $cn }
+          :if ([:tostr ($son->$k)] != "off") do={ :set ($sl->[:len $sl]) $cn }
+        }
       }
     }
     # Interface-Namen aus Identity und Band (z.B. ap1-2g) statt cap-wifiN, das sich bei jeder

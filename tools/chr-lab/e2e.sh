@@ -410,6 +410,7 @@ expect 1 '[:pick [/file/get cfm/ssid-guest.txt contents] 0 3] = "on " and [:tonu
 t0=$(stat cm1 t); mgr '$cfmPush host=cm1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat cm1 t)" != "$t0" ] && break; sleep 4; done
 r 1 "$cnt" | grep -q "G=0" && bad "Apply hat die eingeschaltete Gast-SSID wieder entfernt" || ok "Apply behält den Zustand on"
+expect 1 '[:find [:tostr [/interface/wifi/provisioning/get [find where comment~"^cfm:wprov" and supported-bands=2ghz-ax] slave-configurations]] "cfm-iot"] < [:find [:tostr [/interface/wifi/provisioning/get [find where comment~"^cfm:wprov" and supported-bands=2ghz-ax] slave-configurations]] "cfm-guest"]' "Apply: schaltbare Gast-SSID hinter der festen IoT-SSID (wie das Skript)"
 r 1 '/system/script/run cfm-ssid-guest-off' >/dev/null
 r 1 "$cnt" | grep -q "G=0" && ok "cfm-ssid-guest-off: Gast-SSID aus den Regeln" || bad "Ausschalten wirkt nicht"
 r 1 ':local n 0; :foreach i in=[/interface/wifi/provisioning/find where comment~"^cfm:wprov"] do={ :if ([:tostr [/interface/wifi/provisioning/get $i supported-bands]] ~ "5ghz" and [:len [/interface/wifi/provisioning/get $i slave-configurations]] = 0) do={ :set n ($n + 1) } }; :put ("E=" . $n)' | grep -q "E=[1-9]" && ok "5 GHz ganz ohne weitere SSID (leere Liste gesetzt)" || bad "leere Liste auf 5 GHz nicht gesetzt"

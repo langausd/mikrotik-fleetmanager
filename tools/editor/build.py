@@ -18,7 +18,8 @@ TEILE = [
 <p>Site-Daten des Managers im Browser bearbeiten, prüfen, Probelauf, Release (D73).</p>
 <ol>
 <li>WebFig des Managers öffnen und anmelden (z.B. <code>http://192.168.10.2/webfig/</code>).</li>
-<li>Lesezeichen „cfm-Editor“ anklicken, mit einem RouterOS-User der Gruppe full anmelden (REST-API).</li>
+<li>Lesezeichen „cfm-Editor“ anklicken, mit einem RouterOS-User der Gruppe full anmelden (REST-API).
+Der Browser merkt sich die Anmeldung bis zum Schließen, auch für cfm-WLAN.</li>
 <li>Site-Datei links wählen, ändern, Strg+S. Dann „Prüfen“, „Diff zum Release“, „Probelauf“,
 „Release (Ring 0)“; den Aufstieg der Ringe wie gewohnt per <code>$cfmPromote</code>.</li>
 </ol>"""),
@@ -43,8 +44,9 @@ def main():
     teile, staende = [], []
     for datei, titel, text in TEILE:
         src = (HIER / datei).read_text(encoding="utf-8")
-        url = bookmarklet(src)
         stand = hashlib.sha256(src.encode()).hexdigest()[:12]
+        # Stand ins Lesezeichen: eine neue Fassung ersetzt die alte in der WebFig-Seite
+        url = bookmarklet(src.replace("'@@STAND@@'", "'" + stand + "'"))
         staende.append(f"{titel} {stand}, {len(url)} Zeichen")
         teile.append(f"""<h2>{titel}</h2>{text}
 <p><a class="bm" href="{html.escape(url, quote=True)}">{titel}</a></p>""")

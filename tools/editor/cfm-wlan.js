@@ -4,10 +4,16 @@
 // und das Log (WLAN-Ereignisse von vor dem Öffnen). Ändert nichts am Gerät; der Verlauf bleibt im Browser
 // (localStorage, 24 h). Bauen: tools/editor/build.py -> install.html
 (() => {
-  if (window.__cfmWl) { window.__cfmWl.show(); return; }
+  // Steckt schon eine Fassung in der Seite: dieselbe nur einblenden, eine andere ersetzen (WebFig lädt
+  // die Seite nicht neu, ein ersetztes Lesezeichen wirkte sonst erst nach F5). STAND setzt build.py ein.
+  const STAND = '@@STAND@@';
+  const alt = window.__cfmWl;
+  if (alt && alt.stand === STAND) { alt.show(); return; }
+  if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
+  document.getElementById('cfmwl')?.remove();
   const KEEP = 24 * 3600e3;
   const PAL = ['#1f77b4', '#e8710a', '#2ca02c', '#9467bd', '#8c564b', '#d6338a', '#12939a', '#a39e14', '#5f6b6d', '#c62828'];
-  const S = { auth: null, ident: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
+  const S = { ident: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
     ifs: {}, caps: {}, names: {}, alias: {}, cur: {}, hist: {}, ev: [], logEv: [], logKeys: {}, off: 0, err: '', last: 0, saved: 0 };
   const KEY = 'cfm-wlan:' + location.host;
   const $ = (sel) => root.querySelector(sel);
@@ -89,9 +95,9 @@
   // ---------- REST ----------
   async function rest(method, path, body) {
     // cache: RouterOS schickt zu REST-Antworten Cache-Control max-age=31536000 (7.24.5) - ohne no-store
-    // lieferte der Browser alte Registrierungstabellen und eine alte Uhrzeit
+    // lieferte der Browser alte Registrierungstabellen und eine alte Uhrzeit. Zugangsdaten: siehe loginView
     const r = await fetch('/rest' + path, {
-      method, cache: 'no-store', headers: { Authorization: S.auth, 'Content-Type': 'application/json' },
+      method, cache: 'no-store', headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const t = await r.text();
@@ -222,7 +228,7 @@
       if (now - S.saved > 60e3) save();
     } catch (e) {
       S.err = e.message;
-      if (/^401/.test(e.message)) { stop(); loginView('Anmeldung abgelaufen - bitte neu anmelden.'); S.busy = false; return; }
+      if (/^401/.test(e.message)) { stop(); restOk(false); loginView('Anmeldung abgelaufen - bitte neu anmelden.'); S.busy = false; return; }
     }
     S.busy = false;
     render();
@@ -415,26 +421,50 @@
   function stop() { clearInterval(S.timer); S.timer = null; }
   function start() { stop(); S.timer = setInterval(poll, S.every * 1000); poll(); }
   function hide() { stop(); save(); root.style.display = 'none'; }
-  function show() { root.style.display = 'flex'; if (S.auth && S.ident) start(); }
-  window.__cfmWl = { show };
+  function show() { root.style.display = 'flex'; if (S.ident && root.querySelector('header')) start(); }
+  window.__cfmWl = { stand: STAND, show, drop: () => { stop(); save(); root.remove(); return true; } };
 
-  function loginView(hinweis) {
+  // Anmeldung: eigenes Formular (der Passwort-Manager füllt es wie die WebFig-Anmeldung derselben
+  // Adresse), geprüft per XHR mit User/Passwort. Der Browser merkt sich die Daten dann für alle weiteren
+  // REST-Aufrufe ohne Authorization-Kopf bis zum Schließen, auch für das andere Lesezeichen. Ohne
+  // gemerkte Daten öffnete ein fetch ohne Kopf das Anmeldefenster des Browsers, in dem man sich nach
+  // einem Tippfehler nicht mehr korrigieren kann - darum nur nach einer Anmeldung in diesem Tab
+  // (sessionStorage cfmRestOk, ohne Passwort). XHR mit Daten öffnet das Fenster nie.
+  const xhrLogin = (u, p) => new Promise((res) => {
+    const x = new XMLHttpRequest();
+    x.open('GET', '/rest/system/identity', true, u, p);
+    x.onload = () => res(x.status); x.onerror = () => res(0);
+    x.send();
+  });
+  const restOk = (v) => {
+    try {
+      if (v === undefined) return sessionStorage.getItem('cfmRestOk') === '1';
+      if (v) sessionStorage.setItem('cfmRestOk', '1'); else sessionStorage.removeItem('cfmRestOk');
+    } catch (e) { return false; }
+  };
+  async function loginView(hinweis) {
     root.querySelectorAll('header,main,.login').forEach((n) => n.remove());
-    const u = el('input', { placeholder: 'Benutzer', autocomplete: 'username' });
-    const p = el('input', { type: 'password', placeholder: 'Passwort', autocomplete: 'current-password' });
+    if (!hinweis && restOk()) {
+      let ok = false;
+      try { S.ident = (await rest('GET', '/system/identity')).name; ok = true; } catch (e) { restOk(false); }
+      if (ok) { mainView(); return; }
+    }
+    const u = el('input', { name: 'username', placeholder: 'Benutzer', autocomplete: 'username' });
+    const p = el('input', { name: 'password', type: 'password', placeholder: 'Passwort', autocomplete: 'current-password' });
     const msg = el('div', { class: 'fehler' }, hinweis || '');
-    const go = async () => {
-      S.auth = 'Basic ' + btoa(String.fromCharCode(...new TextEncoder().encode(u.value + ':' + p.value)));
-      try {
-        S.ident = (await rest('GET', '/system/identity')).name;
-        mainView();
-      } catch (e) { msg.textContent = 'Anmeldung fehlgeschlagen: ' + e.message; }
+    const go = async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      const st = await xhrLogin(u.value, p.value);
+      if (st !== 200) { msg.textContent = 'Anmeldung fehlgeschlagen (' + (st || 'keine Verbindung') + ').'; p.select(); return; }
+      restOk(true);
+      try { S.ident = (await rest('GET', '/system/identity')).name; } catch (e2) { msg.textContent = 'Fehler: ' + e2.message; return; }
+      mainView();
     };
-    p.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-    root.append(el('div', { class: 'login' }, el('b', {}, 'cfm-WLAN'),
+    root.append(el('form', { class: 'login', onsubmit: go }, el('b', {}, 'cfm-WLAN'),
       el('div', {}, 'WLAN-Clients und Roaming. Anmeldung an der REST-API dieses Geräts (des CAPsMAN); Lesen genügt.'),
-      u, p, el('button', { class: 'prim', onclick: go }, 'Anmelden'), msg,
-      el('button', { onclick: hide }, 'Schließen')));
+      u, p, el('button', { class: 'prim', type: 'submit' }, 'Anmelden'), msg,
+      el('button', { type: 'button', onclick: hide }, 'Schließen')));
     u.focus();
   }
   function mainView() {

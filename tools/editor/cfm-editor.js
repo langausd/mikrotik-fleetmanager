@@ -4,10 +4,16 @@
 // per tools/upload-seed.sh. Befehle laufen per :execute im Hintergrund, die Ausgabe kommt aus einer
 // Datei (REST bricht lange Aufrufe sonst ab). Bauen: tools/editor/build.py -> install.html
 (() => {
-  if (window.__cfmEd) { window.__cfmEd.show(); return; }
+  // Steckt schon eine Fassung in der Seite: dieselbe nur einblenden, eine andere ersetzen (WebFig lädt
+  // die Seite nicht neu, ein ersetztes Lesezeichen wirkte sonst erst nach F5). STAND setzt build.py ein.
+  const STAND = '@@STAND@@';
+  const alt = window.__cfmEd;
+  if (alt && alt.stand === STAND) { alt.show(); return; }
+  if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
+  document.getElementById('cfmed')?.remove();
   const MAX = 60000;                       // wie $cfmParseWork: /file get liest nur ~60 KB
   const ENDE = '@@cfm-ende@@';
-  const S = { auth: null, base: '', files: [], cur: null, text: '', busy: false };
+  const S = { base: '', files: [], cur: null, text: '', busy: false };
   const $ = (sel) => root.querySelector(sel);
   const el = (tag, attrs, ...kids) => {
     const e = document.createElement(tag);
@@ -57,9 +63,9 @@
   // ---------- REST ----------
   async function rest(method, path, body) {
     // cache: RouterOS schickt zu REST-Antworten Cache-Control max-age=31536000 (7.24.5) - ohne no-store
-    // lieferte der Browser z.B. eine alte Dateiliste oder Job-Liste
+    // lieferte der Browser z.B. eine alte Dateiliste oder Job-Liste. Zugangsdaten: siehe loginView
     const r = await fetch('/rest' + path, {
-      method, cache: 'no-store', headers: { Authorization: S.auth, 'Content-Type': 'application/json' },
+      method, cache: 'no-store', headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const t = await r.text();
@@ -107,23 +113,47 @@
   }
 
   // ---------- Anmeldung ----------
-  function loginView() {
+  // Anmeldung: eigenes Formular (der Passwort-Manager füllt es wie die WebFig-Anmeldung derselben
+  // Adresse), geprüft per XHR mit User/Passwort. Der Browser merkt sich die Daten dann für alle weiteren
+  // REST-Aufrufe ohne Authorization-Kopf bis zum Schließen, auch für das andere Lesezeichen. Ohne
+  // gemerkte Daten öffnete ein fetch ohne Kopf das Anmeldefenster des Browsers, in dem man sich nach
+  // einem Tippfehler nicht mehr korrigieren kann - darum nur nach einer Anmeldung in diesem Tab
+  // (sessionStorage cfmRestOk, ohne Passwort). XHR mit Daten öffnet das Fenster nie.
+  const xhrLogin = (u, p) => new Promise((res) => {
+    const x = new XMLHttpRequest();
+    x.open('GET', '/rest/system/identity', true, u, p);
+    x.onload = () => res(x.status); x.onerror = () => res(0);
+    x.send();
+  });
+  const restOk = (v) => {
+    try {
+      if (v === undefined) return sessionStorage.getItem('cfmRestOk') === '1';
+      if (v) sessionStorage.setItem('cfmRestOk', '1'); else sessionStorage.removeItem('cfmRestOk');
+    } catch (e) { return false; }
+  };
+  async function loginView(hinweis) {
     root.querySelectorAll('header,main,.login').forEach((n) => n.remove());
-    const u = el('input', { placeholder: 'Benutzer', autocomplete: 'username' });
-    const p = el('input', { type: 'password', placeholder: 'Passwort', autocomplete: 'current-password' });
-    const msg = el('div', { class: 'fehler' });
-    const go = async () => {
-      S.auth = 'Basic ' + btoa(String.fromCharCode(...new TextEncoder().encode(u.value + ':' + p.value)));
-      try {
-        const id = await rest('GET', '/system/identity');
-        await mainView(id.name);
-      } catch (e) { msg.textContent = 'Anmeldung fehlgeschlagen: ' + e.message; }
+    if (!hinweis && restOk()) {
+      let ok = false;
+      try { const id = await rest('GET', '/system/identity'); S.ident = id.name; ok = true; } catch (e) { restOk(false); }
+      if (ok) { await mainView(S.ident).catch((e3) => { $('pre').textContent = 'FEHLER: ' + e3.message; }); return; }
+    }
+    const u = el('input', { name: 'username', placeholder: 'Benutzer', autocomplete: 'username' });
+    const p = el('input', { name: 'password', type: 'password', placeholder: 'Passwort', autocomplete: 'current-password' });
+    const msg = el('div', { class: 'fehler' }, hinweis || '');
+    const go = async (e) => {
+      e.preventDefault();
+      msg.textContent = '';
+      const st = await xhrLogin(u.value, p.value);
+      if (st !== 200) { msg.textContent = 'Anmeldung fehlgeschlagen (' + (st || 'keine Verbindung') + ').'; p.select(); return; }
+      restOk(true);
+      try { const id = await rest('GET', '/system/identity'); S.ident = id.name; } catch (e2) { msg.textContent = 'Fehler: ' + e2.message; return; }
+      await mainView(S.ident).catch((e3) => { $('pre').textContent = 'FEHLER: ' + e3.message; });
     };
-    p.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
-    root.append(el('div', { class: 'login' }, el('b', {}, 'cfm-Editor'),
+    root.append(el('form', { class: 'login', onsubmit: go }, el('b', {}, 'cfm-Editor'),
       el('div', {}, 'Anmeldung an der REST-API dieses Managers (RouterOS-User mit Gruppe full).'),
-      u, p, el('button', { class: 'prim', onclick: go }, 'Anmelden'), msg,
-      el('button', { onclick: hide }, 'Schließen')));
+      u, p, el('button', { class: 'prim', type: 'submit' }, 'Anmelden'), msg,
+      el('button', { type: 'button', onclick: hide }, 'Schließen')));
     u.focus();
   }
 
@@ -291,6 +321,14 @@
     if (dirty() && !confirm('Ungespeicherte Änderungen an ' + S.cur.rel + ' verwerfen?')) return;
     root.style.display = 'none';
   }
-  window.__cfmEd = { show: () => { root.style.display = 'flex'; } };
+  window.__cfmEd = {
+    stand: STAND,
+    show: () => { root.style.display = 'flex'; },
+    drop: () => {
+      if (dirty() && !confirm('Neue Fassung des cfm-Editors: ungespeicherte Änderungen an ' + S.cur.rel + ' verwerfen?')) return false;
+      root.remove();
+      return true;
+    },
+  };
   loginView();
 })();

@@ -801,7 +801,8 @@ Die Site-Daten unter `cfm/work/` (`global.rsc`, `vlans.rsc`, …, `hosts/`, `aut
 führt der Manager (D72). Du bearbeitest sie auf einem dieser Wege:
 * **im Browser mit dem cfm-Editor** (D73): `tools/editor/install.html` öffnen und den Knopf
   „cfm-Editor“ in die Lesezeichen-Leiste ziehen. Dann WebFig des Managers öffnen, das Lesezeichen
-  anklicken und mit einem RouterOS-User der Gruppe full anmelden. Links die Datei wählen, ändern,
+  anklicken und mit einem RouterOS-User der Gruppe full anmelden (der Browser merkt sich die Anmeldung
+  bis zum Schließen, auch für cfm-WLAN). Links die Datei wählen, ändern,
   Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
   fragt er nach). Die Knöpfe oben: „Prüfen“ (`$cfmParseWork`, `$cfmCheck`), „Diff zum Release“
   (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten

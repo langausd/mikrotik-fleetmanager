@@ -127,11 +127,14 @@ So richtest du sie ein:
 
 1. `tools/editor/install.html` im Browser öffnen (als lokale Datei).
 2. Die Knöpfe „cfm-Editor“ und „cfm-WLAN“ in die Lesezeichen-Leiste ziehen.
-3. WebFig öffnen (`http://<IP>/webfig/` des Managers bzw. des CAPsMAN), das Lesezeichen anklicken
-   und anmelden. Voraussetzung: Dienst `www` (oder `www-ssl`) in `services`.
+3. WebFig öffnen (`http://<IP>/webfig/` des Managers bzw. des CAPsMAN), das Lesezeichen anklicken und
+   anmelden (der Passwort-Manager trägt die WebFig-Daten ein). Danach merkt sich der Browser die
+   Anmeldung bis zum Schließen, auch für das andere Lesezeichen. Voraussetzung: Dienst `www` (oder
+   `www-ssl`) in `services`.
 
 Nach einer Änderung an `cfm-editor.js` oder `cfm-wlan.js` baut `tools/editor/build.py` die Seite
-neu. Danach die Lesezeichen ersetzen. Mehr dazu im Admin-Guide, Abschnitte 8.1 und 8.10.
+neu. Danach die Lesezeichen ersetzen; die neue Fassung ersetzt beim nächsten Klick auch die alte
+in einer offenen WebFig-Seite. Mehr dazu im Admin-Guide, Abschnitte 8.1 und 8.10.
 
 ## `upgrade-mirror.py`
 

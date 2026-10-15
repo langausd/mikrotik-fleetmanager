@@ -18,7 +18,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
-* **Neu (Idee, 2026-10-13):** 51 (Kanalplanung mit Zigbee, Thread, Bluetooth und Milight: andere Netze
+* **Neu (Idee):** 52 (Lesezeichen ohne Hantieren: Lade-Lesezeichen, Userscript oder Container, 2026-10-15), 51 (Kanalplanung mit Zigbee, Thread, Bluetooth und Milight: andere Netze
   bei der Wahl der WLAN-Kanäle berücksichtigen, Kanal für neue 802.15.4-Netze vorschlagen).
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
@@ -684,3 +684,20 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     [Argenox, BLE Advertising](https://argenox.com/library/bluetooth-low-energy/ble-advertising-primer),
     [esp8266_milight_hub, Funkparameter](https://github.com/sidoh/esp8266_milight_hub/blob/master/lib/Radio/MiLightRadioConfig.cpp),
     [Milight-Funkprotokoll (Hackaday)](https://hackaday.io/project/5888-reverse-engineering-the-milight-on-air-protocol/log/18456-in-the-radio-domain).
+
+52. **Lesezeichen ohne Hantieren** (Wunsch des Nutzers, 2026-10-15) – Die Lesezeichen von D73/D77 müssen
+    aus `install.html` in die Leiste gezogen und nach jeder neuen Fassung ersetzt werden. Auf dem Gerät
+    selbst lässt sich nichts installieren: Wegen fehlender CORS-Header muss der Code unter derselben Adresse
+    laufen wie `/rest`, `www` liefert keine eigenen Dateien aus, Skins sind nur JSON, Hotspot-Seiten liegen
+    unter einer anderen Adresse (Befunde in DECISIONS, Eigenheiten). Bekannte, vorerst verworfene Wege:
+    * **Festes Lade-Lesezeichen, Code auf dem Gerät:** ein winziges Lesezeichen „cfm“, einmal angelegt;
+      es liest `cfm-editor.js`/`cfm-wlan.js` über die bestehende WebFig-Sitzung (`fetchFile` über
+      `/jsproxy`, im Labor geprüft) vom Gerät und startet sie. Updates kommen mit `upload-seed.sh`.
+      Dagegen: undokumentierte WebFig-Interna (Rückfall: Laden per REST nach der Anmeldung); der CAPsMAN
+      braucht die Dateien auch, wenn er nicht der Manager ist.
+    * **Userscript** (Violentmonkey/Tampermonkey): einmal `cfm.user.js` installieren, es blendet in jeder
+      WebFig-Seite Knöpfe für Editor und WLAN ein, Updates per `@updateURL` aus dem öffentlichen Repo.
+      Dagegen: Browser-Erweiterung nötig (D73), Code aus dem Netz.
+    * **Container auf dem Gerät** (RouterOS-Container bzw. „Apps“), der die Seite ausliefert und `/rest`
+      durchreicht; im Browser nichts. Dagegen: Container-Paket und Speicher nötig (ein CRS328 im Einsatz hat 1,6 MB frei,
+      hAPs knapp).

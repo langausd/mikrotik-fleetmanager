@@ -134,7 +134,7 @@ So richtest du sie ein:
    `www-ssl`) in `services`.
 
 Nach einer Änderung an `cfm-editor.js` oder `cfm-monitor.js` baut `tools/editor/build.py` die Seite
-neu. Danach die Lesezeichen ersetzen; die neue Fassung ersetzt beim nächsten Klick auch die alte
+neu (ohne Kommentare und Einrückung: Firefox nimmt Lesezeichen nur bis 65 536 Zeichen an). Danach die Lesezeichen ersetzen; die neue Fassung ersetzt beim nächsten Klick auch die alte
 in einer offenen WebFig-Seite. Ein altes Lesezeichen „cfm-WLAN“ kannst du löschen. Mehr dazu im
 Admin-Guide, Abschnitte 8.1, 8.10 und 8.11.
 

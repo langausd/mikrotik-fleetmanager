@@ -38,9 +38,22 @@ anmelden. Klick auf Gerät, Port, AP, SSID oder VLAN in der Tabelle sucht danach
 ]
 
 
+# Firefox nimmt Lesezeichen bis 65 536 Zeichen an (cfm-Monitor hatte 2026-10-16 so 73 700 und ließ sich
+# nicht installieren). Deshalb: Kommentarzeilen, Einrückung und Leerzeilen fallen weg (die .js-Dateien haben
+# keine mehrzeiligen Strings, in denen das zählt - CSS-Zeilen beginnen nie mit //), und Zeichen, die in
+# einer URL erlaubt sind, bleiben unkodiert. Zeilenumbrüche bleiben (als %0A), damit //-Kommentare am
+# Zeilenende enden.
+GRENZE = 60000
+SICHER = "!$&'()*+,;=:@/?~-._"
+
+
+def schrumpfen(src):
+    zeilen = (z.strip() for z in src.split("\n"))
+    return "\n".join(z for z in zeilen if z and not z.startswith("//"))
+
+
 def bookmarklet(src):
-    # Zeilenumbrüche bleiben (als %0A), damit //-Kommentare an der Zeile enden
-    return "javascript:" + urllib.parse.quote(src, safe="")
+    return "javascript:" + urllib.parse.quote(schrumpfen(src), safe=SICHER)
 
 
 def main():
@@ -50,6 +63,8 @@ def main():
         stand = hashlib.sha256(src.encode()).hexdigest()[:12]
         # Stand ins Lesezeichen: eine neue Fassung ersetzt die alte in der WebFig-Seite
         url = bookmarklet(src.replace("'@@STAND@@'", "'" + stand + "'"))
+        if len(url) > GRENZE:
+            raise SystemExit(f"{titel}: Lesezeichen mit {len(url)} Zeichen zu lang (Grenze {GRENZE}, Firefox 65 536)")
         staende.append(f"{titel} {stand}, {len(url)} Zeichen")
         teile.append(f"""<h2>{titel}</h2>{text}
 <p><a class="bm" href="{html.escape(url, quote=True)}">{titel}</a></p>""")

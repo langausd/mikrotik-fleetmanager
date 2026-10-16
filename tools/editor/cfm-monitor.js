@@ -15,7 +15,7 @@
   document.getElementById('cfmwl')?.remove();
   const KEEP = 24 * 3600e3;
   const PAL = ['#1f77b4', '#e8710a', '#2ca02c', '#9467bd', '#8c564b', '#d6338a', '#12939a', '#a39e14', '#5f6b6d', '#c62828'];
-  const S = { ident: '', tab: 'wlan', mgr: false, findOk: true, mgrAddr: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
+  const S = { ident: '', tab: 'wlan', mgr: false, findOk: true, mgrAddr: '', isCm: true, cms: [], every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
     ifs: {}, caps: {}, names: {}, alias: {}, cur: {}, hist: {}, ev: [], logEv: [], logKeys: {}, off: 0, err: '', last: 0, saved: 0 };
   const KEY = 'cfm-wlan:' + location.host;
   const $ = (sel) => root.querySelector(sel);
@@ -98,6 +98,8 @@
 #cfmwl .hits td.m{font:12px ui-monospace,Menlo,Consolas,monospace}
 #cfmwl .hits .bar{display:inline-block;width:60px;vertical-align:middle;margin-right:6px}
 #cfmwl .note{font-size:12px;color:#556;white-space:pre-wrap;margin:6px 0}
+#cfmwl .hinweis{background:#fff3c4;border:1px solid #e6cf6e;border-radius:6px;padding:8px 10px;margin-bottom:8px}
+#cfmwl .hinweis a{color:#13534b;font-weight:600}
 #cfmwl .login{margin:12vh auto;background:#fff;padding:20px 24px;border-radius:8px;box-shadow:0 2px 12px #0002;display:grid;gap:8px;width:340px}
 #cfmwl .fehler{color:#b3261e}`;
 
@@ -303,7 +305,7 @@
     st.textContent = (S.err ? 'Fehler: ' + S.err : S.last ? 'Stand ' + hms(S.last) : 'lädt …') + ' · ' + Object.keys(S.cur).length + ' WLAN-Clients';
     if (S.tab !== 'wlan') return;          // die Suche baut ihre Ansicht selbst (Eingaben behalten den Fokus)
     const top = m.scrollTop;
-    m.replaceChildren(el('h3', {}, 'APs jetzt'), tiles(), el('h3', {}, 'Zeitleiste'), timeline(), el('h3', {}, 'Ereignisse'), events());
+    m.replaceChildren(...(S.isCm ? [] : [cmHint()]), el('h3', {}, 'APs jetzt'), tiles(), el('h3', {}, 'Zeitleiste'), timeline(), el('h3', {}, 'Ereignisse'), events());
     m.scrollTop = top;
   }
   function tiles() {
@@ -437,8 +439,30 @@
   const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\r/g, '').replace(/\n/g, '\\n');
   const FK = ['host', 'port', 'ap', 'ssid', 'vlan', 'signal'];
   const F = { q: '', host: '', port: '', ap: '', ssid: '', vlan: '', signal: '', hits: null, note: '', busy: false, sort: 'ort', dir: 1 };
+  async function readFile(n) {
+    const f = ((await rest('GET', '/file?name=' + encodeURIComponent(n))) || [])[0];
+    return f ? String((await rest('POST', '/file/get', { '.id': f['.id'], 'value-name': 'contents' })).ret || '') : null;
+  }
+  // CAPsMAN laut Manifest des Agents (Feld cm, D45: Name und Adresse); ohne Manifest: läuft hier der Dienst?
   // Manager? Sonst die Adresse, von der dieses Gerät zuletzt gezogen hat (state.json des Agents)
   async function detect() {
+    for (const n of ['cfm/mf.mf', 'flash/cfm/mf.mf']) {
+      try {
+        const t = await readFile(n);
+        if (t === null) continue;
+        const p = t.indexOf('\n# mac=');
+        const j = JSON.parse(p >= 0 ? t.slice(0, p) : t);
+        if (Array.isArray(j.cm) && j.cm.length) {
+          S.cms = j.cm.map((c) => ({ n: String(c.n), ip: String(c.ip) }));
+          S.isCm = S.cms.some((c) => c.n === S.ident);
+        } else S.isCm = /(^|,)manager(,|$)/.test(String(j.role || ''));
+        break;
+      } catch (e) { /* nächster Pfad */ }
+    }
+    if (!S.cms.length && S.isCm) {
+      const c = await rest('GET', '/interface/wifi/capsman').catch(() => null);
+      if (c && (c.enabled === 'false' || c.enabled === false)) S.isCm = false;
+    }
     S.mgr = ((await rest('GET', '/system/script?name=cfm-mgr').catch(() => [])) || []).length > 0;
     if (S.mgr) {
       // Manager-Module vor D81: dort ist $cfmFind noch der alte interne Helfer (heute $cfmIds)
@@ -448,12 +472,21 @@
     }
     for (const n of ['cfm/state.json', 'flash/cfm/state.json']) {
       try {
-        const f = ((await rest('GET', '/file?name=' + encodeURIComponent(n))) || [])[0];
-        if (!f) continue;
-        const j = JSON.parse((await rest('POST', '/file/get', { '.id': f['.id'], 'value-name': 'contents' })).ret || '{}');
+        const t = await readFile(n);
+        if (t === null) continue;
+        const j = JSON.parse(t || '{}');
         if (j.mgr) { S.mgrAddr = String(j.mgr); return; }
       } catch (e) { /* nächster Pfad */ }
     }
+  }
+  // Link zu WebFig eines anderen Geräts (gleiches Protokoll wie diese Seite)
+  const wf = (ip, txt) => el('a', { href: location.protocol + '//' + ip + '/webfig/', target: '_blank' }, txt);
+  function cmHint() {
+    const b = el('div', { class: 'hinweis' }, 'Dies ist nicht der CAPsMAN: Hier sieht die WLAN-Ansicht höchstens eigene Radios, nicht die Clients der APs. ' +
+      'Das Lesezeichen in WebFig des CAPsMAN öffnen: ');
+    S.cms.forEach((c, i) => { if (i) b.append(', '); b.append(wf(c.ip, c.n + ' (' + c.ip + ')')); });
+    if (!S.cms.length) b.append('Gerät mit Rolle capsman bzw. der Manager.');
+    return b;
   }
   async function search() {
     if (F.busy) return;
@@ -519,9 +552,8 @@
     const m = $('main');
     if (!m || S.tab !== 'find') return;
     if (!S.mgr) {
-      m.replaceChildren(el('div', { class: 'note' }, 'Die Suche läuft auf dem cfm-Manager. ' +
-        (S.mgrAddr ? 'WebFig des Managers öffnen: http://' + S.mgrAddr + '/webfig/' : 'Dieses Gerät ist es nicht; WebFig des Managers öffnen.') +
-        ' Dort das Lesezeichen erneut anklicken (User der Gruppe full).'));
+      m.replaceChildren(el('div', { class: 'hinweis' }, 'Die Suche läuft auf dem cfm-Manager, dies ist er nicht. Das Lesezeichen in WebFig des Managers ' +
+        'öffnen (User der Gruppe full)' + (S.mgrAddr ? ': ' : '.'), ...(S.mgrAddr ? [wf(S.mgrAddr, S.mgrAddr)] : [])));
       return;
     }
     if (!S.findOk) {
@@ -660,7 +692,8 @@
       el('button', { onclick: hide }, 'Schließen')), el('main', {}));
     S.first = true; S.cur = {}; S.tick = 0;
     start();
-    // Start im Reiter Suche, wenn dies der Manager ist und kein WLAN hat (sonst nach der ersten Abfrage)
+    // Start im Reiter Suche, wenn dies der Manager, aber nicht der CAPsMAN ist bzw. kein WLAN hat
+    if (S.mgr && !S.isCm) S.tab = 'find';
     tab(S.tab);
     setTimeout(() => { if (S.mgr && !Object.keys(apList()).length && S.tab === 'wlan') tab('find'); }, 3000);
   }

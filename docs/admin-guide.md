@@ -1224,8 +1224,9 @@ Ohne Home Assistant (6.7) zeigt das Lesezeichen **cfm-Monitor** (bis 2026-10-16 
 1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm-Monitor“ in die
    Lesezeichen-Leiste ziehen (dieselbe Seite wie der cfm-Editor, 8.1).
 2. WebFig des **CAPsMAN** öffnen (Gerät mit Rolle `capsman`, ohne sie der Primary-Manager), das
-   Lesezeichen anklicken und anmelden – ein User mit Leserecht genügt. Voraussetzung ist der Dienst
-   `www` in `services`.
+   Lesezeichen anklicken und anmelden – ein User mit Leserecht genügt. Auf einem anderen Gerät nennt
+   der Reiter WLAN den CAPsMAN (aus dem Manifest des Geräts) mit Link zu dessen WebFig.
+   Voraussetzung ist der Dienst `www` in `services`.
 3. Oben je AP eine Kachel mit Frequenzen und den verbundenen Clients (Band, Signal in dBm, seit
    wann; nach einem Wechsel kurz gelb mit dem vorigen AP). Darunter die Zeitleiste: eine Zeile je
    Client, Farbe = AP (kräftig 5/6 GHz, blass 2,4 GHz), Linie = Signal von −90 bis −30 dBm, ▼ =

@@ -195,11 +195,14 @@ for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Router-Rolle idempotent" || bad "Router idempotent: $(stat sw1 stats)"
 # Feste Leases und DNS-Namen (D62), $cfmDiff und $cfmShow (D61)
 mgr ':global e2eL [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL . ":set (\$cfmLeases->\"30\") {\"drucker\"={\"mac\"=\"02:00:00:00:00:aa\";\"ip\"=20}}\n")' >/dev/null
+# dhcpGw (D82): Clients in VLAN 30 bekommen .5 als Gateway, DNS bleibt der Router (.1)
+mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 5\n")' >/dev/null
 out=$(mgr '$cfmDiff')
 echo "$out" | grep -q "geändert: leases.rsc" && echo "$out" | grep -q "betroffen: alle Geräte" && echo "$out" | grep -qF '+ :set ($cfmLeases->"30")' && ok "\$cfmDiff: work/ gegen das letzte Release mit der neuen Zeile" || { bad "\$cfmDiff work/"; echo "$out" | tail -8; }
 rv=$(mgr '$cfmRelease msg=" Lease" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (Lease) angewendet" || bad "sw1 Apply v$rv"
 expect 2 '[:len [/ip/dhcp-server/lease/find where comment="cfm:lease:30:drucker" and mac-address="02:00:00:00:00:AA" and address="192.168.30.20" and server="dhcp30"]] = 1' "sw1: feste Lease (MAC in Großbuchstaben, Adresse aus dem Host-Anteil)"
+expect 2 '[/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] gateway] = "192.168.30.5" and [/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] dns-server] = "192.168.30.1"' "sw1: dhcpGw - Clients in VLAN 30 mit Gateway .5, DNS weiter der Router (D82)"
 expect 2 '[:len [/ip/dns/static/find where name="drucker.internal" and address="192.168.30.20"]] = 1 and [:len [/ip/dns/static/find where name="sw1.internal" and address="192.168.10.21"]] = 1 and [:len [/ip/dns/static/find where name="cm1.internal"]] = 1' "sw1: DNS-Namen für Lease und Geräte (.internal)"
 mgr '$cfmDiff' | grep -q "keine Unterschiede" && ok "\$cfmDiff nach dem Release: keine Unterschiede" || bad "\$cfmDiff nach dem Release"
 out=$(mgr "\$cfmDiff ver=$((rv-1)) to=$rv")
@@ -208,12 +211,15 @@ t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Leases und DNS-Namen idempotent" || bad "Leases idempotent: $(stat sw1 stats)"
 out=$(mgr '$cfmShow host=sw1')
-echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen" || { bad "\$cfmShow"; echo "$out" | tail -12; }
+echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && echo "$out" | grep -q "DHCP 50-200, Gateway der Clients .5" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen, dhcpGw" || { bad "\$cfmShow"; echo "$out" | tail -12; }
 out=$(mgr '$cfmShow host=sw1 objects=yes')
 echo "$out" | grep -q "# Soll-Objekte sw1" && echo "$out" | grep -q "^/ip/dhcp-server/lease lease:30:drucker:" && echo "$out" | grep -q "^/interface/bridge br:" && ok "\$cfmShow objects=yes: Soll-Objekte vom Gerät" || { bad "\$cfmShow objects=yes"; echo "$out" | head -5; }
 out=$(mgr ':global e2eL2 [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL2 . ":set (\$cfmLeases->\"40\") {\"x1\"={\"mac\"=\"zz\";\"ip\"=5};\"cm1\"={\"mac\"=\"02:00:00:00:00:bb\";\"ip\"=1}}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
 echo "$out" | grep -q "x1: MAC fehlt oder ungültig" && echo "$out" | grep -q "Name cm1 ist auch ein Gerät" && echo "$out" | grep -q "cm1: ip ist die Adresse des Gateways" && ok "Prüfung: Leases (MAC, Gerätename, Gateway)" || { bad "Prüfung Leases"; echo "$out" | tail -4; }
 mgr ':global e2eL2; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL2' >/dev/null
+out=$(mgr ':global e2eV2 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV2 . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 60\n:set (\$cfmVlans->\"20\"->\"dhcpGw\") 1\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "ERR vlans.rsc: VLAN 30: dhcpGw 60 liegt im DHCP-Bereich 50-200" && echo "$out" | grep -q "W vlans.rsc: VLAN 20: dhcpGw 1 wirkt nur mit dhcp" && ok "Prüfung: dhcpGw im Pool bzw. ohne dhcp" || { bad "Prüfung dhcpGw"; echo "$out" | grep -i dhcpgw; }
+mgr ':global e2eV2; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV2' >/dev/null
 
 step "10. Backup-Spiegel & Vault-Backup"
 for _ in $(seq 1 50); do r 3 ':put ([:len [/file/find where name="cfm/meta/rings.dat"]] + [:len [/file/find where name="cfm/archive/v4/index.dat"]])' | grep -qx 2 && break; sleep 8; done
@@ -351,14 +357,14 @@ out=$(mgr '$cfmLinks export=yes')
 echo "$out" | grep -q "sw1 ether2: erwartet cm1:ether3, gefunden cm1:ether2" && ok "Hostfile-Angabe links wird geprüft" || { bad "Erwartung nicht geprüft"; echo "$out" | tail -4; }
 expect 1 '[:len [/file/find where name="cfm/state/netzplan.dot"]] = 1 and [/file/get [find where name="cfm/state/netzplan.csv"] contents] ~ "geraet_a;port_a"' "Export: netzplan.dot und netzplan.csv"
 mgr ':global e2eH; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eH' >/dev/null
-# Gerätesuche (TODO 53): live über die drei VMs; im Labor gibt es nur die Geräte selbst, sie hängen an Uplinks
+# Gerätesuche (TODO 53): live über die drei VMs; im Labor gibt es nur die Geräte selbst – ihren Ort liefert LLDP
 mgr '$cfmFind' | grep -q "Aufruf: \$cfmFind" && ok "\$cfmFind ohne Angaben: Aufruf" || bad "\$cfmFind ohne Angaben"
 swm=$(stat sw1 mac)
 out=$(mgr '$cfmFind sw1')
-echo "$out" | grep -qE "^$swm +192\.168\.10\.21\+? +sw1 +cm1 ether2 +10 +über Uplink zu sw1" && echo "$out" | grep -q "Geräte abgefragt" && ok "\$cfmFind sw1: Bridge-MAC am Uplink cm1:ether2" || { bad "\$cfmFind sw1"; echo "$out" | tail -4; }
+echo "$out" | grep -qE "^$swm +192\.168\.10\.21\+? +sw1 +cm1 ether2 +10 +cfm-Gerät" && echo "$out" | grep -q "Geräte abgefragt" && ok "\$cfmFind sw1: eigenes Gerät dort, wo LLDP es sieht (cm1:ether2)" || { bad "\$cfmFind sw1"; echo "$out" | tail -4; }
 swl=$(echo "$swm" | tr 'A-F' 'a-f' | tr -d ':')
 mgr ':global e2eL [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL . ":set (\$cfmLeases->\"10\") {\"e2e-gast\"={\"mac\"=\"'"$(echo "$swm" | tr 'A-F' 'a-f')"'\";\"ip\"=99}}\n")' >/dev/null
-mgr '$cfmFind E2E-GAST' | grep -q "^$swm " && ok "\$cfmFind: Name aus leases.rsc, groß/klein egal" || bad "\$cfmFind: Name aus leases.rsc"
+mgr '$cfmFind E2E-GAST' | grep -q "^$swm " && mgr ':put [:serialize to=json [$cfmFind E2E-GAST quiet=yes]]' | grep -q '"192.168.10.99"' && ok "\$cfmFind: Name und feste IP aus leases.rsc, groß/klein egal" || bad "\$cfmFind: Name/IP aus leases.rsc"
 mgr ':global e2eL; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL' >/dev/null
 mgr "\$cfmFind $swl" | grep -q "^$swm " && ok "\$cfmFind: MAC ohne Trenner in Kleinbuchstaben" || bad "\$cfmFind: MAC ohne Trenner"
 # Auswertung mit erfundenen Antworten (data=): Endpunkt = Port mit den wenigsten MACs, WLAN vom CAPsMAN

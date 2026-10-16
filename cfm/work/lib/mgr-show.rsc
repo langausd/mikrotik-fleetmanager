@@ -99,6 +99,7 @@
       :local nn [$cfmNet $vid]
       :if ([:len ($nn->"net")] > 0) do={ :set t ($t . "  " . ($nn->"net") . " Gateway " . [:tostr ($nn->"gw")]) }
       :if ([:len [:tostr ($vv->"dhcp")]] > 0) do={ :set t ($t . " DHCP " . ($vv->"dhcp")) }
+      :if ([:len [:tostr ($vv->"dhcpGw")]] > 0) do={ :set t ($t . ", Gateway der Clients ." . ($vv->"dhcpGw")) }
     }
     :if ([:typeof $vv] != "array") do={ :set t ($t . "  fehlt in vlans.rsc!") }
     :put ("  " . $t)

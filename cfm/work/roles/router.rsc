@@ -105,7 +105,10 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         $cfmSet m="/ip/dhcp-server" n=({"name"=("dhcp" . $vid)}) p=({"disabled"=$dis})
         :local dns [:tostr ($v->"dns")]
         :if ([:len $dns] = 0) do={ :set dns [:tostr $gw] }
-        $cfmEnsure m="/ip/dhcp-server/network" k=("dn:" . $vid) n=({"address"=($nn->"net")}) p=({"address"=($nn->"net");"gateway"=[:tostr $gw];"dns-server"=$dns;"domain"=($cfmG->"domain")})
+        # dhcpGw (D82): Clients bekommen ein anderes Gateway, z.B. den Internet-Router im selben Netz
+        :local dg [:tostr $gw]
+        :if ([:len [:tostr ($v->"dhcpGw")]] > 0) do={ :set dg [:tostr (($nn->"addr") + [:tonum ($v->"dhcpGw")])] }
+        $cfmEnsure m="/ip/dhcp-server/network" k=("dn:" . $vid) n=({"address"=($nn->"net")}) p=({"address"=($nn->"net");"gateway"=$dg;"dns-server"=$dns;"domain"=($cfmG->"domain")})
         # feste Leases aus leases.rsc (D62); der Name ist Kommentar und DNS-Name
         :if ([:typeof $cfmLeases] = "array") do={
           :foreach ln,ld in=($cfmLeases->$vid) do={

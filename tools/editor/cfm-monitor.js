@@ -540,6 +540,7 @@
       const sig = w ? parseInt(w.sig, 10) : NaN;
       let info = '';
       if (w) info = 'seit ' + w.up + (w.rate ? ' · ' + Math.round(+w.rate / 1e6) + ' Mbit/s' : '');
+      else if (+h.links > 0) info = 'cfm-Gerät, ' + (+h.links > 1 ? h.links + ' Links per LLDP' : 'per LLDP');
       else if (b.length && (h.uplink === true || h.uplink === 'true')) info = 'über Uplink zu ' + b[3];
       else if (b.length) info = [b[3] ? 'Nachbar ' + b[3] : '', +b[4] > 1 ? b[4] + ' MACs am Port' : ''].filter(Boolean).join(', ');
       else info = 'nur ARP/Lease bei ' + String(h.src || '?');

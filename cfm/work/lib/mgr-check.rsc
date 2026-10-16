@@ -151,6 +151,26 @@
       :set ($wgAddrs->$ad) $k
     }
   }
+  # dhcpGw (D82): Host-Anteil, nur mit dhcp, nicht im Pool, nicht das Gateway selbst
+  :foreach vid,v in=$cfmVlans do={
+    :local dg [:tostr ($v->"dhcpGw")]
+    :if ([:len $dg] > 0) do={
+      :local w ("vlans.rsc: VLAN " . $vid . ": dhcpGw " . $dg . " ")
+      :local h [:tonum $dg]
+      :local dh [:tostr ($v->"dhcp")]
+      :if ([:typeof $h] != "num" or $h < 1 or $h > 254) do={ :set ($err->[:len $err]) ($w . "muss ein Host-Anteil 1-254 sein") } else={
+        :if ([:len $dh] = 0 or $dh = "no") do={ :set ($warn->[:len $warn]) ($w . "wirkt nur mit dhcp") } else={
+          :local s [:find $dh "-"]
+          :if ([:typeof $s] = "num") do={
+            :if ($h >= [:tonum [:pick $dh 0 $s]] and $h <= [:tonum [:pick $dh ($s + 1) [:len $dh]]]) do={ :set ($err->[:len $err]) ($w . "liegt im DHCP-Bereich " . $dh) }
+          }
+        }
+        :local gwh [:tonum ($v->"gw")]
+        :if ([:typeof $gwh] != "num") do={ :set gwh 1 }
+        :if ($h = $gwh) do={ :set ($warn->[:len $warn]) ($w . "ist das Gateway selbst (Eintrag überflüssig)") }
+      }
+    }
+  }
   # Feste Leases (D62): VLAN mit DHCP der Router, Name als DNS-Label (eindeutig, kein Gerätename),
   # MAC und Adresse je VLAN eindeutig, Adresse im Netz und nicht die des Gateways
   :local lName ({})
@@ -182,6 +202,7 @@
         :local h [:tonum ($ld->"ip")]
         :if ([:typeof $h] != "num" or $h < 1 or $h > $hmax) do={ :set ($err->[:len $err]) ($w . "ip = Host-Anteil 1-" . $hmax) } else={
           :if ($h = $gwh) do={ :set ($err->[:len $err]) ($w . "ip ist die Adresse des Gateways") }
+          :if ([:tostr $h] = [:tostr ($v->"dhcpGw")]) do={ :set ($err->[:len $err]) ($w . "ip ist dhcpGw (Gateway der Clients)") }
           :if ([:typeof ($lIp->[:tostr $h])] != "nothing") do={ :set ($err->[:len $err]) ($w . "ip schon bei " . ($lIp->[:tostr $h])) }
           :set ($lIp->[:tostr $h]) $ln
           :if ($h >= 251 and $h <= 254) do={ :set ($warn->[:len $warn]) ($w . ".251-.254 nutzen VRRP-Router als eigene Adresse (routerId 1-4)") }

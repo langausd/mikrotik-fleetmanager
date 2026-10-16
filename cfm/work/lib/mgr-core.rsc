@@ -569,7 +569,7 @@
   :local n 0
   :foreach name,d in=[$cfmInvLoad] do={
     :if (([:len $host] = 0 or $host = $name) and [:len [:tostr ($d->"ip")]] > 0 and [$cfmEnrolled $d]) do={
-      :if ([/ping ($d->"ip") count=1] > 0) do={
+      :if ([:typeof ([/ping ($d->"ip") count=1 as-value]->"time")] = "time") do={
         :local sd ($b . "/state/" . $name)
         :local old [$cfmJson ($sd . "/status.dat")]
         :local got ""

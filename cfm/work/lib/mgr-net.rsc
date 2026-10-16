@@ -684,10 +684,10 @@
 # data=<datei>: statt der Geräte gespeicherte Antworten {"<gerät>"=<Antwort>} auswerten (Labor: das CHR
 # hat keine Clients und kein WLAN). quiet=yes: keine Tabelle (Meldungen zu stummen Geräten bleiben).
 # Rückgabe (cfm-Monitor): Liste {"mac";"ip"=(..);"name"=(..);"best"={Gerät;Port;VLAN;Nachbar;MACs};
-# "uplink"=true|false;"w"={"ap";"band";"ssid";"sig";"up";"vid";"rate"};"src"=Gerät mit ARP/Lease}
+# "uplink"=true|false;"links"=Links per LLDP (eigenes Gerät);"w"={"ap";"band";"ssid";"sig";"up";"vid";"rate"};"src"=Gerät mit ARP/Lease}
 :global cfmFind do={
   :global cfmInvLoad; :global cfmEnrolled; :global cfmExec; :global cfmCapsmen; :global cfmPad
-  :global cfmCiRe; :global cfmMB; :global cfmJson
+  :global cfmCiRe; :global cfmMB; :global cfmJson; :global cfmG; :global cfmNet
   :local q [:tostr $1]; :local fh [:tostr $host]; :local fp [:tostr $port]; :local fa [:tostr $ap]
   :local fs [:tostr $ssid]; :local fv [:tostr $vlan]; :local fg [:tostr $signal]
   :local say ($quiet != "yes")
@@ -735,8 +735,9 @@
   }
   # Verknüpfen: "m<MAC>" -> Eintrag
   :local rec ({})
-  :local nr ({"mac"="";"ip"=({});"name"=({});"loc"=({});"up"=({});"w"=({});"src"=""})
-  # eigene Geräte: Bridge-MAC aus dem Status
+  :local nr ({"mac"="";"ip"=({});"name"=({});"loc"=({});"up"=({});"lldp"=({});"w"=({});"src"=""})
+  # eigene Geräte: Bridge-MAC aus dem Status (inm: Name -> Schlüssel, für den Ort per LLDP)
+  :local inm ({})
   :foreach name,d in=$inv do={
     :local m [:tostr ([$cfmJson ([$cfmMB] . "/state/" . $name . "/status.dat")]->"mac")]
     :if ([:len $m] > 0) do={
@@ -744,6 +745,7 @@
       :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
       :set ($rec->$k->"name"->[:len ($rec->$k->"name")]) $name
       :set ($rec->$k->"ip"->[:len ($rec->$k->"ip")]) [:tostr ($d->"ip")]
+      :set ($inm->$name) $k
     }
   }
   :foreach vid,ents in=$lz do={
@@ -758,6 +760,13 @@
       :local k ("m" . $m)
       :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
       :set ($rec->$k->"name"->[:len ($rec->$k->"name")]) $nm
+      # feste Adresse aus dem Host-Anteil (Netz des VLANs per $cfmNet aus der Gerätebibliothek)
+      :local nn ({})
+      :onerror e in={ :set nn [$cfmNet $vid] } do={}
+      :if ([:len [:tostr ($nn->"net")]] > 0 and [:typeof [:tonum ($o->"ip")]] = "num") do={
+        :local la [:tostr (($nn->"addr") + [:tonum ($o->"ip")])]
+        :if ([:typeof [:find ($rec->$k->"ip") $la]] != "num") do={ :set ($rec->$k->"ip"->[:len ($rec->$k->"ip")]) $la }
+      }
     }
   }
   :foreach dv,j in=$dat do={
@@ -783,6 +792,16 @@
         :local fn ""
         :foreach x in=[:toarray [:tostr ($nb->$p)]] do={ :if ([:len $fn] = 0) do={ :set fn [:tostr $x] } }
         :set ($rec->$k->"loc"->[:len ($rec->$k->"loc")]) ({$dv;$p;[:tostr ($e->2)];$fn;($cn->$p)})
+      }
+    }
+    # eigene Geräte stehen dort, wo ein anderes sie per LLDP/MNDP an einem Bridge-Port sieht (ihre MAC lernt
+    # sonst jeder Port, der MGMT-Verkehr sieht, z.B. die MGMT-Karte eines CHR hinter der PVE-Bridge)
+    :foreach p,ids in=$nb do={
+      :if ([:typeof ($cn->$p)] != "nothing") do={
+        :foreach x in=[:toarray [:tostr $ids]] do={
+          :local ik [:tostr ($inm->[:tostr $x])]
+          :if ([:len $ik] > 0 and [:tostr $x] != $dv) do={ :set ($rec->$ik->"lldp"->[:len ($rec->$ik->"lldp")]) ({$dv;$p;"";[:tostr $x];($cn->$p)}) }
+        }
       }
     }
     # ARP und Leases: IP, Name
@@ -817,9 +836,18 @@
   :foreach k,r in=$rec do={
     :local w ($r->"w"); :local hw ([:len $w] > 0)
     # bester Ort: Port mit den wenigsten MACs, sonst der Uplink mit den wenigsten
-    :local dl ($r->"loc"); :if ([:len $dl] = 0) do={ :set dl ($r->"up") }
+    :local dl ($r->"lldp"); :if ([:len $dl] = 0) do={ :set dl ($r->"loc") }; :if ([:len $dl] = 0) do={ :set dl ($r->"up") }
+    :local upl ([:len ($r->"lldp")] = 0 and [:len ($r->"loc")] = 0)
     :local bl ({})
     :foreach x in=$dl do={ :if ([:len $bl] = 0 or [:tonum ($x->4)] < [:tonum ($bl->4)]) do={ :set bl $x } }
+    # Ort per LLDP hat kein VLAN: das MGMT-VLAN (die Bridge-MAC eines Geräts steht in allen seinen VLANs),
+    # sonst aus den Bridge-Einträgen derselben MAC (am selben Port, sonst irgendeinem)
+    :if ([:len $bl] > 0 and [:len [:tostr ($bl->2)]] = 0) do={ :set ($bl->2) [:tostr ($cfmG->"mgmtVlan")] }
+    :if ([:len $bl] > 0 and [:len [:tostr ($bl->2)]] = 0) do={
+      :foreach y in=(($r->"up"), ($r->"loc")) do={
+        :if ([:len [:tostr ($bl->2)]] = 0 or (($y->0) = ($bl->0) and ($y->1) = ($bl->1))) do={ :set ($bl->2) [:tostr ($y->2)] }
+      }
+    }
     :local hay (($r->"mac") . " " . [:tostr ($r->"ip")] . " " . [:tostr ($r->"name")])
     :if ([:len $bl] > 0) do={ :set hay ($hay . " " . ($bl->0) . ":" . ($bl->1) . " " . ($bl->3)) }
     :if ($hw) do={ :set hay ($hay . " " . ($w->"ap") . " " . ($w->"ssid")) }
@@ -838,17 +866,20 @@
       :if ($hit and [:len $fg] > 0) do={ :set hit ([:tonum ($w->"sig")] <= [:tonum $fg]) }
     }
     :if ($hit) do={
-      :set ($res->[:len $res]) ({"mac"=($r->"mac");"ip"=($r->"ip");"name"=($r->"name");"best"=$bl;"uplink"=([:len ($r->"loc")] = 0);"w"=$w;"src"=($r->"src")})
+      :set ($res->[:len $res]) ({"mac"=($r->"mac");"ip"=($r->"ip");"name"=($r->"name");"best"=$bl;"uplink"=$upl;"links"=[:len ($r->"lldp")];"w"=$w;"src"=($r->"src")})
       :if ($say) do={
         :local ip [:tostr (($r->"ip")->0)]; :if ([:len ($r->"ip")] > 1) do={ :set ip ($ip . "+") }
         :local nm [:pick [:tostr (($r->"name")->0)] 0 20]
         :local ort ""; :local vl ""; :local inf ""
         :if ([:len $bl] > 0) do={
           :set ort (($bl->0) . " " . ($bl->1)); :set vl ($bl->2)
-          :if ([:len ($r->"loc")] = 0) do={ :set inf ("über Uplink zu " . ($bl->3)) } else={
+          :if ([:len ($r->"lldp")] > 0) do={
+            :set inf "cfm-Gerät, per LLDP"
+            :if ([:len ($r->"lldp")] > 1) do={ :set inf ("cfm-Gerät, " . [:len ($r->"lldp")] . " Links per LLDP") }
+          } else={ :if ($upl) do={ :set inf ("über Uplink zu " . ($bl->3)) } else={
             :if ([:len ($bl->3)] > 0) do={ :set inf ("Nachbar " . ($bl->3)) }
             :if (($bl->4) > 1) do={ :if ([:len $inf] > 0) do={ :set inf ($inf . ", ") }; :set inf ($inf . ($bl->4) . " MACs am Port") }
-          }
+          } }
         }
         :if ($hw) do={
           :set ort (($w->"ap") . " " . ($w->"band")); :set vl ($w->"vid")

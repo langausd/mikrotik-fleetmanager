@@ -6,6 +6,9 @@
 #  gw     Host-Anteil des Gateways/VRRP-VIP (Default 1)
 #  dhcp   "a-b" Host-Bereich des DHCP-Pools oder "no" (Default "no")
 #  dns    DNS-Server für DHCP-Clients (Default = Gateway)
+#  dhcpGw Host-Anteil des Gateways, das DHCP-Clients bekommen, wenn es nicht der Router sein soll -
+#         z.B. der Internet-Router im selben Netz (D82): "dhcpGw"=1; der Router bleibt Gateway (gw) für
+#         die übrigen VLANs und DNS-Server, sofern dns nichts anderes sagt
 #  lease  DHCP-Lease-Zeit (Default 30m)
 #  l3     "no" = Router legt kein Interface/IP an (reines L2-VLAN)
 #  onboard "yes" = Onboarding-VLAN (genau eins, siehe unten)

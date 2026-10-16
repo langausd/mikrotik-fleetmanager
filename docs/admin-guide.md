@@ -244,6 +244,7 @@ Schlüssel ist die VLAN-ID als String.
 | `zone` | Firewall-Zone |
 | `net`, `gw` | eigenes Subnetz bzw. Host-Anteil des Gateways (Standard `192.168.<VID>.0/24`, `.1`) |
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
+| `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, D82). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
 | `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (D76) |
@@ -1271,11 +1272,13 @@ MAC               IP              Name                 Ort                      
   (LLDP/MNDP). Sieht man eine MAC an mehreren solchen Ports, gilt der mit den wenigsten MACs. Ein
   Port zu einem fremden Switch oder Hypervisor sieht viele, der Port des Geräts wenige. „Nachbar …“
   nennt ein fremdes Gerät mit LLDP an diesem Port, „N MACs am Port“ zeigt, dass dort mehr hängt.
+* **cfm-Gerät, per LLDP**: ein eigenes Gerät; als Ort gilt der Port, an dem ein anderes es per LLDP/MNDP
+  sieht, als VLAN das MGMT-VLAN. Ein zentraler Switch hat viele solche Links („N Links per LLDP“).
 * **über Uplink zu …**: Die MAC war nur an Ports zu verwalteten Geräten zu sehen, z.B. ein Gerät hinter
   einem Port, an dem auch ein verwaltetes Gerät hängt. **nur ARP/Lease bei …**: Das Gerät kennt die IP,
   aber keine Bridge hat die MAC gerade gelernt (Gerät still oder aus).
 * **Name** kommt aus `leases.rsc`, aus den DHCP-Leases der Geräte und bei eigenen Geräten aus dem
-  Inventar. In Netzen mit fremdem DHCP (z.B. Fritz!Box) kennt cfm IPs nur aus der ARP-Tabelle eines
+  Inventar; die feste Adresse aus `leases.rsc` zählt auch dann als IP, wenn kein Gerät sie gerade kennt. In Netzen mit fremdem DHCP (z.B. Fritz!Box) kennt cfm IPs nur aus der ARP-Tabelle eines
   eigenen Routers mit Adresse im VLAN, Namen nur aus `leases.rsc`.
 * Ein Gerät, das nicht antwortet, steht mit „nicht erreichbar“ bzw. „keine Daten“ vor der Tabelle.
 * Kein Verlauf: Die Suche sieht nur, was die Geräte gerade wissen (Bridge-Einträge verfallen nach

@@ -1036,7 +1036,7 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   an. **Während des Scans verlässt das Radio seinen Kanal, verbundene Clients wechseln kurz zum
   Nachbarn** – also nicht zur Hauptnutzungszeit. Ausgabe je AP: fremde Netze nach
   Frequenz (Anzahl/stärkstes Signal), welche eigenen APs sich hören (BSSIDs vom CAPsMAN), die Kosten
-  des aktuellen Stands und je ein Vorschlag für 1/6/11 und 1/5/9/13 samt fertiger Zeile für
+  des aktuellen Stands und je ein Vorschlag für 1/6/11, 1/5/9/13 und 1/5/9 samt fertiger Zeile für
   `radios` in `wifi.rsc` (dort von Hand übernehmen, bestehende 5/6-GHz-Pins ergänzen, Release).
   Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan, `host=<AP>`
   scannt nur diesen AP und ersetzt ihn in der letzten Messung desselben Bands (die übrigen behalten
@@ -1059,12 +1059,14 @@ Zahl hat keine Einheit; vergleichen lassen sich nur Pläne aus **derselben Messu
    `d = |f1 − f2| / 5` (Abstand in Kanälen), `o = 4 − d` für `d < 4`, sonst 0. Gleicher Kanal 4,
    Nachbarkanal 3, zwei Kanäle daneben 2, drei daneben 1, ab vier Kanälen (1 und 5, 1 und 6) 0.
 4. **Kosten eines APs `a` auf Frequenz `f`** durch fremde Netze: Summe über alle fremden Netze, die
-   `a` hört, von `w(Signal) × o(f, Frequenz des Netzes)`.
+   `a` hört, von `w(Signal) × o(f, Frequenz des Netzes)`, dazu die anderen Funknetze aus
+   `wifi.rsc` → `others` (siehe unten).
 5. **Kosten eines Plans `P`:** Summe der Fremdkosten aller APs auf ihrer Plan-Frequenz, dazu je
    gehörtem eigenem Nachbarn `2 × w(Signal) × o(P(a), P(b))`. Eigene Nachbarn zählen doppelt – sie
    senden den eigenen Verkehr, und ihren Kanal bestimmt der Plan selbst. Hören sich zwei APs
    gegenseitig, zählt jede Richtung für sich.
-6. **Suche:** je Kanalsatz 1/6/11 (2412/2437/2462 MHz) und 1/5/9/13 (2412/2432/2452/2472 MHz).
+6. **Suche:** je Kanalsatz 1/6/11 (2412/2437/2462 MHz), 1/5/9/13 (2412/2432/2452/2472 MHz) und
+   1/5/9 (2412/2432/2452 MHz, lässt oberhalb 2462 MHz Platz für Zigbee/Thread 24–26).
    Bis 6 APs prüft der Befehl alle Kombinationen (bei 4 Kanälen und 6 APs 4096), darüber
    schrittweise: alle APs auf dem ersten Kanal, dann dreimal reihum für jeden AP den besten Kanal
    bei festen übrigen. Bei gleichen Kosten bleibt der zuerst gefundene Plan.
@@ -1083,11 +1085,50 @@ Anhaltspunkt nehmen und im Betrieb vergleichen (Paketverlust und Abbrüche auf 2
 wertet einen fremden AP auf demselben Kanal als die stärkste Störung; in der Praxis teilen sich
 Netze auf demselben Kanal die Sendezeit geordnet, halb überlappende stören sich eher.
 
-Andere Funknetze im 2,4-GHz-Band (Zigbee, Thread, Bluetooth, Funkbrücken wie Milight) sieht der
-Scan nicht, sie fehlen in den Kosten (TODO 51). Zigbee und Thread nutzen die Kanäle 11–26 (2405 +
-5 · (k − 11) MHz, je etwa 2 MHz breit). Das Raster 1/5/9/13 überdeckt das ganze Band; funkt im Haus
-ein Zigbee- oder Thread-Netz auf 25 oder 26, Kanal 13 im ganzen Haus frei lassen: 1/6/11 schlägt
-`$cfmWifiScan` direkt vor, 1/5/9 von Hand aus den Kosten wählen.
+#### Andere Funknetze im 2,4-GHz-Band (D80)
+
+Zigbee, Thread, Bluetooth und Funkbrücken wie Milight sieht der Scan nicht – die MikroTik-Radios
+messen nur WLAN. Du trägst sie in `wifi.rsc` unter `others` ein, `$cfmWifiScan` rechnet sie in die
+Kosten ein (auch mit `data=yes`; gelesen wird der Arbeitsstand in `work/`, kein Release nötig):
+
+```
+"others"={
+  "zha"={"type"="zigbee";"ch"=25;"near"="ap1"};
+  "otbr"={"type"="thread";"ch"="auto";"near"="ap2,ap3"};
+  "milight"={"type"="milight-rgbw"};
+  "bt"={"type"="ble"}
+}
+```
+
+| `type` | Frequenzen | Gewicht an `near`-APs (übrige: ein Drittel) |
+|---|---|---|
+| `zigbee`, `thread` | `ch` 11–26: 2405 + 5 · (ch − 11) MHz; `"auto"` = Kanal vorschlagen | 60 |
+| `milight-rgbw` / `-cct` / `-rgbcct` | 2411/2442/2473, 2406/2441/2476, 2410/2441/2472 MHz | 30 je Frequenz |
+| `ble` | Advertising 2402/2426/2480 MHz | 20 je Frequenz |
+| `bt` (classic) | alle 79 Kanäle 2402–2480 MHz | 2 je Kanal |
+
+* **Gewicht:** wie ein fremdes WLAN mit `w(s)`; 60 entspricht −35 dBm. `near` nennt die APs, die
+  neben dem Sender stehen (Koordinator, Bridge), durch Komma getrennt; dort zählt das Netz mit dem
+  vollen Gewicht, an allen anderen APs mit einem Drittel. Ohne `near` überall ein Drittel. `"w"=<1–200>`
+  ersetzt das Gewicht an den `near`-APs.
+* **Überlappung** eines schmalen Senders mit einem WLAN-Kanal (Mitte `f`), `d` = Abstand in MHz:
+  `d ≤ 9` → 4 (im Kanal), `d ≤ 13` → 1 (Seitenband), sonst 0. Zigbee 25 (2475) liegt 13 MHz über
+  WLAN 11 → 1; Thread 24 (2470) liegt in WLAN 11 → 4.
+* **Bluetooth classic** springt über das ganze Band und kostet auf jedem WLAN-Kanal fast gleich viel:
+  Es erhöht die Zahlen, ändert den Vorschlag aber kaum. AFH meidet belegte Kanäle von selbst.
+* **Kanalvorschlag:** Für jedes Zigbee-/Thread-Netz mit `"ch"="auto"` nennt der Befehl unter jedem
+  Vorschlag den 802.15.4-Kanal, den dessen WLAN-Kanäle am wenigsten überdecken (APs aus `near`
+  dreifach). Ein Kanal, auf dem schon ein anderes 802.15.4-Netz funkt, kostet 100, ein direkter
+  Nachbarkanal 2. Kanal 26 verliert jeden Gleichstand (manche Geräte können ihn nicht oder nur mit
+  weniger Leistung), danach gewinnt der größere Abstand zum nächsten WLAN-Kanal.
+* **`$cfmCheck`** prüft Typ, Kanal und Gewicht, warnt bei unbekannten `near`-APs, bei zwei
+  802.15.4-Netzen auf demselben Kanal und wenn ein Pin in `radios` (2,4 GHz) einen festen
+  Zigbee-/Thread-Kanal überdeckt – an einem AP aus `near`, ohne `near` an jedem AP.
+* Einen Zigbee-Kanal wechselst du nur mit Aufwand (schlafende Endgeräte folgen erst beim Aufwachen,
+  manche gar nicht), Thread wechselt über das Pending Dataset ohne Neuanlernen. Das Raster 1/5/9/13
+  überdeckt das ganze Band; für ein Netz auf 24–26 eignen sich 1/6/11 (25/26) oder 1/5/9.
+* Auch auf einem freien Kanal kann ein AP direkt neben einem Koordinator dessen Empfänger
+  übersteuern: 1–2 m Abstand halten.
 
 ### 8.8 WireGuard-Fernzugang
 

@@ -361,6 +361,19 @@ mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"2\",\"t
 out=$(mgr '$cfmWifiScan data=yes')
 l=$(echo "$out" | grep "^Vorschlag 1/6/11")
 echo "$l" | grep -q "Kosten 0" && ! echo "$l" | grep -q "apA=2412" && ! echo "$l" | grep -q "apB=2462" && ok "WLAN-Scan data=yes: Vorschlag meidet die belegten Kanäle" || { bad "WLAN-Scan data=yes"; echo "$out" | tail -6; }
+echo "$out" | grep -q "^Vorschlag 1/5/9 " && ok "WLAN-Scan: Kanalsatz 1/5/9 (TODO 51)" || bad "Kanalsatz 1/5/9 fehlt"
+# Andere Funknetze (TODO 51, D80): Zigbee 18 (2440 MHz) bei apA verdrängt apA von Kanal 6, Thread
+# "auto" bei apB bekommt Kanal 16 (2430 MHz: weit weg von apA auf 11 und apB auf 1, nicht neben 18)
+mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"others\") {\"zb\"={\"type\"=\"zigbee\";\"ch\"=18;\"near\"=\"apA\"};\"ot\"={\"type\"=\"thread\";\"ch\"=\"auto\";\"near\"=\"apB\"};\"ml\"={\"type\"=\"milight-rgbw\"}}\n")' >/dev/null
+out=$(mgr '$cfmWifiScan data=yes')
+l=$(echo "$out" | grep "^Vorschlag 1/6/11")
+echo "$out" | grep -q "anderes Netz zb: zigbee Kanal 18, 2440 MHz, bei apA" && echo "$out" | grep -q "anderes Netz ml: milight-rgbw, 2411,2442,2473 MHz" && ok "WLAN-Scan nennt die anderen Funknetze" || { bad "andere Funknetze fehlen in der Ausgabe"; echo "$out" | grep -i netz; }
+echo "$l" | grep -q "apA=2462" && echo "$l" | grep -q "apB=2412" && ok "WLAN-Scan: Zigbee bei apA verschiebt dessen Kanal" || { bad "Zigbee nicht eingerechnet"; echo "$out" | tail -12; }
+echo "$out" | grep -A3 "^Vorschlag 1/6/11" | grep -q "ot (thread): Kanal 16 (2430 MHz)" && ok "WLAN-Scan: Kanalvorschlag für Thread mit auto" || { bad "Kanalvorschlag Thread"; echo "$out" | tail -12; }
+out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"radios\") {\"cm1\"={\"2\"=\"2437\"}}\n:set (\$cfmWifi->\"others\"->\"zb\"->\"near\") \"cm1\"\n:set (\$cfmWifi->\"others\"->\"x\") {\"type\"=\"wlan\"}\n:set (\$cfmWifi->\"others\"->\"y\") {\"type\"=\"thread\";\"ch\"=27}\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "W wifi.rsc: radios cm1 2=2437 überdeckt zb (zigbee Kanal 18, 2440 MHz)" && ok "\$cfmCheck: Pin überdeckt Zigbee-Kanal" || { bad "Warnung Pin/Zigbee fehlt"; echo "$out" | grep -i others; }
+echo "$out" | grep -q "ERR wifi.rsc: others x: type wlan unbekannt" && echo "$out" | grep -q "ERR wifi.rsc: others y: ch 27 liegt nicht in 11-26" && ok "\$cfmCheck: others mit falschem Typ und Kanal" || { bad "Prüfung others"; echo "$out" | grep -i others; }
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"2\",\"t\":\"e2e\",\"own\":{},\"aps\":{\"apA\":[],\"apB\":[]}}")' | grep -i "error" 
 mgr '$cfmWifiScan data=yes' | grep -q "keine Messung mit Netzen" && ok "WLAN-Scan data=yes ohne Netze: kein Vorschlag" || bad "WLAN-Scan data=yes ohne Netze"
 r 1 '/file/remove [find where name="cfm/state/wifiscan.json"]' >/dev/null

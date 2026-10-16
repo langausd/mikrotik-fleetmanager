@@ -455,6 +455,54 @@
       :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . ": Band " . $bb . " fehlt in channels") }
     }
   }
+  # Andere Funknetze im 2,4-GHz-Band (TODO 51): Typ, Kanal, near, Gewicht; ein Pin auf 2,4 GHz, der
+  # ein Zigbee-/Thread-Netz mit festem Kanal überdeckt (bis 9 MHz neben der Mitte), an einem AP aus
+  # near (ohne near an jedem AP) -> Warnung. Ohne die Helfer aus mgr-net ($cfmRelease prüft mit den
+  # alten Manager-Modulen)
+  :local o154 ({})
+  :foreach k,e in=($cfmWifi->"others") do={
+    :local t [:tostr ($e->"type")]
+    :if ([:typeof $e] != "array" or !($t ~ "^(zigbee|thread|milight-rgbw|milight-cct|milight-rgbcct|ble|bt)\$")) do={
+      :set ($err->[:len $err]) ("wifi.rsc: others " . $k . ": type " . $t . " unbekannt (zigbee|thread|milight-rgbw|milight-cct|milight-rgbcct|ble|bt)")
+    } else={
+      :local ch [:tostr ($e->"ch")]
+      :if ($t = "zigbee" or $t = "thread") do={
+        :local c [:tonum $ch]
+        :if ([:typeof $c] = "num") do={
+          :if ($c < 11 or $c > 26) do={ :set ($err->[:len $err]) ("wifi.rsc: others " . $k . ": ch " . $ch . " liegt nicht in 11-26") } else={
+            :foreach ok,oc in=$o154 do={ :if ($oc = $c) do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . " und " . $ok . " auf demselben Kanal " . $c) } }
+            :set ($o154->$k) $c
+          }
+        } else={
+          :if ([:len $ch] > 0 and $ch != "auto") do={ :set ($err->[:len $err]) ("wifi.rsc: others " . $k . ": ch " . $ch . " ist weder 11-26 noch auto") }
+        }
+      } else={
+        :if ([:len $ch] > 0) do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . ": ch gilt nur für zigbee/thread (" . $t . " hat feste Kanäle)") }
+      }
+      :local w [:tostr ($e->"w")]
+      :if ([:len $w] > 0) do={
+        :local wn [:tonum $w]
+        :if ([:typeof $wn] != "num" or $wn < 1 or $wn > 200) do={ :set ($err->[:len $err]) ("wifi.rsc: others " . $k . ": w " . $w . " ist kein Gewicht (1-200)") }
+      }
+      :foreach apn in=[:toarray [:tostr ($e->"near")]] do={
+        :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . ": near nennt " . $apn . ", nicht im Inventar") } else={
+          :if (!(("," . [:tostr ($inv->$apn->"role")] . ",") ~ ",(ap|capsman),")) do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . ": near nennt " . $apn . " ohne Rolle ap oder capsman") }
+        }
+      }
+    }
+  }
+  :foreach k,c in=$o154 do={
+    :local fz (2405 + (5 * ($c - 11)))
+    :local nr [:tostr ($cfmWifi->"others"->$k->"near")]
+    :foreach apn,pins in=($cfmWifi->"radios") do={
+      :local pf [:tonum ($pins->"2")]
+      :if ([:typeof $pf] = "num" and ([:len $nr] = 0 or [:typeof [:find ("," . $nr . ",") ("," . $apn . ",")]] != "nil")) do={
+        :local d ($pf - $fz)
+        :if ($d < 0) do={ :set d (0 - $d) }
+        :if ($d <= 9) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios " . $apn . " 2=" . $pf . " überdeckt " . $k . " (" . [:tostr ($cfmWifi->"others"->$k->"type")] . " Kanal " . $c . ", " . $fz . " MHz)") }
+      }
+    }
+  }
   # Steering je Band und Mindestsignal (TODO 39): Schwellen in dBm, Band muss es geben
   :foreach bb,st in=($cfmWifi->"steer") do={
     :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: steer: Band " . $bb . " fehlt in channels") }

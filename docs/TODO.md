@@ -18,8 +18,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
-* **Neu (Idee):** 52 (Lesezeichen ohne Hantieren: Lade-Lesezeichen, Userscript oder Container, 2026-10-15), 51 (Kanalplanung mit Zigbee, Thread, Bluetooth und Milight: andere Netze
-  bei der Wahl der WLAN-Kanäle berücksichtigen, Kanal für neue 802.15.4-Netze vorschlagen).
+* **Neu (Idee):** 52 (Lesezeichen ohne Hantieren: Lade-Lesezeichen, Userscript oder Container, 2026-10-15).
+* **Erledigt am 2026-10-16:** 51 (D80): andere Funknetze im 2,4-GHz-Band (`wifi.rsc` → `others`) in
+  den Kosten von `$cfmWifiScan`, Kanalvorschlag für neue Zigbee-/Thread-Netze, Kanalsatz 1/5/9; offen
+  bleibt nur, Energie-Messungen der Koordinatoren einzubeziehen.
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant).
 * **Erledigt am 2026-10-13 nachmittags:** RAM-Log ohne `system,info` (D79): Nach einem Framework-Update
@@ -645,7 +647,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (behandelt nur die Wirkung, der Nutzer wollte die Ursachen beheben); für MNDP mit Quelle `0.0.0.0`
     blieb nur der Empfänger, und die Regel trifft genau diese Pakete.
 
-51. **Kanalplanung mit den anderen Funknetzen im 2,4-GHz-Band** (Idee des Nutzers, 2026-10-13) –
+51. ~~**Kanalplanung mit den anderen Funknetzen im 2,4-GHz-Band**~~ (Idee des Nutzers, 2026-10-13) –
+    *erledigt 2026-10-16 (D80):* `wifi.rsc` → `others`, Kosten mit Nähe-Gewicht (auch Bluetooth und
+    Milight), Kanalvorschlag für Zigbee/Thread mit `auto`, Kanalsatz 1/5/9, Warnung in `$cfmCheck`.
+    Offen: Energie-Messungen der Koordinatoren einbeziehen. Befund und Herleitung:
     `$cfmWifiScan`/`$cfmChannels` (D56) sehen nur WLAN. Im selben Haus funken oft auch Zigbee, Thread,
     Bluetooth (classic und LE) und proprietäre Funkbrücken (z.B. Milight). Beides berücksichtigen:
     * **Andere Netze bei der Wahl der WLAN-Kanäle:** Site-Daten (z.B. ein Schlüssel in `wifi.rsc`)
@@ -675,8 +680,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * Ein AP direkt neben einem Koordinator kann dessen Empfänger auch auf einem freien Kanal
       übersteuern: 1–2 m Abstand.
 
-    Offen zur Entscheidung: harter Ausschluss oder Kosten, wo die Daten stehen, ob Bluetooth nur als
-    Hinweis zählt (AFH), ob Messungen der Koordinatoren einfließen (Energie-Scan je 802.15.4-Kanal aus
+    Entschieden 2026-10-16 (D80): Kosten mit Nähe-Gewicht, Daten in `wifi.rsc`, Bluetooth und Milight
+    als Kosten. Noch offen: ob Messungen der Koordinatoren einfließen (Energie-Scan je 802.15.4-Kanal aus
     den ZHA-Diagnosedaten bzw. `commissioner energy` in OpenThread; die MikroTik-Radios sehen nur WLAN).
     Quellen: [Zigbee2MQTT, Zigbee-Netz](https://www.zigbee2mqtt.io/guide/configuration/zigbee-network.html),
     [OpenThread Channel Manager](https://docs.silabs.com/openthread/2.5.0/openthread-api/api-channel-manager),

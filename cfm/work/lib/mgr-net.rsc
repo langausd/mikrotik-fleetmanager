@@ -266,11 +266,12 @@
 # zum Nachbarn. Die BSSIDs der eigenen APs kennt der CAPsMAN (Interface-Namen <AP>-<Band>g).
 # Ergebnis in state/wifiscan.json (eine Messung ganz ohne Netze überschreibt sie nicht); data=yes
 # rechnet nur mit der letzten Messung, host= ersetzt in ihr nur diesen AP (gleiches Band).
-# Vorschlag (nur 2,4 GHz): Kanalsätze 1/6/11 und 1/5/9/13 durchprobieren, Kosten je AP = Summe über
-# gehörte Netze: Gewicht (Signal + 95 dB) mal Überlappung der Kanäle (gleich 4/4, 1 Kanal daneben
-# 3/4 … ab 4 Kanälen Abstand 0); eigene APs, die sich hören, zählen doppelt. Bis 6 APs alle
-# Kombinationen, darüber schrittweise. wifi.rsc bleibt unverändert - die Zeile "radios" zum
-# Übernehmen steht in der Ausgabe.
+# Vorschlag (nur 2,4 GHz): Kanalsätze 1/6/11, 1/5/9/13 und 1/5/9 durchprobieren, Kosten je AP = Summe
+# über gehörte Netze: Gewicht (Signal + 95 dB) mal Überlappung der Kanäle (gleich 4/4, 1 Kanal daneben
+# 3/4 … ab 4 Kanälen Abstand 0); eigene APs, die sich hören, zählen doppelt. Dazu die anderen
+# Funknetze aus wifi.rsc "others" (TODO 51, $cfmOthCost; Arbeitsstand work/), für Zigbee/Thread mit
+# Kanal "auto" ein Kanalvorschlag je Satz. Bis 6 APs alle Kombinationen, darüber schrittweise.
+# wifi.rsc bleibt unverändert - die Zeile "radios" zum Übernehmen steht in der Ausgabe.
 :global cfmScanW do={ :local w ([:tonum $1] + 95); :if ($w < 0) do={ :set w 0 }; :return $w }
 :global cfmScanOv do={
   # Überlappung zweier 2,4-GHz-Frequenzen in Vierteln (20 MHz breit, 5 MHz Raster)
@@ -279,9 +280,64 @@
   :if ($d >= 4) do={ :return 0 }
   :return (4 - $d)
 }
+# Andere Funknetze im 2,4-GHz-Band (TODO 51): wifi.rsc "others", je Eintrag "type" (zigbee, thread,
+# milight-rgbw, milight-cct, milight-rgbcct, ble, bt), bei Zigbee/Thread "ch" (11-26 oder "auto"),
+# optional "near" (APs neben dem Sender, z.B. "ap1,ap2") und "w" (Gewicht dort, Standard je Typ).
+# $cfmOthSig <Eintrag> -> {{Frequenz;Gewicht an near-APs;Gewicht sonst};...}, leer bei Kanal auto.
+# Gewichte wie ein fremdes WLAN mit Signal + 95 dB: Zigbee/Thread 60 (also wie -35 dBm), Milight und
+# BLE je Frequenz 30 bzw. 20 (Befehle und Advertising laufen auf allen drei), Bluetooth classic 2 je
+# 1-MHz-Kanal (springt über alle 79 - fast gleiche Kosten auf jedem WLAN-Kanal); sonst ein Drittel.
+:global cfmOthSig do={
+  :local e $1
+  :local t [:tostr ($e->"type")]
+  :local fl ({})
+  :local wn 60
+  :if ($t = "zigbee" or $t = "thread") do={
+    :local k [:tonum ($e->"ch")]
+    :if ([:typeof $k] = "num") do={ :if ($k >= 11 and $k <= 26) do={ :set ($fl->0) (2405 + (5 * ($k - 11))) } }
+  }
+  :if ($t = "milight-rgbw") do={ :set fl {2411;2442;2473}; :set wn 30 }
+  :if ($t = "milight-cct") do={ :set fl {2406;2441;2476}; :set wn 30 }
+  :if ($t = "milight-rgbcct") do={ :set fl {2410;2441;2472}; :set wn 30 }
+  :if ($t = "ble") do={ :set fl {2402;2426;2480}; :set wn 20 }
+  :if ($t = "bt") do={ :for i from=2402 to=2480 do={ :set ($fl->[:len $fl]) $i }; :set wn 2 }
+  :local w [:tonum ($e->"w")]
+  :if ([:typeof $w] = "num") do={ :set wn $w }
+  :local wf ($wn / 3)
+  :if ($wf < 1) do={ :set wf 1 }
+  :local r ({})
+  :foreach f in=$fl do={ :set ($r->[:len $r]) ({$f;$wn;$wf}) }
+  :return $r
+}
+# Überlappung eines schmalen Senders (Frequenz $2) mit einem 20-MHz-WLAN-Kanal (Mitte $1) in Vierteln:
+# im Kanal (bis 9 MHz neben der Mitte) 4, knapp daneben (bis 13 MHz, Seitenband) 1, sonst 0
+:global cfmOthOv do={
+  :local d ([:tonum $1] - [:tonum $2])
+  :if ($d < 0) do={ :set d (0 - $d) }
+  :if ($d <= 9) do={ :return 4 }
+  :if ($d <= 13) do={ :return 1 }
+  :return 0
+}
+# steht AP $2 in near des Eintrags $1?
+:global cfmOthNear do={ :return ([:typeof [:find ("," . [:tostr ($1->"near")] . ",") ("," . $2 . ",")]] != "nil") }
+# Kosten der anderen Netze $oth für AP $ap auf der WLAN-Frequenz $f
+:global cfmOthCost do={
+  :global cfmOthSig; :global cfmOthOv; :global cfmOthNear
+  :local c 0
+  :foreach k,e in=$oth do={
+    :local nr [$cfmOthNear $e $ap]
+    :foreach s in=[$cfmOthSig $e] do={
+      :local w ($s->2)
+      :if ($nr) do={ :set w ($s->1) }
+      :set c ($c + ($w * [$cfmOthOv $f ($s->0)]))
+    }
+  }
+  :return $c
+}
 :global cfmWifiScan do={
   :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmPad; :global cfmExec; :global cfmEnrolled
   :global cfmWrite; :global cfmCapsmen; :global cfmLoadData; :global cfmWifi; :global cfmScanW; :global cfmScanOv
+  :global cfmOthCost; :global cfmOthSig; :global cfmOthOv; :global cfmOthNear
   :local b [$cfmMB]
   :local f ($b . "/state/wifiscan.json")
   :local inv [$cfmInvLoad]
@@ -408,11 +464,43 @@
   :if ($bd != "2") do={ :put "Vorschlag nur für 2,4 GHz"; :return true }
   :local na [:len $aps]
   :if ($na = 0) do={ :put "keine Scan-Daten"; :return false }
-  # Kosten je AP und Frequenz (fremde Netze) vorab
+  # andere Funknetze (TODO 51) aus dem Arbeitsstand
+  :onerror e in={ $cfmLoadData ver=0 } do={ :put ("wifi.rsc nicht ladbar, ohne andere Funknetze: " . $e) }
+  :local oth ($cfmWifi->"others")
+  :if ([:typeof $oth] != "array") do={ :set oth ({}) }
+  :foreach k,e in=$oth do={
+    :local t [:tostr ($e->"type")]
+    :local fs ""
+    :foreach x in=[$cfmOthSig $e] do={ :if ([:len $fs] < 40) do={ :set fs ($fs . "," . ($x->0)) } }
+    :local ch [:tostr ($e->"ch")]
+    :local nr [:tostr ($e->"near")]
+    :local d $t
+    :if ($t = "zigbee" or $t = "thread") do={ :set d ($d . " Kanal " . $ch); :if ([:len $ch] = 0) do={ :set d ($d . "auto") } }
+    :if ($t = "bt") do={ :set fs ",2402-2480" }
+    :if ([:len $fs] > 0) do={ :set d ($d . ", " . [:pick $fs 1 [:len $fs]] . " MHz") }
+    :if ([:len $nr] > 0) do={ :set d ($d . ", bei " . $nr) }
+    :put ("anderes Netz " . $k . ": " . $d)
+  }
+  # aktueller Stand (Status-Feld radios: "c2412/ax/…")
+  :local cur ({})
+  :local curOk true
+  :for i from=0 to=($na - 1) do={
+    :local st [$cfmJson ($b . "/state/" . ($aps->$i) . "/status.dat")]
+    :local cq ""
+    :foreach r in=($st->"radios") do={
+      :local ch [:pick [:tostr ($r->1)] 1 99]
+      :local fq [:tonum [:pick $ch 0 [:find ($ch . "/") "/"]]]
+      :if ([:typeof $fq] = "num" and $fq < 2500) do={ :set cq $fq }
+    }
+    :if ([:len [:tostr $cq]] = 0) do={ :set curOk false } else={ :set ($cur->$i) $cq }
+  }
+  # Kosten je AP und Frequenz (fremde und andere Netze) vorab, für das Raster und den aktuellen Stand
   :local fc ({})
+  :local fl {2412;2432;2437;2452;2462;2472}
+  :foreach i,cq in=$cur do={ :if ([:typeof [:find $fl $cq]] = "nil") do={ :set ($fl->[:len $fl]) $cq } }
   :foreach ap,nets in=($sc->"aps") do={
-    :foreach cf in={2412;2432;2437;2452;2462;2472} do={
-      :local c 0
+    :foreach cf in=$fl do={
+      :local c [$cfmOthCost oth=$oth ap=$ap f=$cf]
       :foreach n in=$nets do={
         :if ([:len [:tostr ($own->[:tostr ($n->0)])]] = 0) do={ :set c ($c + ([$cfmScanW ($n->3)] * [$cfmScanOv $cf ($n->2)])) }
       }
@@ -435,25 +523,61 @@
     }
     :return $t
   }
-  # aktueller Stand (Status-Feld radios: "c2412/ax/…")
-  :local cur ({})
-  :local curOk true
-  :for i from=0 to=($na - 1) do={
-    :local st [$cfmJson ($b . "/state/" . ($aps->$i) . "/status.dat")]
-    :local cq ""
-    :foreach r in=($st->"radios") do={
-      :local ch [:pick [:tostr ($r->1)] 1 99]
-      :local fq [:tonum [:pick $ch 0 [:find ($ch . "/") "/"]]]
-      :if ([:typeof $fq] = "num" and $fq < 2500) do={ :set cq $fq }
+  # Kanal für Zigbee/Thread mit "auto" zu einem Plan: am wenigsten von dessen WLAN-Kanälen überdeckt
+  # (APs aus near dreifach), nicht auf oder neben einem anderen 802.15.4-Netz, 26 nur nachrangig
+  # (manche Geräte können ihn nicht oder nur mit weniger Leistung); bei Gleichstand der Kanal mit dem
+  # größten Abstand zum nächsten WLAN-Kanal, dann der niedrigste
+  :local auto do={
+    :global cfmOthOv; :global cfmOthNear
+    :local out ""
+    :local used ({})
+    :foreach k,e in=$oth do={
+      :local t [:tostr ($e->"type")]
+      :local c [:tonum ($e->"ch")]
+      :if (($t = "zigbee" or $t = "thread") and [:typeof $c] = "num") do={ :set ($used->[:len $used]) $c }
     }
-    :if ([:len [:tostr $cq]] = 0) do={ :set curOk false } else={ :set ($cur->$i) $cq }
+    :foreach k,e in=$oth do={
+      :local t [:tostr ($e->"type")]
+      :if (($t = "zigbee" or $t = "thread") and [:typeof [:tonum ($e->"ch")]] != "num") do={
+        :local bk 0
+        :local bs 0
+        :for z from=11 to=26 do={
+          :local fz (2405 + (5 * ($z - 11)))
+          :local sc 0
+          :local md 99
+          :for i from=0 to=([:len $aps] - 1) do={
+            :local m 1
+            :if ([$cfmOthNear $e ($aps->$i)]) do={ :set m 3 }
+            :set sc ($sc + ($m * [$cfmOthOv ($pl->$i) $fz]))
+            :local d (($pl->$i) - $fz)
+            :if ($d < 0) do={ :set d (0 - $d) }
+            :if ($d < $md) do={ :set md $d }
+          }
+          :foreach u in=$used do={
+            :local d ($u - $z)
+            :if ($d < 0) do={ :set d (0 - $d) }
+            :if ($d = 0) do={ :set sc ($sc + 100) }
+            :if ($d = 1) do={ :set sc ($sc + 2) }
+          }
+          # 26 verliert nur gleiche Kosten (halber Punkt), der Abstand entscheidet erst danach
+          :set sc ($sc * 2)
+          :if ($z = 26) do={ :set sc ($sc + 1) }
+          :local v (($sc * 100) - $md)
+          # v wird negativ (Abstand abgezogen) - erster Kanal über bk = 0, nicht über bs < 0
+          :if ($bk = 0 or $v < $bs) do={ :set bs $v; :set bk $z }
+        }
+        :set ($used->[:len $used]) $bk
+        :set out ($out . "  " . $k . " (" . $t . "): Kanal " . $bk . " (" . (2405 + (5 * ($bk - 11))) . " MHz)\n")
+      }
+    }
+    :return $out
   }
   :if ($curOk) do={
     :local s ""
     :for i from=0 to=($na - 1) do={ :set s ($s . " " . ($aps->$i) . "=" . ($cur->$i)) }
     :put ("Aktuell:            Kosten " . [$cost aps=$aps fc=$fc nb=$nb pl=$cur] . " " . $s)
   }
-  :foreach cs in={{"1/6/11";{2412;2437;2462}};{"1/5/9/13";{2412;2432;2452;2472}}} do={
+  :foreach cs in={{"1/6/11";{2412;2437;2462}};{"1/5/9/13";{2412;2432;2452;2472}};{"1/5/9";{2412;2432;2452}}} do={
     :local fr ($cs->1)
     :local nk [:len $fr]
     :local best ({})
@@ -491,6 +615,8 @@
     }
     :put ("Vorschlag " . [$cfmPad ($cs->0) 9] . "Kosten " . $bc . " " . $s)
     :put ("  wifi.rsc: \"radios\"={" . [:pick $wr 1 [:len $wr]] . "}")
+    :local ao [$auto aps=$aps pl=$best oth=$oth]
+    :if ([:len $ao] > 0) do={ :global cfmPutLines; :put "  Kanal für neue 802.15.4-Netze:"; $cfmPutLines $ao }
   }
   :put "Pins in wifi.rsc behalten Kanäle anderer Bänder bei - bestehende 5/6-GHz-Pins in die Zeile übernehmen."
   :return true

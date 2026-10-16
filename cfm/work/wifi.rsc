@@ -35,6 +35,12 @@
 #            Grundzustand. Der CAPsMAN bekommt cfm-ssid-<key>-on/-off (z.B. für Home Assistant über
 #            capsmanApi), :global cfmSsid<key> zeigt den Zustand; Schlüssel nur a-z0-9
 #  autoOff   zu switch: nach dieser Dauer wieder aus, z.B. "autoOff"="50h"
+#  others    andere Funknetze im 2,4-GHz-Band für den Kanal-Vorschlag von $cfmWifiScan (D80):
+#            "type" zigbee|thread (dazu "ch" 11-26 oder "auto" = Kanal vorschlagen) | milight-rgbw |
+#            milight-cct | milight-rgbcct | ble | bt; optional "near" (APs neben dem Sender, z.B.
+#            "ap1,ap2" - dort zählt das Netz dreifach) und "w" (Gewicht dort, Standard je Typ):
+#              "others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"};"otbr"={"type"="thread";"ch"="auto"}}
+#            $cfmCheck warnt, wenn ein Pin in radios einen festen Zigbee-/Thread-Kanal überdeckt.
 # Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (D53)
 # ============================================================
 :global cfmWifi {
@@ -54,5 +60,6 @@
   "reselect"="03:00";
   "ppsk"={};
   "radios"={};
-  "steer"={}
+  "steer"={};
+  "others"={}
 }

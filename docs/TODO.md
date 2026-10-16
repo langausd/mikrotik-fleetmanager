@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-13)
+## Übersicht offener Punkte (Stand 2026-10-16)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -669,11 +669,11 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     | Bluetooth LE | 40 × 2 MHz, Advertising 37/38/39 = 2402/2426/2480 MHz | Advertising auf festen Kanälen, Daten springen nach Kanalliste |
     | Milight (LT8900/PL1167) | 2402 + n MHz, je Gerätetyp drei feste Kanäle: RGBW 9/40/71 (2411/2442/2473 MHz), CCT 4/39/74, RGB+CCT 8/39/70 | jeder Befehl auf allen drei Kanälen, ohne Rückmeldung |
 
-    Folgerungen für die beiden Kanalsätze von D56:
+    Folgerungen für die Kanalsätze von D56 (umgesetzt in D80):
     * **1/5/9/13** deckt 2402–2482 MHz lückenlos ab, jeder 802.15.4-Kanal liegt in einem WLAN-Kanal.
       Frei wird einer nur, wenn ein WLAN-Kanal im ganzen Haus frei bleibt. Ohne 13 (also **1/5/9**)
-      sind 24–26 frei, 23 liegt nur 2 MHz über WLAN 9. Ein dritter Kanalsatz 1/5/9 (oder allgemein:
-      Sätze aus den geschützten Frequenzen ableiten) fehlt in `$cfmChannels` heute.
+      sind 24–26 frei, 23 liegt nur 2 MHz über WLAN 9. Den Satz 1/5/9 probiert `$cfmWifiScan` seit D80
+      mit; Sätze aus allen Kombinationen abzuleiten wurde nicht gewählt (Rechenzeit auf dem Manager, D80).
     * **1/6/11:** 15 und 20 liegen in den Lücken, 25 und 26 über 11 (11 endet 2 MHz vor 25). Daher
       stammt die übliche Zigbee-Empfehlung 15/20/25. Auch BLE 38 und 39 liegen außerhalb.
     * Milight RGBW: unter 1/5/9/13 liegen alle drei Kanäle in WLAN-Kanälen, unter 1/5/9 ist 2473 MHz frei.

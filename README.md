@@ -60,7 +60,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/global.rsc` | globale Parameter, Zonen-Policy, Admin-User, Hook |
 | `cfm/work/vlans.rsc` | VLAN-Tabelle (Zone, Subnetz, Gateway, DHCP) |
 | `cfm/work/profiles.rsc` | Port-Profile (`trunk`, `trunk-ap`, `access:<vid>`, `vport:<vid>`, …) |
-| `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning |
+| `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning, andere Funknetze im 2,4-GHz-Band |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
 | `cfm/work/mlag.rsc` | MLAG-Paare: zwei Switches, Peer-Ports, doppelt angebundene Geräte (D75) |
@@ -151,7 +151,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | WLAN-Kanäle der APs | `$cfmChannels` (auch die eigenen Radios des CAPsMAN; Warnung bei gleichem Kanal an einem Switch) |
 | Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-WLAN“ in WebFig des CAPsMAN (`tools/editor/install.html`, Admin-Guide 8.10) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
-| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7); `host=<ap>` misst nur einen AP neu |
+| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, D80); `host=<ap>` misst nur einen AP neu |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 

@@ -313,6 +313,9 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   einschalten.
 * `minSignal`: Mindestsignal bei der Anmeldung (dBm, ein Wert für alle Bänder), z.B. `-82`.
   Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP.
+* `others`: andere Funknetze im 2,4-GHz-Band (Zigbee, Thread, Milight, Bluetooth) für den
+  Kanal-Vorschlag von `$cfmWifiScan` (D80), z.B. `"others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"}}`.
+  Wirkt nur auf den Vorschlag und die Prüfung, nicht auf die Geräte; Typen und Gewichte in 8.7.
 * `fallback="yes"` an einer weiteren SSID (z.B. Gast): Sie sendet auch im lokalen Fallback der APs
   weiter (D54, `slaves-static`). Die `master`-SSID tut das immer (D46). Noch nicht auf Hardware
   geprüft – nach dem Einschalten den CAPsMAN-Dienst kurz abschalten und nachsehen.
@@ -1464,7 +1467,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
-| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7); `host=` ersetzt nur diesen AP in der letzten Messung |
+| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |

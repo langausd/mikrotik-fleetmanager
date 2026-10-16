@@ -56,10 +56,12 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
   ein Netzplan.
 * **Zustandswechsel** (Apply-Fehler, stumme Geräte, APs ohne CAPsMAN, gescheiterte Updates …)
   meldet der Manager per Webhook, z.B. an Home Assistant (8.9).
+* **Geräte finden:** `$cfmFind` zeigt live, an welchem Port oder AP eine MAC, IP oder ein Name hängt,
+  mit SSID und Signal bei WLAN-Clients (8.11).
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
 und die Meldungen bei Zustandswechseln), keine eigene grafische Oberfläche (Terminal-Befehle am
-Manager, dazu der cfm-Editor als Lesezeichen in WebFig, 8.1), keine RouterOS-Updates ohne deinen
+Manager, dazu die Lesezeichen cfm-Editor und cfm-Monitor in WebFig, 8.1, 8.10, 8.11), keine RouterOS-Updates ohne deinen
 Befehl, und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
 
@@ -1447,7 +1449,7 @@ cd tools/chr-lab
                           # Router, Leases/DNS, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
                           # RouterOS-Downgrade und Update vom Spiegel, Netzplan, PPSK, WLAN-Scan,
                           # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply),
-                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User …
+                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User, Gerätesuche …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
@@ -1584,6 +1586,10 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |
 | `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
 | Log `cfm: Netz: fehlt …` | Kabel gezogen, umgesteckt oder Gerät aus | Verkabelung prüfen; gewollte Änderung: `$cfmLinks accept=yes` |
+| `$cfmFind <text>` meldet `… IN: :return [<text>/find where !dynamic]` | auf dem Manager ist noch der gleichnamige alte Helfer geladen (Gerätebibliothek vor D81, z.B. nach einem Apply der alten Version auf dem Manager) | `/system script run cfm-mgr`, dann erneut; dauerhaft, sobald der Manager selbst die neue Version hat |
+| `$cfmFind`: Gerät „nicht erreichbar“ bzw. „keine Daten“ | Gerät aus, kein Ping im MGMT-Netz oder ssh-exec als `cfm` scheitert | `$cfmStatus`; die übrigen Geräte werden trotzdem ausgewertet, MACs hinter dem stummen Gerät stehen dann „über Uplink“ |
+| `$cfmFind`: Gerät steht unter „nur ARP/Lease“ | keine Bridge hat die MAC gerade gelernt (Gerät still, Eintrag nach einigen Minuten verfallen) | Gerät ansprechen (Ping), erneut suchen |
+| cfm-Monitor, Reiter Suche: „Fehler … 401/403“ oder kein Ergebnis | User ohne Gruppe `full` (die Suche startet `$cfmFind` per `:execute`) bzw. WebFig nicht die des Managers | mit einem User der Gruppe `full` in WebFig des Managers anmelden |
 | PPSK-Client landet nicht im richtigen VLAN | VLAN fehlt auf dem AP-Uplink (`trunk-ap`) oder AP ohne wifi-qcom | Warnung von `$cfmCheck` beachten, Profil erweitern |
 | „Hash stimmt nicht“ / „Download fehlgeschlagen“ | unvollständiges Archiv (z.B. auf dem Backup) | Primary prüfen, neu releasen |
 | Ergebnis `failed <datei>: …`, Version `bad` | Fehler in Daten/Template, Gerät hat zurückgerollt | Meldung lesen, beheben, releasen |

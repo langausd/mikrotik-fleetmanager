@@ -26,6 +26,9 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
 * **WLAN:** Ein Gerät mit der Rolle `capsman` (ohne sie der Primary-Manager) ist wifi-CAPsMAN für
   alle SSIDs (lokales Forwarding mit VLAN, WPA2/WPA3, 802.11r/k/v, 6 GHz). Fällt er aus, senden die
   APs mit einer lokalen Kopie der Haupt-SSID weiter.
+* **Betrieb:** `$cfmFind` findet ein Gerät live nach MAC, IP, Name, Port, AP, SSID oder Signal (D81).
+  Im Browser helfen zwei Lesezeichen für WebFig: cfm-Editor (Site-Daten bearbeiten, Release) und
+  cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche).
 
 Alle Design-Entscheidungen samt verworfener Alternativen stehen in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Für den Einsatz in der eigenen Flotte:** [docs/admin-guide.md](docs/admin-guide.md) (Planung,

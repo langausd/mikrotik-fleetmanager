@@ -8,7 +8,7 @@
 #   mgr-enroll   Geräte aufnehmen, Bootstrap-Datei, Manager-Schlüssel verteilen
 #   mgr-onboard  Onboarding per Push in die Werks-Config
 #   mgr-ros      RouterOS-Pakete und -Updates ($cfmUpgrade)
-#   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels)
+#   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels), Gerätesuche
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
 #   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (D66)
 #   mgr-mf       Manifest-Regeln (welche Dateien ein Gerät bekommt); lädt $cfmManifests aus der
@@ -44,6 +44,8 @@
 #   $cfmUpgrade cancel=yes host=..|ring=..|all=yes   Auftrag zurückziehen; ohne ver: Übersicht
 #   $cfmLinks [accept=yes] [export=yes]   Verkabelung (LLDP) prüfen, Netzplan state/netzplan.md
 #   $cfmChannels                       Kanäle der APs, Warnung bei gleichem Kanal an einem Switch
+#   $cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]
+#                                      Gerät suchen (MAC, IP, Name, Port, AP/SSID/Signal), live
 #   $cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]
 #                                      Kanal-Scan aller APs nacheinander, Pin-Vorschlag für 2,4 GHz
 #   $cfmBootstrap                      bootstrap.rsc für neue Geräte erzeugen

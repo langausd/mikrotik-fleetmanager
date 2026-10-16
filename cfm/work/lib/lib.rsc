@@ -114,7 +114,7 @@
 # /interface/bridge/vlan-Einträge, sobald viele Ports gleichzeitig eine neue PVID
 # bekommen) darf $cfmEnsure nie übernehmen - ein "set" darauf scheitert mit
 # RouterOS-Fehler "can not change dynamic".
-:global cfmFind do={
+:global cfmIds do={
   :local w ""
   :foreach k,v in=$N do={ :set w ($w . " and " . $k . "=(\$N->\"" . $k . "\")") }
   :local code (":return [" . $1 . "/find where !dynamic" . $w . "]")
@@ -219,7 +219,7 @@
 #  n=natürlicher Schlüssel zum Übernehmen vorhandener Objekte (optional)
 #  a=Props nur beim Anlegen (optional)  x=Kommentar-Zusatztext (optional)
 :global cfmEnsure do={
-  :global cfmIndex; :global cfmIdx; :global cfmSeen; :global cfmRun; :global cfmFind
+  :global cfmIndex; :global cfmIdx; :global cfmSeen; :global cfmRun; :global cfmIds
   :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
   $cfmIndex $m
   :local tag ("cfm:" . $k)
@@ -229,7 +229,7 @@
   :if ($cfmShowAll = true) do={ :global cfmShowObj; $cfmShowObj m=$m k=$k p=$p }
   :local id ($cfmIdx->$m->$k)
   :if ([:typeof $id] = "nothing" and [:typeof $n] = "array") do={
-    :local ids [$cfmFind $m N=$n]
+    :local ids [$cfmIds $m N=$n]
     :if ([:len $ids] > 0) do={
       :local cid [:pick $ids 0]
       :local cur [$cfmRun ($m . "/get") I=$cid]
@@ -270,7 +270,7 @@
 # Props setzen ohne Tagging: Singleton-Menü (ohne n) oder alle Treffer von n.
 # Für eingebaute Objekte (Identity, DNS, IP-Services, Ethernet-Ports, ...)
 :global cfmSet do={
-  :global cfmRun; :global cfmFind; :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
+  :global cfmRun; :global cfmIds; :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
   :global cfmShowAll
   :if ($cfmShowAll = true) do={
     :global cfmShowObj
@@ -279,7 +279,7 @@
     $cfmShowObj m=$m k=$sk p=$p
   }
   :local ids ({"-"})
-  :if ([:typeof $n] = "array") do={ :set ids [$cfmFind $m N=$n] }
+  :if ([:typeof $n] = "array") do={ :set ids [$cfmIds $m N=$n] }
   :foreach id in=$ids do={
     :local cur
     :if ([:typeof $id] = "str") do={ :set cur [$cfmRun ($m . "/get")] } else={ :set cur [$cfmRun ($m . "/get") I=$id] }

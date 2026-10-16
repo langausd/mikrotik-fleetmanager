@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/mgr-net.rsc – Manager-Funktionen: Verkabelung (LLDP) und WLAN-Kanäle (D32, D33)
+# cfm lib/mgr-net.rsc – Manager-Funktionen: Verkabelung (LLDP), WLAN-Kanäle, Gerätesuche (D32, D33, D81)
 #   $cfmLinks [accept=yes] [export=yes]
 #       Links aus den Nachbartabellen der Geräte (Status-Feld nb), Abgleich mit der Baseline
 #       (meta/links.dat; accept=yes friert den aktuellen Stand ein) und mit den Angaben "links"
@@ -9,6 +9,7 @@
 #                  denselben Kanal nutzen (Näherung für "benachbart")
 #   $cfmWifiScan [host=] [band=2] [duration=10s] [data=yes]   Kanal-Scan der APs, Pin-Vorschlag (D56)
 #   $cfmNetTick    (aus $cfmTick, alle 15 min) meldet neue oder behobene Abweichungen im Log
+#   $cfmFind [text] [host=] [port=] [ap=] [ssid=] [vlan=] [signal=]   wo hängt ein Gerät? (D81)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
 
@@ -642,4 +643,222 @@
     $cfmWrite $f [:serialize to=json $nj]
   }
   :return true
+}
+
+# ---------- Gerätesuche (TODO 53) ----------
+# Teiltext als Regex ohne Rücksicht auf Groß-/Kleinschreibung (die RouterOS-Regex kennt kein (?i)),
+# Sonderzeichen maskiert. Eine MAC darf auch als aabbccddeeff oder aa-bb-cc-… kommen.
+:global cfmCiRe do={
+  :local lo "abcdefghijklmnopqrstuvwxyz"; :local up "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; :local sp ".^\$*+?()[]{}|\\"
+  :local s [:tostr $1]
+  :if ([:len $s] = 12 and $s ~ "^[0-9A-Fa-f]+\$") do={
+    :local m ""
+    :for i from=0 to=10 step=2 do={ :if ($i > 0) do={ :set m ($m . ":") }; :set m ($m . [:pick $s $i ($i + 2)]) }
+    :set s $m
+  }
+  :if ($s ~ "^[0-9A-Fa-f]+(-[0-9A-Fa-f]+)+\$") do={
+    :local m ""
+    :for i from=0 to=([:len $s] - 1) do={ :local c [:pick $s $i]; :if ($c = "-") do={ :set c ":" }; :set m ($m . $c) }
+    :set s $m
+  }
+  :local r ""
+  :if ([:len $s] = 0) do={ :return $r }
+  :for i from=0 to=([:len $s] - 1) do={
+    :local c [:pick $s $i]
+    :local p [:find $lo $c]; :local q [:find $up $c]
+    :if ([:typeof $p] = "num") do={ :set c ("[" . $c . [:pick $up $p] . "]") } else={
+      :if ([:typeof $q] = "num") do={ :set c ("[" . [:pick $lo $q] . $c . "]") } else={
+        :if ([:typeof [:find $sp $c]] = "num") do={ :set c ("\\" . $c) }
+      }
+    }
+    :set r ($r . $c)
+  }
+  :return $r
+}
+# Wo hängt ein Gerät? Fragt alle aufgenommenen Geräte live per SSH ab (Bridge-Hosts, ARP, DHCP-Leases,
+# auf CAPsMAN und APs die WLAN-Registrierung) und verknüpft alles über die MAC. Endpunkt ist ein Port
+# ohne verwalteten Nachbarn (LLDP/MNDP; ein Bond über seine Ports). Unter mehreren solchen Ports gilt
+# der mit den wenigsten MACs: Ein Port zu einem fremden Switch oder Hypervisor sieht viele (an einem Standort die
+# VLAN-Karte des CHR hinter der PVE-Bridge alle 50 im VLAN), der Port des Geräts wenige. Wer nur an
+# Uplinks auftaucht, steht mit "über Uplink" da (z.B. hinter einem Port mit verwaltetem Nachbarn).
+# data=<datei>: statt der Geräte gespeicherte Antworten {"<gerät>"=<Antwort>} auswerten (Labor: das CHR
+# hat keine Clients und kein WLAN). quiet=yes: keine Tabelle (Meldungen zu stummen Geräten bleiben).
+# Rückgabe (cfm-Monitor): Liste {"mac";"ip"=(..);"name"=(..);"best"={Gerät;Port;VLAN;Nachbar;MACs};
+# "uplink"=true|false;"w"={"ap";"band";"ssid";"sig";"up";"vid";"rate"};"src"=Gerät mit ARP/Lease}
+:global cfmFind do={
+  :global cfmInvLoad; :global cfmEnrolled; :global cfmExec; :global cfmCapsmen; :global cfmPad
+  :global cfmCiRe; :global cfmMB; :global cfmJson
+  :local q [:tostr $1]; :local fh [:tostr $host]; :local fp [:tostr $port]; :local fa [:tostr $ap]
+  :local fs [:tostr $ssid]; :local fv [:tostr $vlan]; :local fg [:tostr $signal]
+  :local say ($quiet != "yes")
+  :if ([:len ($q . $fh . $fp . $fa . $fs . $fv . $fg)] = 0) do={
+    :put "Aufruf: \$cfmFind <text> [host=<gerät>] [port=<port>] [ap=<ap>] [ssid=<ssid>] [vlan=<vid>] [signal=<dBm>]"
+    :put "  text: Teil einer MAC, IP, eines Namens, Geräts/Ports, APs oder einer SSID (groß/klein egal)"
+    :put "  signal=-75: nur WLAN-Clients mit -75 dBm oder schwächer"
+    :return ({})
+  }
+  :local re [$cfmCiRe $q]
+  :local t0 [:timestamp]
+  # Namen aus work/leases.rsc, ohne die globale Variable anzufassen (der Agent des Managers nutzt sie
+  # beim Apply) und ohne /import (meldet jede Datei im Terminal): ":global cfmLeases" wird lokal
+  :local lz ({})
+  :onerror e in={
+    :local c ("\n" . [/file/get ([$cfmMB] . "/work/leases.rsc") contents])
+    :local p [:find $c "\n:global cfmLeases"]
+    :if ([:typeof $p] = "num") do={
+      :local fn [:parse ([:pick $c 0 $p] . "\n:local cfmLeases" . [:pick $c ($p + 18) [:len $c]] . "\n:return \$cfmLeases")]
+      :set lz [$fn]
+    }
+  } do={}
+  :local inv [$cfmInvLoad]
+  :local cms ({})
+  :foreach c in=[$cfmCapsmen $inv] do={ :set ($cms->[:tostr ($c->"n")]) 1 }
+  :local dc ":local f ({}); :local n ({}); :local b ({}); :local a ({}); :local l ({}); :local w ({}); :foreach i in=[/ip/neighbor/find] do={ :local g [/ip/neighbor/get \$i]; :local iv (\$g->\"interface\"); :local p [:tostr \$iv]; :if ([:typeof \$iv] = \"array\") do={ :set p [:tostr (\$iv->0)] }; :set (\$n->\$p) ([:tostr (\$n->\$p)] . \",\" . [:tostr (\$g->\"identity\")]) }; :foreach i in=[/interface/bonding/find] do={ :set (\$b->[/interface/bonding/get \$i name]) [/interface/bonding/get \$i slaves] }; :foreach i in=[/interface/bridge/host/find where !local] do={ :local g [/interface/bridge/host/get \$i]; :set (\$f->[:len \$f]) ({[:tostr (\$g->\"mac-address\")];[:tostr (\$g->\"on-interface\")];[:tostr (\$g->\"vid\")]}) }; :foreach i in=[/ip/arp/find] do={ :local g [/ip/arp/get \$i]; :if ([:len [:tostr (\$g->\"mac-address\")]] > 0) do={ :set (\$a->[:len \$a]) ({[:tostr (\$g->\"address\")];[:tostr (\$g->\"mac-address\")];[:tostr (\$g->\"interface\")]}) } }; :foreach i in=[/ip/dhcp-server/lease/find] do={ :local g [/ip/dhcp-server/lease/get \$i]; :set (\$l->[:len \$l]) ({[:tostr (\$g->\"address\")];[:tostr (\$g->\"mac-address\")];[:tostr (\$g->\"host-name\")];[:tostr (\$g->\"status\")];[:tostr (\$g->\"comment\")]}) }; "
+  :local wc ":foreach i in=[/interface/wifi/registration-table/find] do={ :local g [/interface/wifi/registration-table/get \$i]; :set (\$w->[:len \$w]) ({[:tostr (\$g->\"mac-address\")];[:tostr (\$g->\"interface\")];[:tostr (\$g->\"ssid\")];[:tostr (\$g->\"signal\")];[:tostr (\$g->\"band\")];[:tostr (\$g->\"uptime\")];[:tostr (\$g->\"vlan-id\")];[:tostr (\$g->\"tx-rate\")]}) }; "
+  :local ec ":put [:serialize to=json ({\"f\"=\$f;\"n\"=\$n;\"b\"=\$b;\"a\"=\$a;\"l\"=\$l;\"w\"=\$w})]"
+  :local dat ({}); :local ok ({})
+  :if ([:len $data] > 0) do={ :set dat [$cfmJson ([$cfmMB] . "/" . $data)]; :foreach n,x in=$dat do={ :set ($ok->$n) 1 } }
+  :foreach name,d in=$inv do={
+    :local ip [:tostr ($d->"ip")]
+    :if ([:len $data] = 0 and [:len $ip] > 0 and [$cfmEnrolled $d]) do={
+      :if ([:typeof ([/ping $ip count=1 as-value]->"time")] = "time") do={
+        :local c $dc
+        :if ((("," . [:tostr ($d->"role")] . ",") ~ ",ap,") or [:typeof ($cms->$name)] != "nothing") do={ :set c ($c . $wc) }
+        :local r [$cfmExec ip=$ip cmd=($c . $ec)]
+        :local j
+        :onerror e in={ :set j [:deserialize from=json ($r->"output")] } do={}
+        :if ([:typeof $j] = "array") do={ :set ($dat->$name) $j; :set ($ok->$name) 1 } else={
+          :put ("  " . $name . ": keine Daten (" . [:pick [:tostr ($r->"output")] 0 100] . ")")
+        }
+      } else={ :put ("  " . $name . ": nicht erreichbar") }
+    }
+  }
+  # Verknüpfen: "m<MAC>" -> Eintrag
+  :local rec ({})
+  :local nr ({"mac"="";"ip"=({});"name"=({});"loc"=({});"up"=({});"w"=({});"src"=""})
+  # eigene Geräte: Bridge-MAC aus dem Status
+  :foreach name,d in=$inv do={
+    :local m [:tostr ([$cfmJson ([$cfmMB] . "/state/" . $name . "/status.dat")]->"mac")]
+    :if ([:len $m] > 0) do={
+      :local k ("m" . $m)
+      :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
+      :set ($rec->$k->"name"->[:len ($rec->$k->"name")]) $name
+      :set ($rec->$k->"ip"->[:len ($rec->$k->"ip")]) [:tostr ($d->"ip")]
+    }
+  }
+  :foreach vid,ents in=$lz do={
+    :foreach nm,o in=$ents do={
+      :local m ""
+      :local s [:tostr ($o->"mac")]
+      :if ([:len $s] > 0) do={ :for i from=0 to=([:len $s] - 1) do={
+        :local c [:pick $s $i]; :local x [:find "abcdef" $c]
+        :if ([:typeof $x] = "num") do={ :set c [:pick "ABCDEF" $x] }
+        :set m ($m . $c)
+      } }
+      :local k ("m" . $m)
+      :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
+      :set ($rec->$k->"name"->[:len ($rec->$k->"name")]) $nm
+    }
+  }
+  :foreach dv,j in=$dat do={
+    # Uplinks: Ports mit einem verwalteten, erreichbaren Nachbarn
+    :local nb ($j->"n"); :local upl ({})
+    :foreach p,ids in=$nb do={
+      :foreach x in=[:toarray [:tostr $ids]] do={ :if ([:typeof ($ok->[:tostr $x])] != "nothing") do={ :set ($upl->$p) [:tostr $x] } }
+    }
+    :foreach bn,sl in=($j->"b") do={
+      :foreach s in=$sl do={ :if ([:typeof ($upl->[:tostr $s])] != "nothing") do={ :set ($upl->$bn) ($upl->[:tostr $s]) } }
+    }
+    # MACs je Port (Rangfolge mehrerer Endpunkte)
+    :local cn ({})
+    :foreach e in=($j->"f") do={ :local p [:tostr ($e->1)]; :if ([:typeof ($cn->$p)] = "nothing") do={ :set ($cn->$p) 1 } else={ :set ($cn->$p) (($cn->$p) + 1) } }
+    :foreach e in=($j->"f") do={
+      :local m [:tostr ($e->0)]; :local p [:tostr ($e->1)]; :local k ("m" . $m)
+      :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
+      :local u [:tostr ($upl->$p)]
+      :if ([:len $u] > 0) do={
+        :set ($rec->$k->"up"->[:len ($rec->$k->"up")]) ({$dv;$p;[:tostr ($e->2)];$u;($cn->$p)})
+      } else={
+        # fremder Nachbar am Port (z.B. ein Server mit LLDP): erster Name
+        :local fn ""
+        :foreach x in=[:toarray [:tostr ($nb->$p)]] do={ :if ([:len $fn] = 0) do={ :set fn [:tostr $x] } }
+        :set ($rec->$k->"loc"->[:len ($rec->$k->"loc")]) ({$dv;$p;[:tostr ($e->2)];$fn;($cn->$p)})
+      }
+    }
+    # ARP und Leases: IP, Name
+    :foreach e in=(($j->"a"), ($j->"l")) do={
+      :local m [:tostr ($e->1)]; :local k ("m" . $m)
+      :if ([:len $m] > 0) do={
+        :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
+        :local ip [:tostr ($e->0)]
+        :if ([:typeof [:find ($rec->$k->"ip") $ip]] != "num") do={ :set ($rec->$k->"ip"->[:len ($rec->$k->"ip")]) $ip }
+        :if ([:len ($rec->$k->"src")] = 0) do={ :set ($rec->$k->"src") $dv }
+        :if ([:len $e] = 5) do={
+          :foreach nm in={[:tostr ($e->2)];[:tostr ($e->4)]} do={
+            :if ([:len $nm] > 0 and [:typeof [:find ($rec->$k->"name") $nm]] != "num") do={ :set ($rec->$k->"name"->[:len ($rec->$k->"name")]) $nm }
+          }
+        }
+      }
+    }
+    # WLAN: AP und Band aus dem Interface-Namen <AP>-<Band>g (CAPsMAN), sonst das Gerät selbst
+    :foreach e in=($j->"w") do={
+      :local m [:tostr ($e->0)]; :local k ("m" . $m)
+      :if ([:typeof ($rec->$k)] = "nothing") do={ :set ($rec->$k) $nr; :set ($rec->$k->"mac") $m }
+      :local ifn [:tostr ($e->1)]; :local an $dv; :local bs ([:pick [:tostr ($e->4)] 0 1] . "g")
+      :local p -1
+      :if ([:len $ifn] >= 3) do={ :for i from=0 to=([:len $ifn] - 3) do={ :if ([:pick $ifn $i ($i + 3)] ~ "^-[256]g\$") do={ :set p $i } } }
+      :if ($p > 0) do={ :set an [:pick $ifn 0 $p]; :set bs [:pick $ifn ($p + 1) [:len $ifn]] }
+      :set ($rec->$k->"w") ({"ap"=$an;"band"=$bs;"ssid"=[:tostr ($e->2)];"sig"=[:tostr ($e->3)];"up"=[:tostr ($e->5)];"vid"=[:tostr ($e->6)];"rate"=[:tostr ($e->7)]})
+    }
+  }
+  # Filtern und ausgeben
+  :local res ({})
+  :if ($say) do={ :put ([$cfmPad "MAC" 18] . [$cfmPad "IP" 16] . [$cfmPad "Name" 21] . [$cfmPad "Ort" 27] . [$cfmPad "VLAN" 5] . "Info") }
+  :foreach k,r in=$rec do={
+    :local w ($r->"w"); :local hw ([:len $w] > 0)
+    # bester Ort: Port mit den wenigsten MACs, sonst der Uplink mit den wenigsten
+    :local dl ($r->"loc"); :if ([:len $dl] = 0) do={ :set dl ($r->"up") }
+    :local bl ({})
+    :foreach x in=$dl do={ :if ([:len $bl] = 0 or [:tonum ($x->4)] < [:tonum ($bl->4)]) do={ :set bl $x } }
+    :local hay (($r->"mac") . " " . [:tostr ($r->"ip")] . " " . [:tostr ($r->"name")])
+    :if ([:len $bl] > 0) do={ :set hay ($hay . " " . ($bl->0) . ":" . ($bl->1) . " " . ($bl->3)) }
+    :if ($hw) do={ :set hay ($hay . " " . ($w->"ap") . " " . ($w->"ssid")) }
+    :local hit ([:len $re] = 0 or $hay ~ $re)
+    :if ($hit and [:len ($fh . $fp . $fv)] > 0) do={
+      :local any false
+      :if ($hw) do={
+        :set any (([:len $fh] = 0 or ($w->"ap") = $fh) and [:len $fp] = 0 and ([:len $fv] = 0 or ($w->"vid") = $fv))
+      } else={
+        :if ([:len $bl] > 0) do={ :set any (([:len $fh] = 0 or ($bl->0) = $fh) and ([:len $fp] = 0 or ($bl->1) = $fp) and ([:len $fv] = 0 or ($bl->2) = $fv)) }
+      }
+      :set hit $any
+    }
+    :if ($hit and [:len ($fa . $fs . $fg)] > 0) do={
+      :set hit ($hw and ([:len $fa] = 0 or ($w->"ap") = $fa) and ([:len $fs] = 0 or ($w->"ssid") = $fs))
+      :if ($hit and [:len $fg] > 0) do={ :set hit ([:tonum ($w->"sig")] <= [:tonum $fg]) }
+    }
+    :if ($hit) do={
+      :set ($res->[:len $res]) ({"mac"=($r->"mac");"ip"=($r->"ip");"name"=($r->"name");"best"=$bl;"uplink"=([:len ($r->"loc")] = 0);"w"=$w;"src"=($r->"src")})
+      :if ($say) do={
+        :local ip [:tostr (($r->"ip")->0)]; :if ([:len ($r->"ip")] > 1) do={ :set ip ($ip . "+") }
+        :local nm [:pick [:tostr (($r->"name")->0)] 0 20]
+        :local ort ""; :local vl ""; :local inf ""
+        :if ([:len $bl] > 0) do={
+          :set ort (($bl->0) . " " . ($bl->1)); :set vl ($bl->2)
+          :if ([:len ($r->"loc")] = 0) do={ :set inf ("über Uplink zu " . ($bl->3)) } else={
+            :if ([:len ($bl->3)] > 0) do={ :set inf ("Nachbar " . ($bl->3)) }
+            :if (($bl->4) > 1) do={ :if ([:len $inf] > 0) do={ :set inf ($inf . ", ") }; :set inf ($inf . ($bl->4) . " MACs am Port") }
+          }
+        }
+        :if ($hw) do={
+          :set ort (($w->"ap") . " " . ($w->"band")); :set vl ($w->"vid")
+          :set inf (($w->"ssid") . " " . ($w->"sig") . " dBm " . ([:tonum ($w->"rate")] / 1000000) . " Mbit/s seit " . ($w->"up"))
+        }
+        :if ([:len $ort] = 0) do={ :set ort "-"; :set inf ("nur ARP/Lease bei " . ($r->"src")) }
+        :put ([$cfmPad ($r->"mac") 18] . [$cfmPad $ip 16] . [$cfmPad $nm 21] . [$cfmPad [:pick $ort 0 26] 27] . [$cfmPad $vl 5] . $inf)
+      }
+    }
+  }
+  :if ($say) do={ :put ([:len $res] . " Treffer, " . [:len $dat] . " Geräte abgefragt in " . ([:tonsec ([:timestamp] - $t0)] / 1000000000) . " s") }
+  :return $res
 }

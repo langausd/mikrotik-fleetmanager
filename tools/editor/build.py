@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Baut aus cfm-editor.js und cfm-wlan.js die Lesezeichen (javascript:-URLs) und die Seite install.html.
+"""Baut aus cfm-editor.js und cfm-monitor.js die Lesezeichen (javascript:-URLs) und die Seite install.html.
 
 Aufruf: tools/editor/build.py   -> tools/editor/install.html
-install.html im Browser öffnen und die Links „cfm-Editor“ (D73) bzw. „cfm-WLAN“ (D77) in die
+install.html im Browser öffnen und die Links „cfm-Editor“ (D73) bzw. „cfm-Monitor“ (D77, D81) in die
 Lesezeichen-Leiste ziehen. Alles steckt im Lesezeichen; nach einer Änderung an einer .js-Datei neu
 bauen und das Lesezeichen ersetzen.
 """
@@ -19,18 +19,21 @@ TEILE = [
 <ol>
 <li>WebFig des Managers öffnen und anmelden (z.B. <code>http://192.168.10.2/webfig/</code>).</li>
 <li>Lesezeichen „cfm-Editor“ anklicken, mit einem RouterOS-User der Gruppe full anmelden (REST-API).
-Der Browser merkt sich die Anmeldung bis zum Schließen, auch für cfm-WLAN.</li>
+Der Browser merkt sich die Anmeldung bis zum Schließen, auch für cfm-Monitor.</li>
 <li>Site-Datei links wählen, ändern, Strg+S. Dann „Prüfen“, „Diff zum Release“, „Probelauf“,
 „Release (Ring 0)“; den Aufstieg der Ringe wie gewohnt per <code>$cfmPromote</code>.</li>
 </ol>"""),
-    ("cfm-wlan.js", "cfm-WLAN", """
-<p>WLAN-Clients aller APs live und als Zeitleiste je Client – Roaming nachvollziehen (D77).</p>
+    ("cfm-monitor.js", "cfm-Monitor", """
+<p>Zwei Reiter (D77, D81; früher „cfm-WLAN“): <b>WLAN</b> zeigt die Clients aller APs live und als
+Zeitleiste je Client – Roaming nachvollziehen. <b>Suche</b> findet Geräte nach MAC, IP, Name, Port, AP,
+SSID oder Signal (<code>$cfmFind</code>).</p>
 <ol>
-<li>WebFig des <b>CAPsMAN</b> öffnen (Gerät mit Rolle <code>capsman</code>, ohne sie der Manager).</li>
-<li>Lesezeichen „cfm-WLAN“ anklicken und anmelden; ein User mit Leserecht genügt, das Lesezeichen
-ändert nichts am Gerät.</li>
-<li>Oben je AP die verbundenen Clients mit Signal, darunter die Zeitleiste (Farbe = AP, Linie =
-Signal, ▼ = Wechsel) und die Ereignisse. Der Verlauf bleibt 24 h im Browser; Namen per Klick.</li>
+<li>WLAN: WebFig des <b>CAPsMAN</b> öffnen (Gerät mit Rolle <code>capsman</code>, ohne sie der Manager),
+Lesezeichen anklicken und anmelden; ein User mit Leserecht genügt, die Ansicht ändert nichts am Gerät.</li>
+<li>Suche: WebFig des <b>Managers</b> öffnen, Lesezeichen anklicken, mit einem User der Gruppe full
+anmelden. Klick auf Gerät, Port, AP, SSID oder VLAN in der Tabelle sucht danach.</li>
+<li>Ist der Manager zugleich CAPsMAN, gehen beide Reiter an derselben Stelle. Der WLAN-Verlauf bleibt
+24 h im Browser; Namen per Klick.</li>
 </ol>"""),
 ]
 

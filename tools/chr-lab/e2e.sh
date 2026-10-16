@@ -351,6 +351,25 @@ out=$(mgr '$cfmLinks export=yes')
 echo "$out" | grep -q "sw1 ether2: erwartet cm1:ether3, gefunden cm1:ether2" && ok "Hostfile-Angabe links wird geprüft" || { bad "Erwartung nicht geprüft"; echo "$out" | tail -4; }
 expect 1 '[:len [/file/find where name="cfm/state/netzplan.dot"]] = 1 and [/file/get [find where name="cfm/state/netzplan.csv"] contents] ~ "geraet_a;port_a"' "Export: netzplan.dot und netzplan.csv"
 mgr ':global e2eH; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eH' >/dev/null
+# Gerätesuche (TODO 53): live über die drei VMs; im Labor gibt es nur die Geräte selbst, sie hängen an Uplinks
+mgr '$cfmFind' | grep -q "Aufruf: \$cfmFind" && ok "\$cfmFind ohne Angaben: Aufruf" || bad "\$cfmFind ohne Angaben"
+swm=$(stat sw1 mac)
+out=$(mgr '$cfmFind sw1')
+echo "$out" | grep -qE "^$swm +192\.168\.10\.21\+? +sw1 +cm1 ether2 +10 +über Uplink zu sw1" && echo "$out" | grep -q "Geräte abgefragt" && ok "\$cfmFind sw1: Bridge-MAC am Uplink cm1:ether2" || { bad "\$cfmFind sw1"; echo "$out" | tail -4; }
+swl=$(echo "$swm" | tr 'A-F' 'a-f' | tr -d ':')
+mgr ':global e2eL [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL . ":set (\$cfmLeases->\"10\") {\"e2e-gast\"={\"mac\"=\"'"$(echo "$swm" | tr 'A-F' 'a-f')"'\";\"ip\"=99}}\n")' >/dev/null
+mgr '$cfmFind E2E-GAST' | grep -q "^$swm " && ok "\$cfmFind: Name aus leases.rsc, groß/klein egal" || bad "\$cfmFind: Name aus leases.rsc"
+mgr ':global e2eL; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL' >/dev/null
+mgr "\$cfmFind $swl" | grep -q "^$swm " && ok "\$cfmFind: MAC ohne Trenner in Kleinbuchstaben" || bad "\$cfmFind: MAC ohne Trenner"
+# Auswertung mit erfundenen Antworten (data=): Endpunkt = Port mit den wenigsten MACs, WLAN vom CAPsMAN
+mgr ':global cfmWrite; $cfmWrite "cfm/state/find-e2e.json" ("{\"swY\":{\"f\":[[\"02:00:00:00:0C:01\",\"ether7\",\"30\"],[\"02:00:00:00:0C:01\",\"ether9\",\"30\"],[\"02:00:00:00:0C:02\",\"ether9\",\"30\"],[\"02:00:00:00:0C:03\",\"ether9\",\"30\"],[\"02:00:00:00:0A:01\",\"ether1\",\"30\"]],\"n\":{\"ether9\":\",fremd-sw\",\"ether1\":\",apX\"},\"b\":[],\"a\":[[\"192.168.30.50\",\"02:00:00:00:0C:01\",\"vlan30\"]],\"l\":[[\"192.168.30.51\",\"02:00:00:00:0A:01\",\"handy-e2e\",\"bound\",\"\"]],\"w\":[]},\"apX\":{\"f\":[[\"02:00:00:00:0A:01\",\"wifi1\",\"30\"]],\"n\":{\"ether1\":\",swY\"},\"b\":[],\"a\":[],\"l\":[],\"w\":[[\"02:00:00:00:0A:01\",\"apX-5g\",\"E2E-SSID\",\"-80\",\"5ghz-ax\",\"00:12:00\",\"30\",\"433000000\"]]}}")' | grep -i "error"
+mgr '$cfmFind 192.168.30.50 data=state/find-e2e.json' | grep -qE "^02:00:00:00:0C:01 +192\.168\.30\.50 +swY ether7 +30" && ok "\$cfmFind: Endpunkt ist der Port mit den wenigsten MACs" || { bad "\$cfmFind: Endpunkt"; mgr '$cfmFind 192.168.30.50 data=state/find-e2e.json' | tail -3; }
+mgr '$cfmFind handy data=state/find-e2e.json' | grep -qE "^02:00:00:00:0A:01 +192\.168\.30\.51 +handy-e2e +apX 5g +30 +E2E-SSID -80 dBm 433 Mbit/s" && ok "\$cfmFind: WLAN-Client mit AP, Band, SSID und Signal" || { bad "\$cfmFind: WLAN-Client"; mgr '$cfmFind handy data=state/find-e2e.json' | tail -3; }
+out=$(mgr '$cfmFind signal=-75 data=state/find-e2e.json')
+echo "$out" | grep -q "^1 Treffer" && echo "$out" | grep -q "^02:00:00:00:0A:01 " && ok "\$cfmFind signal=-75: nur der schwache WLAN-Client" || { bad "\$cfmFind signal="; echo "$out" | tail -3; }
+out=$(mgr '$cfmFind host=swY port=ether9 data=state/find-e2e.json')
+echo "$out" | grep -q "^2 Treffer" && ! echo "$out" | grep -q "^02:00:00:00:0C:01 " && echo "$out" | grep -q "Nachbar fremd-sw, 3 MACs am Port" && ok "\$cfmFind host= port=: was an einem Port hängt" || { bad "\$cfmFind host= port="; echo "$out" | tail -4; }
+r 1 '/file/remove [find where name="cfm/state/find-e2e.json"]' >/dev/null
 mgr '$cfmChannels' | grep -q "keine Funkdaten" && ok "Kanalbericht (Labor ohne Radios)" || bad "Kanalbericht"
 # Kanal-Scan (D56/D60): ohne APs kein Vorschlag und keine Messdatei; Auswertung mit erfundenen Daten
 out=$(mgr '$cfmWifiScan')

@@ -15,7 +15,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`new-site.py`](#new-sitepy) | eine neue Site (Overlay) aus den Beispieldaten anlegen |
 | [`rsc-check.py`](#rsc-checkpy) | RouterOS-Fallen in `.rsc`-Dateien finden, ohne Gerät |
 | [`git-hooks/pre-commit`](#git-hookspre-commit) | `rsc-check.py` vor jedem Commit |
-| [`editor/`](#editor) | cfm-Editor und cfm-WLAN als Lesezeichen für WebFig |
+| [`editor/`](#editor) | cfm-Editor und cfm-Monitor als Lesezeichen für WebFig |
 | [`upgrade-mirror.py`](#upgrade-mirrorpy) | RouterOS-Update für Geräte ohne Internet |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
@@ -120,21 +120,23 @@ nichts installiert, und aus dem Netz wird nichts geladen.
 
 * **cfm-Editor** (D73): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
   Release an Ring 0. Anmelden mit einem User der Gruppe `full`.
-* **cfm-WLAN** (D77): Clients je AP live und Roaming als Zeitleiste. Läuft in WebFig des CAPsMAN,
-  ein User mit Leserecht genügt.
+* **cfm-Monitor** (D77, D81; früher cfm-WLAN): Reiter WLAN mit den Clients je AP live und Roaming als
+  Zeitleiste (in WebFig des CAPsMAN, Leserecht genügt); Reiter Suche findet Geräte nach MAC, IP, Name,
+  Port, AP oder SSID (`$cfmFind`, in WebFig des Managers, Gruppe `full`).
 
 So richtest du sie ein:
 
 1. `tools/editor/install.html` im Browser öffnen (als lokale Datei).
-2. Die Knöpfe „cfm-Editor“ und „cfm-WLAN“ in die Lesezeichen-Leiste ziehen.
+2. Die Knöpfe „cfm-Editor“ und „cfm-Monitor“ in die Lesezeichen-Leiste ziehen.
 3. WebFig öffnen (`http://<IP>/webfig/` des Managers bzw. des CAPsMAN), das Lesezeichen anklicken und
    anmelden (der Passwort-Manager trägt die WebFig-Daten ein). Danach merkt sich der Browser die
    Anmeldung bis zum Schließen, auch für das andere Lesezeichen. Voraussetzung: Dienst `www` (oder
    `www-ssl`) in `services`.
 
-Nach einer Änderung an `cfm-editor.js` oder `cfm-wlan.js` baut `tools/editor/build.py` die Seite
+Nach einer Änderung an `cfm-editor.js` oder `cfm-monitor.js` baut `tools/editor/build.py` die Seite
 neu. Danach die Lesezeichen ersetzen; die neue Fassung ersetzt beim nächsten Klick auch die alte
-in einer offenen WebFig-Seite. Mehr dazu im Admin-Guide, Abschnitte 8.1 und 8.10.
+in einer offenen WebFig-Seite. Ein altes Lesezeichen „cfm-WLAN“ kannst du löschen. Mehr dazu im
+Admin-Guide, Abschnitte 8.1, 8.10 und 8.11.
 
 ## `upgrade-mirror.py`
 

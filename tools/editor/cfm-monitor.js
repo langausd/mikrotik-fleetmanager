@@ -1,8 +1,10 @@
-// cfm-WLAN (D77): Lesezeichen für WebFig des CAPsMAN. Zeigt die WLAN-Clients aller APs live (eine Kachel
-// je AP) und als Zeitleiste je Client, damit sich Roaming nachvollziehen lässt. Liest per REST derselben
-// Adresse (kein CORS): Registrierungstabelle, WLAN-Interfaces (Feld cap = AP), CAPs, DHCP-Leases (Namen)
-// und das Log (WLAN-Ereignisse von vor dem Öffnen). Ändert nichts am Gerät; der Verlauf bleibt im Browser
-// (localStorage, 24 h). Bauen: tools/editor/build.py -> install.html
+// cfm-Monitor (D77, D81; bis 2026-10-16 „cfm-WLAN“): Lesezeichen für WebFig, zwei Reiter.
+// WLAN: die WLAN-Clients aller APs live (eine Kachel je AP) und als Zeitleiste je Client, damit sich Roaming
+// nachvollziehen lässt; nur in WebFig des CAPsMAN. Liest per REST derselben Adresse (kein CORS):
+// Registrierungstabelle, WLAN-Interfaces (Feld cap = AP), CAPs, DHCP-Leases (Namen) und das Log
+// (WLAN-Ereignisse von vor dem Öffnen). Ändert nichts am Gerät; der Verlauf bleibt im Browser (localStorage, 24 h).
+// Suche: startet $cfmFind per :execute auf dem Manager (nur in dessen WebFig, User der Gruppe full) und zeigt
+// die Treffer als Tabelle. Bauen: tools/editor/build.py -> install.html
 (() => {
   // Steckt schon eine Fassung in der Seite: dieselbe nur einblenden, eine andere ersetzen (WebFig lädt
   // die Seite nicht neu, ein ersetztes Lesezeichen wirkte sonst erst nach F5). STAND setzt build.py ein.
@@ -13,7 +15,7 @@
   document.getElementById('cfmwl')?.remove();
   const KEEP = 24 * 3600e3;
   const PAL = ['#1f77b4', '#e8710a', '#2ca02c', '#9467bd', '#8c564b', '#d6338a', '#12939a', '#a39e14', '#5f6b6d', '#c62828'];
-  const S = { ident: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
+  const S = { ident: '', tab: 'wlan', mgr: false, mgrAddr: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
     ifs: {}, caps: {}, names: {}, alias: {}, cur: {}, hist: {}, ev: [], logEv: [], logKeys: {}, off: 0, err: '', last: 0, saved: 0 };
   const KEY = 'cfm-wlan:' + location.host;
   const $ = (sel) => root.querySelector(sel);
@@ -85,6 +87,17 @@
 #cfmwl table{border-collapse:collapse;background:#fff;border:1px solid #ccd;width:100%}
 #cfmwl td{padding:3px 8px;border-top:1px solid #eef;font-size:12px;white-space:nowrap}
 #cfmwl td.w{white-space:normal}
+#cfmwl header .tab{background:transparent;color:#fff;border-color:#fff6}
+#cfmwl header .tab.akt{background:#fff;color:#13534b;border-color:#fff}
+#cfmwl .ff{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+#cfmwl .ff input{width:110px}
+#cfmwl .ff input.q{width:260px}
+#cfmwl .ff label{font-size:12px;color:#556;display:flex;gap:4px;align-items:center}
+#cfmwl .hits th{text-align:left;padding:4px 8px;font-size:12px;background:#eef1ef;cursor:pointer;white-space:nowrap;user-select:none}
+#cfmwl .hits td a{color:#13534b;cursor:pointer;text-decoration:none;border-bottom:1px dotted #13534b}
+#cfmwl .hits td.m{font:12px ui-monospace,Menlo,Consolas,monospace}
+#cfmwl .hits .bar{display:inline-block;width:60px;vertical-align:middle;margin-right:6px}
+#cfmwl .note{font-size:12px;color:#556;white-space:pre-wrap;margin:6px 0}
 #cfmwl .login{margin:12vh auto;background:#fff;padding:20px 24px;border-radius:8px;box-shadow:0 2px 12px #0002;display:grid;gap:8px;width:340px}
 #cfmwl .fehler{color:#b3261e}`;
 
@@ -287,7 +300,8 @@
     const m = $('main');
     if (!m) return;
     const st = $('.st');
-    st.textContent = (S.err ? 'Fehler: ' + S.err : S.last ? 'Stand ' + hms(S.last) : 'lädt …') + ' · ' + Object.keys(S.cur).length + ' Clients';
+    st.textContent = (S.err ? 'Fehler: ' + S.err : S.last ? 'Stand ' + hms(S.last) : 'lädt …') + ' · ' + Object.keys(S.cur).length + ' WLAN-Clients';
+    if (S.tab !== 'wlan') return;          // die Suche baut ihre Ansicht selbst (Eingaben behalten den Fokus)
     const top = m.scrollTop;
     m.replaceChildren(el('h3', {}, 'APs jetzt'), tiles(), el('h3', {}, 'Zeitleiste'), timeline(), el('h3', {}, 'Ereignisse'), events());
     m.scrollTop = top;
@@ -317,7 +331,7 @@
       }
       box.append(t);
     }
-    if (!aps.length) box.append(el('div', { class: 'leer' }, 'Keine WLAN-Interfaces gefunden - ist dies der CAPsMAN?'));
+    if (!aps.length) box.append(el('div', { class: 'leer' }, 'Keine WLAN-Interfaces gefunden - die WLAN-Ansicht gehört in WebFig des CAPsMAN.'));
     return box;
   }
   // Abschnitte aus dem Log (vor dem Öffnen der Seite): connected bis disconnected bzw. bis zur nächsten Verbindung
@@ -417,6 +431,154 @@
     save(); render();
   }
 
+  // ---------- Suche ($cfmFind auf dem Manager, D81) ----------
+  const ENDE = '@@cfm-ende@@', JS = '@@cfm-json@@';
+  // RouterOS-String: \ " $ maskieren, Zeilenumbruch als \n
+  const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\r/g, '').replace(/\n/g, '\\n');
+  const FK = ['host', 'port', 'ap', 'ssid', 'vlan', 'signal'];
+  const F = { q: '', host: '', port: '', ap: '', ssid: '', vlan: '', signal: '', hits: null, note: '', busy: false, sort: 'ort', dir: 1 };
+  // Manager? Sonst die Adresse, von der dieses Gerät zuletzt gezogen hat (state.json des Agents)
+  async function detect() {
+    S.mgr = ((await rest('GET', '/system/script?name=cfm-mgr').catch(() => [])) || []).length > 0;
+    if (S.mgr) return;
+    for (const n of ['cfm/state.json', 'flash/cfm/state.json']) {
+      try {
+        const f = ((await rest('GET', '/file?name=' + encodeURIComponent(n))) || [])[0];
+        if (!f) continue;
+        const j = JSON.parse((await rest('POST', '/file/get', { '.id': f['.id'], 'value-name': 'contents' })).ret || '{}');
+        if (j.mgr) { S.mgrAddr = String(j.mgr); return; }
+      } catch (e) { /* nächster Pfad */ }
+    }
+  }
+  async function search() {
+    if (F.busy) return;
+    if (!F.q && !FK.some((k) => F[k])) { F.note = 'Suchtext oder einen Filter angeben.'; findView(); return; }
+    F.busy = true; F.note = 'Suche läuft (etwa eine Sekunde je Gerät) …'; findView();
+    const cmd = '$cfmFind "' + esc(F.q) + '"' + FK.map((k) => F[k] ? ' ' + k + '="' + esc(F[k]) + '"' : '').join('') + ' quiet=yes';
+    const body = '/system script run cfm-mgr; :global cfmFind; :onerror e in={ :put ("' + JS + '" . [:serialize to=json [' + cmd + ']]) } do={ :put ("FEHLER: " . $e) }; :put "' + ENDE + '"';
+    const fn = 'cfm-mon-' + Date.now() + '.txt';
+    let txt = '';
+    try {
+      const job = String((await rest('POST', '/execute', { script: ':put [:execute script="' + esc(body) + '" file="' + fn + '"]', 'as-string': true })).ret || '').trim();
+      const t0 = Date.now();
+      let fertig = false;
+      while (!fertig && Date.now() - t0 < 5 * 60e3) {
+        await new Promise((r) => setTimeout(r, 1000));
+        // einzelne Fehlversuche (Verbindung) überstehen, erst die Frist bricht ab
+        try {
+          const f = ((await rest('GET', '/file?name=' + encodeURIComponent(fn))) || [])[0];
+          if (f) txt = String((await rest('POST', '/file/get', { '.id': f['.id'], 'value-name': 'contents' })).ret || '').replace(/\r/g, '');
+          fertig = txt.includes(ENDE);
+          if (!fertig && job) {
+            const jobs = await rest('GET', '/system/script/job');
+            if (!jobs.some((j) => j['.id'] === job)) fertig = true;
+          }
+        } catch (e) { if (/^401/.test(e.message)) throw e; }
+      }
+      const f = ((await rest('GET', '/file?name=' + encodeURIComponent(fn)).catch(() => [])) || [])[0];
+      if (f) await rest('DELETE', '/file/' + f['.id']).catch(() => {});
+      const ls = txt.split('\n').filter((l) => l.trim() && l !== ENDE && !/^Script file loaded and executed successfully$/.test(l.trim()));
+      const jl = ls.find((l) => l.startsWith(JS));
+      F.hits = jl ? JSON.parse(jl.slice(JS.length)) : null;
+      F.note = ls.filter((l) => !l.startsWith(JS)).join('\n') || (fertig ? '' : 'keine Rückmeldung nach 5 min');
+      if (!Array.isArray(F.hits)) F.hits = [];
+    } catch (e) {
+      F.note = 'Fehler: ' + e.message + (/40[13]|permission|not allowed/i.test(e.message) ? ' – die Suche braucht einen User der Gruppe full' : '');
+    }
+    F.busy = false;
+    findView();
+  }
+  // Treffer in Zeilen für die Tabelle; Name: eigener Name aus der WLAN-Ansicht, sonst aus cfm/DHCP
+  function rows() {
+    const arr = (v) => Array.isArray(v) ? v.map(String) : v === undefined || v === null || v === '' ? [] : [String(v)];
+    return (F.hits || []).map((h) => {
+      const b = Array.isArray(h.best) ? h.best.map(String) : [];
+      const w = h.w && !Array.isArray(h.w) && h.w.ap !== undefined ? h.w : null;
+      const mac = String(h.mac || '');
+      const nm = S.alias[mac] || arr(h.name)[0] || '';
+      const ips = arr(h.ip);
+      const sig = w ? parseInt(w.sig, 10) : NaN;
+      let info = '';
+      if (w) info = 'seit ' + w.up + (w.rate ? ' · ' + Math.round(+w.rate / 1e6) + ' Mbit/s' : '');
+      else if (b.length && (h.uplink === true || h.uplink === 'true')) info = 'über Uplink zu ' + b[3];
+      else if (b.length) info = [b[3] ? 'Nachbar ' + b[3] : '', +b[4] > 1 ? b[4] + ' MACs am Port' : ''].filter(Boolean).join(', ');
+      else info = 'nur ARP/Lease bei ' + String(h.src || '?');
+      return { mac, nm, ips, dev: w ? String(w.ap) : b[0] || '', port: w ? '' : b[1] || '', band: w ? String(w.band) : '',
+        vlan: String(w ? w.vid : b[2] || ''), ssid: w ? String(w.ssid) : '', sig: isNaN(sig) ? null : sig, info, wl: !!w,
+        ort: w ? w.ap + ' ' + w.band : b.length ? b[0] + ' ' + b[1] : '' };
+    });
+  }
+  function findView() {
+    const m = $('main');
+    if (!m || S.tab !== 'find') return;
+    if (!S.mgr) {
+      m.replaceChildren(el('div', { class: 'note' }, 'Die Suche läuft auf dem cfm-Manager. ' +
+        (S.mgrAddr ? 'WebFig des Managers öffnen: http://' + S.mgrAddr + '/webfig/' : 'Dieses Gerät ist es nicht; WebFig des Managers öffnen.') +
+        ' Dort das Lesezeichen erneut anklicken (User der Gruppe full).'));
+      return;
+    }
+    let form = $('.ff');
+    if (!form) {
+      const inp = (k, ph, cls) => {
+        const i = el('input', { placeholder: ph, value: F[k], class: cls || '' });
+        i.addEventListener('input', () => { F[k] = i.value.trim(); });
+        i.dataset.k = k;
+        return i;
+      };
+      form = el('form', { class: 'ff', onsubmit: (e) => { e.preventDefault(); search(); } },
+        inp('q', 'MAC, IP, Name, Gerät:Port, AP, SSID', 'q'),
+        el('label', {}, 'Gerät', inp('host', 'z.B. sw1')), el('label', {}, 'Port', inp('port', 'ether7')),
+        el('label', {}, 'AP', inp('ap', '')), el('label', {}, 'SSID', inp('ssid', '')),
+        el('label', {}, 'VLAN', inp('vlan', '')), el('label', {}, 'Signal ≤', inp('signal', '-75')),
+        el('button', { class: 'prim', type: 'submit' }, 'Suchen'),
+        el('button', { type: 'button', onclick: () => { ['q', ...FK].forEach((k) => { F[k] = ''; }); form.querySelectorAll('input').forEach((i) => { i.value = ''; }); } }, 'Leeren'));
+      m.replaceChildren(form, el('div', { class: 'res' }));
+      form.querySelector('input').focus();
+    }
+    form.querySelectorAll('input').forEach((i) => { if (document.activeElement !== i) i.value = F[i.dataset.k]; });
+    form.querySelector('button.prim').disabled = F.busy;
+    const res = $('.res');
+    const out = [];
+    if (F.note) out.push(el('div', { class: 'note' }, F.note));
+    if (F.hits && !F.busy) {
+      const rs = rows();
+      const key = { name: (r) => r.nm.toLowerCase() || '~', mac: (r) => r.mac, ip: (r) => r.ips[0] || '~', ort: (r) => r.ort.toLowerCase() || '~',
+        vlan: (r) => +r.vlan || 0, ssid: (r) => r.ssid.toLowerCase() || '~', sig: (r) => r.sig === null ? 999 : r.sig }[F.sort];
+      rs.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * F.dir; });
+      // Klick sucht danach: alle anderen Angaben leeren
+      const go = (set) => {
+        ['q', ...FK].forEach((k) => { F[k] = ''; }); Object.assign(F, set);
+        form.querySelectorAll('input').forEach((i) => { i.value = F[i.dataset.k]; });
+        search();
+      };
+      const a = (txt, set, title) => { const x = el('a', { title: title || 'danach suchen' }, txt); x.addEventListener('click', () => go(set)); return x; };
+      const th = (k, t) => { const h = el('th', { title: 'sortieren' }, t + (F.sort === k ? (F.dir > 0 ? ' ▲' : ' ▼') : '')); h.addEventListener('click', () => { F.dir = F.sort === k ? -F.dir : 1; F.sort = k; findView(); }); return h; };
+      const tr = rs.map((r) => {
+        const ort = r.wl ? [a(r.dev, { ap: r.dev }, 'Clients dieses APs'), ' ' + r.band]
+          : r.dev ? [a(r.dev, { host: r.dev }, 'alles an diesem Gerät'), ' ', a(r.port, { host: r.dev, port: r.port }, 'was hängt an diesem Port?')] : ['–'];
+        const w = r.sig === null ? 0 : Math.max(4, Math.min(100, (r.sig + 90) / 60 * 100));
+        return el('tr', {}, el('td', {}, r.nm), el('td', { class: 'm' }, a(r.mac, { q: r.mac }, 'nur diese MAC')),
+          el('td', { class: 'm', title: r.ips.join(', ') }, r.ips[0] || '', r.ips.length > 1 ? ' +' + (r.ips.length - 1) : ''),
+          el('td', {}, ...ort), el('td', {}, r.vlan ? a(r.vlan, { vlan: r.vlan }, 'alles in diesem VLAN') : ''),
+          el('td', {}, r.ssid ? a(r.ssid, { ssid: r.ssid }, 'alle Clients dieser SSID') : ''),
+          el('td', { class: 'm' }, ...(r.sig === null ? [] : [el('div', { class: 'bar' }, el('i', { style: 'width:' + w + '%;background:' + sigCol(r.sig) })), String(r.sig)])),
+          el('td', { class: 'w' }, r.info));
+      });
+      out.push(el('div', { class: 'note' }, rs.length + ' Treffer'));
+      if (rs.length) out.push(el('table', { class: 'hits' }, el('tr', {}, th('name', 'Name'), th('mac', 'MAC'), th('ip', 'IP'), th('ort', 'Ort'),
+        th('vlan', 'VLAN'), th('ssid', 'SSID'), th('sig', 'Signal'), el('th', {}, 'Info')), ...tr));
+    }
+    res.replaceChildren(...out);
+  }
+  function tab(t) {
+    S.tab = t;
+    root.querySelectorAll('header .tab').forEach((b) => b.classList.toggle('akt', b.dataset.t === t));
+    root.querySelectorAll('header .wl').forEach((b) => { b.style.display = t === 'wlan' ? '' : 'none'; });
+    const m = $('main');
+    if (m) m.replaceChildren();
+    if (t === 'wlan') render(); else findView();
+  }
+
   // ---------- Rahmen ----------
   function stop() { clearInterval(S.timer); S.timer = null; }
   function start() { stop(); S.timer = setInterval(poll, S.every * 1000); poll(); }
@@ -461,28 +623,33 @@
       try { S.ident = (await rest('GET', '/system/identity')).name; } catch (e2) { msg.textContent = 'Fehler: ' + e2.message; return; }
       mainView();
     };
-    root.append(el('form', { class: 'login', onsubmit: go }, el('b', {}, 'cfm-WLAN'),
-      el('div', {}, 'WLAN-Clients und Roaming. Anmeldung an der REST-API dieses Geräts (des CAPsMAN); Lesen genügt.'),
+    root.append(el('form', { class: 'login', onsubmit: go }, el('b', {}, 'cfm-Monitor'),
+      el('div', {}, 'WLAN-Clients und Roaming (in WebFig des CAPsMAN, Lesen genügt) und Gerätesuche (in WebFig des Managers, Gruppe full). Anmeldung an der REST-API dieses Geräts.'),
       u, p, el('button', { class: 'prim', type: 'submit' }, 'Anmelden'), msg,
       el('button', { type: 'button', onclick: hide }, 'Schließen')));
     u.focus();
   }
-  function mainView() {
+  async function mainView() {
     root.querySelectorAll('header,main,.login').forEach((n) => n.remove());
-    const span = el('select', { title: 'Zeitraum der Zeitleiste' },
+    await detect();
+    const span = el('select', { title: 'Zeitraum der Zeitleiste', class: 'wl' },
       ...[['15 min', 15 * 60e3], ['1 h', 3600e3], ['6 h', 6 * 3600e3], ['24 h', 24 * 3600e3]].map(([l, v]) => {
         const o = el('option', { value: v }, l); if (v === S.span) o.selected = true; return o;
       }));
     span.addEventListener('change', () => { S.span = +span.value; render(); });
-    const ev = el('select', { title: 'Abfrage alle …' },
+    const ev = el('select', { title: 'Abfrage alle …', class: 'wl' },
       ...[5, 10, 30].map((v) => { const o = el('option', { value: v }, 'alle ' + v + ' s'); if (v === S.every) o.selected = true; return o; }));
     ev.addEventListener('change', () => { S.every = +ev.value; S.tick = 0; start(); });
-    root.append(el('header', {}, el('b', {}, 'cfm-WLAN – ' + S.ident), el('span', { class: 'st' }, ''),
+    const tb = (t, l) => { const b = el('button', { class: 'tab', type: 'button' }, l); b.dataset.t = t; b.addEventListener('click', () => tab(t)); return b; };
+    root.append(el('header', {}, el('b', {}, 'cfm-Monitor – ' + S.ident), tb('wlan', 'WLAN'), tb('find', 'Suche'), el('span', { class: 'st' }, ''),
       el('span', { class: 'sp' }), span, ev,
-      el('button', { onclick: () => { if (confirm('Verlauf im Browser löschen?')) { S.hist = {}; S.ev = []; save(); render(); } } }, 'Verlauf leeren'),
+      el('button', { class: 'wl', onclick: () => { if (confirm('Verlauf im Browser löschen?')) { S.hist = {}; S.ev = []; save(); render(); } } }, 'Verlauf leeren'),
       el('button', { onclick: hide }, 'Schließen')), el('main', {}));
     S.first = true; S.cur = {}; S.tick = 0;
     start();
+    // Start im Reiter Suche, wenn dies der Manager ist und kein WLAN hat (sonst nach der ersten Abfrage)
+    tab(S.tab);
+    setTimeout(() => { if (S.mgr && !Object.keys(apList()).length && S.tab === 'wlan') tab('find'); }, 3000);
   }
 
   restore();

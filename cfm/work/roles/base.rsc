@@ -6,7 +6,7 @@
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmDl; :global cfmWg
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
 :global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
-:global cfmFind; :global cfmRun; :global cfmIndex; :global cfmIdx; :global cfmVids; :global cfmMlagOf
+:global cfmIds; :global cfmRun; :global cfmIndex; :global cfmIdx; :global cfmVids; :global cfmMlagOf
 :global cfmLeases; :global cfmMacUp
 
 :local br "bridge"
@@ -97,7 +97,7 @@ $cfmIndex "/interface/bridge/port"
 # MLAG verträgt kein L3-Hardware-Offloading (MikroTik-Doku): wie bei der Rolle router (D37) aus
 :if ([:len $ml] > 0) do={
   :local sws ({})
-  :onerror e in={ :set sws [$cfmFind "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
+  :onerror e in={ :set sws [$cfmIds "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
   :foreach sw in=$sws do={
     :local sc [$cfmRun "/interface/ethernet/switch/get" I=$sw]
     :if ([:typeof ($sc->"l3-hw-offloading")] != "nothing") do={ $cfmSet m="/interface/ethernet/switch" n=({"name"=($sc->"name")}) p=({"l3-hw-offloading"="no"}) }

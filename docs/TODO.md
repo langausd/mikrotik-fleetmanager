@@ -19,6 +19,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
 * **Neu (Idee):** 52 (Lesezeichen ohne Hantieren: Lade-Lesezeichen, Userscript oder Container, 2026-10-15).
+* **Erledigt am 2026-10-16:** 53 (D81): Gerätesuche `$cfmFind` live am Manager, Lesezeichen cfm-WLAN heißt
+  „cfm-Monitor“ mit Reiter Suche. **Entschieden, offen:** 54 (LibreNMS: SNMPv3 + Syslog). **Idee:** 55 (Netbox:
+  Export oder als Quelle).
 * **Erledigt am 2026-10-16:** 51 (D80): andere Funknetze im 2,4-GHz-Band (`wifi.rsc` → `others`) in
   den Kosten von `$cfmWifiScan`, Kanalvorschlag für neue Zigbee-/Thread-Netze, Kanalsatz 1/5/9; offen
   bleibt nur, Energie-Messungen der Koordinatoren einzubeziehen.
@@ -696,7 +699,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     laufen wie `/rest`, `www` liefert keine eigenen Dateien aus, Skins sind nur JSON, Hotspot-Seiten liegen
     unter einer anderen Adresse (Befunde in DECISIONS, Eigenheiten). Bekannte, vorerst verworfene Wege:
     * **Festes Lade-Lesezeichen, Code auf dem Gerät:** ein winziges Lesezeichen „cfm“, einmal angelegt;
-      es liest `cfm-editor.js`/`cfm-wlan.js` über die bestehende WebFig-Sitzung (`fetchFile` über
+      es liest `cfm-editor.js`/`cfm-monitor.js` über die bestehende WebFig-Sitzung (`fetchFile` über
       `/jsproxy`, im Labor geprüft) vom Gerät und startet sie. Updates kommen mit `upload-seed.sh`.
       Dagegen: undokumentierte WebFig-Interna (Rückfall: Laden per REST nach der Anmeldung); der CAPsMAN
       braucht die Dateien auch, wenn er nicht der Manager ist.
@@ -706,3 +709,43 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * **Container auf dem Gerät** (RouterOS-Container bzw. „Apps“), der die Seite ausliefert und `/rest`
       durchreicht; im Browser nichts. Dagegen: Container-Paket und Speicher nötig (ein CRS328 im Einsatz hat 1,6 MB frei,
       hAPs knapp).
+53. ~~**Gerätesuche `$cfmFind` und Lesezeichen „cfm-Monitor“**~~ (Wunsch des Nutzers, entschieden 2026-10-16) –
+    *erledigt 2026-10-16 (D81, Admin-Guide 8.10/8.11): `$cfmFind`, der bisherige interne Helfer heißt
+    `$cfmIds`; Lesezeichen cfm-Monitor mit den Reitern WLAN und Suche. Offen: Test der Suche an einem
+    Standort (Labor: e2e Schritt 14, Antworten eines Standorts per `data=`, Lesezeichen gegen die Labor-VM).* –
+    Für den Betrieb: auffällige Geräte schnell finden, nach MAC, IP, Name oder Port bzw. AP/SSID/Signal.
+    * **Entschieden:** Live-Suche am Manager, `$cfmFind <text>` (Teiltext über MAC, IP, Name, Port). Der
+      Manager fragt die Geräte per ssh-exec ab (wie `$cfmSecretPush`); gesucht wird auf dem Gerät durch
+      eine kleine lib-Funktion, ssh-exec stößt sie nur kurz an (lange Befehle: „action timed out“).
+      Quellen: FDB (`/interface/bridge/host`), ARP/IPv6-Nachbarn der Router, DHCP-Leases und
+      `leases.rsc`, Registrierungstabelle des CAPsMAN (AP, SSID, Signal, Rate). Den Endport bestimmt der
+      Manager über die Uplinks (Ports mit Infrastruktur-Nachbarn aus `nb`/`$cfmLinks`, Port-Profile).
+      Kein Verlauf und keine Tick-/Flash-Last – Verlauf liefert LibreNMS (54). Verworfen: Schnappschuss
+      je Tick mit Index auf dem Manager, Python-Tool am Admin-PC, nur LibreNMS.
+    * **Bedienung:** Terminal und ein Suchfeld im Lesezeichen, das `$cfmFind` per `:execute file=` auf
+      dem Manager startet (wie der cfm-Editor). Das Lesezeichen „cfm-WLAN“ (D77) heißt dann
+      **„cfm-Monitor“** (`tools/editor/`, `install.html`, `build.py`, tools/README, Admin-Guide 8.10).
+    * Grenzen: In Netzen mit fremdem DHCP (z.B. Fritz!Box) kennt cfm IPs nur aus der ARP-Tabelle eines
+      eigenen Routers mit Adresse im VLAN, Namen nur aus `leases.rsc`. Rolle `ap` läuft im Labor nicht
+      (CHR ohne Radios) – WLAN-Teil nur mit Hardware testbar.
+54. **LibreNMS anbinden: SNMPv3 und Syslog** (entschieden 2026-10-16) – LibreNMS übernimmt Verlauf und
+    Messwerte (FDB/ARP mit Suche, LLDP-Karte, Port-Graphen, Alerts) und wird der geplante externe
+    Syslog-Server (22). Rolle `base`: SNMPv3 authPriv nur von der LibreNMS-Adresse, Freigabe UDP 161 im
+    input-Block, Schlüssel `snmp` in `global.rsc`, Passwort über den Vault/`$cfmSecretPush`; `syslog`
+    zeigt auf LibreNMS. Optional: Geräte aus dem Inventar per LibreNMS-API anlegen. Vorher am hAP per
+    `snmpwalk` prüfen, was das `wifi`-Paket über SNMP liefert (seit 7.17 „wifi fields“ in der
+    MIKROTIK-MIB; ob die Clients am CAPsMAN dabei sind, ist offen – sonst bleiben Signal/SSID bei
+    `$cfmFind`/cfm-Monitor). Standorte, die nur per WireGuard erreichbar sind: Peer für den LibreNMS-Server.
+    * **Netz (entschieden 2026-10-16):** Steht der LibreNMS-Server in einem Client-VLAN, bekommt er eine
+      **zweite Schnittstelle im MGMT-VLAN** (feste Adresse, ohne Gateway, kein IP-Forwarding auf dem
+      Host). SNMP-Abfragen und Syslog laufen nur über diese Adresse, Weboberfläche, Updates und Alerts
+      über die bisherige. Die Geräte geben SNMP nur dieser MGMT-Adresse frei – nicht über `mgmtExtra`,
+      das vollen Management-Zugang gäbe. Verworfen: ganz ins MGMT-VLAN (dort kein Internet für Updates
+      und Alerts), im Client-VLAN lassen mit gezielter Freigabe (Monitoring-Zugang aus dem Client-LAN).
+55. **Netbox** (Idee, 2026-10-16, vorerst nicht) – zwei Varianten merken:
+    * **Einweg-Export cfm → Netbox:** Tool liest das Overlay (`pull-site.sh`), `inventory.rsc`,
+      `vlans.rsc`, `leases.rsc` und `netzplan.csv` (`$cfmLinks`) und legt per API Site, Geräte
+      (Modell, Seriennummer, Rolle, RouterOS-Version), Interfaces, MGMT-IPs, VLANs, Prefixe, feste IPs
+      mit DNS-Namen und Kabel an. Nur Doku, für die Fehlersuche wenig Nutzen.
+    * **Netbox als Quelle:** Netbox erzeugt `vlans.rsc`/`leases.rsc` u.a. Widerspricht D72 (der Manager
+      führt die Site-Daten, der cfm-Editor schreibt hinein) – bräuchte eine neue Entscheidung, wer gewinnt.

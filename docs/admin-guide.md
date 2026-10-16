@@ -623,7 +623,7 @@ Radios zurück) und beim neuen setzen.
 
 Die Registration-Tabelle des CAPsMAN zeigt alle Clients aller APs. Für einen Monitoring-Host (z.B.
 Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für dessen Adresse (ohne Home
-Assistant: Lesezeichen „cfm-WLAN“, 8.10):
+Assistant: Lesezeichen „cfm-Monitor“, 8.10):
 
 1. `global.rsc`: `"capsmanApi"={"from"={"<ip-des-HA>/32"};"user"="homeassistant"}`, Passwort in den
    Vault: `$cfmSecret key=user.homeassistant value=…`, `$cfmRelease` (bzw. Ringe durchlaufen lassen).
@@ -805,7 +805,7 @@ führt der Manager (D72). Du bearbeitest sie auf einem dieser Wege:
 * **im Browser mit dem cfm-Editor** (D73): `tools/editor/install.html` öffnen und den Knopf
   „cfm-Editor“ in die Lesezeichen-Leiste ziehen. Dann WebFig des Managers öffnen, das Lesezeichen
   anklicken und mit einem RouterOS-User der Gruppe full anmelden (der Browser merkt sich die Anmeldung
-  bis zum Schließen, auch für cfm-WLAN). Links die Datei wählen, ändern,
+  bis zum Schließen, auch für cfm-Monitor). Links die Datei wählen, ändern,
   Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
   fragt er nach). Die Knöpfe oben: „Prüfen“ (`$cfmParseWork`, `$cfmCheck`), „Diff zum Release“
   (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten
@@ -920,7 +920,8 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
 | Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle ansehen | `$cfmChannels` |
-| Clients je AP und Roaming verfolgen | Lesezeichen „cfm-WLAN“ in WebFig des CAPsMAN (8.10) |
+| Clients je AP und Roaming verfolgen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (8.10) |
+| Gerät finden: wo hängt MAC, IP oder Name? | `$cfmFind <text>` bzw. cfm-Monitor, Reiter Suche; was hängt an einem Port: `$cfmFind host=<gerät> port=<port>`; schwache WLAN-Clients: `$cfmFind signal=-75` (8.11) |
 | Kanalplan für 2,4 GHz neu bestimmen | `$cfmWifiScan` (Clients wechseln kurz), Vorschlag prüfen, Zeile `radios` in `wifi.rsc` übernehmen → Release (8.7) |
 
 ### 8.5 Überblick
@@ -1215,10 +1216,10 @@ schreibt jede Meldung als JSON-Zeile.
 
 ### 8.10 WLAN-Clients und Roaming ansehen (D77)
 
-Ohne Home Assistant (6.7) zeigt das Lesezeichen **cfm-WLAN** die Clients aller APs direkt in WebFig
-des CAPsMAN:
+Ohne Home Assistant (6.7) zeigt das Lesezeichen **cfm-Monitor** (bis 2026-10-16 „cfm-WLAN“) im Reiter
+**WLAN** die Clients aller APs direkt in WebFig des CAPsMAN. Der Reiter **Suche** gehört zu 8.11.
 
-1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm-WLAN“ in die
+1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm-Monitor“ in die
    Lesezeichen-Leiste ziehen (dieselbe Seite wie der cfm-Editor, 8.1).
 2. WebFig des **CAPsMAN** öffnen (Gerät mit Rolle `capsman`, ohne sie der Primary-Manager), das
    Lesezeichen anklicken und anmelden – ein User mit Leserecht genügt. Voraussetzung ist der Dienst
@@ -1236,6 +1237,55 @@ des CAPsMAN (schmale Abschnitte); das reicht nur so weit zurück wie dessen RAM-
 des Geräts (Name aus `leases.rsc`, sonst der Hostname des Clients), sonst steht die MAC da; ein Klick
 auf den Namen vergibt einen eigenen (nur im Browser). Zum Roaming-Test die Ansicht beim Durchlaufen
 des Gebäudes offen lassen, Abfrage alle 5 s.
+
+### 8.11 Geräte finden (D81)
+
+`$cfmFind` beantwortet „wo hängt dieses Gerät?“. Der Manager fragt dafür alle aufgenommenen Geräte
+live per SSH ab: die gelernten MACs der Bridge, die ARP-Tabellen, die DHCP-Leases und auf dem CAPsMAN
+und den APs die angemeldeten WLAN-Clients. Das dauert etwa eine Sekunde je Gerät und ändert nichts.
+
+```
+$cfmFind 3a:f0                  # Teil einer MAC (auch 3af040cebd27 oder 3A-F0-…)
+$cfmFind 192.168.30.5           # Teil einer IP
+$cfmFind drucker                # Name aus leases.rsc oder aus einer DHCP-Lease, groß/klein egal
+$cfmFind host=sw1 port=ether7   # was hängt an diesem Port?
+$cfmFind ap=ap2 ssid=gast       # Clients eines APs in einer SSID
+$cfmFind signal=-75             # WLAN-Clients mit -75 dBm oder schwächer
+$cfmFind vlan=40                # alles in VLAN 40
+```
+
+Der Text sucht in MAC, IP, Namen, Gerät:Port, dem Nachbarn am Port, AP und SSID. Filter und Text lassen sich kombinieren;
+`host=` meint bei WLAN-Clients den AP. Eine Zeile je Treffer:
+
+```
+MAC               IP              Name                 Ort                        VLAN Info
+3A:F0:40:CE:BD:27 192.168.30.120  handy-anna           ap2 2g                     30   gast -60 dBm 154 Mbit/s seit 02:27:52
+02:00:00:00:0C:01 192.168.30.50   drucker              sw1 ether7                 30
+02:00:00:00:0C:02                                      sw1 ether9                 30   Nachbar mini-switch, 3 MACs am Port
+```
+
+* **Ort** ist der Port, an dem das Gerät wirklich hängt: ein Port ohne verwalteten Nachbarn
+  (LLDP/MNDP). Sieht man eine MAC an mehreren solchen Ports, gilt der mit den wenigsten MACs. Ein
+  Port zu einem fremden Switch oder Hypervisor sieht viele, der Port des Geräts wenige. „Nachbar …“
+  nennt ein fremdes Gerät mit LLDP an diesem Port, „N MACs am Port“ zeigt, dass dort mehr hängt.
+* **über Uplink zu …**: Die MAC war nur an Ports zu verwalteten Geräten zu sehen, z.B. ein Gerät hinter
+  einem Port, an dem auch ein verwaltetes Gerät hängt. **nur ARP/Lease bei …**: Das Gerät kennt die IP,
+  aber keine Bridge hat die MAC gerade gelernt (Gerät still oder aus).
+* **Name** kommt aus `leases.rsc`, aus den DHCP-Leases der Geräte und bei eigenen Geräten aus dem
+  Inventar. In Netzen mit fremdem DHCP (z.B. Fritz!Box) kennt cfm IPs nur aus der ARP-Tabelle eines
+  eigenen Routers mit Adresse im VLAN, Namen nur aus `leases.rsc`.
+* Ein Gerät, das nicht antwortet, steht mit „nicht erreichbar“ bzw. „keine Daten“ vor der Tabelle.
+* Kein Verlauf: Die Suche sieht nur, was die Geräte gerade wissen (Bridge-Einträge verfallen nach
+  einigen Minuten Stille). Den Verlauf soll ein Monitoring wie LibreNMS liefern (TODO 54).
+* `quiet=yes` lässt die Tabelle weg und gibt die Treffer als Liste zurück (für Skripte und das
+  Lesezeichen). `data=<datei>` wertet gespeicherte Antworten aus statt die Geräte abzufragen (Labor).
+
+**Im Browser:** Das Lesezeichen **cfm-Monitor** (8.10) hat einen Reiter **Suche**. Er geht nur in WebFig
+des Managers (auf einem anderen Gerät nennt er dessen Adresse) und braucht einen User der Gruppe full,
+weil er `$cfmFind` auf dem Manager startet. Felder für Text, Gerät, Port, AP, SSID, VLAN und Signal; die
+Treffer stehen in einer Tabelle, sortierbar per Klick auf die Spalte. Ein Klick auf Gerät, Port, AP,
+SSID, VLAN oder MAC sucht danach, z.B. „was hängt noch an diesem Port?“. Eigene Namen aus dem Reiter
+WLAN gelten auch hier.
 
 ---
 
@@ -1466,6 +1516,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
+| `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, D81) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
 | `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
@@ -1541,7 +1592,7 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | Secrets-Version (SV) bleibt alt | Gerät per SSH nicht erreichbar oder Objekt fehlt noch | `$cfmSecretPush host=<n>`, Ausgabe prüfen |
 | Kein Winbox/SSH mehr vom Admin-PC | Dienste nur aus `mgmtAccess`/`mgmtExtra` | Admin-PC in `mgmtExtra`, releasen |
 | Anmeldung als `admin` geht nicht mehr | gewollt: `adminUser="disable"`, ein eigener Benutzer ist aktiv | mit dem eigenen Benutzer anmelden; Ausnahme per `adminUser="keep"` im Hostfile |
-| Apply: „can not change dynamic“ | eine eigene Suche per `find` ohne `!dynamic` trifft einen dynamischen Eintrag (z.B. vom Switch-Chip angelegte Bridge-VLANs) | `$cfmEnsure`/`$cfmFind` verwenden oder `!dynamic` in die Suche aufnehmen |
+| Apply: „can not change dynamic“ | eine eigene Suche per `find` ohne `!dynamic` trifft einen dynamischen Eintrag (z.B. vom Switch-Chip angelegte Bridge-VLANs) | `$cfmEnsure`/`$cfmIds` verwenden oder `!dynamic` in die Suche aufnehmen |
 | Log `cfm: WLAN im lokalen Fallback`, in `$cfmStatus` `WLAN lokal` | AP erreicht den CAPsMAN nicht (CAPsMAN aus, MGMT-Verbindung, Zertifikat) – nur die `master`-SSID läuft weiter | am CAPsMAN `/interface/wifi/capsman/print`, am AP `/interface/wifi/cap/print` (`current-caps-man-identity`) und das Log (`caps`) |
 | Log `cfm: RouterBOARD-Firmware … geflasht … Neustart zum Aktivieren` | gewollt: neue Firmware wird nach einem RouterOS-Update erst mit einem weiteren Neustart aktiv | nichts zu tun, der Agent startet einmal neu |
 | Log `cfm: RouterBOARD-Firmware … nach dem Neustart nicht aktiv`, in `$cfmStatus` `fw X!` | Flashen hat nicht gewirkt; der Agent startet dafür nur einmal neu | auf dem Gerät `/system/routerboard/print` prüfen, `/system/routerboard/upgrade`, dann `/system/reboot` |

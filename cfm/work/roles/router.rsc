@@ -11,7 +11,7 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
-:global cfmFind; :global cfmRun; :global cfmTarget
+:global cfmIds; :global cfmRun; :global cfmTarget
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -22,7 +22,7 @@
 #     Geräte ohne Switch-Menü (CHR) oder ohne die Eigenschaft bleiben unberührt. Nach Entfernen der
 #     Rolle bleibt es aus (von Hand wieder einschalten). ---
 :local sws ({})
-:onerror e in={ :set sws [$cfmFind "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
+:onerror e in={ :set sws [$cfmIds "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
 :foreach sw in=$sws do={
   :local sc [$cfmRun "/interface/ethernet/switch/get" I=$sw]
   :if ([:typeof ($sc->"l3-hw-offloading")] != "nothing") do={

@@ -73,7 +73,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage auf den Manager laden: beim ersten Mal alles, danach nur Framework-Code (`--site` auch die Site-Daten, D72) |
 | `tools/pull-site.sh` | Site-Daten und Inventar vom Manager ins Overlay holen (Sicherung, D72) |
-| `tools/editor/` | Lesezeichen für WebFig (REST-API): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-WLAN – Clients je AP live und Roaming als Zeitleiste (D77); `build.py` erzeugt `install.html` |
+| `tools/editor/` | Lesezeichen für WebFig (REST-API): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (D77), Gerätesuche (D81); `build.py` erzeugt `install.html` |
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
@@ -149,7 +149,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
 | Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
 | WLAN-Kanäle der APs | `$cfmChannels` (auch die eigenen Radios des CAPsMAN; Warnung bei gleichem Kanal an einem Switch) |
-| Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-WLAN“ in WebFig des CAPsMAN (`tools/editor/install.html`, Admin-Guide 8.10) |
+| Gerät finden (MAC, IP, Name, Port, AP/SSID) | `$cfmFind <text>`, Filter `host=` `port=` `ap=` `ssid=` `vlan=` `signal=-75`; im Browser: cfm-Monitor in WebFig des Managers, Reiter Suche (Admin-Guide 8.11) |
+| Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (`tools/editor/install.html`, Admin-Guide 8.10) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
 | Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, D80); `host=<ap>` misst nur einen AP neu |
 

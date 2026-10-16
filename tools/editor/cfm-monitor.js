@@ -15,7 +15,7 @@
   document.getElementById('cfmwl')?.remove();
   const KEEP = 24 * 3600e3;
   const PAL = ['#1f77b4', '#e8710a', '#2ca02c', '#9467bd', '#8c564b', '#d6338a', '#12939a', '#a39e14', '#5f6b6d', '#c62828'];
-  const S = { ident: '', tab: 'wlan', mgr: false, mgrAddr: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
+  const S = { ident: '', tab: 'wlan', mgr: false, findOk: true, mgrAddr: '', every: 10, span: 3600e3, timer: null, busy: false, tick: 0, first: true,
     ifs: {}, caps: {}, names: {}, alias: {}, cur: {}, hist: {}, ev: [], logEv: [], logKeys: {}, off: 0, err: '', last: 0, saved: 0 };
   const KEY = 'cfm-wlan:' + location.host;
   const $ = (sel) => root.querySelector(sel);
@@ -440,7 +440,12 @@
   // Manager? Sonst die Adresse, von der dieses Gerät zuletzt gezogen hat (state.json des Agents)
   async function detect() {
     S.mgr = ((await rest('GET', '/system/script?name=cfm-mgr').catch(() => [])) || []).length > 0;
-    if (S.mgr) return;
+    if (S.mgr) {
+      // Manager-Module vor D81: dort ist $cfmFind noch der alte interne Helfer (heute $cfmIds)
+      const net = ((await rest('GET', '/system/script?name=cfm-mgr-net').catch(() => [])) || [])[0];
+      S.findOk = !net || net.source === undefined || String(net.source).includes(':global cfmFind do={');
+      return;
+    }
     for (const n of ['cfm/state.json', 'flash/cfm/state.json']) {
       try {
         const f = ((await rest('GET', '/file?name=' + encodeURIComponent(n))) || [])[0];
@@ -479,7 +484,9 @@
       if (f) await rest('DELETE', '/file/' + f['.id']).catch(() => {});
       const ls = txt.split('\n').filter((l) => l.trim() && l !== ENDE && !/^Script file loaded and executed successfully$/.test(l.trim()));
       const jl = ls.find((l) => l.startsWith(JS));
-      F.hits = jl ? JSON.parse(jl.slice(JS.length)) : null;
+      const jt = jl ? jl.slice(JS.length).trim() : '';
+      F.hits = jt ? JSON.parse(jt) : null;
+      if (jl && !jt) ls.push('Der Manager lieferte nichts: $cfmFind fehlt dort (Framework vor D81?).');
       F.note = ls.filter((l) => !l.startsWith(JS)).join('\n') || (fertig ? '' : 'keine Rückmeldung nach 5 min');
       if (!Array.isArray(F.hits)) F.hits = [];
     } catch (e) {
@@ -515,6 +522,12 @@
       m.replaceChildren(el('div', { class: 'note' }, 'Die Suche läuft auf dem cfm-Manager. ' +
         (S.mgrAddr ? 'WebFig des Managers öffnen: http://' + S.mgrAddr + '/webfig/' : 'Dieses Gerät ist es nicht; WebFig des Managers öffnen.') +
         ' Dort das Lesezeichen erneut anklicken (User der Gruppe full).'));
+      return;
+    }
+    if (!S.findOk) {
+      m.replaceChildren(el('div', { class: 'note' }, 'Dieser Manager hat die Suche noch nicht: Seine Manager-Module sind älter als D81 ' +
+        '(2026-10-16), dort ist $cfmFind noch ein interner Helfer. Sie kommt mit dem Framework-Update ' +
+        '(upload-seed.sh, $cfmRelease), sobald der Manager die neue Version selbst angewendet hat (sein Ring).'));
       return;
     }
     let form = $('.ff');

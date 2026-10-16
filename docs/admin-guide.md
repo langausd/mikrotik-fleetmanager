@@ -1590,6 +1590,7 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | `$cfmFind`: Gerät „nicht erreichbar“ bzw. „keine Daten“ | Gerät aus, kein Ping im MGMT-Netz oder ssh-exec als `cfm` scheitert | `$cfmStatus`; die übrigen Geräte werden trotzdem ausgewertet, MACs hinter dem stummen Gerät stehen dann „über Uplink“ |
 | `$cfmFind`: Gerät steht unter „nur ARP/Lease“ | keine Bridge hat die MAC gerade gelernt (Gerät still, Eintrag nach einigen Minuten verfallen) | Gerät ansprechen (Ping), erneut suchen |
 | cfm-Monitor, Reiter Suche: „Fehler … 401/403“ oder kein Ergebnis | User ohne Gruppe `full` (die Suche startet `$cfmFind` per `:execute`) bzw. WebFig nicht die des Managers | mit einem User der Gruppe `full` in WebFig des Managers anmelden |
+| cfm-Monitor, Reiter Suche: „Dieser Manager hat die Suche noch nicht“ | die Manager-Module auf dem Manager sind älter als D81 (Framework hochgeladen, aber der Ring des Managers hat die neue Version noch nicht angewendet) | Framework-Update zu Ende bringen: `$cfmRelease`, Ringe befördern, bis der Manager selbst sie anwendet |
 | PPSK-Client landet nicht im richtigen VLAN | VLAN fehlt auf dem AP-Uplink (`trunk-ap`) oder AP ohne wifi-qcom | Warnung von `$cfmCheck` beachten, Profil erweitern |
 | „Hash stimmt nicht“ / „Download fehlgeschlagen“ | unvollständiges Archiv (z.B. auf dem Backup) | Primary prüfen, neu releasen |
 | Ergebnis `failed <datei>: …`, Version `bad` | Fehler in Daten/Template, Gerät hat zurückgerollt | Meldung lesen, beheben, releasen |

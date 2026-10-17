@@ -241,6 +241,12 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="fasttrack-connection";"connection-state"="established,related"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related,untracked"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="drop";"connection-state"="invalid"})
+# Admin-PCs aus mgmtExtra (Adressliste cfm-mgmt) erreichen die Geräte im MGMT-VLAN auch geroutet (D83);
+# sonst ließe die Policy sie nur an die Dienste der Router selbst (input)
+:local mz [:tostr ($cfmVlans->$mv->"zone")]
+:if (($zones->$mz) = 1) do={
+  :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"src-address-list"="cfm-mgmt";"out-interface-list"=("Z-" . $mz)})
+}
 :local natR ({})
 :local natZ ({})
 :local natA ({})

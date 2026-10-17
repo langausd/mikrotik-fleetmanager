@@ -179,7 +179,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
 > noch aus den Zonen in `mgmtAccess` (Standard: `mgmt`) und aus `mgmtExtra` zu. Alle anderen
 > Dienste (Telnet, FTP, WebFig, API) sind aus, MAC-Winbox gibt es nur im MGMT-VLAN. Zusätzlich
 > verwirft die minimale Firewall auf Switches, APs und Managern alles, was nicht aus diesen Netzen
-> kommt. Trage deinen Admin-PC in `mgmtExtra` ein, wenn er nicht im MGMT-VLAN hängt.
+> kommt. Trage deinen Admin-PC in `mgmtExtra` ein, wenn er nicht im MGMT-VLAN hängt. Hinter
+> cfm-Routern leiten diese ihn auch ins MGMT-VLAN weiter (D83), das übrige Netz seiner Zone nicht.
 
 **Konventionen:**
 * Subnetz eines VLANs ist `192.168.<VID>.0/24`, Gateway `.1` (änderbar per `gw`, eigenes Netz per `net`).

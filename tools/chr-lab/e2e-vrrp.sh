@@ -8,7 +8,7 @@
 #               eine VRF als Client in IoT (192.168.30.77) und Gast (192.168.40.77). "Internet" ist
 #               198.51.100.1 auf inet (TEST-NET-2, also nicht in cfm-private).
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
-# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein), Ausfall und Rückkehr des Masters
+# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), Neustart des Masters, Ausfall von zwei Routern.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
@@ -104,6 +104,8 @@ agentwait 3 1 r2 && ok "r2 hat v1 angewendet" || bad "r2 Apply v1"
 for i in 1 2 3; do r $i '/ip/dhcp-client/set [find where interface=ether1] add-default-route=no' >/dev/null; done
 
 step "4. Rollen router (r1, r2) und switch,router,manager (cm1)"
+# Admin-PC im LAN (inet mit zweiter Adresse .20.10, in mgmtExtra der Hostfiles): erreicht r2 im MGMT-VLAN über den Master (D83)
+r 4 '/ip/address/add address=192.168.20.10/24 interface=[/ip/address/get [find where address~"^192.168.20.1/"] interface]' >/dev/null
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"r1"->"role") "switch,router"; :set ($i->"r2"->"role") "switch,router"; :set ($i->"cm1"->"role") "switch,router,manager"; $cfmInvSave $i; :global cfmManifests; $cfmManifests; $cfmPush' >/dev/null
 for n in r1 r2 cm1; do
   for _ in $(seq 1 60); do [[ "$(stat $n role)" == *router* ]] && [ "$(stat $n res)" = ok ] && break; sleep 4; done
@@ -118,6 +120,8 @@ expect 2 '[:len [/interface/list/member/find where interface="vrrp40" and list="
 step "5. Normalbetrieb: r1 ist Master"
 state 2 r1
 policy r1
+[ "$(pings 4 '192.168.10.22 src-address=192.168.20.10')" -ge 4 ] && ok "r1: Admin-PC aus mgmtExtra (LAN) erreicht r2 im MGMT-VLAN" || bad "r1: mgmtExtra -> MGMT gesperrt (D83)"
+[ "$(pings 4 '192.168.10.22 src-address=192.168.20.1')" = 0 ] && ok "r1: übriges LAN erreicht das MGMT-VLAN nicht" || bad "r1: LAN -> MGMT offen"
 
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"
 r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 6

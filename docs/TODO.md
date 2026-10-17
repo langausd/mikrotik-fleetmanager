@@ -1,9 +1,14 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-16)
+## Übersicht offener Punkte (Stand 2026-10-17)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
+* **Erledigt am 2026-10-17 (Router-Umzug eines Standorts):** D83 (`mgmtExtra` hinter cfm-Routern bis ins
+  MGMT-VLAN), D84 (WireGuard-Fernzugang mit VRRP: gemeinsamer Schlüssel, Endpoint VIP, Route für Geräte
+  mit eigenem Ausgang). **Neu, offen:** 56 (vorhandene VLAN-Interfaces übernehmen), 57
+  (`wg-client-setup.sh` ohne `wireguard-tools`), 58 (Gast-Schalter ohne Unterbrechung der übrigen SSIDs)
+  und vier kleine Befunde unter „Bekannte Fehler“.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -190,6 +195,21 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
+* **Steering `kick` über 59 s ist nie idempotent** (Befund 2026-10-17): `wifi.rsc` → `kick`="90s"
+  setzt `transition-time=90s`, RouterOS liest `1m30s` zurück – jeder Apply auf dem CAPsMAN meldet
+  `geändert: /interface/wifi/steering wst:<n>: transition-time` (set=2). Harmlos; beheben durch
+  Normalisieren (Sekunden in RouterOS-Schreibweise) vor dem Vergleich oder in `$cfmEnsure` allgemein für Zeiten.
+* **Manager mit Rolle `router` im Onboarding-VLAN:** Dieselbe Adresse (`.250+routerId`) legen die
+  Onboarding-Funktion (`obip:<VID>`) und die Rolle `router` (`ip:<VID>`) an; die Rollen übernehmen sie
+  abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan). Harmlos, aber
+  jeder Apply zählt sie mit. Eine der beiden sollte die Adresse der anderen als ihre ansehen.
+* **`$cfmAudit op=purge` meldet FEHLER für dynamische Folgeobjekte** (Befund 2026-10-17: ein
+  VLAN-Interface samt Adresse entfernt, zwei FEHLER-Zeilen für Objekte, die RouterOS dazu dynamisch
+  angelegt hatte): Sie verschwinden mit dem entfernten Objekt, das Löschen danach scheitert.
+  Harmlos, aber verwirrend; dynamische Einträge beim Purge überspringen.
+* **`$cfmStatus` zeigt bis zum nächsten Manager-Tick den alten Stand:** Nach einem Release stand ein
+  Gerät noch mit der alten Version da, obwohl es längst angewendet hatte; erst `$cfmCollect` holte den
+  Status. Vorschlag: `$cfmStatus` holt veraltete Status selbst ab (oder weist auf `$cfmCollect` hin).
 * ~~**Labor 2026-10-11: cm1 nimmt keine Anmeldung mehr an.**~~ – *geklärt und behoben 2026-10-12:* Wettlauf
   zwischen dem Apply des Managers und `$cfmLoadData` (DECISIONS, Umsetzungsentscheidungen, Sperre
   `cfmApplyBusy`); nachgestellt in Labor B (Push an cm1 plus paralleles `$cfmLoadData` → `adminUser`
@@ -765,3 +785,22 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `vlan<VID>` umbenennen (Verweise in RouterOS gehen über die ID, Adressen bleiben am Interface).
     Labor: `e2e.sh` mit einem vorher angelegten VLAN-Interface unter fremdem Namen, Probelauf zeigt
     „übernommen“, Apply ohne Duplikat, Adresse bleibt.
+57. **`wg-client-setup.sh` ohne `wireguard-tools`** (Befund 2026-10-17) – Das Skript bricht ohne `wg` ab,
+    auf einem Admin-Rechner ohne root lässt sich das Paket aber nicht nachinstallieren. NetworkManager
+    kann WireGuard selbst; nur die Schlüssel brauchen `wg`. Ersatz mit OpenSSL: privater Schlüssel =
+    die letzten 32 Byte von `openssl genpkey -algorithm X25519 -outform DER`, Base64; öffentlicher
+    über den PKCS#8-Kopf `302e020100300506032b656e04220420` + privater Schlüssel →
+    `openssl pkey -inform DER -pubout -outform DER`, letzte 32 Byte. Am Standort so gemacht und
+    gegen RouterOS geprüft (Handshake). Umsetzen: `genkey` und `connect` fallen auf OpenSSL zurück,
+    wenn `wg` fehlt; `--keepalive` mit VRRP als Standard 25.
+58. **Schaltbare SSID ohne Unterbrechung der übrigen** (entschieden 2026-10-17) – `cfm-ssid-<key>-on/-off`
+    (D64) ändern die Provisioning-Regeln und provisionieren alle Radios neu; das baut je Radio Master und
+    alle virtuellen APs neu auf, alle SSIDs aller APs sind gleichzeitig ~3 s weg. Zwei Ansätze, in dieser
+    Reihenfolge: (a) **statische Interfaces** – Provisioning mit `action=create-enabled` statt
+    `create-dynamic-enabled`; feste Interfaces auf dem CAPsMAN lassen sich einzeln ab-/anschalten
+    (dynamische nicht: „can not change dynamic interface“). Auf Hardware prüfen (CHR hat keine Radios):
+    Betrifft das Abschalten nur den virtuellen AP, oder startet RouterOS das Radio trotzdem neu? Dazu
+    klären: Aufräumen fester Interfaces, wenn ein AP verschwindet; Namen (`name-format`) und die Zuordnung in
+    Home Assistant; Zusammenspiel mit `slaves-static` (D54). (b) Falls (a) nichts bringt: **nacheinander
+    provisionieren** – je AP `/interface/wifi/radio/provision` mit einigen Sekunden Abstand, damit nie alle
+    APs gleichzeitig dunkel sind und Clients zu einem Nachbarn wechseln können; die Unterbrechung je AP bleibt.

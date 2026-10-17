@@ -36,6 +36,8 @@ Home Assistant ──RouterOS-API, TCP 8728──▶ CAPsMAN (zentraler WLAN-Con
 
 **Wichtig fürs Verhalten:** Bei jedem Schalten senden alle APs etwa 3 Sekunden lang **gar kein**
 WLAN, auch nicht die anderen SSIDs. Verbundene Geräte melden sich danach von selbst wieder an.
+(Grund: RouterOS lässt die Interfaces des CAPsMAN nicht einzeln abschalten, die Radios werden neu
+provisioniert – D64; Verbesserung offen, TODO 58.)
 Deshalb nicht in kurzen Abständen schalten, keine Automationen, die hin- und herschalten können, und
 keinen „Toggle bei jeder Statusänderung“.
 

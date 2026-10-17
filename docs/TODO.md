@@ -616,6 +616,13 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       zu SSH, fetch, Skripten oder `/file` nennt. Abends mit D74–D76: `e2e.sh` 294, `e2e-mlag.sh` grün.
     * **Labor mit 7.25rc2 (2026-10-13):** alle Skripte grün – `e2e.sh` 298 (mit D79), Onboarding
       14/15/18, `e2e-vrrp.sh` 79, `e2e-mlag.sh` 72; kein neuer Befund zu cfm.
+    * **Labor mit 7.25rc2 (2026-10-17, Stand D82):** alle Skripte grün – `e2e.sh` 315, Onboarding 14/15/18,
+      `e2e-vrrp.sh` 79, `e2e-mlag.sh` 72. Eine Forumsmeldung aus der Beta-Zeit (Skripte über ~16 kB nach
+      einem Neustart ungültig) ließ sich nicht nachstellen: ein Skript mit 45 KB bleibt nach dem Neustart
+      gültig und läuft per Scheduler `startup`. Changelog-Durchsicht für einen Standort: nichts, was ein
+      Update vor einem Router-Umbau nötig macht; das PoE-Firmware-Update (kurze Unterbrechung aller
+      PoE-Ports) gehört in ein eigenes Wartungsfenster; unter rc1 meldete ein Nutzer hAP-ax³-CAPs mit
+      fehlenden SSIDs (zu rc2 noch keine Meldungen).
 49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün (2026-10-12, 292).
     Punkte aus dem Changelog, die cfm berühren können:
     * „l3hw - add VRRP hardware offloading support“: D37 schaltet für VRRP das Routing im Switch-Chip

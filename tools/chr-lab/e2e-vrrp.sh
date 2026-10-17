@@ -37,6 +37,7 @@ pings() { r "$1" ":put [/ping $2 count=5 interval=200ms]" | tail -1 | tr -dc 0-9
 # VRRP-Master in allen vier VLANs? vrrp: running = Master
 ismaster() { r "$1" ':local n 0; :foreach v in={"vrrp10";"vrrp20";"vrrp30";"vrrp40"} do={ :if ([/interface/vrrp/get [find name=$v] running]) do={ :set n ($n + 1) } }; :put ("M=" . $n)' | grep -o 'M=[0-9]' | tr -dc 0-9; }
 dhcpon() { r "$1" ':put ("D=" . [:len [/ip/dhcp-server/find where comment~"^cfm:dhcp" and !disabled]])' | grep -o 'D=[0-9]' | tr -dc 0-9; }
+invdrop() { r "$1" ':put ("I=" . [/ip/firewall/filter/get [find where chain=forward and action=drop and connection-state~"invalid" and comment~"^cfm:fw:"] packets])' | grep -o 'I=[0-9]*' | tr -dc 0-9; }
 natcnt() { r 4 ':put ("N=" . [/ip/firewall/filter/get [find comment=gastnat] packets])' | grep -o 'N=[0-9]*' | tr -dc 0-9; }
 # Lage aus Sicht der Clients: VIPs, Policy, NAT. Erwartet: $1 = Name des Masters
 policy() {
@@ -105,7 +106,7 @@ for i in 1 2 3; do r $i '/ip/dhcp-client/set [find where interface=ether1] add-d
 
 step "4. Rollen router (r1, r2) und switch,router,manager (cm1)"
 # Admin-PC im LAN (inet mit zweiter Adresse .20.10, in mgmtExtra der Hostfiles): erreicht r2 im MGMT-VLAN über den Master (D83)
-r 4 '/ip/address/add address=192.168.20.10/24 interface=[/ip/address/get [find where address~"^192.168.20.1/"] interface]' >/dev/null
+r 4 '/ip/address/add address=192.168.20.10/24 interface=[/ip/address/get [find where address~"^192.168.20.1/"] interface]; /ip/route/set [find where dst-address="192.168.10.0/24"] pref-src=192.168.20.10' >/dev/null
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"r1"->"role") "switch,router"; :set ($i->"r2"->"role") "switch,router"; :set ($i->"cm1"->"role") "switch,router,manager"; $cfmInvSave $i; :global cfmManifests; $cfmManifests; $cfmPush' >/dev/null
 for n in r1 r2 cm1; do
   for _ in $(seq 1 60); do [[ "$(stat $n role)" == *router* ]] && [ "$(stat $n res)" = ok ] && break; sleep 4; done
@@ -121,6 +122,12 @@ step "5. Normalbetrieb: r1 ist Master"
 state 2 r1
 policy r1
 [ "$(pings 4 '192.168.10.22 src-address=192.168.20.10')" -ge 4 ] && ok "r1: Admin-PC aus mgmtExtra (LAN) erreicht r2 im MGMT-VLAN" || bad "r1: mgmtExtra -> MGMT gesperrt (D83)"
+# TCP: r2 antwortet über seine eigene LAN-Adresse direkt, der Master r1 sieht nur eine Richtung; die
+# Folgepakete dürfen bei ihm nicht als invalid verworfen werden (Befund am Standort, ssh hing im Banner)
+i0=$(invdrop 2)
+r 4 ':onerror e in={ /tool/fetch url="http://192.168.10.22:22/" output=none } do={}' >/dev/null
+i1=$(invdrop 2)
+[ "${i1:-x}" = "${i0:-y}" ] && ok "r1: TCP vom Admin-PC zu r2 (Antwort asymmetrisch) ohne invalid-Drop" || bad "r1: TCP zu r2 als invalid verworfen ($i0 -> $i1)"
 [ "$(pings 4 '192.168.10.22 src-address=192.168.20.1')" = 0 ] && ok "r1: übriges LAN erreicht das MGMT-VLAN nicht" || bad "r1: LAN -> MGMT offen"
 
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"

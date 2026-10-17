@@ -8,7 +8,8 @@
 #               eine VRF als Client in IoT (192.168.30.77) und Gast (192.168.40.77). "Internet" ist
 #               198.51.100.1 auf inet (TEST-NET-2, also nicht in cfm-private).
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
-# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), Ausfall und Rückkehr des Masters
+# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), WireGuard über die
+# VIP mit gemeinsamem Schlüssel (D84, Client auf inet), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), Neustart des Masters, Ausfall von zwei Routern.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
@@ -39,6 +40,12 @@ ismaster() { r "$1" ':local n 0; :foreach v in={"vrrp10";"vrrp20";"vrrp30";"vrrp
 dhcpon() { r "$1" ':put ("D=" . [:len [/ip/dhcp-server/find where comment~"^cfm:dhcp" and !disabled]])' | grep -o 'D=[0-9]' | tr -dc 0-9; }
 invdrop() { r "$1" ':put ("I=" . [/ip/firewall/filter/get [find where chain=forward and action=drop and connection-state~"invalid" and comment~"^cfm:fw:"] packets])' | grep -o 'I=[0-9]*' | tr -dc 0-9; }
 natcnt() { r 4 ':put ("N=" . [/ip/firewall/filter/get [find comment=gastnat] packets])' | grep -o 'N=[0-9]*' | tr -dc 0-9; }
+# WireGuard (D84): wgstate <vm> -> "an/aus" für wg-admin und rt:wg; wgpub <vm>; tunnel <Ziel>: Ping über den
+# Tunnel des Clients auf inet (/32-Routen über wgc), bis zu 40 s für einen neuen Handshake nach dem Umschalten
+wgstate() { r "$1" ':local s "an"; :if ([/interface/wireguard/get [find name=wg-admin] disabled]) do={ :set s "aus" }; :local t "-"; :foreach i in=[/ip/route/find where comment="cfm:rt:wg"] do={ :set t "an"; :if ([/ip/route/get $i disabled]) do={ :set t "aus" } }; :put ("WG=" . $s . "/" . $t)' | grep -o 'WG=.*' | cut -d= -f2; }
+wgpub() { r "$1" ':put ("K=" . [/interface/wireguard/get [find name=wg-admin] public-key])' | grep -o 'K=.*' | cut -d= -f2-; }
+tunnel() { local i; for i in $(seq 1 8); do [ "$(pings 4 "$1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
+wgep() { r 4 ':put ("E=" . [/interface/wireguard/peers/get [find interface=wgc] current-endpoint-address])' | grep -o 'E=.*' | cut -d= -f2; }
 # Lage aus Sicht der Clients: VIPs, Policy, NAT. Erwartet: $1 = Name des Masters
 policy() {
   local m=$1 n0 n1
@@ -130,10 +137,43 @@ i1=$(invdrop 2)
 [ "${i1:-x}" = "${i0:-y}" ] && ok "r1: TCP vom Admin-PC zu r2 (Antwort asymmetrisch) ohne invalid-Drop" || bad "r1: TCP zu r2 als invalid verworfen ($i0 -> $i1)"
 [ "$(pings 4 '192.168.10.22 src-address=192.168.20.1')" = 0 ] && ok "r1: übriges LAN erreicht das MGMT-VLAN nicht" || bad "r1: LAN -> MGMT offen"
 
+step "5b. WireGuard mit VRRP (D84): gemeinsamer Schlüssel, Tunnel am Master"
+# Bestehende Installation nachgestellt: r1 hat wg-admin schon mit eigenem Schlüssel -> den übernimmt der Manager
+r 2 '/interface/wireguard/add name=wg-admin listen-port=13231' >/dev/null
+k0=$(wgpub 2)
+r 4 '/interface/wireguard/add name=wgc listen-port=51820' >/dev/null
+cpub=$(r 4 ':put ("K=" . [/interface/wireguard/get [find name=wgc] public-key])' | grep -o 'K=.*' | cut -d= -f2-)
+printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}}}\n' "$cpub" > "$LAB/wg-vrrp.rsc"
+echo "put $LAB/wg-vrrp.rsc cfm/work/wireguard.rsc" | put 1
+mgr '$cfmRelease all=yes' >/dev/null
+for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 2 $n || bad "$n: v2 nicht angewendet"; done
+mgr '$cfmSecretPush' >/dev/null; sleep 3
+[ -n "$k0" ] && [ "$(mgr ':global cfmJson; :put ("K=" . [:tostr ([$cfmJson "cfm/meta/vault.dat"]->"wgpub")])' | grep -o 'K=.*' | cut -d= -f2-)" = "$k0" ] && ok "Manager übernimmt den Schlüssel des vorhandenen wg-admin (r1)" || bad "Schlüssel nicht übernommen"
+[ "$(wgpub 3)" = "$k0" ] && [ "$(wgpub 1)" = "$k0" ] && ok "r2 und cm1 haben nach dem Secret-Push denselben Schlüssel" || bad "Schlüssel verschieden: r2 $(wgpub 3) cm1 $(wgpub 1)"
+[ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && [ "$(wgstate 1)" = "aus/an" ] && ok "wg-admin nur am Master an, Backups mit Route ins WG-Netz" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3), cm1 $(wgstate 1)"
+r 4 "/interface/wireguard/peers/add interface=wgc public-key=\"$k0\" endpoint-address=192.168.20.2 endpoint-port=13231 allowed-address=192.168.250.0/24,192.168.10.0/24 persistent-keepalive=5s; /ip/address/add address=192.168.250.2/24 interface=wgc; :foreach a in={\"192.168.10.2\";\"192.168.10.21\";\"192.168.10.22\"} do={ /ip/route/add dst-address=(\$a . \"/32\") gateway=wgc }" >/dev/null
+tunnel 192.168.10.21 && ok "Tunnel: Client erreicht den Master r1" || bad "Tunnel zu r1 geht nicht"
+tunnel 192.168.10.22 && ok "Tunnel: Client erreicht den Backup r2 (Antwort über die MGMT-VIP)" || bad "Tunnel zu r2 geht nicht"
+tunnel 192.168.10.2 && ok "Tunnel: Client erreicht den Manager cm1 (Backup)" || bad "Tunnel zu cm1 geht nicht"
+[ "$(wgep)" = "192.168.20.2" ] && ok "Endpoint des Clients bleibt die VIP .20.2" || bad "Endpoint des Clients: $(wgep)"
+# Selbstheilung: r2 bekommt von Hand einen anderen Schlüssel -> der Apply fordert den Secret-Push an (sv=0;
+# geprüft am Log von r2, den Status könnte der Manager-Tick schon wieder überholt haben)
+wglog() { r 3 ':put ("L=" . [:len [/log/find where message~"WireGuard: Schl"]])' | grep -o 'L=[0-9]*' | tr -dc 0-9; }
+xk=$(r 4 ':local i [/interface/wireguard/add name=wgx listen-port=51821]; :put ("K=" . [/interface/wireguard/get $i private-key]); /interface/wireguard/remove $i' | grep -o 'K=.*' | cut -d= -f2-)
+r 3 "/interface/wireguard/set [find name=wg-admin] private-key=\"$xk\"" >/dev/null
+for _ in $(seq 1 40); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+l0=$(wglog); t0=$(stat r2 t); mgr '$cfmPush host=r2 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat r2 t)" != "$t0" ] && break; sleep 4; done
+[ "$(wglog)" -gt "${l0:-0}" ] && ok "r2 mit fremdem Schlüssel: Apply fordert den Secret-Push an" || bad "r2: keine Anforderung im Log ($l0 -> $(wglog))"
+mgr '$cfmSecretPush host=r2' >/dev/null; sleep 2
+[ "$(wgpub 3)" = "$k0" ] && ok "r2 hat nach dem Secret-Push wieder den gemeinsamen Schlüssel" || bad "r2 Schlüssel $(wgpub 3)"
+
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"
 r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 6
 state 3 r2 2
 policy r2
+[ "$(wgstate 3)" = "an/aus" ] && ok "r2 hält jetzt den Tunnel (wg-admin an, Route aus)" || bad "WG-Zustand r2 $(wgstate 3)"
+tunnel 192.168.10.22 && tunnel 192.168.10.2 && ok "Tunnel nach dem Umschalten: Client erreicht r2 und cm1 über dieselbe VIP" || bad "Tunnel nach dem Umschalten tot"
 
 step "7. Rückkehr: r1 wieder am Netz -> Preemption, VIPs danach erreichbar"
 r 2 '/interface/ethernet/enable ether2' >/dev/null; sleep 10
@@ -141,6 +181,8 @@ state 2 r1
 # Forum-Befund (7.24.4, CCR2004): VIP nach Preemption nicht erreichbar - hier 10 Pings über 2 s
 [ "$(r 4 ':put [/ping 192.168.20.2 count=10 interval=200ms]' | tail -1 | tr -dc 0-9)" = 10 ] && ok "VIP .20.2 nach Preemption ohne Verlust" || bad "VIP .20.2 nach Preemption mit Verlust"
 policy r1
+[ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && ok "Nach der Rückkehr: Tunnel wieder an r1, r2 mit Route" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3)"
+tunnel 192.168.10.22 && tunnel 192.168.10.21 && ok "Tunnel nach der Preemption: Client erreicht r1 und r2" || bad "Tunnel nach der Preemption tot"
 
 step "8. Neustart des Masters r1"
 r 2 '/system/reboot' >/dev/null 2>&1; sleep 8

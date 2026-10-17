@@ -31,7 +31,7 @@
 #                                      Gerät aufnehmen / Ersatzgerät übernehmen
 #   $cfmPush [host=<n>|ring=<r>] [force=yes]   sofortigen Pull auslösen (nur aufgenommene Geräte)
 #   $cfmAudit host=<n> [op=report|mark|purge] [sel=all|A1,A3]
-#   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, vaultpw
+#   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, vaultpw, wg.admin (D84)
 #   $cfmSecretPush [host=<n>]          Secrets per SSH direkt in die Geräte schreiben
 #   $cfmVaultBackup                    verschlüsseltes Backup (inkl. Vault) nach vault/
 #   $cfmRekey host=<n>|all=yes         Geräteschlüssel (Manifest-Signatur) erneuern
@@ -219,13 +219,63 @@
 }
 :global cfmSecret do={
   :global cfmVaultSet; :global cfmJson; :global cfmWrite; :global cfmMB
-  :if ([:len $key] = 0 or [:len $value] = 0) do={ :error "Aufruf: \$cfmSecret key=<user.NAME|psk.SSIDKEY|vaultpw> value=<geheim>" }
+  :if ([:len $key] = 0 or [:len $value] = 0) do={ :error "Aufruf: \$cfmSecret key=<user.NAME|psk.SSIDKEY|vaultpw|wg.admin> value=<geheim>" }
   $cfmVaultSet $key $value
   :local f ([$cfmMB] . "/meta/vault.dat")
   :local vj [$cfmJson $f]
   :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
+  # WireGuard-Schlüssel der Router (D84): öffentlichen Schlüssel für die Manifeste mitführen
+  :if ($key = "wg.admin") do={ :global cfmWgKeyPair; :set ($vj->"wgpub") ([$cfmWgKeyPair $value]->"pub") }
   $cfmWrite $f [:serialize to=json $vj]
   :put ("Vault: " . $key . " gesetzt (Vault-Version " . ($vj->"ver") . "). Verteilung folgt automatisch.")
+}
+
+# WireGuard-Schlüsselpaar über ein abgeschaltetes Hilfs-Interface: $1 = privater Schlüssel (leer = neu
+# erzeugen) -> {"priv"=…;"pub"=…}
+:global cfmWgKeyPair do={
+  :onerror e in={ /interface/wireguard/remove [find where name="cfm-wgtmp"] } do={}
+  :local lp [:rndnum from=40000 to=60000]
+  :local i
+  :if ([:len $1] > 0) do={ :set i [/interface/wireguard/add name="cfm-wgtmp" disabled=yes listen-port=$lp private-key=$1] } else={
+    :set i [/interface/wireguard/add name="cfm-wgtmp" disabled=yes listen-port=$lp] }
+  :local r ({"priv"=[/interface/wireguard/get $i private-key];"pub"=[/interface/wireguard/get $i public-key]})
+  /interface/wireguard/remove $i
+  :return $r
+}
+
+# Gemeinsamer WireGuard-Schlüssel der Router (D84): Vault "wg.admin", öffentlicher Schlüssel in
+# meta/vault.dat ("wgpub"). Fehlt er, übernimmt der Manager den eines Routers, der wg-admin schon hat
+# (bestehende Installation: die Clients behalten den Server-Schlüssel), sonst erzeugt er einen neuen.
+# Liefert den öffentlichen Schlüssel.
+:global cfmWgKey do={
+  :global cfmVaultGet; :global cfmVaultSet; :global cfmJson; :global cfmWrite; :global cfmMB
+  :global cfmWgKeyPair; :global cfmInvLoad; :global cfmEnrolled; :global cfmExec
+  :local f ([$cfmMB] . "/meta/vault.dat")
+  :local vj [$cfmJson $f]
+  :local priv [$cfmVaultGet "wg.admin"]
+  :if ([:len $priv] > 0 and [:len [:tostr ($vj->"wgpub")]] > 0) do={ :return [:tostr ($vj->"wgpub")] }
+  :local neu ([:len $priv] = 0)
+  :if ($neu) do={
+    :foreach n,d in=[$cfmInvLoad] do={
+      :if ([:len $priv] = 0 and ("," . [:tostr ($d->"role")] . ",") ~ ",router," and [$cfmEnrolled $d]) do={
+        :local wc ":put [/interface/wireguard/get [find where name=\"wg-admin\"] private-key]"
+        :local o [:tostr ([$cfmExec ip=($d->"ip") cmd=$wc]->"output")]
+        :if ([:len $o] >= 44 and [:pick $o 43 44] = "=") do={
+          :set priv [:pick $o 0 44]
+          :log info ("cfm: WireGuard-Schlüssel der Router von " . $n . " übernommen (D84)")
+        }
+      }
+    }
+  }
+  :local kp [$cfmWgKeyPair $priv]
+  :if ([:len $priv] = 0) do={ :log info "cfm: WireGuard-Schlüssel der Router neu erzeugt (D84)" }
+  :if ($neu) do={
+    $cfmVaultSet "wg.admin" ($kp->"priv")
+    :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
+  }
+  :set ($vj->"wgpub") ($kp->"pub")
+  $cfmWrite $f [:serialize to=json $vj]
+  :return ($kp->"pub")
 }
 
 # ---------- SSH zu Geräten ----------
@@ -272,6 +322,13 @@
   :local rg [$cfmRings]
   :local pl [:len $plan]
   :if ($pl > 0) do={ $cfmLoadData ver=0 } else={ $cfmLoadData }
+  # Gemeinsamer WireGuard-Schlüssel der Router (D84): öffentlicher Schlüssel in die Manifeste der Router;
+  # erzeugt bzw. übernommen wird er nur beim echten Release, nicht im Probelauf
+  :global cfmWg
+  :local wgpub ""
+  :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
+    :if ($pl = 0) do={ :global cfmWgKey; :set wgpub [$cfmWgKey] } else={ :set wgpub [:tostr ([$cfmJson ($b . "/meta/vault.dat")]->"wgpub")] }
+  }
   :local reap ([:tonsec [:totime ($cfmG->"reapply")]] / 1000000000)
   :local inv [$cfmInvLoad]
   :local cms [$cfmCapsmen $inv]
@@ -363,6 +420,7 @@
           :local m ({"v"=$v;"src"=$src;"name"=$name;"role"=$rol;"ring"=[:tonum $ring];"ip"=($d->"ip");"serial"=($d->"serial");"reapply"=$reap;"watchdog"=($cfmG->"watchdog");"cm"=$cms;"files"=$fl})
           :local rl ("," . $rol . ",")
           :if ($rl ~ ",router,") do={ :set ($m->"dns") $dnsH }
+          :if ($rl ~ ",router," and [:len $wgpub] > 0) do={ :set ($m->"wgpub") $wgpub }
           :if ([:len $rmac] > 0) do={ :set ($m->"rmac") $rmac }
           # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
           :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
@@ -595,7 +653,7 @@
 :global cfmSecretPush do={
   :global cfmInvLoad; :global cfmVaultGet; :global cfmExec; :global cfmEsc; :global cfmJson
   :global cfmMB; :global cfmG; :global cfmWifi; :global cfmLoadData; :global cfmChallenge; :global cfmCapsmen
-  :global cfmEnrolled
+  :global cfmEnrolled; :global cfmWg
   $cfmLoadData
   :local vv [:tonum ([$cfmJson ([$cfmMB] . "/meta/vault.dat")]->"ver")]
   :local done 0
@@ -624,6 +682,13 @@
         :set c ($c . ":if (\$ok) do={ /user/set [find where name=\"admin\"] disabled=yes };")
       }
       :local rl ("," . ($d->"role") . ",")
+      # Gemeinsamer WireGuard-Schlüssel der Router (D84); fehlt wg-admin noch, beim nächsten Mal
+      :if ($rl ~ ",router," and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
+        :local wk [$cfmVaultGet "wg.admin"]
+        :if ([:len $wk] > 0) do={
+          :set c ($c . ":if ([:len [/interface/wireguard/find where name=\"wg-admin\"]] > 0) do={ /interface/wireguard/set [find where name=\"wg-admin\"] private-key=\"" . [$cfmEsc $wk] . "\" } else={ :set ok false };")
+        }
+      }
       # WLAN-Passphrasen: an den CAPsMAN (D45) und an die APs für ihren lokalen Fallback (D46)
       :local iscm false
       :foreach cm in=$cms do={ :if ([:tostr ($cm->"n")] = $name) do={ :set iscm true } }
@@ -666,7 +731,9 @@
         }
       }
       # Ein neuer CAPsMAN wartet mit dem Einschalten auf die Passphrasen (cfmCapsmanOn)
-      :if ($iscm) do={ :set c ($c . ":if (\$ok) do={ :onerror e in={ /interface/wifi/capsman/set enabled=yes } do={} };") }
+      # Nur mit der Passphrase der Master-SSID im Vault – sonst schaltet die Rolle ihn beim nächsten Apply
+      # wieder aus ($cfmPskMissing), und jeder Secret-Push schaltete hin und her
+      :if ($iscm and [:len [$cfmVaultGet ("psk." . [:tostr ($cfmWifi->"master")])]] > 0) do={ :set c ($c . ":if (\$ok) do={ :onerror e in={ /interface/wifi/capsman/set enabled=yes } do={} };") }
       :set c ($c . ":if (\$ok) do={ /ppp/secret/set [find where name=\"cfm:key\"] comment=\"cfm-sys:key sv=" . $vv . "\" }; :put \$ok")
       :local r [$cfmExec ip=($d->"ip") cmd=$c]
       :if (($r->"output") ~ "true") do={ :set done ($done + 1); :log info ("cfm: Secrets v" . $vv . " -> " . $name) } else={

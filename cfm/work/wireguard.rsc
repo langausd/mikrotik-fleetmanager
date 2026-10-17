@@ -6,9 +6,10 @@
 #              und Peers - keine Proxy-ARP-Tricks, RouterOS legt die Routen automatisch an
 #  peers       Key = Name/Kommentar; pubkey = Public Key des Peers (Base64);
 #              addr = zugewiesene Tunnel-IP, Host-Anteil in "net" (z.B. 2)
-# Der private Schlüssel des Routers wird beim ersten Anlegen der Schnittstelle
-# automatisch erzeugt und bleibt auf dem Gerät (kein Vault-Eintrag, wie bei den
-# SSH-Host-Keys). Öffentlichen Schlüssel abrufen: /interface/wireguard/print
+# Alle Router haben denselben privaten Schlüssel (D84, Vault "wg.admin", per Secret-Push;
+# beim ersten Release mit Peers übernimmt der Manager den eines vorhandenen wg-admin oder
+# erzeugt einen). Öffentlichen Schlüssel abrufen: /interface/wireguard/print auf einem Router.
+# Mit VRRP ist der Endpoint die VIP des WAN-VLANs; wg-admin läuft nur auf dessen Master.
 # leer lassen (peers={}) = WireGuard-Interface bleibt aus.
 # ============================================================
 :global cfmWg {

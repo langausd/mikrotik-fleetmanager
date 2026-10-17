@@ -11,11 +11,22 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
-:global cfmIds; :global cfmRun; :global cfmTarget
+:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
 :local mv [:tostr ($cfmG->"mgmtVlan")]
+# WireGuard bei VRRP (D84): wg-admin läuft nur auf dem Master des WAN-VLANs (Endpoint = dessen VIP), alle
+# Router mit demselben Schlüssel aus dem Vault; die Backups routen das WG-Netz über die MGMT-VIP zum Master
+:local wgOn ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0)
+:local wgV ""
+:if ($vr and $wgOn) do={
+  :local wi [:tostr ($cfmHost->"wan"->"if")]
+  :if ($wi ~ "^vlan[0-9]+\$") do={
+    :local wv [:pick $wi 4 [:len $wi]]
+    :if ([:typeof ($cfmVlans->$wv)] = "array" and $wv != $mv) do={ :set wgV $wv }
+  }
+}
 
 # --- Switch-Chip (D37): Routing in der CPU. Mit l3-hw-offloading routet der Switch-Chip (CRS3xx/5xx)
 #     an der Zonen-Firewall vorbei, und VRRP funktioniert laut MikroTik nur mit l3-hw-offloading=no.
@@ -68,6 +79,11 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         :if ([:len [:tostr ($v->"dhcp")]] > 0 and [:tostr ($v->"dhcp")] != "no" and [:tostr ($v->"onboard")] != "yes") do={
           :set om ("/ip/dhcp-server/enable [find name=dhcp" . $vid . "]")
           :set ob ("/ip/dhcp-server/disable [find name=dhcp" . $vid . "]")
+        }
+        :if ($vid = $wgV) do={
+          :if ([:len $om] > 0) do={ :set om ($om . "; "); :set ob ($ob . "; ") }
+          :set om ($om . "/interface/wireguard/enable [find name=wg-admin]; /ip/route/disable [find comment=\"cfm:rt:wg\"]")
+          :set ob ($ob . "/interface/wireguard/disable [find name=wg-admin]; /ip/route/enable [find comment=\"cfm:rt:wg\"]")
         }
         $cfmEnsure m="/interface/vrrp" k=("vrrp:" . $vid) n=({"name"=("vrrp" . $vid)}) p=({"name"=("vrrp" . $vid);"interface"=$ifn;"vrid"=$vrid;"priority"=(210 - 10 * $rid);"interval"="400ms";"version"=3;"on-master"=$om;"on-backup"=$ob})
         # Verkehr an die VIP (virtuelle MAC) kommt über vrrp<VID> herein, nicht über vlan<VID>: das
@@ -168,17 +184,40 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 #     verbundenen Subnetz (z.B. MGMT) liegt, und ohne eigenes Subnetz bräuchte es zusätzlich
 #     Proxy-ARP (frühere Version, siehe docs/TODO.md "Bekannte Fehler" zur Vorgeschichte). Peers
 #     zählen trotzdem als Zone mgmt (volle mgmt-Rechte) über die Interface-Liste, unabhängig vom
-#     Subnetz. Privater Schlüssel wird beim ersten Anlegen automatisch erzeugt (wie SSH-Host-Keys)
-#     und bleibt auf dem Gerät - kein Vault-Eintrag nötig. Öffentlichen Schlüssel abrufen:
-#     /interface/wireguard/print. Leere peers-Liste = Interface bleibt aus. ---
+#     Subnetz. Privater Schlüssel: alle Router denselben aus dem Vault (D84, Secret-Push); beim Anlegen
+#     erzeugt RouterOS erst einen eigenen, weicht er vom Manifest ab ("wgpub"), fordert die Rolle den
+#     Secret-Push an. Öffentlichen Schlüssel abrufen: /interface/wireguard/print. Leere peers-Liste =
+#     Interface bleibt aus. ---
 :local wgIf ""
-:if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
+:if ($wgOn) do={
   :set wgIf "wg-admin"
   :local wnet [:tostr ($cfmWg->"net")]
   :local wslash [:find $wnet "/"]
   :local wbase [:toip [:pick $wnet 0 $wslash]]
   :local wpfx [:pick $wnet ($wslash + 1) [:len $wnet]]
-  $cfmEnsure m="/interface/wireguard" k="wg:admin" n=({"name"=$wgIf}) p=({"name"=$wgIf;"listen-port"=[:tonum ($cfmWg->"listenPort")]})
+  # bei VRRP nur auf dem Master des WAN-VLANs an (wie DHCP; danach schalten on-master/on-backup um)
+  :local wgDis "no"
+  :if ([:len $wgV] > 0) do={
+    :set wgDis "yes"
+    :local vi [/interface/vrrp/find where name=("vrrp" . $wgV)]
+    :if ([:len $vi] > 0) do={ :if ([:tostr [/interface/vrrp/get [:pick $vi 0] running]] = "true") do={ :set wgDis "no" } }
+  }
+  $cfmEnsure m="/interface/wireguard" k="wg:admin" n=({"name"=$wgIf}) p=({"name"=$wgIf;"listen-port"=[:tonum ($cfmWg->"listenPort")];"disabled"=$wgDis})
+  :local wpub [:tostr ($cfmMf->"wgpub")]
+  :if ([:len $wpub] > 0) do={
+    :local cur ""
+    :onerror e in={ :set cur [:tostr [/interface/wireguard/get [find where name=$wgIf] public-key]] } do={}
+    :if ($cur != $wpub) do={
+      :if ($cfmDry != true) do={ :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={} }
+      $cfmLog "WireGuard: Schlüssel weicht vom gemeinsamen der Router ab - Secret-Push angefordert (D84)"
+    }
+  }
+  # Backups: Antworten ins WG-Netz über die MGMT-VIP zum Master, der den Tunnel hält
+  :if ([:len $wgV] > 0) do={
+    :local wrd "no"
+    :if ($wgDis = "no") do={ :set wrd "yes" }
+    $cfmEnsure m="/ip/route" k="rt:wg" p=({"dst-address"=$wnet;"gateway"=[:tostr ([$cfmNet $mv]->"gw")];"disabled"=$wrd})
+  }
   $cfmEnsure m="/interface/list/member" k="ilm:wg-mgmt" n=({"list"="Z-mgmt";"interface"=$wgIf}) p=({"list"="Z-mgmt";"interface"=$wgIf})
   # Eigene Adresse auf wg-admin: die verbundene Route fürs ganze WG-Subnetz entsteht daraus von
   # selbst (kein Proxy-ARP, keine Route je Peer nötig - anders als im MGMT-Subnetz zuvor).
@@ -353,5 +392,12 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
       :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="redirect";"to-ports"="53";"in-interface-list"=("Z-" . $z);"protocol"=$pr;"dst-port"="53";"dst-address-list"="!cfm-private"})
     }
   }
+}
+# WireGuard über die VIP (D84): RouterOS antwortet sonst von der eigenen Adresse im WAN-VLAN, der Client
+# übernimmt sie als Endpoint und hängt nach einem Wechsel des Masters am alten Router. Mit dst-nat auf die
+# eigene Adresse gehört die Antwort zur Verbindung und geht von der VIP zurück (auch hinter einer Portfreigabe)
+:if ([:len $wgV] > 0) do={
+  :local wn [$cfmNet $wgV]
+  :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="dst-nat";"protocol"="udp";"dst-address"=[:tostr ($wn->"gw")];"dst-port"=[:tostr ($cfmWg->"listenPort")];"to-addresses"=[:tostr (($wn->"addr") + 250 + $rid)]})
 }
 $cfmBlock m="/ip/firewall/nat" k="nat" l=$natR

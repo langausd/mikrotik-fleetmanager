@@ -342,8 +342,8 @@ Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`.
   `vlans.rsc` überschneiden (`$cfmCheck` prüft das) – so legt RouterOS die Route fürs ganze
   Subnetz automatisch über die WireGuard-Schnittstelle an, ohne Proxy-ARP-Tricks.
 * `peers`: Key = Name; `pubkey` = Public Key des Peers; `addr` = Host-Anteil der Tunnel-IP in
-  `net`. Leere `peers={}` = WireGuard-Interface bleibt aus. Der private Schlüssel des Routers
-  wird lokal erzeugt (wie SSH-Host-Keys), steht nirgends in den Daten.
+  `net`. Leere `peers={}` = WireGuard-Interface bleibt aus. Alle Router haben denselben privaten
+  Schlüssel aus dem Vault (`wg.admin`, D84), er steht nicht in den Daten.
 
 ### `leases.rsc`
 
@@ -1151,9 +1151,19 @@ MGMT-VLAN. Siehe `wireguard.rsc`.
 2. Einmalig ein eigenes Subnetz in `wireguard.rsc` → `net` festlegen (darf keins von `vlans.rsc`
    sein, `$cfmCheck` prüft das). Dann je Peer eintragen: `"peers"={"<name>"={"pubkey"="<PUBKEY>";
    "addr"=<Host-Teil in net, frei>}}` → `$cfmRelease` + `$cfmPromote` bis zum Ring des Routers.
-3. Der private Schlüssel des Routers wird beim ersten Anlegen der Schnittstelle automatisch
-   erzeugt (wie SSH-Host-Keys) und bleibt auf dem Gerät – kein Vault-Eintrag. Öffentlichen
-   Schlüssel abrufen: `/interface/wireguard/print`.
+3. Schlüssel des Routers (D84): Alle Router haben denselben, Vault-Eintrag `wg.admin`. Beim ersten
+   Release mit Peers übernimmt der Manager den Schlüssel eines Routers, der `wg-admin` schon hat
+   (bestehende Clients behalten den Server-Schlüssel), sonst erzeugt er einen; verteilt wird er
+   per Secret-Push. Ein Router mit anderem Schlüssel (neu angelegt, von Hand geändert) fordert beim
+   Apply selbst einen Secret-Push an. Öffentlichen Schlüssel abrufen: `/interface/wireguard/print`
+   auf einem Router. Eigenen Schlüssel setzen: `$cfmSecret key=wg.admin value=<privat>`.
+   **Mit VRRP:** Endpoint ist die VIP des WAN-VLANs (`wan.if` = `vlan<VID>`), z.B. per
+   Portfreigabe am Internet-Router auf diese VIP. `wg-admin` läuft nur auf dem Master dieses VLANs
+   (umgeschaltet wie DHCP); die Backups routen das WG-Netz über die MGMT-VIP zum Master (`rt:wg`),
+   so erreichen Peers auch die Backup-Router. Damit die Antworten von der VIP kommen (sonst wechselt
+   der Client auf die eigene Adresse des Masters), lenkt eine `dst-nat`-Regel VIP:`listenPort` auf die
+   eigene Adresse. Nach einem Wechsel des Masters baut der Client den Tunnel mit dem nächsten
+   Handshake neu auf (`persistent-keepalive` setzen).
 4. Firewall/Routing laufen automatisch mit: eigene Adresse (Host `.1`) auf der
    WireGuard-Schnittstelle (die verbundene Route fürs ganze Subnetz entsteht daraus von selbst,
    kein Proxy-ARP, keine Route je Peer nötig), das Subnetz in `cfm-mgmt` (Zugriff auf die eigenen

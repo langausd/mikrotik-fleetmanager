@@ -131,7 +131,7 @@ Befunde am CRS418 (`router,manager`) und an zwei hAP ax² (`ap`). Nicht separat 
 
 ## Vorbereitung aus der Ferne (Runde 2026-10-01)
 
-Die WLAN-Punkte D53–D56 sind gebaut und im Labor nur auf Darstellung und Prüfung getestet (CHR hat keine Radios); alle sind standardmäßig aus und werden vor Ort eingeschaltet und geprüft. Stand 2026-10-13: D53 auf Hardware eingeschaltet (hAP be³, Client-Test offen), D56 auf Hardware gelaufen (über den CAPsMAN, D60; Pins danach zweimal neu gesetzt), D54 und D55 weiter aus.
+Die WLAN-Punkte D53–D56 sind gebaut und im Labor nur auf Darstellung und Prüfung getestet (CHR hat keine Radios); alle sind standardmäßig aus und werden vor Ort eingeschaltet und geprüft. Stand 2026-10-13: D53 auf Hardware eingeschaltet (hAP be³, Client-Test offen), D56 auf Hardware gelaufen (über den CAPsMAN, D60; Pins danach zweimal neu gesetzt), D54 weiter aus; D55 seit 2026-10-17 auf Hardware eingeschaltet (5 und 6 GHz, mit `kick`), Auswertung offen.
 
 | Nr | Frage | Entscheidung · Alternativen | Begründung |
 |---|---|---|---|

@@ -7,9 +7,10 @@
 #   vm4 = inet  nicht verwaltet: Internet-Router 192.168.20.1 an cm1/ether4 (LAN ungetaggt), dazu je
 #               eine VRF als Client in IoT (192.168.30.77) und Gast (192.168.40.77). "Internet" ist
 #               198.51.100.1 auf inet (TEST-NET-2, also nicht in cfm-private).
+#   vm5 = sw1   Switch ohne Rolle router an cm1/ether5, eigener Ausgang über den Internet-Router (gw)
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
 # Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), WireGuard über die
-# VIP mit gemeinsamem Schlüssel (D84, Client auf inet), Ausfall und Rückkehr des Masters
+# VIP mit gemeinsamem Schlüssel (D84, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), Neustart des Masters, Ausfall von zwei Routern.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
@@ -72,9 +73,9 @@ state() { # state <master-vm> <name> [abgetrennte VMs]: genau dieser Router ist 
   [ "$(dhcpon "$m")" = 2 ] && [ $c = $n ] && ok "DHCP (IoT, Gast) nur auf $nm" || bad "DHCP: $nm $(dhcpon "$m"), übrige ohne DHCP: $c/$n"
 }
 
-step "VMs neu aufsetzen (4)"
-./lab.sh stop >/dev/null; rm -f "$LAB"/vm*.qcow2; ./lab.sh start 4
-for i in 1 2 3 4; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
+step "VMs neu aufsetzen (5)"
+./lab.sh stop >/dev/null; rm -f "$LAB"/vm*.qcow2; ./lab.sh start 5
+for i in 1 2 3 4 5; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Internet-Router inet (vm4, von Hand)"
 # Die Routing-Tabelle einer neuen VRF steht erst kurz danach bereit: Routen in einem zweiten Aufruf
@@ -96,11 +97,12 @@ for _ in $(seq 1 60); do r 1 ':put [:len [/log/find where message="cfm: Primary-
 r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | tail -1 | grep -qx 1 && ok "Manager-Bootstrap" || bad "Manager-Bootstrap"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 
-step "3. r1, r2: Bootstrap + Enroll"
+step "3. r1, r2, sw1: Bootstrap + Enroll"
 mgr '$cfmBootstrap' >/dev/null
 get 1 cfm/cfm-bootstrap.rsc "$LAB/bs-vrrp.rsc"
-for i in 2 3; do
+for i in 2 3 5; do
   n=r$((i-1)); ip=192.168.10.$((19+i))
+  [ $i = 5 ] && { n=sw1; ip=192.168.10.30; }
   sed -e 's|^:local ip ".*"|:local ip "'"$ip"'/24"|' -e 's/^:local uplink "ether1"/:local uplink "ether2"/' "$LAB/bs-vrrp.rsc" > "$LAB/bs-$n.rsc"
   echo "put $LAB/bs-$n.rsc cfm-bootstrap.rsc" | put $i
   r $i '/import cfm-bootstrap.rsc verbose=no' | grep -q "Bootstrap fertig" && ok "Bootstrap $n" || bad "Bootstrap $n"
@@ -108,8 +110,10 @@ for i in 2 3; do
 done
 agentwait 2 1 r1 && ok "r1 hat v1 angewendet" || bad "r1 Apply v1"
 agentwait 3 1 r2 && ok "r2 hat v1 angewendet" || bad "r2 Apply v1"
+agentwait 5 1 sw1 && ok "sw1 hat v1 angewendet" || bad "sw1 Apply v1"
+expect 5 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and gateway="192.168.20.1" and comment~"^cfm:" and active]] = 1' "sw1: Default-Route über den Internet-Router (eigener Ausgang)"
 # Labor: Default-Route über den Host-Zugang (ether1, QEMU) abschalten, sonst ECMP mit dem WAN-Weg
-for i in 1 2 3; do r $i '/ip/dhcp-client/set [find where interface=ether1] add-default-route=no' >/dev/null; done
+for i in 1 2 3 5; do r $i '/ip/dhcp-client/set [find where interface=ether1] add-default-route=no' >/dev/null; done
 
 step "4. Rollen router (r1, r2) und switch,router,manager (cm1)"
 # Admin-PC im LAN (inet mit zweiter Adresse .20.10, in mgmtExtra der Hostfiles): erreicht r2 im MGMT-VLAN über den Master (D83)
@@ -146,15 +150,22 @@ cpub=$(r 4 ':put ("K=" . [/interface/wireguard/get [find name=wgc] public-key])'
 printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}}}\n' "$cpub" > "$LAB/wg-vrrp.rsc"
 echo "put $LAB/wg-vrrp.rsc cfm/work/wireguard.rsc" | put 1
 mgr '$cfmRelease all=yes' >/dev/null
-for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 2 $n || bad "$n: v2 nicht angewendet"; done
+for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 2 $n || bad "$n: v2 nicht angewendet"; done
 mgr '$cfmSecretPush' >/dev/null; sleep 3
 [ -n "$k0" ] && [ "$(mgr ':global cfmJson; :put ("K=" . [:tostr ([$cfmJson "cfm/meta/vault.dat"]->"wgpub")])' | grep -o 'K=.*' | cut -d= -f2-)" = "$k0" ] && ok "Manager übernimmt den Schlüssel des vorhandenen wg-admin (r1)" || bad "Schlüssel nicht übernommen"
 [ "$(wgpub 3)" = "$k0" ] && [ "$(wgpub 1)" = "$k0" ] && ok "r2 und cm1 haben nach dem Secret-Push denselben Schlüssel" || bad "Schlüssel verschieden: r2 $(wgpub 3) cm1 $(wgpub 1)"
 [ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && [ "$(wgstate 1)" = "aus/an" ] && ok "wg-admin nur am Master an, Backups mit Route ins WG-Netz" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3), cm1 $(wgstate 1)"
-r 4 "/interface/wireguard/peers/add interface=wgc public-key=\"$k0\" endpoint-address=192.168.20.2 endpoint-port=13231 allowed-address=192.168.250.0/24,192.168.10.0/24 persistent-keepalive=5s; /ip/address/add address=192.168.250.2/24 interface=wgc; :foreach a in={\"192.168.10.2\";\"192.168.10.21\";\"192.168.10.22\"} do={ /ip/route/add dst-address=(\$a . \"/32\") gateway=wgc }" >/dev/null
+r 4 "/interface/wireguard/peers/add interface=wgc public-key=\"$k0\" endpoint-address=192.168.20.2 endpoint-port=13231 allowed-address=192.168.250.0/24,192.168.10.0/24 persistent-keepalive=5s; /ip/address/add address=192.168.250.2/24 interface=wgc; :foreach a in={\"192.168.10.2\";\"192.168.10.21\";\"192.168.10.22\";\"192.168.10.30\"} do={ /ip/route/add dst-address=(\$a . \"/32\") gateway=wgc }" >/dev/null
 tunnel 192.168.10.21 && ok "Tunnel: Client erreicht den Master r1" || bad "Tunnel zu r1 geht nicht"
 tunnel 192.168.10.22 && ok "Tunnel: Client erreicht den Backup r2 (Antwort über die MGMT-VIP)" || bad "Tunnel zu r2 geht nicht"
 tunnel 192.168.10.2 && ok "Tunnel: Client erreicht den Manager cm1 (Backup)" || bad "Tunnel zu cm1 geht nicht"
+# sw1 hat einen eigenen Ausgang (gw = Internet-Router), der das WG-Netz nicht kennt. inet ist zugleich der
+# Client und nähme Antworten über das LAN an - die Regel wgleak verwirft sie wie ein fremder Internet-Router
+r 4 '/ip/firewall/filter/add chain=input in-interface=ether2 dst-address=192.168.250.0/24 action=drop comment=wgleak' >/dev/null
+expect 5 '[:len [/ip/route/find where comment="cfm:rt:wg" and dst-address="192.168.250.0/24" and gateway="192.168.10.1" and !disabled]] = 1' "sw1 (eigener Ausgang): Route ins WG-Netz über die MGMT-VIP"
+tunnel 192.168.10.30 && ok "Tunnel: Client erreicht sw1 (Antwort über die MGMT-VIP statt den eigenen Ausgang)" || bad "Tunnel zu sw1 geht nicht"
+wgleak() { r 4 ':put ("P=" . [/ip/firewall/filter/get [find comment=wgleak] packets])' | grep -o 'P=[0-9]*' | tr -dc 0-9; }
+[ "$(wgleak)" = 0 ] && ok "Keine Antwort ans WG-Netz über den Internet-Router" || bad "wgleak: $(wgleak) Pakete über den Internet-Router"
 [ "$(wgep)" = "192.168.20.2" ] && ok "Endpoint des Clients bleibt die VIP .20.2" || bad "Endpoint des Clients: $(wgep)"
 # Selbstheilung: r2 bekommt von Hand einen anderen Schlüssel -> der Apply fordert den Secret-Push an (sv=0;
 # geprüft am Log von r2, den Status könnte der Manager-Tick schon wieder überholt haben)
@@ -174,6 +185,7 @@ state 3 r2 2
 policy r2
 [ "$(wgstate 3)" = "an/aus" ] && ok "r2 hält jetzt den Tunnel (wg-admin an, Route aus)" || bad "WG-Zustand r2 $(wgstate 3)"
 tunnel 192.168.10.22 && tunnel 192.168.10.2 && ok "Tunnel nach dem Umschalten: Client erreicht r2 und cm1 über dieselbe VIP" || bad "Tunnel nach dem Umschalten tot"
+tunnel 192.168.10.30 && ok "Tunnel nach dem Umschalten: Client erreicht sw1 (über die MGMT-VIP, jetzt r2)" || bad "Tunnel zu sw1 nach dem Umschalten tot"
 
 step "7. Rückkehr: r1 wieder am Netz -> Preemption, VIPs danach erreichbar"
 r 2 '/interface/ethernet/enable ether2' >/dev/null; sleep 10
@@ -198,9 +210,9 @@ policy cm1
 r 2 '/interface/ethernet/enable ether2' >/dev/null; r 3 '/interface/ethernet/enable ether2' >/dev/null; sleep 10
 state 2 "r1 (wieder)"
 
-step "10. Idempotenz der Router"
-for n in r1 r2 cm1; do
-  case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac
+step "10. Idempotenz der Router und von sw1"
+for n in r1 r2 cm1 sw1; do
+  case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac
   for _ in $(seq 1 40); do r $vm ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
   t0=$(stat $n t); mgr "\$cfmPush host=$n force=yes" >/dev/null
   for _ in $(seq 1 60); do [ "$(stat $n t)" != "$t0" ] && break; sleep 4; done

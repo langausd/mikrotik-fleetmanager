@@ -10,6 +10,7 @@
 # beim ersten Release mit Peers übernimmt der Manager den eines vorhandenen wg-admin oder
 # erzeugt einen). Öffentlichen Schlüssel abrufen: /interface/wireguard/print auf einem Router.
 # Mit VRRP ist der Endpoint die VIP des WAN-VLANs; wg-admin läuft nur auf dessen Master.
+# Geräte ohne Rolle router mit eigenem gw (Hostfile) routen das WG-Netz über das MGMT-Gateway.
 # leer lassen (peers={}) = WireGuard-Interface bleibt aus.
 # ============================================================
 :global cfmWg {

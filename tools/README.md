@@ -172,7 +172,8 @@ tools/wg-client-setup.sh connect --name cfm-mgmt --endpoint <öffentliche-IP>:13
 nmcli connection up cfm-mgmt                         # verbinden
 ```
 
-Die Adresse passt zu `peers.<name>.addr` in `wireguard.rsc`. Mehr dazu im Admin-Guide, Abschnitt 8.8.
+Die Adresse passt zu `peers.<name>.addr` in `wireguard.rsc`. Mit VRRP ist der Endpoint die VIP des
+WAN-VLANs, der Key ist auf allen Routern derselbe. Mehr dazu im Admin-Guide, Abschnitt 8.8.
 
 ## `git-host/cfm-git-sync`
 

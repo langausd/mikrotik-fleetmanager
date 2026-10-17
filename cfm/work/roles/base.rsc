@@ -263,6 +263,11 @@ $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($c
   :local ntp ($cfmG->"ntp")
   :if ([:len [:tostr ($cfmHost->"ntp")]] > 0) do={ :set ntp ($cfmHost->"ntp") }
   $cfmEnsure m="/ip/route" k="rt:default" n=({"dst-address"="0.0.0.0/0";"gateway"=$gw}) p=({"dst-address"="0.0.0.0/0";"gateway"=$gw})
+  # Eigener Ausgang: Antworten an WireGuard-Peers (D36) gingen sonst an diesen Gateway, der das
+  # WG-Netz nicht kennt -> WG-Netz über das MGMT-Gateway (bei VRRP die VIP, D84)
+  :if ($gw != [:tostr ($mn->"gw")] and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
+    $cfmEnsure m="/ip/route" k="rt:wg" p=({"dst-address"=[:tostr ($cfmWg->"net")];"gateway"=[:tostr ($mn->"gw")];"disabled"="no"})
+  }
   $cfmSet m="/ip/dns" p=({"servers"=$dns})
   $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntp})
 }

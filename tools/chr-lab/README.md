@@ -50,7 +50,7 @@ stoppen die VMs selbst, `lab.sh` brauchst du nur zum Nachsehen.
 | `./e2e-onboard.sh fresh` | 3 | ~10 min | automatisches Onboarding eines „Werksgeräts“ (192.168.88.1) |
 | `./e2e-onboard.sh fresh dhcp` | 3 | ~10 min | dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE) |
 | `./e2e-onboard.sh fresh manual` | 3 | ~10 min | Switch, den cfm nicht verwaltet (`$cfmOnboard manual=yes`) |
-| `./e2e-vrrp.sh` | 4 | ~10 min | drei VRRP-Router hinter einem Internet-Router: Failover, Zonen, NAT, WireGuard |
+| `./e2e-vrrp.sh` | 5 | ~15 min | drei VRRP-Router hinter einem Internet-Router, dazu ein Switch mit eigenem Ausgang: Failover, Zonen, NAT, WireGuard |
 | `./e2e-mlag.sh` | 5 | ~15 min | LACP-Bonds, MLAG-Paar, Ausfall eines Links, isolierte VLANs |
 
 `fresh` setzt die VM-Disks neu aus dem Image auf. Ohne `fresh` laufen die VMs mit dem Stand des

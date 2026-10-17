@@ -458,7 +458,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` |
 | `links` | erwartete Verkabelung für `$cfmLinks`: `{"ether1"="rtr1:ether2";"ether8"="-"}` (Gerät:Port, nur Gerät oder `-` für „hier hängt nichts“) |
 | `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
-| `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste |
+| `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste. Mit eigenem `gw` und WireGuard-Peers zusätzlich die Route ins WG-Netz über das MGMT-Gateway (D84) |
 | `bridgeFrames` | `"admit-all"`: die Bridge (CPU) nimmt weiter ungetaggte Frames an, statt nur getaggte – für eine Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll |
 | `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (D53). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Auf Hardware eingeschaltet (hAP be³), der Client-Test steht aus |
 
@@ -1157,6 +1157,9 @@ MGMT-VLAN. Siehe `wireguard.rsc`.
    per Secret-Push. Ein Router mit anderem Schlüssel (neu angelegt, von Hand geändert) fordert beim
    Apply selbst einen Secret-Push an. Öffentlichen Schlüssel abrufen: `/interface/wireguard/print`
    auf einem Router. Eigenen Schlüssel setzen: `$cfmSecret key=wg.admin value=<privat>`.
+   Beim Update auf diese Version braucht es zwei Releases: `$cfmRelease` läuft mit der
+   Manager-Bibliothek, die der Manager zuletzt selbst angewendet hat. Das erste Release bringt die
+   neue mit, erst das zweite übernimmt bzw. erzeugt den Schlüssel; danach `$cfmSecretPush`.
    **Mit VRRP:** Endpoint ist die VIP des WAN-VLANs (`wan.if` = `vlan<VID>`), z.B. per
    Portfreigabe am Internet-Router auf diese VIP. `wg-admin` läuft nur auf dem Master dieses VLANs
    (umgeschaltet wie DHCP); die Backups routen das WG-Netz über die MGMT-VIP zum Master (`rt:wg`),
@@ -1168,7 +1171,9 @@ MGMT-VLAN. Siehe `wireguard.rsc`.
    WireGuard-Schnittstelle (die verbundene Route fürs ganze Subnetz entsteht daraus von selbst,
    kein Proxy-ARP, keine Route je Peer nötig), das Subnetz in `cfm-mgmt` (Zugriff auf die eigenen
    Dienste des Routers) und eine offene Eingangsregel für den `listenPort` (UDP, von überall –
-   Sicherheit kommt aus der Kryptografie, nicht aus einer Quell-IP-Beschränkung).
+   Sicherheit kommt aus der Kryptografie, nicht aus einer Quell-IP-Beschränkung). Geräte ohne Rolle
+   `router` mit eigenem Ausgang (Hostfile `gw`) bekommen die Route ins WG-Netz über das
+   MGMT-Gateway (`rt:wg`), sonst gingen ihre Antworten an den Internet-Router.
 
 **Client (Linux mit NetworkManager, `tools/wg-client-setup.sh` statt GNOME-Panel):**
 
@@ -1178,10 +1183,14 @@ tools/wg-client-setup.sh genkey
 
 # 2) Sobald der Router den Peer kennt (siehe oben) und dessen Public Key bekannt ist:
 tools/wg-client-setup.sh connect --name cfm-mgmt \
-  --endpoint <WAN-Adresse-des-Routers>:<listenPort> --server-pubkey <PUBKEY-ROUTER> \
+  --endpoint <WAN-Adresse-des-Routers bzw. VIP>:<listenPort> --server-pubkey <PUBKEY-ROUTER> \
   --address <peer-addr-aus-wireguard.rsc>/32 --allowed-ips <WG-Subnetz aus wireguard.rsc "net", z.B. 192.168.250.0/24>,<MGMT-Netz, z.B. 192.168.10.0/24>
 nmcli connection up cfm-mgmt
 ```
+
+Mit VRRP ist der Endpoint die VIP des WAN-VLANs (bzw. die Portfreigabe des Internet-Routers darauf),
+der Public Key ist für alle Router derselbe (`wgpub` in `meta/vault.dat`). `--keepalive 25` setzen:
+Nach einem Wechsel des Masters steht der Tunnel mit dem nächsten Handshake wieder.
 
 `allowed-ips` braucht sowohl das WG-Subnetz selbst (um den Router unter seiner `.1`-Adresse zu
 erreichen) als auch die Netze, die man über den Router routen will (z.B. das MGMT-VLAN, um andere

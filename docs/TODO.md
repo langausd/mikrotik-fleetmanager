@@ -756,3 +756,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       mit DNS-Namen und Kabel an. Nur Doku, für die Fehlersuche wenig Nutzen.
     * **Netbox als Quelle:** Netbox erzeugt `vlans.rsc`/`leases.rsc` u.a. Widerspricht D72 (der Manager
       führt die Site-Daten, der cfm-Editor schreibt hinein) – bräuchte eine neue Entscheidung, wer gewinnt.
+56. **Vorhandene VLAN-Interfaces an Bridge und VLAN-ID übernehmen** (entschieden 2026-10-17) – `router`
+    (`vlan:<VID>`) und `base` (MGMT-VLAN) übernehmen ein vorhandenes VLAN-Interface nur, wenn es schon
+    `vlan<VID>` heißt. Heißt es anders (z.B. `GAST`, `IOT` aus einer Konfiguration von Hand), legt der
+    Probelauf ein zweites Interface mit derselben VID auf der Bridge an (`neu: /interface/vlan vlan:<VID>`),
+    der Apply scheitert oder doppelt das VLAN. Befund beim Router-Umzug eines Standorts: dort vorher
+    von Hand umbenannt. Umsetzen: natürlicher Schlüssel `interface` + `vlan-id`, beim Übernehmen in
+    `vlan<VID>` umbenennen (Verweise in RouterOS gehen über die ID, Adressen bleiben am Interface).
+    Labor: `e2e.sh` mit einem vorher angelegten VLAN-Interface unter fremdem Namen, Probelauf zeigt
+    „übernommen“, Apply ohne Duplikat, Adresse bleibt.

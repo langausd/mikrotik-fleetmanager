@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-17)
+## Übersicht offener Punkte (Stand 2026-10-18)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -9,6 +9,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   mit eigenem Ausgang). **Neu, offen:** 56 (vorhandene VLAN-Interfaces übernehmen), 57
   (`wg-client-setup.sh` ohne `wireguard-tools`), 58 (Gast-Schalter ohne Unterbrechung der übrigen SSIDs)
   und vier kleine Befunde unter „Bekannte Fehler“.
+* **Erledigt am 2026-10-18 (Ausfalltests am selben Standort):** D85 (ein startender VRRP-Backup ist kurz
+  selbst Master – DHCP/WireGuard folgen dem Master erst nach 5 s). Neu unter „Bekannte Fehler“: Fehler im
+  Werks-Skript des hAP be³ Media beim Start.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -203,6 +206,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   Onboarding-Funktion (`obip:<VID>`) und die Rolle `router` (`ip:<VID>`) an; die Rollen übernehmen sie
   abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan). Harmlos, aber
   jeder Apply zählt sie mit. Eine der beiden sollte die Adresse der anderen als ihre ansehen.
+* **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
+  `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
+  obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein
+  WLAN-Interface unter dem Werksnamen (cfm benennt sie um). Ohne erkennbare Folge; Ursache offen.
 * **`$cfmAudit op=purge` meldet FEHLER für dynamische Folgeobjekte** (Befund 2026-10-17: ein
   VLAN-Interface samt Adresse entfernt, zwei FEHLER-Zeilen für Objekte, die RouterOS dazu dynamisch
   angelegt hatte): Sie verschwinden mit dem entfernten Objekt, das Löschen danach scheitert.

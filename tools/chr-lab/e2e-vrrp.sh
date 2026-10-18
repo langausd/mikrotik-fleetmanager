@@ -11,7 +11,8 @@
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
 # Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), WireGuard über die
 # VIP mit gemeinsamem Schlüssel (D84, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
-# (Preemption: VIP danach erreichbar?), Neustart des Masters, Ausfall von zwei Routern.
+# (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (D85), Neustart des
+# Masters, Ausfall von zwei Routern.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
 # ------------------------------------------------------------------
@@ -180,7 +181,8 @@ mgr '$cfmSecretPush host=r2' >/dev/null; sleep 2
 [ "$(wgpub 3)" = "$k0" ] && ok "r2 hat nach dem Secret-Push wieder den gemeinsamen Schlüssel" || bad "r2 Schlüssel $(wgpub 3)"
 
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"
-r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 6
+# DHCP/WG schaltet on-master erst nach 5 s ein (D85)
+r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 10
 state 3 r2 2
 policy r2
 [ "$(wgstate 3)" = "an/aus" ] && ok "r2 hält jetzt den Tunnel (wg-admin an, Route aus)" || bad "WG-Zustand r2 $(wgstate 3)"
@@ -196,15 +198,24 @@ policy r1
 [ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && ok "Nach der Rückkehr: Tunnel wieder an r1, r2 mit Route" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3)"
 tunnel 192.168.10.22 && tunnel 192.168.10.21 && ok "Tunnel nach der Preemption: Client erreicht r1 und r2" || bad "Tunnel nach der Preemption tot"
 
+step "7b. Kurzer Master-Ausflug eines Backups (D85)"
+# Wie beim Start eines Backups am Standort: r2 hört den Master 3 s nicht (VRRP-Werbung in raw verworfen),
+# wird selbst Master und hört ihn dann wieder. DHCP und WG dürfen dabei nicht angehen.
+x=$(r 3 '/ip/firewall/raw/add chain=prerouting protocol=vrrp action=drop comment=lab-split; :delay 3s; :local n 0; :foreach v in={"vrrp10";"vrrp20";"vrrp30";"vrrp40"} do={ :if ([/interface/vrrp/get [find name=$v] running]) do={ :set n ($n + 1) } }; :put ("M=" . $n . " D=" . [:len [/ip/dhcp-server/find where comment~"^cfm:dhcp" and !disabled]]); /ip/firewall/raw/remove [find comment=lab-split]')
+echo "$x" | grep -q "M=4 D=0" && ok "r2 kurz Master (Werbung verworfen), DHCP dabei noch aus" || bad "r2 während des Ausflugs: $(echo "$x" | grep -o 'M=.*')"
+sleep 8
+[ "$(dhcpon 3)" = 0 ] && [ "$(wgstate 3)" = "aus/an" ] && ok "Nach dem Ausflug: r2 ohne DHCP und Tunnel (on-master prüft nach 5 s erneut)" || bad "r2 nach dem Ausflug: DHCP $(dhcpon 3), WG $(wgstate 3)"
+state 2 "r1 (nach dem Ausflug von r2)"
+
 step "8. Neustart des Masters r1"
-r 2 '/system/reboot' >/dev/null 2>&1; sleep 8
+r 2 '/system/reboot' >/dev/null 2>&1; sleep 10
 state 3 "r2 (während r1 startet)" 2
 waitssh 2; sleep 20
 state 2 "r1 (nach dem Start)"
 policy r1
 
 step "9. Zwei Router fallen aus -> cm1 (routerId 3) übernimmt"
-r 2 '/interface/ethernet/disable ether2' >/dev/null; r 3 '/interface/ethernet/disable ether2' >/dev/null; sleep 6
+r 2 '/interface/ethernet/disable ether2' >/dev/null; r 3 '/interface/ethernet/disable ether2' >/dev/null; sleep 10
 state 1 cm1 2 3
 policy cm1
 r 2 '/interface/ethernet/enable ether2' >/dev/null; r 3 '/interface/ethernet/enable ether2' >/dev/null; sleep 10

@@ -10,7 +10,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 > festen Leases und DNS-Namen, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
 > Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
 > Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
-> einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (79 Prüfungen) und der Test von
+> einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (108 Prüfungen) und der Test von
 > LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
 > und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit neun Geräten – der
 > Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset, routet noch
@@ -185,7 +185,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
 **Konventionen:**
 * Subnetz eines VLANs ist `192.168.<VID>.0/24`, Gateway `.1` (änderbar per `gw`, eigenes Netz per `net`).
 * VRRP: reale Router-IP `.250 + routerId`, VIP = Gateway, Priorität `210 − 10 · routerId` (routerId 1 ist
-  bevorzugter Master).
+  bevorzugter Master). DHCP und WireGuard schaltet ein neuer Master erst nach 5 s ein, wenn er dann
+  noch Master ist (D85); der Backup schaltet sie sofort ab.
 * Interfaces heißen `vlan<VID>` bzw. `vrrp<VID>`, die Bridge heißt `bridge`.
 * **VLAN 88 (`192.168.88.0/24`) ist für das Onboarding reserviert** und darf nicht anderweitig
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
@@ -316,7 +317,9 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   hört, prüft RouterOS nicht – Schwellen vor Ort ermitteln und erst vorsichtig (ohne `kick`)
   einschalten.
 * `minSignal`: Mindestsignal bei der Anmeldung (dBm, ein Wert für alle Bänder), z.B. `-82`.
-  Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP.
+  Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP. Einen
+  Wechsel per FT zu einem schwachen AP verhindert die Schwelle nicht (Befund 2026-10-18, 7.24.5: Client
+  wechselte mit -83 dBm trotz Schwelle -80), nur neue Anmeldungen.
 * `others`: andere Funknetze im 2,4-GHz-Band (Zigbee, Thread, Milight, Bluetooth) für den
   Kanal-Vorschlag von `$cfmWifiScan` (D80), z.B. `"others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"}}`.
   Wirkt nur auf den Vorschlag und die Prüfung, nicht auf die Geräte; Typen und Gewichte in 8.7.
@@ -1166,7 +1169,8 @@ MGMT-VLAN. Siehe `wireguard.rsc`.
    so erreichen Peers auch die Backup-Router. Damit die Antworten von der VIP kommen (sonst wechselt
    der Client auf die eigene Adresse des Masters), lenkt eine `dst-nat`-Regel VIP:`listenPort` auf die
    eigene Adresse. Nach einem Wechsel des Masters baut der Client den Tunnel mit dem nächsten
-   Handshake neu auf (`persistent-keepalive` setzen).
+   Handshake neu auf (`persistent-keepalive` setzen; gemessen etwa 15 s Unterbrechung je Wechsel, weil
+   der neue Master die Sitzung nicht kennt).
 4. Firewall/Routing laufen automatisch mit: eigene Adresse (Host `.1`) auf der
    WireGuard-Schnittstelle (die verbundene Route fürs ganze Subnetz entsteht daraus von selbst,
    kein Proxy-ARP, keine Route je Peer nötig), das Subnetz in `cfm-mgmt` (Zugriff auf die eigenen
@@ -1477,16 +1481,17 @@ cd tools/chr-lab
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
-./e2e-vrrp.sh             # Router-Umzug: drei VRRP-Router hinter einem Internet-Router im LAN (4 VMs)
+./e2e-vrrp.sh             # Router-Umzug: drei VRRP-Router hinter einem Internet-Router im LAN (5 VMs)
 ./e2e-mlag.sh             # LACP-Bonds, MLAG-Paar und isolierte VLANs (5 VMs, e1000-Karten)
 ./lab.sh stop
 ```
 
-`e2e-vrrp.sh` startet vier VMs: cm1 (Manager, zentraler Switch, dritter Router), r1 und r2 als
-Router, vm4 als nicht verwalteter Internet-Router mit je einer VRF als Client in IoT und Gast
-(Daten in `seed-vrrp/`). Geprüft werden VIPs und DHCP nur auf dem Master, die Zonen-Policy samt
-fester NAT-Adresse der Gäste, Ausfall und Rückkehr des Masters, sein Neustart und der Ausfall von
-zwei Routern.
+`e2e-vrrp.sh` startet fünf VMs: cm1 (Manager, zentraler Switch, dritter Router), r1 und r2 als
+Router, vm4 als nicht verwalteter Internet-Router mit je einer VRF als Client in IoT und Gast, vm5
+als Switch mit eigenem Ausgang über den Internet-Router (Daten in `seed-vrrp/`). Geprüft werden VIPs
+und DHCP nur auf dem Master, die Zonen-Policy samt fester NAT-Adresse der Gäste, `mgmtExtra` bis ins
+MGMT-VLAN, WireGuard über die VIP, Ausfall und Rückkehr des Masters, ein kurzer Master-Ausflug eines
+Backups ohne DHCP/WireGuard (D85), der Neustart des Masters und der Ausfall von zwei Routern.
 `e2e-mlag.sh` verbindet fünf VMs frei per `LABLINKS` (Paare von VM-Nummern, ein Paar je Kabel; ohne
 Angabe Stern) und nutzt e1000-Karten (`LABNIC=e1000`): Mit virtio meldet RouterOS keine
 Geschwindigkeit, LACP bündelt dann nur einen Port. sw1/sw2 bilden das MLAG-Paar, srv1 hängt per LACP

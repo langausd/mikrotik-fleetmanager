@@ -85,6 +85,9 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
           :set om ($om . "/interface/wireguard/enable [find name=wg-admin]; /ip/route/disable [find comment=\"cfm:rt:wg\"]")
           :set ob ($ob . "/interface/wireguard/disable [find name=wg-admin]; /ip/route/enable [find comment=\"cfm:rt:wg\"]")
         }
+        # Erst nach 5 s und nur, wenn er dann noch Master ist: Ein startender Backup hört den Master
+        # anfangs nicht und ist für etwa 2 s selbst Master (Befund am Standort, D85); on-backup sofort
+        :if ([:len $om] > 0) do={ :set om (":delay 5s; :if ([/interface/vrrp/get [find name=vrrp" . $vid . "] running]) do={ " . $om . " }") }
         $cfmEnsure m="/interface/vrrp" k=("vrrp:" . $vid) n=({"name"=("vrrp" . $vid)}) p=({"name"=("vrrp" . $vid);"interface"=$ifn;"vrid"=$vrid;"priority"=(210 - 10 * $rid);"interval"="400ms";"version"=3;"on-master"=$om;"on-backup"=$ob})
         # Verkehr an die VIP (virtuelle MAC) kommt über vrrp<VID> herein, nicht über vlan<VID>: das
         # VRRP-Interface gehört deshalb in dieselbe Zone, sonst greift keine in-interface-list-Regel und

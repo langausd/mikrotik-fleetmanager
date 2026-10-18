@@ -11,7 +11,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   und vier kleine Befunde unter „Bekannte Fehler“.
 * **Erledigt am 2026-10-18 (Ausfalltests am selben Standort):** D85 (ein startender VRRP-Backup ist kurz
   selbst Master – DHCP/WireGuard folgen dem Master erst nach 5 s). Neu unter „Bekannte Fehler“: Fehler im
-  Werks-Skript des hAP be³ Media beim Start.
+  Werks-Skript des hAP be³ Media beim Start. Vor dem Umzug des LAN-DHCP: D86 (DNS/DHCP/NTP der Router
+  auch aus dem LAN, wenn es zugleich ihr WAN ist).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).

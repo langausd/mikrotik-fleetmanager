@@ -5,11 +5,13 @@
 #   vm1 = cm1   Primary-Manager, zentraler Switch der Stern-Topologie und dritter Router (routerId 3)
 #   vm2 = r1    routerId 1 (VRRP-Master)        vm3 = r2   routerId 2
 #   vm4 = inet  nicht verwaltet: Internet-Router 192.168.20.1 an cm1/ether4 (LAN ungetaggt), dazu je
-#               eine VRF als Client in IoT (192.168.30.77) und Gast (192.168.40.77). "Internet" ist
+#               eine VRF als Client in IoT (192.168.30.77) und Gast (192.168.40.77) und ein DHCP-Client
+#               im LAN (macvlan mv20 in der VRF lanc, feste Lease labpc .20.42). "Internet" ist
 #               198.51.100.1 auf inet (TEST-NET-2, also nicht in cfm-private).
 #   vm5 = sw1   Switch ohne Rolle router an cm1/ether5, eigener Ausgang über den Internet-Router (gw)
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
-# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), WireGuard über die
+# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), DHCP und DNS der
+# Router im LAN, das zugleich ihr WAN ist (D86), WireGuard über die
 # VIP mit gemeinsamem Schlüssel (D84, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (D85), Neustart des
 # Masters, Ausfall von zwei Routern.
@@ -48,6 +50,12 @@ wgstate() { r "$1" ':local s "an"; :if ([/interface/wireguard/get [find name=wg-
 wgpub() { r "$1" ':put ("K=" . [/interface/wireguard/get [find name=wg-admin] public-key])' | grep -o 'K=.*' | cut -d= -f2-; }
 tunnel() { local i; for i in $(seq 1 8); do [ "$(pings 4 "$1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
 wgep() { r 4 ':put ("E=" . [/interface/wireguard/peers/get [find interface=wgc] current-endpoint-address])' | grep -o 'E=.*' | cut -d= -f2; }
+# LAN-Client (D86): lanc -> "Status Adresse Gateway DNS Server" des DHCP-Clients mv20 auf inet; lanlease
+# <Host-Teil des Servers>: neu anfragen lassen und bis 30 s auf die feste Lease vom erwarteten Router warten;
+# dnsq <Name>: Antwort der VIP .20.2 auf eine Anfrage aus dem LAN (Absender .20.1)
+lanc() { r 4 ':local d [/ip/dhcp-client/get [find interface=mv20]]; :put ("C=" . ($d->"status") . " " . ($d->"address") . " " . ($d->"gateway") . " " . ($d->"primary-dns") . " " . ($d->"dhcp-server"))' | grep -o 'C=.*' | cut -d= -f2-; }
+lanlease() { local i; r 4 '/ip/dhcp-client/release [find interface=mv20]' >/dev/null; for i in $(seq 1 15); do [ "$(lanc)" = "bound 192.168.20.42/24 192.168.20.1 192.168.20.2 192.168.20.$1" ] && return 0; sleep 2; done; return 1; }
+dnsq() { r 4 ':onerror e in={ :put ("R=" . [:resolve domain-name="'"$1"'" server=192.168.20.2]) } do={ :put "R=-" }' | grep -o 'R=.*' | cut -d= -f2; }
 # Lage aus Sicht der Clients: VIPs, Policy, NAT. Erwartet: $1 = Name des Masters
 policy() {
   local m=$1 n0 n1
@@ -62,6 +70,10 @@ policy() {
   [ "$(pings 4 '198.51.100.1 vrf=guest')" -ge 4 ] && ok "$m: Gast -> Internet" || bad "$m: Gast -> Internet geht nicht"
   n1=$(natcnt)
   [ "${n1:-0}" -gt "${n0:-0}" ] && ok "$m: Gäste kommen beim Internet-Router als 192.168.20.199 an" || bad "$m: feste NAT-Adresse nicht gesehen ($n0 -> $n1)"
+  # LAN = WAN-VLAN (D86): Lease vom Master (Server = seine Adresse .250+routerId), DNS über die VIP
+  local s; case $m in r1) s=251;; r2) s=252;; cm1) s=253;; esac
+  lanlease $s && ok "$m: LAN-Client bekommt seine feste Lease .20.42 (Gateway .1, DNS VIP .2)" || bad "$m: LAN-DHCP: $(lanc)"
+  [ "$(dnsq labpc.internal)" = "192.168.20.42" ] && ok "$m: DNS an der VIP aus dem LAN (Name der festen Lease)" || bad "$m: DNS an der VIP aus dem LAN: $(dnsq labpc.internal)"
 }
 state() { # state <master-vm> <name> [abgetrennte VMs]: genau dieser Router ist Master in allen VLANs und
   # vergibt DHCP; abgetrennte Router (Uplink aus) hören niemanden und zählen nicht mit
@@ -71,7 +83,7 @@ state() { # state <master-vm> <name> [abgetrennte VMs]: genau dieser Router ist 
     n=$((n+1)); [ "$(ismaster $i)" = 0 ] && [ "$(dhcpon $i)" = 0 ] && c=$((c+1))
   done
   [ "$(ismaster "$m")" = 4 ] && ok "$nm ist Master in allen 4 VLANs" || bad "$nm Master in $(ismaster "$m")/4 VLANs"
-  [ "$(dhcpon "$m")" = 2 ] && [ $c = $n ] && ok "DHCP (IoT, Gast) nur auf $nm" || bad "DHCP: $nm $(dhcpon "$m"), übrige ohne DHCP: $c/$n"
+  [ "$(dhcpon "$m")" = 3 ] && [ $c = $n ] && ok "DHCP (LAN, IoT, Gast) nur auf $nm" || bad "DHCP: $nm $(dhcpon "$m"), übrige ohne DHCP: $c/$n"
 }
 
 step "VMs neu aufsetzen (5)"
@@ -83,7 +95,9 @@ step "1. Internet-Router inet (vm4, von Hand)"
 r 4 '/interface/vlan/add name=v30 vlan-id=30 interface=ether2; /interface/vlan/add name=v40 vlan-id=40 interface=ether2; /ip/vrf/add name=iot interfaces=v30; /ip/vrf/add name=guest interfaces=v40; /ip/address/add address=192.168.20.1/24 interface=ether2; /ip/address/add address=192.168.30.77/24 interface=v30; /ip/address/add address=192.168.40.77/24 interface=v40; /ip/address/add address=198.51.100.1/32 interface=lo' >/dev/null
 sleep 3
 r 4 '/ip/route/add dst-address=0.0.0.0/0 gateway=192.168.30.1@iot routing-table=iot; /ip/route/add dst-address=0.0.0.0/0 gateway=192.168.40.1@guest routing-table=guest; :foreach n in={"192.168.10.0/24";"192.168.30.0/24";"192.168.40.0/24"} do={ /ip/route/add dst-address=$n gateway=192.168.20.2 }; /ip/firewall/filter/add chain=input src-address=192.168.20.199 action=accept comment=gastnat; /system/identity/set name=inet' >/dev/null
-expect 4 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and routing-table="guest" and active]] = 1 and [:len [/ip/route/find where gateway="192.168.20.2"]] = 3 and [:len [/ip/address/find where address="198.51.100.1/32"]] = 1' "inet: LAN .1, VRF-Clients IoT/Gast, Internet-Adresse 198.51.100.1"
+# LAN-Client (D86): eigene MAC (feste Lease labpc) in eigener VRF, damit seine Adresse nicht mit .20.1 konkurriert
+r 4 '/interface/macvlan/add name=mv20 interface=ether2 mac-address=02:00:00:00:20:42; /ip/vrf/add name=lanc interfaces=mv20; :delay 2s; /ip/dhcp-client/add interface=mv20 add-default-route=no use-peer-dns=no use-peer-ntp=no' >/dev/null
+expect 4 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and routing-table="guest" and active]] = 1 and [:len [/ip/route/find where gateway="192.168.20.2"]] = 3 and [:len [/ip/address/find where address="198.51.100.1/32"]] = 1 and [:len [/ip/dhcp-client/find where interface=mv20]] = 1' "inet: LAN .1, VRF-Clients IoT/Gast/LAN, Internet-Adresse 198.51.100.1"
 
 step "2. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \

@@ -145,14 +145,19 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 # --- WAN / Uplink ---
 :local wan ($cfmHost->"wan")
 :local wdns ""
+:local wanNet ""
 :if ([:typeof $wan] = "array") do={
   $cfmEnsure m="/interface/list/member" k="ilm:wan" n=({"list"="WAN";"interface"=($wan->"if")}) p=({"list"="WAN";"interface"=($wan->"if")})
-  # WAN in einem VLAN mit VRRP (Internet-Router im LAN): auch dessen VRRP-Interface zählt als WAN
+  # WAN in einem cfm-VLAN (Internet-Router im LAN): dessen Netz merken (Firewall, D86); bei VRRP zählt
+  # auch das VRRP-Interface als WAN
   :local wif [:tostr ($wan->"if")]
-  :if ($vr and $wif ~ "^vlan[0-9]+\$") do={
+  :if ($wif ~ "^vlan[0-9]+\$") do={
     :local wvid [:pick $wif 4 [:len $wif]]
     :if ([:typeof ($cfmVlans->$wvid)] = "array" and [:tostr ($cfmVlans->$wvid->"l3")] != "no") do={
-      $cfmEnsure m="/interface/list/member" k="ilm:wan-vrrp" n=({"list"="WAN";"interface"=("vrrp" . $wvid)}) p=({"list"="WAN";"interface"=("vrrp" . $wvid)})
+      :set wanNet [:tostr ([$cfmNet $wvid]->"net")]
+      :if ($vr) do={
+        $cfmEnsure m="/interface/list/member" k="ilm:wan-vrrp" n=({"list"="WAN";"interface"=("vrrp" . $wvid)}) p=({"list"="WAN";"interface"=("vrrp" . $wvid)})
+      }
     }
   }
   :if ([:len [:tostr ($wan->"addr")]] > 0) do={
@@ -274,6 +279,12 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"src-address-list"="cfm-mgmt"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="!WAN";"protocol"="udp";"dst-port"="53,67,123"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="!WAN";"protocol"="tcp";"dst-port"="53"})
+# Internet-Router im LAN (D86): Das WAN-VLAN ist zugleich ein eigenes Netz mit Clients - DNS/DHCP/NTP
+# aus diesem Netz wie aus den übrigen Zonen (der DHCP-Server bekommt seine Anfragen auch ohne Regel)
+:if ([:len $wanNet] > 0) do={
+  :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="WAN";"src-address"=$wanNet;"protocol"="udp";"dst-port"="53,67,123"})
+  :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="WAN";"src-address"=$wanNet;"protocol"="tcp";"dst-port"="53"})
+}
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"dst-address"="127.0.0.1"})
 # Verbindungen des Geräts zu sich selbst (Router + Manager: Status-Abholung, Agent-Pull und
 # Watchdog-Bestätigung an die eigene MGMT-IP) kommen nicht über Z-mgmt herein

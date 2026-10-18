@@ -363,9 +363,15 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
 * Der Name ist Kommentar der Lease (`cfm:lease:<VID>:<name>`) und DNS-Name `<name>.<domain>` auf
   den Routern. Die Router führen außerdem die Namen aller aufgenommenen Geräte mit ihrer
   MGMT-Adresse (`sw1.<domain>`).
-* `$cfmCheck` prüft: VLAN vorhanden (Warnung ohne DHCP), Name aus Buchstaben, Ziffern und `-`
-  und kein Gerätename, MAC gültig und je VLAN eindeutig, Adresse im Netz, eindeutig und nicht die
-  des Gateways (Warnung für .251–.254, dort liegen die eigenen Adressen von VRRP-Routern).
+* `$cfmCheck` prüft: VLAN vorhanden (Warnung ohne DHCP), Name aus Buchstaben, Ziffern und `-`,
+  über alle VLANs eindeutig (er ist ein DNS-Name) und kein Gerätename, MAC gültig und je VLAN
+  eindeutig, Adresse im Netz, eindeutig und nicht die des Gateways (Warnung für .251–.254, dort liegen
+  die eigenen Adressen von VRRP-Routern).
+* Umzug eines Geräts in ein anderes VLAN: Die MAC darf in mehreren VLANs stehen. Soll die alte Adresse
+  bis zum Umzug reserviert bleiben, bekommt der alte Eintrag einen eigenen Namen (z.B. `drucker-alt`)
+  und fliegt nach dem Umzug raus. Nach dem Umbenennen einer Lease die Leases auf den Routern prüfen:
+  Der erste Apply löscht sie, ein zweiter (`$cfmPush host=<router> force=yes`) legt sie neu an
+  (Bekannter Fehler in `docs/TODO.md`).
 * Die MAC darf klein geschrieben sein, die Rolle schreibt sie wie RouterOS groß.
 * Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
 * Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).
@@ -919,6 +925,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Server oder Switch redundant an zwei Switches | Paar in `mlag.rsc`, Ports aus den Hostfiles nehmen, Gegenstelle mit LACP-Bond → Release mit `all=yes` im Wartungsfenster (D75) |
 | IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
 | Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
+| IoT-Gerät soll selbst einen Dienst im LAN erreichen (z.B. MQTT-Broker) | Liste in `allow` mit Adresse und Port, z.B. `"broker"={"192.168.20.30:tcp/1883"}`, `policy` `"iot"="allow:broker"` ohne NAT-Kennzeichen → Release. Abfragen aus dem LAN ins IoT-Netz brauchen keine Freigabe (`lan` → `iot`) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN, z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
@@ -1652,6 +1659,8 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`.
 | Log `Port … ist Slave von …: Profil … gilt nicht` | Port steht unter `ports`, gehört aber zu einem Bond | Eintrag aus `ports` nehmen, das Profil gilt am Bond |
 | Isolierte Clients erreichen das Gateway nicht | Manifest ohne Router-MAC (Log am Gerät „keine Router-MACs im Manifest“, am Manager „keine MAC von Router … im Status“), etwa nach einem Router-Tausch | `$cfmCollect`, dann Release (die MAC kommt aus dem Status des Routers) |
 | Log `isolateAllow <name> (VLAN …): keine MAC in leases.rsc` | Ausnahme ohne Lease mit MAC | Lease in `leases.rsc` anlegen oder die MAC direkt angeben |
+| IoT-Gerät nach dem Umzug in ein neues WLAN alle ~5 min „connection lost“, Sekunden später wieder da | beobachtet bei ESP-Firmware (ESPurna, Tasmota) mit dem alten WLAN als zweitem Netz: das Gerät sucht regelmäßig das bessere bzw. fällt ins alte zurück | altes WLAN im Gerät löschen, sobald es unter der neuen Adresse antwortet |
+| Gerät hat neue WLAN-Daten gespeichert, bleibt aber im alten Netz | manche Funkmodule (z.B. HF-LPB100 in milight-Bridges) übernehmen sie erst nach einem Neustart | Gerät neu starten (Strom oder `AT+Z` über UDP 48899) |
 
 Hilfreich auf dem Gerät: `/log print where message~"cfm"` und `:put [/file get cfm/state.json contents]`.
 Auf dem Manager: `$cfmStatus`, `$cfmOnboardStatus` und `/log print where message~"cfm"`.

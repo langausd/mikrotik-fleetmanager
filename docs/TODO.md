@@ -9,10 +9,11 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   mit eigenem Ausgang). **Neu, offen:** 56 (vorhandene VLAN-Interfaces übernehmen), 57
   (`wg-client-setup.sh` ohne `wireguard-tools`), 58 (Gast-Schalter ohne Unterbrechung der übrigen SSIDs)
   und vier kleine Befunde unter „Bekannte Fehler“.
-* **Erledigt am 2026-10-18 (Ausfalltests am selben Standort):** D85 (ein startender VRRP-Backup ist kurz
-  selbst Master – DHCP/WireGuard folgen dem Master erst nach 5 s). Neu unter „Bekannte Fehler“: Fehler im
-  Werks-Skript des hAP be³ Media beim Start. Vor dem Umzug des LAN-DHCP: D86 (DNS/DHCP/NTP der Router
-  auch aus dem LAN, wenn es zugleich ihr WAN ist).
+* **Erledigt am 2026-10-18 (Ausfalltests und LAN-DHCP am selben Standort):** D85 (ein startender
+  VRRP-Backup ist kurz selbst Master – DHCP/WireGuard folgen dem Master erst nach 5 s), D86 (DNS/DHCP/NTP
+  der Router auch aus dem LAN, wenn es zugleich ihr WAN ist; danach LAN-DHCP mit `dhcpGw` am Standort in
+  Betrieb). Neu unter „Bekannte Fehler“: Umbenennen einer festen Lease löscht sie beim ersten Apply; Fehler
+  im Werks-Skript des hAP be³ Media beim Start.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -199,6 +200,14 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
+* **Umbenennen einer festen Lease löscht sie beim ersten Apply** (Befund 2026-10-18, 7.24.5): In
+  `leases.rsc` dieselbe Lease (gleiche MAC und Adresse) unter neuem Namen → der Plan zeigt
+  `übernommen: … lease:<VID>:<neu>` (Kommentar wird umgeschrieben) **und** `entfernt: … lease:<VID>:<alt>` –
+  beides trifft dasselbe Objekt, danach fehlt die Lease auf allen Routern. Erst ein zweiter Apply
+  (`$cfmPush host=<r> force=yes`) legt sie neu an. Der DNS-Name ist richtig. Bis zur Korrektur: nach einem
+  Umbenennen die Leases prüfen und ggf. erneut pushen. Beheben: Objekte, die in diesem Lauf übernommen wurden,
+  nicht mehr als verwaist entfernen (gilt vermutlich für jeden `$cfmEnsure`-Typ mit natürlichem Schlüssel);
+  Labor: `e2e.sh` mit Umbenennen einer Lease.
 * **Steering `kick` über 59 s ist nie idempotent** (Befund 2026-10-17): `wifi.rsc` → `kick`="90s"
   setzt `transition-time=90s`, RouterOS liest `1m30s` zurück – jeder Apply auf dem CAPsMAN meldet
   `geändert: /interface/wifi/steering wst:<n>: transition-time` (set=2). Harmlos; beheben durch

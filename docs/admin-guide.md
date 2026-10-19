@@ -369,9 +369,8 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
   die eigenen Adressen von VRRP-Routern).
 * Umzug eines Geräts in ein anderes VLAN: Die MAC darf in mehreren VLANs stehen. Soll die alte Adresse
   bis zum Umzug reserviert bleiben, bekommt der alte Eintrag einen eigenen Namen (z.B. `drucker-alt`)
-  und fliegt nach dem Umzug raus. Nach dem Umbenennen einer Lease die Leases auf den Routern prüfen:
-  Der erste Apply löscht sie, ein zweiter (`$cfmPush host=<router> force=yes`) legt sie neu an
-  (Bekannter Fehler in `docs/TODO.md`).
+  und fliegt nach dem Umzug raus. Eine umbenannte Lease (gleiche MAC und Adresse) übernimmt der Apply
+  unter dem neuen Namen, sie bleibt bestehen.
 * Die MAC darf klein geschrieben sein, die Rolle schreibt sie wie RouterOS groß.
 * Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
 * Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).

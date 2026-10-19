@@ -148,6 +148,9 @@
   # Hostfile sind derselbe Wert (TODO 27)
   :local nre "^(0[xX][0-9a-fA-F]+|[0-9]+)\$"
   :if ($a != $b and $a ~ $nre and $b ~ $nre) do={ :return ([:tonum $a] = [:tonum $b]) }
+  # Dauer als Text: manche Menüs (z.B. /interface/wifi/steering transition-time) liefern "1m30s" für "90s"
+  :local tre "^([0-9]+[wdhms])+\$"
+  :if ($a != $b and $a ~ $tre and $b ~ $tre) do={ :return ([:totime $a] = [:totime $b]) }
   :return ($a = $b)
 }
 
@@ -239,6 +242,15 @@
         :return $cid
       }
       :set id $cid
+      # trug es bisher einen anderen cfm-Schlüssel (z.B. umbenannte Lease), den alten aus dem Index nehmen -
+      # sonst entfernt $cfmPrune am Ende dasselbe Objekt als verwaist
+      :local oc [:tostr ($cur->"comment")]
+      :if ($oc ~ "^cfm:") do={
+        :local os [:find $oc " "]
+        :if ([:typeof $os] = "nil") do={ :set os [:len $oc] }
+        :local ok [:pick $oc 4 $os]
+        :if ($ok != $k and ($cfmIdx->$m->$ok) = $cid) do={ :set ($cfmIdx->$m->$ok) }
+      }
       $cfmLog ("übernommen: " . $m . " " . $k)
     }
   }

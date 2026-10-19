@@ -210,6 +210,14 @@ echo "$out" | grep -q "geändert: leases.rsc" && ok "\$cfmDiff zwischen zwei Rel
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Leases und DNS-Namen idempotent" || bad "Leases idempotent: $(stat sw1 stats)"
+# Lease umbenennen (gleiche MAC und Adresse): übernommen, der alte Schlüssel darf nicht als verwaist
+# entfernt werden - es ist dasselbe Objekt (Befund 2026-10-18: Lease fehlte bis zum zweiten Apply)
+mgr ':global e2eL3 [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL3 . ":set (\$cfmLeases->\"30\") {\"drucker-neu\"={\"mac\"=\"02:00:00:00:00:aa\";\"ip\"=20}}\n")' >/dev/null
+out=$(mgr '$cfmPlan host=sw1')
+echo "$out" | grep -q "übernommen: /ip/dhcp-server/lease lease:30:drucker-neu" && ! echo "$out" | grep -q "entfernt: /ip/dhcp-server/lease lease:30:drucker" && ok "Lease umbenannt: übernommen, nicht zugleich entfernt" || { bad "Lease umbenennen"; echo "$out" | grep -E "lease:30|Plan sw1"; }
+mgr ':global e2eL3; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL3' >/dev/null
+# Dauer als Text (transition-time der Steering-Profile liefert 1m30s für 90s)
+mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"] . "/" . [$cfmSame "1m30s" "80s"] . "/" . [$cfmSame "10d" "1w3d"])' | grep -q "S=true/false/true" && ok "\$cfmSame: Dauer als Text (1m30s = 90s)" || bad "\$cfmSame Dauer: $(mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"])' | tail -1)"
 out=$(mgr '$cfmShow host=sw1')
 echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && echo "$out" | grep -q "DHCP 50-200, Gateway der Clients .5" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen, dhcpGw" || { bad "\$cfmShow"; echo "$out" | tail -12; }
 out=$(mgr '$cfmShow host=sw1 objects=yes')

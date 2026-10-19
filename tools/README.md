@@ -17,6 +17,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`git-hooks/pre-commit`](#git-hookspre-commit) | `rsc-check.py` vor jedem Commit |
 | [`editor/`](#editor) | cfm-Editor und cfm-Monitor als Lesezeichen für WebFig |
 | [`upgrade-mirror.py`](#upgrade-mirrorpy) | RouterOS-Update für Geräte ohne Internet |
+| [`pcap-ziele.py`](#pcap-zielepy) | Internet-Ziele eines Geräts aus einem Mitschnitt, Vorschlag für `allow` |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
@@ -156,6 +157,27 @@ Ist das Update durch, beendest du den Spiegel mit Strg+C.
   Danach `routeros/` dort wieder löschen.
 * Die Geräte müssen deinen Rechner auf Port 80 erreichen (Firewall des Rechners). Die Pakete sind
   von MikroTik signiert, RouterOS prüft das beim Installieren.
+
+## `pcap-ziele.py`
+
+Ein Gerät soll in eine Zone ohne Internet (z.B. IoT), braucht aber seine Cloud. Freigeben kannst du
+sie mit einer `allow`-Liste in `global.rsc` (Admin-Guide, `policy`/`allow`) – vorher musst du wissen,
+welche Namen und Ports das Gerät anspricht. Das Skript liest dazu einen Mitschnitt.
+
+1. Mitschnitt aufnehmen, während das Gerät arbeitet (App bedienen, Programm starten), am besten
+   einige Stunden: an einer Fritz!Box unter `http://fritz.box/html/capture.html` die Schnittstelle,
+   an der das Gerät hängt (WLAN oder LAN); an einem MikroTik `/tool/sniffer` mit `file-name`.
+2. Auswerten:
+
+```bash
+tools/pcap-ziele.py mitschnitt.eth --leases site/leases.rsc        # welche Geräte sind drin?
+tools/pcap-ziele.py mitschnitt.eth --mac 02:00:00:00:00:AA --liste waschmaschine
+```
+
+Je Gerät siehst du die DNS-Anfragen, die Verbindungen ins Internet (Port, Adresse, Name aus DNS,
+TLS oder HTTP) und im LAN, am Ende einen Vorschlag wie `"waschmaschine"={"api.example.com:tcp/443"}`.
+Prüfe ihn: Einträge mit einer IP statt eines Namens können sich ändern. Liest pcap und pcapng, ohne
+Fremdpakete. Verschlüsseltes QUIC (`udp/443`) zeigt nur die Adresse, den Namen dann aus den DNS-Anfragen.
 
 ## `wg-client-setup.sh`
 

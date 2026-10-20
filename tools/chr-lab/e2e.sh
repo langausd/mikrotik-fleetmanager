@@ -447,6 +447,8 @@ mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2
 rv=$(mgr '$cfmRelease msg=" SSID schaltbar" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Gast schaltbar) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
 r 1 "$cnt" | grep -q "G=0" && ok "Gast-SSID im Grundzustand aus: in keiner Provisioning-Regel" || bad "Gast-SSID trotz switch=off in den Regeln: $(r 1 "$cnt" | tail -1)"
+# vorher stand sie fest in den Regeln: der Apply startet das Schalt-Skript selbst (Radios neu provisioniert)
+r 1 '/log/print where message~"cfm-ssid-guest-off gestartet"' | grep -q gestartet && ok "Erster Release mit switch=off: Apply startet cfm-ssid-guest-off" || bad "Erster Release mit switch=off: Schalt-Skript nicht gestartet"
 expect 1 '[/system/script/get [find name="cfm-ssid-guest-on"] dont-require-permissions] = true and [:len [/system/script/find where name~"^cfm-ssid-(guest|event)-(on|off)\$"]] = 4 and [:len [/system/scheduler/find where name="cfm-ssid-check" and interval=10m]] = 1' "cm1: Schalt-Skripte (dont-require-permissions) und Prüfung alle 10 min"
 expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "cfm-guest"]] = "num"' "Schalt-Skript kennt die Konfiguration der Gast-SSID"
 r 1 ':global cfmSsidguest; :put ("S=" . $cfmSsidguest)' | grep -q "S=off" && ok "Zustand für Home Assistant: cfmSsidguest=off" || bad "cfmSsidguest: $(r 1 ':global cfmSsidguest; :put $cfmSsidguest' | tail -1)"
@@ -462,6 +464,26 @@ r 1 "$cnt" | grep -q "G=0" && ok "cfm-ssid-guest-off: Gast-SSID aus den Regeln" 
 r 1 ':local n 0; :foreach i in=[/interface/wifi/provisioning/find where comment~"^cfm:wprov"] do={ :if ([:tostr [/interface/wifi/provisioning/get $i supported-bands]] ~ "5ghz" and [:len [/interface/wifi/provisioning/get $i slave-configurations]] = 0) do={ :set n ($n + 1) } }; :put ("E=" . $n)' | grep -q "E=[1-9]" && ok "5 GHz ganz ohne weitere SSID (leere Liste gesetzt)" || bad "leere Liste auf 5 GHz nicht gesetzt"
 r 1 '/system/script/run cfm-ssid-guest-on; /file/set cfm/ssid-guest.txt contents="on 1000"; /system/script/run cfm-ssid-check' >/dev/null
 r 1 "$cnt" | grep -q "G=0" && r 1 ':global cfmSsidguest; :put ("S=" . $cfmSsidguest)' | grep -q "S=off" && ok "Auto-Aus nach Ablauf (cfm-ssid-check)" || bad "Auto-Aus: $(r 1 "$cnt" | tail -1)"
+# Schalten gilt beim nächsten Apply nicht als Änderung: die Skripte führen die Signatur von wprov nach
+# (Befund 2026-10-19: nach dem Gast-Auto-Aus baute der nächste Apply das Provisioning neu); letzter
+# Apply war mit Gast an, seitdem aus/an/Auto-Aus
+out=$(mgr '$cfmPlan host=cm1')
+echo "$out" | grep -q "Regelblock /interface/wifi/provisioning" && { bad "Nach dem Schalten baut der Plan wprov neu"; echo "$out" | grep -E "Regelblock|Plan cm1"; } || ok "Nach dem Schalten kein Neuaufbau von wprov (Signatur nachgeführt)"
+# Merker der eigenen Radios (wifi-local.txt, D53): das Skript setzt ihn nur, wenn es ihn gibt
+r 1 '/system/script/run cfm-ssid-guest-on' >/dev/null
+r 1 ':put ("L=" . [:len [/file/find name="cfm/wifi-local.txt"]])' | grep -q "L=0" && ok "Ohne eigene Radios legt das Skript keinen Merker an" || bad "Schalt-Skript hat wifi-local.txt angelegt"
+r 1 '/file/add name=cfm/wifi-local.txt contents=x; :delay 1s; /system/script/run cfm-ssid-guest-off' >/dev/null
+expect 1 '[/file/get cfm/wifi-local.txt contents] ~ "^[0-9a-f]{32}\$"' "Schalt-Skript führt den Merker der eigenen Radios nach"
+r 1 '/file/remove cfm/wifi-local.txt; /system/script/run cfm-ssid-guest-on' >/dev/null
+# Regel von Hand geändert (Gast fehlt trotz Zustand on): der Plan meldet es, der Apply startet das Schalt-Skript
+g1=$(r 1 "$cnt" | tail -1 | tr -d '\r')
+r 1 ':foreach i in=[/interface/wifi/provisioning/find where comment~"^cfm:wprov" and supported-bands=2ghz-ax] do={ /interface/wifi/provisioning/set $i slave-configurations=cfm-iot }' >/dev/null
+out=$(mgr '$cfmPlan host=cm1')
+echo "$out" | grep -q "Regeln passen nicht zum Zustand on - würde cfm-ssid-guest-on starten" && ok "Plan: Regeln passen nicht zum Schaltzustand" || { bad "Abweichung vom Schaltzustand nicht erkannt"; echo "$out" | grep -E "SSID|Regelblock|Plan cm1"; }
+t0=$(stat cm1 t); mgr '$cfmPush host=cm1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat cm1 t)" != "$t0" ] && break; sleep 4; done
+[ "$(r 1 "$cnt" | tail -1 | tr -d '\r')" = "$g1" ] && r 1 '/log/print where message~"cfm-ssid-guest-on gestartet"' | grep -q gestartet && ok "Apply startet das Schalt-Skript, Gast wieder in allen Regeln ($g1)" || bad "Apply bei abweichendem Schaltzustand: $(r 1 "$cnt" | tail -1), vorher $g1"
+r 1 '/system/script/run cfm-ssid-guest-off' >/dev/null
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 
 step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enroll ohne Apply (sw1)"

@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-19)
+## Übersicht offener Punkte (Stand 2026-10-20)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -17,6 +17,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Erledigt am 2026-10-19:** zwei „Bekannte Fehler“ – Umbenennen einer festen Lease (übernommenes Objekt
   wird nicht mehr zugleich als verwaist entfernt) und Steering `kick` über 59 s (`$cfmSame` vergleicht Dauern
   als Zeit); `e2e.sh` 317, `e2e-vrrp.sh` 118, alles grün.
+* **Erledigt am 2026-10-20:** „Bekannter Fehler“ SSID-Schalten (D64) – die Schalt-Skripte führen die
+  Signatur des Regelblocks und den Merker der eigenen Radios nach, der nächste Apply baut nichts mehr neu
+  auf; passen die Regeln nicht zum Schaltzustand, startet der Apply das Schalt-Skript; `e2e.sh` 323, grün.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -218,6 +221,15 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   `geändert: /interface/wifi/steering wst:<n>: transition-time` (set=2). Harmlos; beheben durch
   Normalisieren (Sekunden in RouterOS-Schreibweise) vor dem Vergleich oder in `$cfmEnsure` allgemein für Zeiten.
   – *behoben 2026-10-19:* `$cfmSame` vergleicht zwei Dauern als Text (`1m30s`, `90s`) über `:totime`.
+* ~~**Nach dem Schalten einer SSID (D64) baut der nächste Apply das Provisioning neu**~~ (Befund 2026-10-19,
+  7.24.5): Die Skripte `cfm-ssid-<key>-on/-off` ändern `slave-configurations` direkt, die Signatur des
+  Regelblocks `wprov` (`sig=` im Kommentar) und `<cfm>/wifi-local.txt` stammen aber vom letzten Apply. Der
+  nächste Apply meldet `Regelblock /interface/wifi/provisioning wprov neu aufgebaut` mit gleichem Inhalt und
+  provisioniert die eigenen Radios des CAPsMAN neu (`capsmanRadios`, ~3 s ohne WLAN). Beheben: die Skripte
+  auch Signatur und Merker nachführen lassen, oder Signatur und Merker ohne die schaltbaren SSIDs bilden
+  und deren Zustand getrennt vergleichen. – *behoben 2026-10-20 (D64):* Die Skripte führen beides nach
+  (Tabelle je Kombination der Schaltzustände aus dem Apply); passen Regeln und Zustand nicht zusammen,
+  startet der Apply das Schalt-Skript. Labor: `e2e.sh` Schritt 14.
 * **Manager mit Rolle `router` im Onboarding-VLAN:** Dieselbe Adresse (`.250+routerId`) legen die
   Onboarding-Funktion (`obip:<VID>`) und die Rolle `router` (`ip:<VID>`) an; die Rollen übernehmen sie
   abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan). Harmlos, aber

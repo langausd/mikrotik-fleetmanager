@@ -670,7 +670,12 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
   `capsmanRadios` auch die eigenen) – **alle SSIDs eines APs sind dabei etwa 3 s weg**. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
   `read,api,test`) darf sie starten, ohne selbst schreiben zu dürfen;
 * den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn, ein
-  Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`;
+  Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`. Die
+  Skripte setzen auch die Signatur der Regeln und den Merker der eigenen Radios auf den neuen Stand
+  (der Apply rechnet beides für jede Kombination der Schaltzustände vor, bis zu 4 schaltbare SSIDs).
+  Der nächste Apply sieht ein Schalten deshalb nicht als Änderung. Passen Regeln und Zustand nicht
+  zusammen (Regel von Hand geändert, Grundzustand ohne Datei geändert), startet der Apply das
+  passende Skript; der Probelauf meldet es vorher (`SSID …: Regeln passen nicht zum Zustand …`);
 * das Skript `cfm-ssid-check` (Scheduler alle 10 min), das nach `autoOff` abschaltet, und die
   Variable `:global cfmSsid<key>` (`on`/`off`) für die Konsole. Für HA taugt sie nicht: Die API zeigt
   `/system/script/environment` nur Usern mit `write` und `policy` (auch mit 7.25rc1). Ein über die API
@@ -684,9 +689,9 @@ Rechten aus 6.7 aus den Provisioning-Regeln (`slave-configurations` enthält `cf
 `cfm-<key>-<Band>g`), den Ablauf aus der Datei. Die Taster der Integration „Mikrotik Router“
 schalten auch, kennen aber keinen Zustand. Jede Abfrage ist eine API-Anmeldung mit zwei Log-Zeilen
 am CAPsMAN – Abfrageintervall nicht unter 5 min.
-Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`. Nach dem ersten Release mit
-`switch="off"` sendet die SSID noch, bis die Radios neu provisioniert werden – einmal
-`cfm-ssid-<key>-off` starten (oder `/interface/wifi/radio/provision [find where !local]`).
+Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`. Beim ersten Release mit
+`switch="off"` stand die SSID vorher in den Regeln: Der Apply startet `cfm-ssid-<key>-off` selbst,
+die APs sind dabei etwa 3 s weg.
 
 ---
 

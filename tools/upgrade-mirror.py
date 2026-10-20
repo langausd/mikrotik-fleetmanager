@@ -39,7 +39,10 @@ VER_RE = r"\d+\.\d+(?:\.\d+)?(?:(?:alpha|beta|rc)\d+)?"
 
 
 def channel(ver):
-    return "testing" if re.search(r"(alpha|beta|rc)", ver) else "stable"
+    # wie der Agent (lib/agent.rsc): RCs liegen bei MikroTik in testing, Betas in development
+    if re.search(r"(alpha|beta)", ver):
+        return "development"
+    return "testing" if "rc" in ver else "stable"
 
 
 def pkg_name(pkg, ver, arch):

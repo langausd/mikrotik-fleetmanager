@@ -421,7 +421,7 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
 #     aber nur noch für Winbox/WebFig: RouterOS lehnt SSH per Passwort ab, sobald der User einen Key
 #     hat (always-allow-password-login=no, TODO 29). Kein Ersatz für die ssh-keys der Rolle manager
 #     (cfm/cfmd-<name>) - die sind Maschinen-Identität, hier geht es um Menschen. ---
-:global cfmStat; :global cfmWarn; :global cfmShowAll; :global cfmShowObj
+:global cfmWarn; :global cfmShowAll; :global cfmShowObj
 :foreach u,grp in=($cfmG->"users") do={
   :local akf ($cfmDl . "/authorized_keys." . $u)
   # per Name statt /file/find (D59, auf dem Manager Hunderte Dateien); eine gelöschte Datei liefert
@@ -537,7 +537,6 @@ $cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}
 # --- Nur der cfm-CAPsMAN darf im MGMT-VLAN antworten (D45, TODO 26): Ein zweiter CAPsMAN lockt
 #     frische CAPs per Discovery an und verteilt eine fremde CA. Auf Geräten, die nicht CAPsMAN sind
 #     (Manifest-Feld cm), den Dienst abschalten – auch nach einem Umzug der Rolle capsman ---
-:global cfmIsCapsman
 :if (![$cfmIsCapsman]) do={
   :onerror e in={ $cfmSet m="/interface/wifi/capsman" p=({"enabled"="no"}) } do={}
 }

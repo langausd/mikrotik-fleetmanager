@@ -182,8 +182,8 @@ Fremdpakete. Verschlüsseltes QUIC (`udp/443`) zeigt nur die Adresse, den Namen 
 ## `wg-client-setup.sh`
 
 Legt die WireGuard-Verbindung zum Admin-Netz als NetworkManager-Verbindung an (Linux, braucht
-`nmcli` und `wg` aus `wireguard-tools`). Das geht in zwei Schritten, weil jede Seite den Public Key
-der anderen braucht:
+`nmcli`; `wg` aus `wireguard-tools` nur für `genkey`). Das geht in zwei Schritten, weil jede Seite den
+Public Key der anderen braucht:
 
 ```bash
 tools/wg-client-setup.sh genkey      # 1. Schlüssel erzeugen, Public Key nach wireguard.rsc (peers)

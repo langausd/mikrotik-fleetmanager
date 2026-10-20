@@ -42,8 +42,6 @@
 #  * Weitere Eigenheiten (Dateiendungen, Vergleiche): docs/DECISIONS.md
 # ============================================================
 
-:global cfmLibVer 1
-
 # Verwaltete Menüs in Abhängigkeitsreihenfolge (GC läuft rückwärts)
 :global cfmMenus {
   "/interface/bonding";"/interface/bridge";"/interface/bridge/port";"/interface/vlan";"/interface/bridge/vlan";

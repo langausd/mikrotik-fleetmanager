@@ -4,4 +4,4 @@
 :global cfmSet; :global cfmEnsure
 $cfmSet m="/system/leds/settings" p=({"all-leds-off"="never"})
 # Beispiel: zusätzlicher statischer DNS-Eintrag nur auf diesem Gerät
-# [$cfmEnsure m="/ip/dns/static" k="dns:printer" p=({"name"="printer.lan";"address"="192.168.20.20"})]
+# $cfmEnsure m="/ip/dns/static" k="post:dns:printer" p=({"name"="printer.internal";"address"="192.168.20.20"})

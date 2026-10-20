@@ -6,7 +6,7 @@
 # ---------- Vertrauen: alle Manager-Schlüssel auf Geräte verteilen ----------
 # (nötig, damit ein später enrollter Backup-Manager im DR-Fall steuern kann)
 :global cfmTrust do={
-  :global cfmInvLoad; :global cfmMB; :global cfmRead; :global cfmExec; :global cfmEnrolled
+  :global cfmInvLoad; :global cfmMB; :global cfmRead; :global cfmExec; :global cfmEnrolled; :global cfmPemEsc
   :local b [$cfmMB]
   :local inv [$cfmInvLoad]
   :local c ":local old [/user/ssh-keys/find where user=cfm]; :local ok true;"
@@ -16,9 +16,7 @@
       :local k [$cfmRead ($b . "/meta/keys/" . $n . ".pem")]
       :if ([:len $k] > 0) do={
         :set i ($i + 1)
-        :local e ""
-        :for j from=0 to=([:len $k] - 1) do={ :local ch [:pick $k $j]; :if ($ch = "\n") do={ :set e ($e . "\\n") } else={ :if ($ch != "\r") do={ :set e ($e . $ch) } } }
-        :set c ($c . "/file/add name=cfm-trust" . $i . ".pem contents=\"" . $e . "\"; :delay 300ms; :onerror x in={ /user/ssh-keys/import user=cfm public-key-file=cfm-trust" . $i . ".pem } do={ :set ok false };")
+        :set c ($c . "/file/add name=cfm-trust" . $i . ".pem contents=\"" . [$cfmPemEsc $k] . "\"; :delay 300ms; :onerror x in={ /user/ssh-keys/import user=cfm public-key-file=cfm-trust" . $i . ".pem } do={ :set ok false };")
       }
     }
   }
@@ -186,7 +184,7 @@
 # ---------- Onboarding ----------
 :global cfmEnroll do={
   :global cfmMB; :global cfmExec; :global cfmInvLoad; :global cfmInvSave; :global cfmVaultSet
-  :global cfmVaultGet; :global cfmManifests; :global cfmWrite; :global cfmRings; :global cfmG; :global cfmLoadData
+  :global cfmManifests; :global cfmWrite; :global cfmRings; :global cfmG; :global cfmLoadData
   :if ([:len $name] = 0 or [:len $ip] = 0) do={ :error "Aufruf: \$cfmEnroll name=<identity> ip=<erreichbare IP> [role=..] [ring=..] [rekey=yes] [noapply=yes]" }
   :local b [$cfmMB]
   $cfmLoadData
@@ -257,17 +255,14 @@
 # ---------- Bootstrap-Datei für neue Geräte ----------
 :global cfmBootstrap do={
   :global cfmMB; :global cfmWrite; :global cfmInvLoad; :global cfmG; :global cfmLoadData; :global cfmRead
+  :global cfmPemEsc
   $cfmLoadData
   :local b [$cfmMB]
   :local keys ""
   :foreach n,d in=[$cfmInvLoad] do={
     :if (("," . ($d->"role") . ",") ~ ",manager") do={
       :local k [$cfmRead ($b . "/meta/keys/" . $n . ".pem")]
-      :if ([:len $k] > 0) do={
-        :local e ""
-        :for i from=0 to=([:len $k] - 1) do={ :local ch [:pick $k $i]; :if ($ch = "\n") do={ :set e ($e . "\\n") } else={ :if ($ch != "\r") do={ :set e ($e . $ch) } } }
-        :set keys ($keys . ";\"" . $e . "\"")
-      }
+      :if ([:len $k] > 0) do={ :set keys ($keys . ";\"" . [$cfmPemEsc $k] . "\"") }
     }
   }
   :local mv ($cfmG->"mgmtVlan")

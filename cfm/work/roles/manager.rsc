@@ -5,8 +5,8 @@
 #  * CAPsMAN nur übergangsweise, solange kein Gerät die Rolle capsman hat (D45)
 # Wird von manager-backup.rsc mit cfmIsBackup=true wiederverwendet.
 # ============================================================
-:global cfmG; :global cfmWifi; :global cfmMf; :global cfmDl
-:global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmLog; :global cfmDry
+:global cfmG; :global cfmMf; :global cfmDl
+:global cfmEnsure; :global cfmLog; :global cfmDry; :global cfmHas
 :global cfmIsBackup
 
 :local backup ($cfmIsBackup = true)
@@ -85,7 +85,17 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
     :local oip (($nn->"addr") | ([:toip ($cfmMf->"ip")] & 0.0.0.255))
     :local oad ([:tostr $oip] . "/" . ($nn->"pfx"))
     $cfmEnsure m="/interface/vlan" k=("vlan:" . $vid) n=({"name"=$ifn}) p=({"name"=$ifn;"interface"="bridge";"vlan-id"=[:tonum $vid]}) x=($v->"name")
-    $cfmEnsure m="/ip/address" k=("obip:" . $vid) n=({"interface"=$ifn;"address"=$oad}) p=({"address"=$oad;"interface"=$ifn})
+    # Legt die Rolle router hier dieselbe Adresse an (ip:<VID>: .250+routerId bzw. das Gateway), gehört sie
+    # ihr - sonst übernähmen beide Rollen das Objekt bei jedem Apply abwechselnd (Kommentarwechsel)
+    :local rad ""
+    :if ([$cfmHas "router"] and [:tostr ($v->"l3")] != "no") do={
+      :global cfmHost
+      :set rad ([:tostr ($nn->"gw")] . "/" . ($nn->"pfx"))
+      :if ([:len [:tostr ($cfmHost->"routerId")]] > 0) do={ :set rad ([:tostr (($nn->"addr") + 250 + [:tonum ($cfmHost->"routerId")])] . "/" . ($nn->"pfx")) }
+    }
+    :if ($rad != $oad) do={
+      $cfmEnsure m="/ip/address" k=("obip:" . $vid) n=({"interface"=$ifn;"address"=$oad}) p=({"address"=$oad;"interface"=$ifn})
+    }
     :local dh [:tostr ($v->"dhcp")]
     :if (!$backup and [:len $dh] > 0 and $dh != "no") do={
       :local s [:find $dh "-"]
@@ -103,9 +113,7 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
 # --- CAPsMAN (D45): eigene Rolle capsman. Hat im Inventar noch kein Gerät diese Rolle, bleibt der
 #     Primary übergangsweise CAPsMAN (der Manager nennt ihn dann im Manifest-Feld cm). Der Backup
 #     rendert keinen CAPsMAN mehr – bei einem Ausfall zieht die Rolle capsman auf ein anderes Gerät ---
-:global cfmIsCapsman; :global cfmHas; :global cfmCapsmanOn
-# Rest der früheren Übernahme durch den Backup (Netwatch-Down-Skript), falls noch vorhanden
-:if ($cfmDry != true) do={ :onerror e in={ /system/scheduler/remove [find where name="cfm-takeover"] } do={} }
+:global cfmIsCapsman; :global cfmCapsmanOn
 :if (!$backup and [$cfmIsCapsman] and ![$cfmHas "capsman"]) do={
   :if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
   $cfmCapsmanOn

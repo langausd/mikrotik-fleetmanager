@@ -194,11 +194,11 @@ Mit `tools/new-site.py` aus den neutralen Beispieldaten angelegt: Manager `{name
 
 ### Manager aufsetzen
 
-- [ ] Seed hochladen (beim ersten Mal mit Inventar):
-      `tools/upload-seed.sh admin@<aktuelle-IP> --overlay {rel} --seed-inventory`
-- [ ] `{rel}/bootstrap-manager.rsc` als `bootstrap-manager.rsc` ins Wurzelverzeichnis des Managers
-      laden, Kopf kontrollieren, `/import bootstrap-manager.rsc` (Reset auf leere Config, danach
-      im Log `cfm: Primary-Manager bereit`)
+- [ ] Seed und Bootstrap hochladen (beim ersten Mal mit Inventar; `--bootstrap` legt
+      `{rel}/bootstrap-manager.rsc` ins Wurzelverzeichnis des Managers):
+      `tools/upload-seed.sh admin@<aktuelle-IP> --overlay {rel} --seed-inventory --bootstrap`
+- [ ] Kopf von `bootstrap-manager.rsc` auf dem Manager kontrollieren, dann `/import bootstrap-manager.rsc`
+      (Reset auf leere Config, danach im Log `cfm: Primary-Manager bereit`)
 - [ ] Secrets: `$cfmSecret key=user.{user} value=…`, `key=psk.<ssid>` je SSID, `key=vaultpw`
 - [ ] `$cfmStatus`: {name} ok mit v1
 

@@ -566,8 +566,11 @@
           # nicht "yes": :deserialize macht daraus beim nächsten Lauf ein Bool
           :set ($st->"upm") "spiegel"
         }
+        # Kanal der Zielversion: RCs liegen in testing, Betas in development (2026-10-20: NEWESTa7.testing
+        # 7.25rc2, NEWESTa7.development 7.26beta3) - mit testing bot das Internet für eine Beta nur den RC an
         :local ch "stable"
-        :if ($tv ~ "(alpha|beta|rc)") do={ :set ch "testing" }
+        :if ($tv ~ "rc") do={ :set ch "testing" }
+        :if ($tv ~ "(alpha|beta)") do={ :set ch "development" }
         /system/package/update/set channel=$ch
         :onerror e in={ /system/package/update/check-for-updates once } do={}
         :local w 0
@@ -581,14 +584,14 @@
         # Platz vorab prüfen (TODO 38): Ein voller Flash lässt auch Config und Log scheitern. Der Manager
         # prüft beim Auftrag schon den gemeldeten Wert; 1 MB Reserve wie dort. Kein neuer Versuch - nach
         # dem Aufräumen einen neuen Auftrag erteilen.
-        :local need 1048576
-        :foreach pf in=($ro->"files") do={ :set need ($need + [:tonum ($pf->1)]) }
+        :local req 1048576
+        :foreach pf in=($ro->"files") do={ :set req ($req + [:tonum ($pf->1)]) }
         :local free [/system/resource/get free-hdd-space]
-        :if (!($dir ~ "^flash/") and $free < $need) do={
+        :if (!($dir ~ "^flash/") and $free < $req) do={
          :set ($st->"upa") $tag
          :set ($st->"upf") ({})
-         :set ($st->"upg") ("Platz fehlt: " . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig")
-         :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($need / 1024) . " KB nötig) - nichts geladen")
+         :set ($st->"upg") ("Platz fehlt: " . ($free / 1024) . " KB frei, " . ($req / 1024) . " KB nötig")
+         :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($req / 1024) . " KB nötig) - nichts geladen")
         } else={
          # Pakete in die Wurzel laden: dort installiert RouterOS sie beim nächsten Start
          :foreach pf in=($ro->"files") do={

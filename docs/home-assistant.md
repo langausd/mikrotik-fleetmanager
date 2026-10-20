@@ -258,7 +258,7 @@ z.B. aufs Handy weiter.
 | `site` | Standort (z.B. `Haus`) |
 | `host` | betroffenes Gerät (leer bei der Probemeldung) |
 | `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `test` |
-| `state` | `on` = eingetreten, `off` = wieder in Ordnung, `once` = einmalig (Onboarding, Probe) |
+| `state` | `on` = eingetreten, `off` = wieder in Ordnung, `once` = einmalig (Onboarding, neue RouterOS-Version, Probe) |
 | `msg` | Beschreibung ohne Standort und Gerät |
 | `text` | fertiger Text: `<site>: <host> - <msg>` |
 | `time` | Zeit des Managers |

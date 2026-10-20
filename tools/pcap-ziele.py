@@ -260,7 +260,7 @@ def main():
             r = l2(link, b)
             if not r:
                 continue
-            smac, dmac, et, p = r
+            smac, _, et, p = r
             r = l3(et, p)
             if not r:
                 continue
@@ -344,7 +344,7 @@ def main():
             for (pr, ip, port), c in sorted(dv.lan.items()):
                 print(f"  {pr + '/' + str(port) if port else pr:9} {ip:39} ×{c}")
         if allow:
-            print(f'Vorschlag für global.rsc (allow, D39/D76) – prüfen, nicht blind übernehmen:')
+            print('Vorschlag für global.rsc (allow, D39/D76) – prüfen, nicht blind übernehmen:')
             ent = []
             for t in sorted(allow):
                 byp = defaultdict(list)

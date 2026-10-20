@@ -172,7 +172,7 @@
 # Backups gilt der Start als letzter Erfolg. skew= (Sekunden) nur fürs Labor.
 :global cfmNotifyBackupTick do={
   :global cfmG; :global cfmLoadData; :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmNow
-  :global cfmEnrolled; :global cfmWrite; :global cfmNotifySync; :global cfmMirLast; :global cfmConf
+  :global cfmEnrolled; :global cfmWrite; :global cfmNotifySync; :global cfmMirLast
   $cfmLoadData
   :local nc ($cfmG->"notify")
   :if ([:len [:tostr ($nc->"url")]] = 0) do={ :return 0 }

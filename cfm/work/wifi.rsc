@@ -1,7 +1,7 @@
 # ============================================================
 # cfm – WLAN (gerendert vom CAPsMAN – Rolle capsman, D45 – und als lokaler Fallback auf den APs, D46)
 #  ssids     Key = interner Name. vlan = Datapath-VLAN, bands = "2,5",
-#            sec/ft/pmf/isolation überschreiben die defaults.
+#            sec/ft/ftOverDs/pmf/isolation überschreiben die defaults.
 #            Passphrase NUR im Vault: cfm:psk.<key> - <key> ist der SSID-Schlüssel unten in
 #            "ssids" (in dieser Vorlage z.B. "main", "guest" …), NICHT der SSID-Name selbst:
 #            $cfmSecret key=psk.main value=...   (bei eigenen Sites den eigenen Schlüssel nehmen!)

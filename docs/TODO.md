@@ -20,6 +20,15 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Erledigt am 2026-10-20:** „Bekannter Fehler“ SSID-Schalten (D64) – die Schalt-Skripte führen die
   Signatur des Regelblocks und den Merker der eigenen Radios nach, der nächste Apply baut nichts mehr neu
   auf; passen die Regeln nicht zum Schaltzustand, startet der Apply das Schalt-Skript; `e2e.sh` 323, grün.
+* **Code-Review am 2026-10-20 (gesamtes Framework, Doku gegen den Code abgeglichen):** behoben – Betas
+  holen Agent und `tools/upgrade-mirror.py` über den Kanal `development` (bisher `testing`, dort liegen nur
+  RCs: eine Beta per `via=internet` scheiterte, D63), „Bekannter Fehler“ Adresse im Onboarding-VLAN auf einem
+  Manager mit Rolle `router` (siehe unten), Abschlussmeldung von `upload-seed.sh` (riet nach jedem
+  Framework-Upload zum Manager-Bootstrap), `wg-client-setup.sh connect` verlangte unnötig `wg`; entfernt – toter Code (`cfmLibVer`, ungenutzte Locals und
+  Deklarationen, doppelte PEM-Umwandlung in `mgr-enroll`, Altlast `cfm-takeover` von vor D45); Doku –
+  Befehlsreferenz, Dateiübersicht, NTP der Router, Update-Kanäle, Beispiele, fehlende Zeile D59. Neu offen:
+  59 (NTP der Router), 60 (`rsc-check.py` auf ein Overlay mit Exporten). Labor 7.24.5: `e2e.sh` 323,
+  `e2e-vrrp.sh` 118, Onboarding 14/15/18, `e2e-mlag.sh` 72, alles grün.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -28,10 +37,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
 * **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
-* **RouterOS 7.25 (Termin):** seit etwa 2026-10-01 im Kanal `testing` (7.25rc1, seit 2026-10-09 7.25rc2;
-  stable: 7.24.5). Den
-  Labortest aller Skripte mit 7.25 stable (entschieden 2026-10-04); ist sie bis zum geplanten Termin
-  (voraussichtlich Wochenende 17./18.10.) nicht stable, mit der Beta bzw. dem RC (entschieden 2026-10-11).
+* **RouterOS 7.25:** noch nicht stable (2026-10-20: stable 7.24.5, testing 7.25rc2, development
+  7.26beta3). Der Labortest aller Skripte lief am 2026-10-17 mit 7.25rc2 grün (48, wie entschieden: ohne
+  stable bis zum Wochenende 17./18.10. mit dem RC); mit 7.25 stable `e2e.sh` wiederholen (48).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
 * **Neu (Idee):** 52 (Lesezeichen ohne Hantieren: Lade-Lesezeichen, Userscript oder Container, 2026-10-15).
@@ -230,10 +238,17 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   und deren Zustand getrennt vergleichen. – *behoben 2026-10-20 (D64):* Die Skripte führen beides nach
   (Tabelle je Kombination der Schaltzustände aus dem Apply); passen Regeln und Zustand nicht zusammen,
   startet der Apply das Schalt-Skript. Labor: `e2e.sh` Schritt 14.
-* **Manager mit Rolle `router` im Onboarding-VLAN:** Dieselbe Adresse (`.250+routerId`) legen die
+* ~~**Manager mit Rolle `router` im Onboarding-VLAN:**~~ Dieselbe Adresse (`.250+routerId`) legen die
   Onboarding-Funktion (`obip:<VID>`) und die Rolle `router` (`ip:<VID>`) an; die Rollen übernehmen sie
   abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan; seit der Korrektur der
   Lease-Umbenennung 2026-10-19 erscheinen beide als „übernommen“). Harmlos, aber jeder Apply zählt sie mit. Eine der beiden sollte die Adresse der anderen als ihre ansehen.
+  – *behoben 2026-10-20 (Code-Review):* Legt die Rolle `router` im Onboarding-VLAN dieselbe Adresse an
+  (VRRP `.250+routerId`, sonst das Gateway), lässt die Rolle `manager` ihre `obip:<VID>` weg; die Adresse
+  gehört dann `ip:<VID>`. Der erste Apply danach übernimmt sie einmal (`übernommen: … ip:<VID>`), danach
+  bleibt der Plan leer. Labor: mit `lib/lib.rsc` auf einer CHR nachgestellt (eine Adresse, zuletzt als
+  `obip:88` getaggt): vorher je Lauf `set=2`, nachher einmal `set=1`, danach 0; `e2e-vrrp.sh` als
+  Regression (dort liegen Manager- und Router-Adresse verschieden). Am Standort mit dem nächsten Release
+  prüfen: Probelauf des Managers ohne `ip:88`.
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein
@@ -827,7 +842,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     über den PKCS#8-Kopf `302e020100300506032b656e04220420` + privater Schlüssel →
     `openssl pkey -inform DER -pubout -outform DER`, letzte 32 Byte. Am Standort so gemacht und
     gegen RouterOS geprüft (Handshake). Umsetzen: `genkey` und `connect` fallen auf OpenSSL zurück,
-    wenn `wg` fehlt; `--keepalive` mit VRRP als Standard 25.
+    wenn `wg` fehlt; `--keepalive` mit VRRP als Standard 25. *Nachtrag Code-Review 2026-10-20:* `connect`
+    braucht `wg` gar nicht (nur `nmcli`), die Prüfung am Anfang verlangte es trotzdem – jetzt prüft das
+    Skript `wg` nur noch bei `genkey`; `--keepalive` ist schon seit dem ersten Stand Standard 25. Offen
+    bleibt nur der OpenSSL-Weg in `genkey`.
 58. **Schaltbare SSID ohne Unterbrechung der übrigen** (entschieden 2026-10-17) – `cfm-ssid-<key>-on/-off`
     (D64) ändern die Provisioning-Regeln und provisionieren alle Radios neu; das baut je Radio Master und
     alle virtuellen APs neu auf, alle SSIDs aller APs sind gleichzeitig ~3 s weg. Zwei Ansätze, in dieser
@@ -839,3 +857,17 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Home Assistant; Zusammenspiel mit `slaves-static` (D54). (b) Falls (a) nichts bringt: **nacheinander
     provisionieren** – je AP `/interface/wifi/radio/provision` mit einigen Sekunden Abstand, damit nie alle
     APs gleichzeitig dunkel sind und Clients zu einem Nachbarn wechseln können; die Unterbrechung je AP bleibt.
+59. **NTP der Router** (Code-Review 2026-10-20) – Die Rolle `router` stellt ihren eigenen NTP-Client auf den
+    DNS-Server aus dem Hostfile-Eintrag `wan` (`dns`), ohne ihn (auch bei `wan.dhcp`) fest auf
+    `0.de.pool.ntp.org,1.de.pool.ntp.org`; `ntp` aus `global.rsc` und aus dem Hostfile gilt nur für
+    Nicht-Router (Admin-Guide, Kapitel 4). Das setzt voraus, dass der DNS-Server auch NTP anbietet (ein
+    DSL- oder Kabel-Router meist ja, ein öffentlicher DNS wie 1.1.1.1 nicht), und der Pool ist auf
+    Deutschland festgelegt. Vorschlag: optional `"ntp"` im Eintrag `wan` (oder ein Schlüssel in
+    `global.rsc`), sonst wie bisher; als Rückfall `pool.ntp.org` ohne Länderkennung; bei `wan.dhcp`
+    `use-peer-ntp=yes` erwägen. Offen: wo der Schlüssel hingehört (Entscheidung).
+60. **`rsc-check.py` auf ein Overlay mit Exporten** (Code-Review 2026-10-20) – Die Regel `dateigroesse`
+    (60 KB) gilt für jede `.rsc`-Datei. Liegen im Overlay Exporte als Notiz (z.B. `ist/<gerät>.rsc`, die
+    `upload-seed.sh` gar nicht hochlädt), meldet `tools/rsc-check.py site-…/` sie als Fehler; die Vorlage der
+    `STAND.md` (`new-site.py`) verlangt aber „ohne Fund“. Vorschlag: außerhalb von `cfm/work/` die Größe nur
+    für Dateien prüfen, die `upload-seed.sh` hochlädt (oberste Ebene, `hosts/`, `roles/`, `lib/`, `meta/`),
+    sonst höchstens als Hinweis.

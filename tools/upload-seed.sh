@@ -167,5 +167,6 @@ if [ -n "$bootstrap" ]; then
   echo "Bootstrap hochgeladen: $bn (Wurzelverzeichnis)"
   echo "Nächster Schritt auf dem Gerät: Kopf prüfen, dann /import $bn"
 else
-  echo "Nächster Schritt am Manager: bootstrap/bootstrap-manager.rsc anpassen, hochladen, /import"
+  echo "Nächster Schritt am Manager: /system script run cfm-mgr, dann \$cfmDiff und \$cfmRelease msg=\"…\""
+  echo "(Ersteinrichtung: Bootstrap mit --bootstrap hochladen, dann /import bootstrap-manager.rsc)"
 fi

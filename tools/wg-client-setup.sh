@@ -21,15 +21,14 @@
 # aktiv geschaltet (autoconnect no) – aktivieren mit `nmcli connection up <name>`.
 set -euo pipefail
 
-command -v wg >/dev/null || { echo "wg-client-setup.sh: 'wg' (Paket wireguard-tools) fehlt" >&2; exit 1; }
-command -v nmcli >/dev/null || { echo "wg-client-setup.sh: 'nmcli' (NetworkManager) fehlt" >&2; exit 1; }
-
 cmd=${1:?Aufruf: wg-client-setup.sh genkey|connect [Optionen]}; shift
 
 default_keyfile() { echo "$HOME/.config/wireguard/$1.key"; }
 
 case $cmd in
   genkey)
+    # nur hier: connect liest den Schlüssel aus der Datei und braucht 'wg' nicht (TODO 57)
+    command -v wg >/dev/null || { echo "wg-client-setup.sh: 'wg' (Paket wireguard-tools) fehlt" >&2; exit 1; }
     keyfile=""
     while [ $# -gt 0 ]; do case $1 in
       --keyfile) keyfile=$2; shift 2;;
@@ -46,6 +45,7 @@ case $cmd in
     wg pubkey < "$keyfile"
     ;;
   connect)
+    command -v nmcli >/dev/null || { echo "wg-client-setup.sh: 'nmcli' (NetworkManager) fehlt" >&2; exit 1; }
     name=""; endpoint=""; server_pubkey=""; address=""; allowed_ips=""; keyfile=""; keepalive=25
     while [ $# -gt 0 ]; do case $1 in
       --name) name=$2; shift 2;;

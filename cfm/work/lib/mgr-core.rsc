@@ -31,7 +31,8 @@
 #                                      Gerät aufnehmen / Ersatzgerät übernehmen
 #   $cfmPush [host=<n>|ring=<r>] [force=yes]   sofortigen Pull auslösen (nur aufgenommene Geräte)
 #   $cfmAudit host=<n> [op=report|mark|purge] [sel=all|A1,A3]
-#   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, vaultpw, wg.admin (D84)
+#   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, ppsk.<ssid-key>.<name>,
+#                                      vaultpw, wg.admin (D84)
 #   $cfmSecretPush [host=<n>]          Secrets per SSH direkt in die Geräte schreiben
 #   $cfmVaultBackup                    verschlüsseltes Backup (inkl. Vault) nach vault/
 #   $cfmRekey host=<n>|all=yes         Geräteschlüssel (Manifest-Signatur) erneuern
@@ -478,7 +479,6 @@
   :local files [/file/find where name~("^" . $b . "/work/") and type!="directory"]
   :local rg [$cfmRings]
   :local v (($rg->"latest") + 1)
-  :local src $from
   :local idx ({})
   :foreach f in=$files do={
     :local n [/file/get $f name]
@@ -565,7 +565,6 @@
 :global cfmStatus do={
   :global cfmInvLoad; :global cfmRings; :global cfmJson; :global cfmMB; :global cfmPad; :global cfmNow
   :global cfmEnrolled
-  :global cfmJson
   :local b [$cfmMB]
   :local rg [$cfmRings]
   :local vj [$cfmJson ($b . "/meta/vault.dat")]

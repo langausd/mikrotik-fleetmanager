@@ -315,7 +315,7 @@
   # (alle 10 min) schaltet nach autoOff ab und hält :global cfmSsid<key> ("on"/"off") für die Konsole –
   # nicht für HA: die API zeigt globale Variablen nur mit write+policy, ein API-Lauf ändert sie nicht
   # (HA liest Regeln und Datei, tools/home-assistant/cfm_ssid.py).
-  :global cfmSsidSw; :global cfmSsidState; :global cfmDir; :global cfmWifi; :global cfmSsidSig
+  :global cfmDir; :global cfmWifi; :global cfmSsidSig
   # Nach dem Schalten Signatur von wprov und Merker der eigenen Radios auf die neue Kombination der
   # Schaltzustände setzen (Tabelle aus $cfmWifiRender; Zustand je SSID wie $cfmSsidState aus der Datei)
   :local sgsrc ""
@@ -397,7 +397,7 @@
   # capsmanRadios="yes". Neu provisioniert wird nur, wenn sich WLAN-Daten oder Regeln geändert haben
   # (kurzer Aussetzer nur der eigenen Radios); der Stand steht in <cfm>/wifi-local.txt. Schalter
   # wieder aus: cfm-Regeln kurz abschalten und neu provisionieren -> Radios unkonfiguriert (Doku).
-  :global cfmHost; :global cfmDir; :global cfmWifi; :global cfmDry; :global cfmLog
+  :global cfmHost
   :local lr ([:tostr ($cfmHost->"capsmanRadios")] = "yes")
   :local sf ($cfmDir . "/wifi-local.txt")
   :local old ""

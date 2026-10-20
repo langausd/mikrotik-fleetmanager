@@ -67,7 +67,8 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         :if ($vid != $mv) do={
           # natürlicher Schlüssel mit Adresse: Auf einem Router, der zugleich Primary-Manager ist, liegt
           # im Onboarding-VLAN schon dessen Adresse (Rolle manager) - sie darf nicht übernommen werden
-          # (sonst setzen beide Rollen sie bei jedem Apply hin und her, Laborprobe 2026-10-01)
+          # (sonst setzen beide Rollen sie bei jedem Apply hin und her, Laborprobe 2026-10-01). Ist es dieselbe
+          # Adresse (Host-Anteil der MGMT-IP = 250+routerId), lässt die Rolle manager ihre weg
           :local ra ([:tostr (($nn->"addr") + 250 + $rid)] . "/" . ($nn->"pfx"))
           $cfmEnsure m="/ip/address" k=("ip:" . $vid) n=({"interface"=$ifn;"address"=$ra}) p=({"address"=$ra;"interface"=$ifn})
         }

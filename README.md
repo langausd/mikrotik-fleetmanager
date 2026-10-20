@@ -70,7 +70,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
-| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`, Manifest-Regeln je Version `mgr-mf.rsc`), Bootstrap-Rumpf |
+| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`, Manifest-Regeln je Version `mgr-mf.rsc`), Bootstrap-Rumpf, Onboarding-Stufen (`onboard-probe.rsc`, `onboard-go.rsc`) |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
 | `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |

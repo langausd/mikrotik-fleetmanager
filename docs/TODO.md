@@ -36,6 +36,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   vorher 47 KB nahe der 60-KB-Grenze, D26); Bootstrap des Managers stellt das RAM-Log schon vor dem ersten
   Release um (D79). Labor 7.24.5: `e2e.sh` 328, `e2e-vrrp.sh` 120, Onboarding 14/15/18, `e2e-mlag.sh` 72,
   alles grün.
+* **Umgesetzt am 2026-10-20 (58a, D90), Test auf Hardware beim nächsten Gast-Schalten:** Gast-Schalter
+  ohne Unterbrechung der übrigen SSIDs – feste WLAN-Interfaces (`create-enabled`), die Schalt-Skripte
+  schalten nur die Interfaces der SSID; `tools/home-assistant/cfm_ssid.py` liest den Zustand an den
+  Interfaces (die Kopie in Home Assistant erneuern). Labor 7.24.5: `e2e.sh` 325, grün.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -203,7 +207,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * Schaltbare SSID (D64) auf Hardware mit Home Assistant: `command_line`-Schalter mit
   `tools/home-assistant/cfm_ssid.py` ([home-assistant.md](home-assistant.md)), Auto-Aus. Im Labor
   per API geprüft (2026-10-03): Starten mit `read,api,test` + `dont-require-permissions`, Zustand aus
-  den Regeln, Ablauf aus der Datei; `:global cfmSsid<key>` ist für HA nicht lesbar (D64).
+  den Regeln, Ablauf aus der Datei; `:global cfmSsid<key>` ist für HA nicht lesbar (D64). Seit D90
+  Zustand an den Interfaces, dazu die offenen Fragen aus 58.
 * **MLAG (D75)** auf CRS3xx: Offload im Switch-Chip, Ausfall eines Knotens (Strom aus, nicht nur Link),
   Umbau eines Uplinks, über den der Weg zum Manager läuft (Labor: ein 802.3ad-Port ohne Gegenstelle
   leitet weiter), `mlag-lacp-fallback` ab 7.25.
@@ -221,6 +226,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
+* **Labor: Die MNDP-Prüfung in `e2e.sh` Schritt 14 schlägt vereinzelt fehl** (2026-10-20, ein Lauf von vier,
+  drei Labore parallel): In den 40 s mit `pvid=10` an cm1:ether3 kam kein MNDP-Paket von cm2 an (Zähler der
+  Regel 0, kein Log), obwohl `discover-interval` 30 s ist; derselbe Code bestand im Parallellauf. Beheben:
+  statt fest 40 s auf das erste Paket warten (bis etwa 70 s).
 * ~~**Umbenennen einer festen Lease löscht sie beim ersten Apply**~~ (Befund 2026-10-18, 7.24.5): In
   `leases.rsc` dieselbe Lease (gleiche MAC und Adresse) unter neuem Namen → der Plan zeigt
   `übernommen: … lease:<VID>:<neu>` (Kommentar wird umgeschrieben) **und** `entfernt: … lease:<VID>:<alt>` –
@@ -244,7 +253,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   auch Signatur und Merker nachführen lassen, oder Signatur und Merker ohne die schaltbaren SSIDs bilden
   und deren Zustand getrennt vergleichen. – *behoben 2026-10-20 (D64):* Die Skripte führen beides nach
   (Tabelle je Kombination der Schaltzustände aus dem Apply); passen Regeln und Zustand nicht zusammen,
-  startet der Apply das Schalt-Skript. Labor: `e2e.sh` Schritt 14.
+  startet der Apply das Schalt-Skript. Labor: `e2e.sh` Schritt 14. *Seit D90 gegenstandslos:* Schalten
+  ändert die Regeln nicht mehr, Tabelle und Nachführung sind entfallen.
 * ~~**Manager mit Rolle `router` im Onboarding-VLAN:**~~ Dieselbe Adresse (`.250+routerId`) legen die
   Onboarding-Funktion (`obip:<VID>`) und die Rolle `router` (`ip:<VID>`) an; die Rollen übernehmen sie
   abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan; seit der Korrektur der
@@ -687,7 +697,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       gestartetes Skript setzt jetzt `:global`-Variablen in der gemeinsamen Umgebung (7.24.5: nicht).
       Lesen kann `/system/script/environment` weiterhin nur ein User mit `write` und `policy` (getestet
       mit read+api+rest-api+test, +policy, +write, +sensitive: „not enough permissions“). Für den
-      Gast-Schalter (D64) ändert sich nichts: HA liest den Zustand weiter aus den Regeln; `cfmSsid<key>`
+      Gast-Schalter (D64) ändert sich nichts: HA liest den Zustand weiter per API (bis D90 aus den Regeln,
+      seitdem an den Interfaces); `cfmSsid<key>`
       auf der Konsole stimmt ab 7.25 auch nach dem Schalten aus HA.
     * **WebFig** zeigt Dateiinhalte weiter nicht an (D73, Lesezeichen-Editor).
     * **Labor mit 7.25rc1 (2026-10-12):** alle Skripte grün – `e2e.sh` 292, Onboarding 14/15/18,
@@ -859,7 +870,13 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     braucht `wg` gar nicht (nur `nmcli`), die Prüfung am Anfang verlangte es trotzdem – jetzt prüft das
     Skript `wg` nur noch bei `genkey`; `--keepalive` ist schon seit dem ersten Stand Standard 25. Offen
     bleibt nur der OpenSSL-Weg in `genkey`.
-58. **Schaltbare SSID ohne Unterbrechung der übrigen** (entschieden 2026-10-17) – `cfm-ssid-<key>-on/-off`
+58. **Schaltbare SSID ohne Unterbrechung der übrigen** (entschieden 2026-10-17) – *(a) umgesetzt 2026-10-20
+    (D90), Test auf Hardware offen:* Provisioning mit `create-enabled`, die Skripte schalten nur die
+    Interfaces der SSID; Umstieg und Rückweg im Admin-Guide 6.8. Auf Hardware klären: Startet das Abschalten
+    eines virtuellen AP das Radio neu? Was macht erneutes Provisionieren bei vorhandenen festen Interfaces
+    (neue SSID in `wifi.rsc`, geänderter Pin)? Aufräumen der festen Interfaces eines abgebauten AP (bisher von
+    Hand, Admin-Guide 7.4); bleiben beim Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios
+    stehen? Zusammenspiel mit `slaves-static` (D54). (b) bleibt der Rückfall. – Ausgangslage: `cfm-ssid-<key>-on/-off`
     (D64) ändern die Provisioning-Regeln und provisionieren alle Radios neu; das baut je Radio Master und
     alle virtuellen APs neu auf, alle SSIDs aller APs sind gleichzeitig ~3 s weg. Zwei Ansätze, in dieser
     Reihenfolge: (a) **statische Interfaces** – Provisioning mit `action=create-enabled` statt

@@ -212,8 +212,8 @@ Stand per SFTP und committet ihn in ein Git-Repo, auf Wunsch mit `git push`.
 
 ## `home-assistant/cfm_ssid.py`
 
-Schaltet eine schaltbare SSID (D64, z.B. das Gast-WLAN) aus Home Assistant und fragt ihren Zustand
-ab. Es spricht direkt die RouterOS-API des CAPsMAN an.
+Schaltet eine schaltbare SSID (D64, D90, z.B. das Gast-WLAN) aus Home Assistant und fragt ihren
+Zustand ab (an den WLAN-Interfaces). Es spricht direkt die RouterOS-API des CAPsMAN an.
 
 ```bash
 cfm_ssid.py guest on | off | state | until

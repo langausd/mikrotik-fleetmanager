@@ -5,7 +5,7 @@ Spricht die RouterOS-API des CAPsMAN (Port 8728, unverschlüsselt, D47) mit dem 
 capsmanApi (Gruppe read,api,test) und braucht nur die Python-Standardbibliothek; es läuft also im
 Container von Home Assistant ohne Zusatzpakete. Anleitung: docs/home-assistant.md.
 
-  cfm_ssid.py guest on       # startet cfm-ssid-guest-on auf dem CAPsMAN (APs ~3 s ohne WLAN)
+  cfm_ssid.py guest on       # startet cfm-ssid-guest-on auf dem CAPsMAN (schaltet die Gast-Interfaces)
   cfm_ssid.py guest off      # startet cfm-ssid-guest-off
   cfm_ssid.py guest state    # gibt "on" oder "off" aus
   cfm_ssid.py guest until    # Zeitpunkt des Auto-Aus (ISO 8601), leer ohne Auto-Aus
@@ -13,10 +13,12 @@ Container von Home Assistant ohne Zusatzpakete. Anleitung: docs/home-assistant.m
 Zugangsdaten in einer JSON-Datei (Standard: cfm_ssid.json neben diesem Skript, sonst --config):
   {"host": "<MGMT-IP des CAPsMAN>", "user": "homeassistant", "password": "…"}   (optional "port")
 
-Der Zustand kommt aus den Provisioning-Regeln des CAPsMAN (enthält eine Regel die Konfiguration
-cfm-<key> bzw. cfm-<key>-<Band>g, sendet die SSID), der Ablauf aus <cfm>/ssid-<key>.txt. Die
-globale Variable cfmSsid<key> taugt dafür nicht: Die API zeigt /system/script/environment nur Usern
-mit write und policy, und ein über die API gestartetes Skript ändert sie nicht (Labor 7.24.5).
+Der Zustand kommt aus den WLAN-Interfaces des CAPsMAN: "on", solange ein Interface mit der
+Konfiguration cfm-<key> bzw. cfm-<key>-<Band>g eingeschaltet ist (D90: feste Interfaces je SSID, die
+die Skripte an- und abschalten; vor D90 gab es dynamische Interfaces nur, solange die SSID an war - die
+Regel gilt für beide Stände). Der Ablauf kommt aus <cfm>/ssid-<key>.txt. Die globale Variable
+cfmSsid<key> taugt dafür nicht: Die API zeigt /system/script/environment nur Usern mit write und
+policy, und ein über die API gestartetes Skript ändert sie nicht (Labor 7.24.5).
 
 Exit-Code 0 bei Erfolg, sonst 1 mit Meldung auf stderr (Home Assistant protokolliert sie).
 """
@@ -131,10 +133,8 @@ def require_scripts(api, key):
 def state(api, key):
     require_scripts(api, key)
     pat = re.compile(r"^cfm-%s(-[0-9]+g)?$" % re.escape(key))
-    for r in api.cmd("/interface/wifi/provisioning/print", "=.proplist=comment,slave-configurations"):
-        if not r.get("comment", "").startswith("cfm:wprov:"):
-            continue
-        if any(pat.match(c) for c in r.get("slave-configurations", "").split(",")):
+    for r in api.cmd("/interface/wifi/print", "=.proplist=configuration,disabled"):
+        if pat.match(r.get("configuration", "")) and r.get("disabled", "false") != "true":
             return "on"
     return "off"
 

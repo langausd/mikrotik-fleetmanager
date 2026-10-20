@@ -5,7 +5,7 @@ wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
 > **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 und 7.25rc2 (zuvor 7.24.2 und 7.25rc1, der Gesamttest
-> auch mit 7.26beta1) laufen der Gesamttest (328 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> auch mit 7.26beta1) laufen der Gesamttest (325 Prüfungen, darunter Manager-Bootstrap mit Reset,
 > Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
 > festen Leases und DNS-Namen, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
 > Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
@@ -20,7 +20,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 > Internet-Gateway, mit DHCP, festen Leases und DNS-Namen und WireGuard-Zugang; die Ausfalltests per
 > Neustart liefen durch. Automatisches Onboarding im
 > CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64), das eingebaute Update
-> eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs, die Umstellung auf Admin-Keys je User,
+> eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs (bisher mit Neuprovisionieren, D64), die
+> Umstellung auf Admin-Keys je User,
 > der Kanal-Scan über den CAPsMAN und Steering mit Mindestsignal (trennt bisher nur Clients ohne FT)
 > liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
 > Fehler“, siehe auch [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
@@ -333,8 +334,9 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 * `switch="off"|"on"` an einer weiteren SSID: schaltbar per Skript, der Wert ist der Grundzustand
   (D64, siehe 6.8); dazu optional `autoOff` (z.B. `"50h"`): so lange nach dem Einschalten schaltet
   der CAPsMAN sie selbst wieder ab. Schlüssel der SSID nur aus Kleinbuchstaben und Ziffern.
-  Schaltbare SSIDs stehen in den Provisioning-Regeln immer hinter den festen: Schalten verschiebt
-  so nicht die Nummern der übrigen virtuellen Interfaces (Home Assistant, Monitoring).
+  Schaltbare SSIDs stehen in den Provisioning-Regeln immer, auch ausgeschaltet (geschaltet werden ihre
+  festen Interfaces, D90), und immer hinter den festen SSIDs: So behalten die virtuellen Interfaces
+  der übrigen ihre Nummern (Home Assistant, Monitoring).
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
@@ -486,7 +488,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog, RAM-Log ohne `system,info` (`logMemory`, D79); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
-| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
+| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Provisioning mit festen Interfaces (D90); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS; NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, D67) |
@@ -664,38 +666,57 @@ Assistant: Lesezeichen „cfm-Monitor“, 8.10):
 3. In HA die Integration einrichten: Host = MGMT-IP des CAPsMAN, Port 8728, ohne SSL, User/Passwort
    wie oben. Zieht der CAPsMAN um, dort die Adresse ändern (die Freigaben ziehen selbst mit).
 
-### 6.8 SSID per Home Assistant schalten (D64)
+### 6.8 SSID per Home Assistant schalten (D64, D90)
 
 Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre Beacons. Mit
 `"switch"="off"` an der SSID in `wifi.rsc` (optional `"autoOff"="50h"`) bekommt der CAPsMAN:
 
-* die Skripte `cfm-ssid-<key>-on` und `cfm-ssid-<key>-off`: Sie nehmen die SSID in die
-  Provisioning-Regeln auf bzw. heraus und provisionieren die Radios der APs neu (mit
-  `capsmanRadios` auch die eigenen) – **alle SSIDs eines APs sind dabei etwa 3 s weg**. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
+* feste WLAN-Interfaces: Die Provisioning-Regeln legen die Interfaces der APs fest an
+  (`action=create-enabled`, D90; mit `capsmanRadios` auch die der eigenen Radios), die schaltbare SSID
+  steht immer darin. Anders als dynamische lassen sich feste Interfaces einzeln ab- und anschalten;
+* die Skripte `cfm-ssid-<key>-on` und `cfm-ssid-<key>-off`: Sie schalten nur die Interfaces der SSID an
+  bzw. ab (Konfiguration `cfm-<key>` bzw. `cfm-<key>-<Band>g`), die übrigen SSIDs senden weiter, neu
+  provisioniert wird nichts. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
   `read,api,test`) darf sie starten, ohne selbst schreiben zu dürfen;
-* den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn, ein
-  Release schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`. Die
-  Skripte setzen auch die Signatur der Regeln und den Merker der eigenen Radios auf den neuen Stand
-  (der Apply rechnet beides für jede Kombination der Schaltzustände vor, bis zu 4 schaltbare SSIDs).
-  Der nächste Apply sieht ein Schalten deshalb nicht als Änderung. Passen Regeln und Zustand nicht
-  zusammen (Regel von Hand geändert, Grundzustand ohne Datei geändert), startet der Apply das
-  passende Skript; der Probelauf meldet es vorher (`SSID …: Regeln passen nicht zum Zustand …`);
-* das Skript `cfm-ssid-check` (Scheduler alle 10 min), das nach `autoOff` abschaltet, und die
-  Variable `:global cfmSsid<key>` (`on`/`off`) für die Konsole. Für HA taugt sie nicht: Die API zeigt
-  `/system/script/environment` nur Usern mit `write` und `policy` (auch mit 7.25rc1). Ein über die API
-  gestartetes Skript ändert sie unter 7.24.5 nicht, dann folgt sie erst mit dem nächsten
-  `cfm-ssid-check`; ab 7.25 setzt es sie gleich.
+* den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn und setzt
+  ihn an den Interfaces durch (der Probelauf meldet `SSID …: Interface … würde geschaltet`), ein Release
+  schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`. Die Regeln ändern
+  sich beim Schalten nicht, der nächste Apply sieht darin keine Änderung;
+* das Skript `cfm-ssid-check` (Scheduler alle 10 min): Es schaltet nach `autoOff` ab, setzt den Zustand
+  an den Interfaces durch – auch an denen eines neu aufgenommenen AP, die eingeschaltet entstehen; dort
+  sendet eine ausgeschaltete SSID also bis zu 10 min – und hält die Variable `:global cfmSsid<key>`
+  (`on`/`off`) für die Konsole. Für HA taugt sie nicht: Die API zeigt `/system/script/environment` nur
+  Usern mit `write` und `policy` (auch mit 7.25rc1). Ein über die API gestartetes Skript ändert sie
+  unter 7.24.5 nicht, dann folgt sie erst mit dem nächsten `cfm-ssid-check`; ab 7.25 setzt es sie gleich.
+
+Fällt `switch` an einer SSID weg, schaltet der nächste Apply ihre Interfaces ein und löscht die
+Zustandsdatei.
 
 In HA: **Anleitung [home-assistant.md](home-assistant.md)**, ein `command_line`-Schalter mit dem
 Hilfsskript `tools/home-assistant/cfm_ssid.py` (nur Python-Standardbibliothek). Es startet die
 Skripte per API (`/system/script/run` mit `number=cfm-ssid-guest-on`) und liest den Zustand mit den
-Rechten aus 6.7 aus den Provisioning-Regeln (`slave-configurations` enthält `cfm-<key>` bzw.
-`cfm-<key>-<Band>g`), den Ablauf aus der Datei. Die Taster der Integration „Mikrotik Router“
+Rechten aus 6.7 an den WLAN-Interfaces (`on`, solange ein Interface mit der Konfiguration der SSID
+eingeschaltet ist), den Ablauf aus der Datei. Die Taster der Integration „Mikrotik Router“
 schalten auch, kennen aber keinen Zustand. Jede Abfrage ist eine API-Anmeldung mit zwei Log-Zeilen
 am CAPsMAN – Abfrageintervall nicht unter 5 min.
-Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`. Beim ersten Release mit
-`switch="off"` stand die SSID vorher in den Regeln: Der Apply startet `cfm-ssid-<key>-off` selbst,
-die APs sind dabei etwa 3 s weg.
+Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`.
+
+**Umstieg vom Stand vor D90:** Das erste Release provisioniert die eigenen Radios des CAPsMAN neu (mit
+`capsmanRadios`, dieses Gerät etwa 3 s ohne WLAN). Die APs behalten ihre dynamischen Interfaces bis
+zum ersten Schalten. Das provisioniert ihre Radios einmal neu (alle APs etwa 3 s weg, wie vorher bei
+jedem Schalten, das Skript braucht dann rund 10 s), danach gibt es nur noch feste Interfaces. In HA
+das Hilfsskript aus diesem Stand verwenden: Das alte las den Zustand aus den Provisioning-Regeln und
+meldet mit D90 immer `on`. Das neue gilt auch für den Stand vor D90.
+
+**Zurück zum Stand vor D90:** den vorigen Framework-Stand hochladen und releasen, danach am CAPsMAN
+die festen Interfaces entfernen und die Radios neu provisionieren (alle APs etwa 3 s weg; die dritte
+Zeile nur mit `capsmanRadios`):
+
+```
+/interface/wifi/remove [find where !dynamic and default-name="" and configuration~"^cfm-"]
+/interface/wifi/radio/provision [find where !local]
+/interface/wifi/radio/provision [find where local]
+```
 
 ---
 
@@ -816,6 +837,10 @@ das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – de
   Bootstrap und `$cfmEnroll`. Die alte Seriennummer und ihr Schlüssel werden ersetzt.
 * **Zurückgesetztes Gerät:** einfach erneut `$cfmOnboard … name=<name>`. Das Aufkleber-Passwort
   bleibt dafür im Vault gespeichert.
+* **AP abgebaut oder getauscht:** Seine festen WLAN-Interfaces (D90) bleiben am CAPsMAN stehen
+  (`<Identity>-2g` usw., inaktiv), ein Ersatzgerät bekommt eigene. Die alten von Hand entfernen:
+  `/interface/wifi/remove [find where !dynamic and name~"^<identity>-"]` (auf Hardware noch nicht
+  geprüft, TODO 58).
 
 ---
 
@@ -941,7 +966,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
 | Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
 | IoT-Gerät soll selbst einen Dienst im LAN erreichen (z.B. MQTT-Broker) | Liste in `allow` mit Adresse und Port, z.B. `"broker"={"192.168.20.30:tcp/1883"}`, `policy` `"iot"="allow:broker"` ohne NAT-Kennzeichen → Release. Abfragen aus dem LAN ins IoT-Netz brauchen keine Freigabe (`lan` → `iot`) |
-| Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN, z.B. aus Home Assistant (6.8) |
+| Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN (nur diese SSID, die übrigen senden weiter, D90), z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
 | SFTP-/Host-Schlüssel erneuern | `$cfmRekey host=<name> sftp=yes` bzw. `all=yes sftp=yes` (10, D67) |
@@ -1624,7 +1649,9 @@ den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöck
 `cfm-watchdog`, nach einem übersprungenen Lauf `cfm-agent-retry`, während eines Onboardings auf dem
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
 Wurzelverzeichnis, beim eingebauten Update über einen Spiegel der DNS-Eintrag `cfm-sys:upgrade-mirror`.
-Auf dem CAPsMAN mit schaltbaren SSIDs (D64): Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
+Auf dem CAPsMAN feste WLAN-Interfaces je Radio der APs (`<Identity>-<Band>g` samt virtuellen APs,
+Provisioning `create-enabled`, D90; sie bleiben nach dem Abbau eines AP stehen), mit schaltbaren SSIDs
+(D64) Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
 samt Scheduler, Zustand in `cfm/ssid-<key>.txt`; mit eigenen Radios (`capsmanRadios`, D53) der Merker
 `cfm/wifi-local.txt`. Nach einem Audit liegt der Bericht in `cfm/out/audit.txt`.
 

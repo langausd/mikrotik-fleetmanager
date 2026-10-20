@@ -2,7 +2,7 @@
 
 Anleitung für die Einbindung in Home Assistant (HA): Abschnitte 1–6 schalten das Gast-WLAN,
 [Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (D66). Sie setzt kein Wissen über cfm oder RouterOS
-voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidung D64), die
+voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidungen D64 und D90), die
 konkreten Werte bekommst du von ihm.
 
 **Ergebnis:** ein Schalter `switch.gast_wlan` mit echtem Zustand und optional ein Sensor, der zeigt,
@@ -14,9 +14,9 @@ wann sich das Gast-WLAN selbst wieder abschaltet.
 
 ```
 Home Assistant ──RouterOS-API, TCP 8728──▶ CAPsMAN (zentraler WLAN-Controller)
-  command_line-Schalter                      ├─ Skript cfm-ssid-guest-on   ─┐ nimmt die SSID in die
-  └─ cfm_ssid.py (Hilfsskript)               ├─ Skript cfm-ssid-guest-off  ─┘ Konfiguration der APs auf/heraus
-                                             ├─ Provisioning-Regeln        ◀── Zustand (on/off)
+  command_line-Schalter                      ├─ Skript cfm-ssid-guest-on   ─┐ schalten die WLAN-Interfaces
+  └─ cfm_ssid.py (Hilfsskript)               ├─ Skript cfm-ssid-guest-off  ─┘ der Gast-SSID an/ab
+                                             ├─ WLAN-Interfaces            ◀── Zustand (on/off)
                                              └─ Datei cfm/ssid-guest.txt   ◀── Zeitpunkt des Auto-Aus
 ```
 
@@ -27,20 +27,22 @@ Home Assistant ──RouterOS-API, TCP 8728──▶ CAPsMAN (zentraler WLAN-Con
   User darf nichts an der Konfiguration ändern, aber genau diese beiden Skripte starten. Die Skripte
   ändern dann die Konfiguration im eigenen Namen (`dont-require-permissions`).
 * Das **Hilfsskript** `cfm_ssid.py` (nur Python-Standardbibliothek) spricht die API. Es startet die
-  Skripte und liest den Zustand. Der Zustand kommt aus der tatsächlichen Konfiguration des CAPsMAN,
-  nicht aus einer Merkvariable.
+  Skripte und liest den Zustand. Der Zustand kommt aus den WLAN-Interfaces des CAPsMAN, nicht aus
+  einer Merkvariable.
 * **Auto-Aus:** Ist an der SSID ein Auto-Aus eingestellt (z.B. 50 h), schaltet der CAPsMAN sie nach
   dieser Zeit selbst ab. Er prüft alle 10 Minuten. HA muss dafür nichts tun.
-* Der Zustand **bleibt** über Neustarts und Konfigurations-Releases erhalten. Der nächste Release nach
-  dem Schalten unterbricht das WLAN nicht noch einmal (die Skripte merken sich den neuen Stand). Ohne
-  je geschaltet zu sein, gilt der Grundzustand, den der Netz-Admin festlegt (beim Gast-WLAN: aus).
+* Der Zustand **bleibt** über Neustarts und Konfigurations-Releases erhalten, ein Release ändert ihn
+  nicht. Ohne je geschaltet zu sein, gilt der Grundzustand, den der Netz-Admin festlegt (beim
+  Gast-WLAN: aus).
 
-**Wichtig fürs Verhalten:** Bei jedem Schalten senden alle APs etwa 3 Sekunden lang **gar kein**
-WLAN, auch nicht die anderen SSIDs. Verbundene Geräte melden sich danach von selbst wieder an.
-(Grund: RouterOS lässt die Interfaces des CAPsMAN nicht einzeln abschalten, die Radios werden neu
-provisioniert – D64; Verbesserung offen, TODO 58.)
-Deshalb nicht in kurzen Abständen schalten, keine Automationen, die hin- und herschalten können, und
-keinen „Toggle bei jeder Statusänderung“.
+**Wichtig fürs Verhalten:** Beim Schalten geht nur die Gast-SSID an bzw. aus, die anderen SSIDs senden
+weiter (D90; vorher waren bei jedem Schalten alle APs etwa 3 Sekunden ganz ohne WLAN). Einmal, beim
+ersten Schalten nach dieser Umstellung, provisioniert der CAPsMAN die APs noch neu: Dann sind sie etwa
+3 Sekunden ohne WLAN, verbundene Geräte melden sich von selbst wieder an. Ein neu aufgenommener AP
+kann die Gast-SSID bis zu 10 Minuten lang senden, auch wenn sie aus ist (der CAPsMAN prüft alle
+10 Minuten). Auf echter Hardware ist noch offen, ob ein AP beim Schalten kurz das ganze Radio neu
+startet. Deshalb weiter nicht in kurzen Abständen schalten, keine Automationen, die hin- und
+herschalten können, und keinen „Toggle bei jeder Statusänderung“.
 
 ## 2. Werte vom Netz-Admin
 
@@ -87,7 +89,7 @@ Web Terminal“ mit abgeschaltetem Schutzmodus):
 
 ```sh
 python3 /config/cfm/cfm_ssid.py guest state    # → off
-python3 /config/cfm/cfm_ssid.py guest on       # kein Output, Exit-Code 0; APs ~3 s ohne WLAN
+python3 /config/cfm/cfm_ssid.py guest on       # kein Output, Exit-Code 0
 python3 /config/cfm/cfm_ssid.py guest state    # → on
 python3 /config/cfm/cfm_ssid.py guest until    # → 2026-10-05T21:49:29+02:00 (Auto-Aus)
 python3 /config/cfm/cfm_ssid.py guest off
@@ -96,7 +98,7 @@ python3 /config/cfm/cfm_ssid.py guest until    # → leer (aus bzw. ohne Auto-Au
 
 | Aufruf | Ausgabe (stdout) | Exit-Code |
 |---|---|---|
-| `<key> on` / `<key> off` | nichts; kehrt erst zurück, wenn der CAPsMAN fertig ist (~1–3 s) | 0, bei Fehler 1 |
+| `<key> on` / `<key> off` | nichts; kehrt erst zurück, wenn der CAPsMAN fertig ist (~1–3 s, beim ersten Schalten nach der Umstellung auf D90 ~10 s) | 0, bei Fehler 1 |
 | `<key> state` | `on` oder `off` | 0, bei Fehler 1 |
 | `<key> until` | Zeitpunkt des Auto-Aus als ISO 8601 mit Zeitzone, leer wenn aus oder ohne Auto-Aus | 0, bei Fehler 1 |
 
@@ -183,7 +185,7 @@ statt `guest` usw.). Für jede SSID einen eigenen `switch`-Block anlegen, mit ei
   `cfm-ssid-guest-on`/`-off`): Schalten geht damit, aber HA kennt den Zustand nicht. Für reines
   Schalten ohne Anzeige reicht das, für einen Schalter mit Zustand braucht es Abschnitt 3.
 * **Direkt an der Konfiguration schalten** (z.B. WLAN-Interfaces deaktivieren): Der User hat keine
-  Schreibrechte, und die Interfaces der APs sind dynamisch, RouterOS lässt sie nicht abschalten.
+  Schreibrechte. Genau das tun die Skripte in eigenem Namen.
 
 ## 5. Fehlersuche
 
@@ -204,6 +206,7 @@ logger:
 | `Skript cfm-ssid-guest-on fehlt` | Der Host ist nicht (mehr) der CAPsMAN (Gerät gewechselt) oder die SSID ist nicht schaltbar | neuen Host vom Netz-Admin, in `cfm_ssid.json` eintragen |
 | `not enough permissions` | Skripte ohne `dont-require-permissions` (sollte cfm nie anlegen) | Netz-Admin |
 | `Zugangsdaten … nicht lesbar` | Pfad oder JSON-Syntax von `cfm_ssid.json` | Datei prüfen |
+| `state` meldet immer `on` | altes Hilfsskript (las den Zustand aus den Provisioning-Regeln, vor D90) | `cfm_ssid.py` aus dem Repo neu nach `/config/cfm/` kopieren |
 | `Timeout for command` (HA) | Antwort dauerte länger als `command_timeout` | Netzweg prüfen; `command_timeout` nicht unter 30 |
 
 Zieht der CAPsMAN auf ein anderes Gerät um, bleiben User und Freigaben bei cfm aktuell. In HA ist

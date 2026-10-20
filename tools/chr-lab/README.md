@@ -25,6 +25,8 @@ unzip chr-7.24.5.img.zip
 ```
 
 Die VMs schreiben nur in eigene Overlay-Disks (`vm<n>.qcow2`), das Image selbst bleibt unverändert.
+Weitere Versionen (rc, beta) legst du besser außerhalb ab, z.B. in `~/.cache/cfm-chr-img/`, und wählst sie
+mit `CHR_IMG`: Im Labor-Verzeichnis würde sonst die höchste Version zum Standard.
 Absichtlich liegt alles in `~/.cache`, nicht im (vielleicht synchronisierten) Projektverzeichnis.
 
 ## 3. Erste Schritte
@@ -79,7 +81,7 @@ Ergebnis: 297 ok, 1 fehlgeschlagen
 ## 6. Andere RouterOS-Version, zwei Labore
 
 ```bash
-CHR_IMG=~/.cache/cfm-chr-lab/chr-7.25rc2.img ./e2e.sh fresh        # bestimmtes Image
+CHR_IMG=~/.cache/cfm-chr-img/chr-7.25rc2.img ./e2e.sh fresh        # bestimmtes Image
 LAB=~/.cache/cfm-chr-lab-b LABPORT=2300 LABSOCK=13000 CHR_IMG=~/.cache/cfm-chr-lab/chr-7.24.5.img ./e2e.sh fresh
 ```
 

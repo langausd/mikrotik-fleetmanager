@@ -80,6 +80,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
+| `tools/pcap-ziele.py` | Internet-Ziele eines Geräts aus einem Mitschnitt (pcap/pcapng), Vorschlag für eine `allow`-Liste |
 | `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
 | `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, LACP/MLAG und isolierte VLANs `e2e-mlag.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, `seed-mlag*/`, Empfänger für Meldungen `notify-sink.py` |
@@ -227,9 +228,10 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1 und 7.26beta1. Auf Hardware im Einsatz an zwei
-  Standorten (7.23.1 bis 7.25beta5): CRS418 als Router und Manager, Manager als CHR in einer VM,
-  CRS328 als Core-Switch, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX, L009. Ab 7.24
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2 und 7.26beta1. Auf
+  Hardware im Einsatz an zwei Standorten (7.23.1 bis 7.25beta5): CRS418 als Router und Manager, Manager als
+  CHR in einer VM, CRS328 als Core-Switch, CRS310, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX,
+  L009; an einem Standort routen vier davon (hAP be³, CHR, CRS310, CRS328) per VRRP. Ab 7.24
   brauchen Skripte, die aus Winbox gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.
 * Das CHR-Labor testet alles außer echten Funkteilen (CAPsMAN-Config ja, Radios nein).
 * `$cfmPlan` überspringt `hosts/*.post.rsc` (dort sind beliebige Befehle erlaubt). Direkte Befehle in

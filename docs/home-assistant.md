@@ -31,8 +31,9 @@ Home Assistant ──RouterOS-API, TCP 8728──▶ CAPsMAN (zentraler WLAN-Con
   nicht aus einer Merkvariable.
 * **Auto-Aus:** Ist an der SSID ein Auto-Aus eingestellt (z.B. 50 h), schaltet der CAPsMAN sie nach
   dieser Zeit selbst ab. Er prüft alle 10 Minuten. HA muss dafür nichts tun.
-* Der Zustand **bleibt** über Neustarts und Konfigurations-Releases erhalten. Ohne je geschaltet zu
-  sein, gilt der Grundzustand, den der Netz-Admin festlegt (beim Gast-WLAN: aus).
+* Der Zustand **bleibt** über Neustarts und Konfigurations-Releases erhalten. Der nächste Release nach
+  dem Schalten unterbricht das WLAN nicht noch einmal (die Skripte merken sich den neuen Stand). Ohne
+  je geschaltet zu sein, gilt der Grundzustand, den der Netz-Admin festlegt (beim Gast-WLAN: aus).
 
 **Wichtig fürs Verhalten:** Bei jedem Schalten senden alle APs etwa 3 Sekunden lang **gar kein**
 WLAN, auch nicht die anderen SSIDs. Verbundene Geräte melden sich danach von selbst wieder an.

@@ -232,8 +232,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   startet der Apply das Schalt-Skript. Labor: `e2e.sh` Schritt 14.
 * **Manager mit Rolle `router` im Onboarding-VLAN:** Dieselbe Adresse (`.250+routerId`) legen die
   Onboarding-Funktion (`obip:<VID>`) und die Rolle `router` (`ip:<VID>`) an; die Rollen übernehmen sie
-  abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan). Harmlos, aber
-  jeder Apply zählt sie mit. Eine der beiden sollte die Adresse der anderen als ihre ansehen.
+  abwechselnd (`übernommen: /ip/address ip:88` und Kommentarwechsel in jedem Plan; seit der Korrektur der
+  Lease-Umbenennung 2026-10-19 erscheinen beide als „übernommen“). Harmlos, aber jeder Apply zählt sie mit. Eine der beiden sollte die Adresse der anderen als ihre ansehen.
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein

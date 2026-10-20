@@ -4,26 +4,30 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 und 7.25rc1 (zuvor 7.24.2, der Gesamttest auch
-> mit 7.26beta1) laufen der Gesamttest (294 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 und 7.25rc2 (zuvor 7.24.2 und 7.25rc1, der Gesamttest
+> auch mit 7.26beta1) laufen der Gesamttest (323 Prüfungen, darunter Manager-Bootstrap mit Reset,
 > Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
 > festen Leases und DNS-Namen, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
 > Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
 > Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
 > einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (118 Prüfungen) und der Test von
 > LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
-> und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit neun Geräten – der
-> Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset, routet noch
-> selbst), ein hAP be³ als CAPsMAN mit eigenen Radios, APs (hAP be³, hAP ax³, cAP ax) mit lokalem
-> Fallback, hEX und L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Automatisches Onboarding im
+> und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit zehn Geräten – der
+> Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset), ein CRS310 als
+> Switch der Server, ein hAP be³ als CAPsMAN mit eigenen Radios, APs (hAP be³, hAP ax³, cAP ax) mit
+> lokalem Fallback, hEX und L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Dort routen seit dem
+> 17.10. vier Geräte (hAP be³, CHR, CRS310, CRS328) alle VLANs per VRRP hinter einer Fritz!Box als
+> Internet-Gateway, mit DHCP, festen Leases und DNS-Namen und WireGuard-Zugang; die Ausfalltests per
+> Neustart liefen durch. Automatisches Onboarding im
 > CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64), das eingebaute Update
-> eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs, die Umstellung auf Admin-Keys je User und
-> der Kanal-Scan über den CAPsMAN liefen dort. Die gefundenen
-> Fehler sind behoben, siehe [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
-> **Noch nicht** mit echter Hardware erprobt sind VRRP mit mehreren Routern, der Backup-Manager,
-> das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, feste Leases und
-> DNS-Namen, weitere SSIDs im lokalen Fallback, Steering/Mindestsignal, das eingebaute Update
-> mit `via=internet`, LACP-Bonds, MLAG und isolierte VLANs (D74–D76); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs, die Umstellung auf Admin-Keys je User,
+> der Kanal-Scan über den CAPsMAN und Steering mit Mindestsignal (trennt bisher nur Clients ohne FT)
+> liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
+> Fehler“, siehe auch [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
+> **Noch nicht** mit echter Hardware erprobt sind der Backup-Manager,
+> das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, weitere SSIDs im
+> lokalen Fallback, das eingebaute Update mit `via=internet`, LACP-Bonds, MLAG und isolierte VLANs
+> (D74–D76); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -849,6 +853,10 @@ $cfmStatus                 # Ring 0 bekommt die Version zuerst
 $cfmPromote                # optional: nächsten Ring sofort freigeben
 ```
 
+Gibst du den Befehl als Argument von `ssh` mit (`ssh admin@<manager> '…; $cfmRelease msg="…"'`), gehen
+Umlaute in der Notiz verloren (aus „hängt“ wird „hngt“). Dort ohne Umlaute schreiben; der cfm-Editor
+übernimmt sie.
+
 `$cfmRelease` bricht bei Syntaxfehlern oder Dateien über 60 KB ab, bevor irgendetwas
 ausgerollt wird, und ebenso bei inhaltlichen Fehlern (`$cfmCheck`): unbekannte VLANs, Zonen oder
 Port-Profile, doppelte MGMT-IPs, Rollen ohne Datei, unbekannte IP-Dienste oder doppelte Ports in
@@ -917,7 +925,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | SSH-Key einer Person hinzufügen/entziehen | Zeile in `authorized_keys.<user>` ergänzen bzw. löschen → Release; alle Keys entziehen: Datei leeren, nicht löschen (Kapitel 4) |
 | Firewall-Freigabe zwischen Zonen | `policy` in `global.rsc` → Release |
 | Internet für eine Zone | `policy`: `wan` (geroutet, Upstream kennt das Netz), `*wan` (masquerade) oder `wan@<Adresse>` (feste NAT-Adresse im WAN-Netz) → Release |
-| Zone nur zu bestimmten Internet-Zielen (z.B. IoT-Cloud) | Liste in `allow` anlegen, `policy` z.B. `"iot"="allow:tuya"` (mit NAT `*allow:tuya`) → Release. Feiner als je Zone geht es über kleinere Zonen (eigenes VLAN je Gerätegruppe) |
+| Zone nur zu bestimmten Internet-Zielen (z.B. IoT-Cloud) | Ziele aus einem Mitschnitt mit `tools/pcap-ziele.py` ermitteln, Liste in `allow` anlegen, `policy` z.B. `"iot"="allow:tuya"` (mit NAT `*allow:tuya`) → Release. Feiner als je Zone geht es über kleinere Zonen (eigenes VLAN je Gerätegruppe) |
 | Eigene Firewall-Regel | Chain `local-input`/`local-forward` per `hosts/<router>.post.rsc` |
 | Gerät sofort aktualisieren | `$cfmPush host=<name>`; Voll-Apply trotz gleicher Version: `force=yes` |
 | Ring eines Geräts ändern | Inventar editieren (wirkt sofort) |

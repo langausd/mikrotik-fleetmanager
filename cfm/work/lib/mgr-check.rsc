@@ -478,7 +478,7 @@
   }
   # Andere Funknetze im 2,4-GHz-Band (TODO 51): Typ, Kanal, near, Gewicht; ein Pin auf 2,4 GHz, der
   # ein Zigbee-/Thread-Netz mit festem Kanal überdeckt (bis 9 MHz neben der Mitte), an einem AP aus
-  # near (ohne near an jedem AP) -> Warnung. Ohne die Helfer aus mgr-net ($cfmRelease prüft mit den
+  # near (ohne near an jedem AP) -> Warnung. Ohne die Helfer aus mgr-scan ($cfmRelease prüft mit den
   # alten Manager-Modulen)
   :local o154 ({})
   :foreach k,e in=($cfmWifi->"others") do={

@@ -5,12 +5,12 @@ wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
 > **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 und 7.25rc2 (zuvor 7.24.2 und 7.25rc1, der Gesamttest
-> auch mit 7.26beta1) laufen der Gesamttest (323 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> auch mit 7.26beta1) laufen der Gesamttest (328 Prüfungen, darunter Manager-Bootstrap mit Reset,
 > Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
 > festen Leases und DNS-Namen, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
 > Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
 > Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
-> einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (118 Prüfungen) und der Test von
+> einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (120 Prüfungen) und der Test von
 > LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
 > und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit zehn Geräten – der
 > Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset), ein CRS310 als
@@ -467,7 +467,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe D40). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
-| `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"`. `dns` ist zugleich der NTP-Server des Routers; ohne `dns` (auch mit `dhcp`) holt er die Zeit von `0.de.pool.ntp.org`/`1.de.pool.ntp.org` |
+| `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` und `"ntp"` (Zeitquelle des Routers, Text oder Liste, D88). Ohne `ntp` gilt `dns` auch als NTP-Server, ohne beide `0.pool.ntp.org`/`1.pool.ntp.org`; mit `dhcp` kommt der NTP-Server der DHCP-Antwort dazu |
 | `links` | erwartete Verkabelung für `$cfmLinks`: `{"ether1"="rtr1:ether2";"ether8"="-"}` (Gerät:Port, nur Gerät oder `-` für „hier hängt nichts“) |
 | `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
 | `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste. Mit eigenem `gw` und WireGuard-Peers zusätzlich die Route ins WG-Netz über das MGMT-Gateway (D84) |
@@ -487,7 +487,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS; NTP-Server für alle Zonen (die eigene Zeit vom DNS-Server aus `wan`, sonst von pool.ntp.org); NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS; NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, D67) |
 
@@ -784,8 +784,10 @@ ein NAT-Käfig, Freigaben) vorher in `hosts/<n>.post.rsc` übernehmen, sonst sin
 
 1. Auf dem Gerät von Hand, was sonst der Bootstrap macht: User `cfm` (Gruppe `full`) mit dem
    Manager-Schlüssel (Inhalt wie `keys` in der Bootstrap-Datei), das MGMT-VLAN-Interface
-   `vlan<mgmtVlan>` auf der Bridge `bridge` und die MGMT-Adresse. Heißen Bridge oder MGMT-Interface
-   anders, vorab umbenennen oder mit dem cfm-Tag versehen (`comment="cfm:vlan:<vid> …"`).
+   `vlan<mgmtVlan>` auf der Bridge `bridge` und die MGMT-Adresse. Die Bridge muss `bridge` heißen
+   (vorab umbenennen). VLAN-Interfaces auf ihr mit anderem Namen (z.B. `GAST`) übernimmt cfm über die
+   VLAN-ID und benennt sie in `vlan<VID>` um, Adressen und DHCP bleiben daran (D87); im Probelauf
+   erscheinen Objekte an einem solchen Interface noch als „neu“.
    Passen mehrere Objekte auf dasselbe Suchmuster – etwa zwei Adressen am MGMT-Interface –, die
    richtige vorab taggen (`comment="cfm:ip:mgmt"`), sonst übernimmt die Rolle die erste gefundene.
 2. `$cfmEnroll name=<n> ip=<ip> role=<rolle> ring=<0-2> noapply=yes` – Agent und Schlüssel werden
@@ -959,7 +961,9 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
   sendet nur die lokale Kopie der `master`-SSID, D46; `nicht aufgenommen` = Inventar-Eintrag ohne
   Geräteschlüssel, z.B. Platzhalter oder per `$cfmRegister` vorgemerkt – solche Geräte stößt der
   Manager nicht an, D49), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
-  und das Alter der letzten Meldung.
+  und das Alter der letzten Meldung. Weicht bei einem Gerät Ist von Soll ab oder steht ein Apply aus,
+  holt der Befehl dessen Status vorher selbst ab („frisch abgeholt: …“, je Gerät höchstens einmal in der
+  Minute, D89); alle übrigen Zeilen stammen aus dem letzten Manager-Tick.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
 * Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`). Konfig-Änderungen
@@ -1559,7 +1563,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmArchivePrune [keep=<n>]` | alte Versionen löschen (automatisch nach jedem Release) |
 | `$cfmPromote [ring=1\|2]` | Version des vorigen Rings freigeben |
 | `$cfmRollback ver=<N> [all=yes]` | alten Stand als neue Version freigeben (überschreibt `work/`) |
-| `$cfmStatus` | Flottenübersicht |
+| `$cfmStatus` | Flottenübersicht; holt veraltete Stände vorher selbst ab (D89) |
 | `$cfmPush [host=<n>\|ring=<r>] [force=yes]` | sofortigen Pull auslösen (nur aufgenommene Geräte, D49) |
 | `$cfmCollect [host=<n>]` | Status und Export sofort abholen |
 | `$cfmAudit host=<n> [op=report\|mark\|purge] [sel=all\|A1,A3]` | unverwaltete Objekte anzeigen, markieren, entfernen |

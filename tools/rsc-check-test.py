@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Tests für tools/rsc-check.py: je Regel ein Fund und die Fälle, die kein Fund sein dürfen."""
 import importlib.util
+import os
 import pathlib
+import subprocess
+import tempfile
 import unittest
 
 _spec = importlib.util.spec_from_file_location("rsc_check", pathlib.Path(__file__).with_name("rsc-check.py"))
@@ -167,9 +170,29 @@ class Dateien(unittest.TestCase):
         self.assertEqual(rc.check_file("cfm/work/lib/a.rsc", mid.encode())[0][2:4], (rc.HINWEIS, "dateigroesse"))
         self.assertEqual(rc.check_file("cfm/work/meta/x.dat", big.encode())[0][2:4], (rc.FEHLER, "dateigroesse"))
 
+    def test_groesse_overlay(self):
+        # TODO 60: in einem Overlay zählt die Größe nur für Dateien, die upload-seed.sh hochlädt
+        big = "# " + "x" * (rc.GROESSE_MAX + 10) + "\n"
+        self.assertEqual(rc.check_file("site/ist/export.rsc", big.encode(), upload=False), [])
+        self.assertEqual(rc.check_file("site/hosts/sw1.rsc", big.encode())[0][2:4], (rc.FEHLER, "dateigroesse"))
+        self.assertEqual([rc.hochgeladen(x) for x in ("vlans.rsc", "hosts/sw1.rsc", "meta/inventory.rsc",
+                                                       "ist/export.rsc", "umzug/2026/leases-A.rsc")],
+                         [True, True, True, False, False])
+
     def test_dotfile(self):
         self.assertEqual(rules("", "cfm/work/hosts/.sw1.rsc"), ["dotfile"])
         self.assertEqual(rules("", "tools/.x.rsc"), [])
+
+    def test_git(self):
+        # Pre-Commit-Hook (--staged) und Standardlauf liefern je Datei (Pfad, Inhalt, hochgeladen)
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["git", "init", "-q", d], check=True)
+            os.makedirs(os.path.join(d, "cfm/work/lib"))
+            with open(os.path.join(d, "cfm/work/lib/a.rsc"), "w") as fh:
+                fh.write(":put 1\n")
+            subprocess.run(["git", "-C", d, "add", "cfm/work/lib/a.rsc"], check=True)
+            for staged in (True, False):
+                self.assertEqual(list(rc.files_from_git(d, staged)), [("cfm/work/lib/a.rsc", b":put 1\n", True)])
 
 
 if __name__ == "__main__":

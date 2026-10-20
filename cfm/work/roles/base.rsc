@@ -7,7 +7,7 @@
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
 :global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
 :global cfmIds; :global cfmRun; :global cfmIndex; :global cfmIdx; :global cfmVids; :global cfmMlagOf
-:global cfmLeases; :global cfmMacUp
+:global cfmLeases; :global cfmMacUp; :global cfmVlanKey
 
 :local br "bridge"
 :local mv [:tostr ($cfmG->"mgmtVlan")]
@@ -250,7 +250,7 @@ $cfmBlock m="/interface/bridge/filter" k="iso" l=$fl
 
 # --- Management: VLAN-Interface, IP, Route, DNS ---
 :local mn [$cfmNet $mv]
-$cfmEnsure m="/interface/vlan" k=("vlan:" . $mv) n=({"name"=$mif}) p=({"name"=$mif;"interface"=$br;"vlan-id"=[:tonum $mv]}) x=($cfmVlans->$mv->"name")
+$cfmEnsure m="/interface/vlan" k=("vlan:" . $mv) n=[$cfmVlanKey $mv] p=({"name"=$mif;"interface"=$br;"vlan-id"=[:tonum $mv]}) x=($cfmVlans->$mv->"name")
 $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($cfmMf->"ip") . "/" . ($mn->"pfx"));"interface"=$mif})
 # Hostfile gw/dns/ntp ersetzen MGMT-Gateway bzw. globale Werte - für Geräte, die selbst das
 # MGMT-Gateway sind (sonst Default-Route, DNS und NTP auf sich selbst) oder einen eigenen Ausgang

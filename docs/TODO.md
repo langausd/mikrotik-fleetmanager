@@ -29,6 +29,13 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Befehlsreferenz, Dateiübersicht, NTP der Router, Update-Kanäle, Beispiele, fehlende Zeile D59. Neu offen:
   59 (NTP der Router), 60 (`rsc-check.py` auf ein Overlay mit Exporten). Labor 7.24.5: `e2e.sh` 323,
   `e2e-vrrp.sh` 118, Onboarding 14/15/18, `e2e-mlag.sh` 72, alles grün.
+* **Erledigt am 2026-10-20 abends (Folgearbeiten zum Review, Auswahl des Nutzers):** 56 (vorhandene
+  VLAN-Interfaces übernehmen, D87), 57 (`wg-client-setup.sh genkey` mit OpenSSL), 59 (NTP der Router,
+  D88), 60 (`rsc-check.py` auf Overlays), „Bekannter Fehler“ `$cfmStatus` (holt veraltete Stände selbst ab,
+  D89); Manager-Module aufgeteilt (`mgr-vault.rsc` aus `mgr-core`, `mgr-scan.rsc` aus `mgr-net`, beide
+  vorher 47 KB nahe der 60-KB-Grenze, D26); Bootstrap des Managers stellt das RAM-Log schon vor dem ersten
+  Release um (D79). Labor 7.24.5: `e2e.sh` 328, `e2e-vrrp.sh` 120, Onboarding 14/15/18, `e2e-mlag.sh` 72,
+  alles grün.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -257,7 +264,9 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   VLAN-Interface samt Adresse entfernt, zwei FEHLER-Zeilen für Objekte, die RouterOS dazu dynamisch
   angelegt hatte): Sie verschwinden mit dem entfernten Objekt, das Löschen danach scheitert.
   Harmlos, aber verwirrend; dynamische Einträge beim Purge überspringen.
-* **`$cfmStatus` zeigt bis zum nächsten Manager-Tick den alten Stand:** Nach einem Release stand ein
+* ~~**`$cfmStatus` zeigt bis zum nächsten Manager-Tick den alten Stand:**~~ – *behoben 2026-10-20 (D89):*
+  `$cfmStatus` holt den Status von Geräten mit Ist ≠ Soll oder ausstehendem Apply vorher selbst ab. Labor:
+  `e2e.sh` Schritt 11. – Nach einem Release stand ein
   Gerät noch mit der alten Version da, obwohl es längst angewendet hatte; erst `$cfmCollect` holte den
   Status. Vorschlag: `$cfmStatus` holt veraltete Status selbst ab (oder weist auf `$cfmCollect` hin).
 * ~~**Labor 2026-10-11: cm1 nimmt keine Anmeldung mehr an.**~~ – *geklärt und behoben 2026-10-12:* Wettlauf
@@ -826,7 +835,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       mit DNS-Namen und Kabel an. Nur Doku, für die Fehlersuche wenig Nutzen.
     * **Netbox als Quelle:** Netbox erzeugt `vlans.rsc`/`leases.rsc` u.a. Widerspricht D72 (der Manager
       führt die Site-Daten, der cfm-Editor schreibt hinein) – bräuchte eine neue Entscheidung, wer gewinnt.
-56. **Vorhandene VLAN-Interfaces an Bridge und VLAN-ID übernehmen** (entschieden 2026-10-17) – `router`
+56. ~~**Vorhandene VLAN-Interfaces an Bridge und VLAN-ID übernehmen**~~ (entschieden 2026-10-17) – *erledigt
+    2026-10-20 (D87):* `$cfmVlanKey` sucht zuerst `vlan<VID>`, sonst ein VLAN-Interface auf der Bridge mit
+    dieser VLAN-ID; die Rollen übernehmen es und benennen es um. Labor: `e2e.sh` Schritt 9. – `router`
     (`vlan:<VID>`) und `base` (MGMT-VLAN) übernehmen ein vorhandenes VLAN-Interface nur, wenn es schon
     `vlan<VID>` heißt. Heißt es anders (z.B. `GAST`, `IOT` aus einer Konfiguration von Hand), legt der
     Probelauf ein zweites Interface mit derselben VID auf der Bridge an (`neu: /interface/vlan vlan:<VID>`),
@@ -835,7 +846,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `vlan<VID>` umbenennen (Verweise in RouterOS gehen über die ID, Adressen bleiben am Interface).
     Labor: `e2e.sh` mit einem vorher angelegten VLAN-Interface unter fremdem Namen, Probelauf zeigt
     „übernommen“, Apply ohne Duplikat, Adresse bleibt.
-57. **`wg-client-setup.sh` ohne `wireguard-tools`** (Befund 2026-10-17) – Das Skript bricht ohne `wg` ab,
+57. ~~**`wg-client-setup.sh` ohne `wireguard-tools`**~~ (Befund 2026-10-17) – *erledigt 2026-10-20:* `genkey`
+    nimmt ohne `wg` OpenSSL (Weg wie unten); drei so erzeugte Schlüssel gegen eine eigene X25519-Rechnung
+    und gegen RouterOS (öffentlicher Schlüssel eines `wireguard`-Interface) geprüft. – Das Skript bricht ohne `wg` ab,
     auf einem Admin-Rechner ohne root lässt sich das Paket aber nicht nachinstallieren. NetworkManager
     kann WireGuard selbst; nur die Schlüssel brauchen `wg`. Ersatz mit OpenSSL: privater Schlüssel =
     die letzten 32 Byte von `openssl genpkey -algorithm X25519 -outform DER`, Base64; öffentlicher
@@ -857,7 +870,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Home Assistant; Zusammenspiel mit `slaves-static` (D54). (b) Falls (a) nichts bringt: **nacheinander
     provisionieren** – je AP `/interface/wifi/radio/provision` mit einigen Sekunden Abstand, damit nie alle
     APs gleichzeitig dunkel sind und Clients zu einem Nachbarn wechseln können; die Unterbrechung je AP bleibt.
-59. **NTP der Router** (Code-Review 2026-10-20) – Die Rolle `router` stellt ihren eigenen NTP-Client auf den
+59. ~~**NTP der Router**~~ (Code-Review 2026-10-20) – *erledigt am selben Tag (D88):* `wan.ntp` (Text oder
+    Liste), sonst `wan.dns`, sonst `0/1.pool.ntp.org`; mit `wan.dhcp` zusätzlich `use-peer-ntp`. Labor:
+    `e2e.sh` Schritt 9, `e2e-vrrp.sh` Schritt 4. – Die Rolle `router` stellt ihren eigenen NTP-Client auf den
     DNS-Server aus dem Hostfile-Eintrag `wan` (`dns`), ohne ihn (auch bei `wan.dhcp`) fest auf
     `0.de.pool.ntp.org,1.de.pool.ntp.org`; `ntp` aus `global.rsc` und aus dem Hostfile gilt nur für
     Nicht-Router (Admin-Guide, Kapitel 4). Das setzt voraus, dass der DNS-Server auch NTP anbietet (ein
@@ -865,7 +880,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Deutschland festgelegt. Vorschlag: optional `"ntp"` im Eintrag `wan` (oder ein Schlüssel in
     `global.rsc`), sonst wie bisher; als Rückfall `pool.ntp.org` ohne Länderkennung; bei `wan.dhcp`
     `use-peer-ntp=yes` erwägen. Offen: wo der Schlüssel hingehört (Entscheidung).
-60. **`rsc-check.py` auf ein Overlay mit Exporten** (Code-Review 2026-10-20) – Die Regel `dateigroesse`
+60. ~~**`rsc-check.py` auf ein Overlay mit Exporten**~~ (Code-Review 2026-10-20) – *erledigt am selben Tag:*
+    In einem als Verzeichnis übergebenen Overlay prüft es die Größe nur für Dateien, die `upload-seed.sh`
+    hochlädt; Test in `tools/rsc-check-test.py`. – Die Regel `dateigroesse`
     (60 KB) gilt für jede `.rsc`-Datei. Liegen im Overlay Exporte als Notiz (z.B. `ist/<gerät>.rsc`, die
     `upload-seed.sh` gar nicht hochlädt), meldet `tools/rsc-check.py site-…/` sie als Fehler; die Vorlage der
     `STAND.md` (`new-site.py`) verlangt aber „ohne Fund“. Vorschlag: außerhalb von `cfm/work/` die Größe nur

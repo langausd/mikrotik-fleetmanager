@@ -406,6 +406,16 @@
   :return {"net"=$net;"addr"=$a;"pfx"=[:pick $net ($s + 1) [:len $net]];"gw"=($a + [:tonum $g])}
 }
 
+# Natürlicher Schlüssel des VLAN-Interface vlan<VID> ($1 = VID, TODO 56): das Interface dieses Namens, sonst
+# eines auf der Bridge mit dieser VLAN-ID (z.B. "GAST" aus einer Konfiguration von Hand). $cfmEnsure übernimmt
+# es dann und benennt es in vlan<VID> um; Adressen, DHCP und Firewall verweisen in RouterOS über die ID und
+# bleiben daran. Im Probelauf unterbleibt das Umbenennen - Objekte am Interface erscheinen dort noch als neu
+:global cfmVlanKey do={
+  :local n ("vlan" . $1)
+  :if ([:len [/interface/vlan/find where name=$n]] > 0) do={ :return ({"name"=$n}) }
+  :return ({"interface"="bridge";"vlan-id"=[:tonum $1]})
+}
+
 # Policy-Ziel zerlegen (D38): "*wan" = mit masquerade, "wan@192.0.2.5" = src-nat auf feste Adresse,
 # "wan" = geroutet ohne NAT -> {"t"=Ziel;"nat"=""|"masq"|Adresse|"invalid" (beides angegeben)}
 :global cfmTarget do={

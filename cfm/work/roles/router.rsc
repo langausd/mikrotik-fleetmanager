@@ -7,11 +7,11 @@
 #   routerId=1..4   VRRP aktiv: reale IP .250+id, VIP .gw, Prio 210-10*id
 #                   (weglassen = Einzelrouter, bekommt .gw direkt)
 #   wan={"if"="vlan20";"gw"="192.168.20.1";"dns"="192.168.20.1"}
-#     oder {"if"="ether1";"dhcp"="yes"}  [optional "addr"="x.x.x.x/nn"]
+#     oder {"if"="ether1";"dhcp"="yes"}  [optional "addr"="x.x.x.x/nn", "ntp"=Server (Text oder Liste)]
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
-:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry
+:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -54,7 +54,7 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 :foreach vid,v in=$cfmVlans do={
   :if ([:tostr ($v->"l3")] != "no") do={
     :local ifn ("vlan" . $vid)
-    $cfmEnsure m="/interface/vlan" k=("vlan:" . $vid) n=({"name"=$ifn}) p=({"name"=$ifn;"interface"="bridge";"vlan-id"=[:tonum $vid]}) x=($v->"name")
+    $cfmEnsure m="/interface/vlan" k=("vlan:" . $vid) n=[$cfmVlanKey $vid] p=({"name"=$ifn;"interface"="bridge";"vlan-id"=[:tonum $vid]}) x=($v->"name")
     :local z [:tostr ($v->"zone")]
     :if ([:len $z] > 0) do={
       $cfmEnsure m="/interface/list/member" k=("ilm:" . $vid) n=({"list"=("Z-" . $z);"interface"=$ifn}) p=({"list"=("Z-" . $z);"interface"=$ifn})
@@ -165,7 +165,7 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
     $cfmEnsure m="/ip/address" k="ip:wan" p=({"address"=($wan->"addr");"interface"=($wan->"if")})
   }
   :if ([:tostr ($wan->"dhcp")] = "yes") do={
-    $cfmEnsure m="/ip/dhcp-client" k="dc:wan" n=({"interface"=($wan->"if")}) p=({"interface"=($wan->"if");"add-default-route"="yes";"use-peer-dns"="yes";"use-peer-ntp"="no"})
+    $cfmEnsure m="/ip/dhcp-client" k="dc:wan" n=({"interface"=($wan->"if")}) p=({"interface"=($wan->"if");"add-default-route"="yes";"use-peer-dns"="yes";"use-peer-ntp"="yes"})
   } else={
     $cfmEnsure m="/ip/route" k="rt:wan" p=({"dst-address"="0.0.0.0/0";"gateway"=($wan->"gw")})
   }
@@ -183,8 +183,15 @@ $cfmSet m="/ip/dns" p=({"allow-remote-requests"="yes";"servers"=$wdns})
     $cfmEnsure m="/ip/dns/static" k=("dns:" . $hn) n=({"name"=($hn . "." . $dom)}) p=({"name"=($hn . "." . $dom);"address"=[:tostr $hip]})
   }
 }
+# Zeit der Router selbst (TODO 59): wan.ntp (Text oder Liste), sonst der DNS-Server aus wan (meist der
+# Internet-Router), sonst pool.ntp.org. Mit wan.dhcp kommt der NTP-Server der DHCP-Antwort dazu
+# (use-peer-ntp, als dynamischer Eintrag - get servers liefert nur die festen, Labor 7.24.5)
 :local ntpSrv $wdns
-:if ([:len $ntpSrv] = 0) do={ :set ntpSrv "0.de.pool.ntp.org,1.de.pool.ntp.org" }
+:if ([:typeof $wan] = "array") do={
+  :local wn ($wan->"ntp")
+  :if ([:len $wn] > 0) do={ :set ntpSrv $wn }
+}
+:if ([:len $ntpSrv] = 0) do={ :set ntpSrv "0.pool.ntp.org,1.pool.ntp.org" }
 $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntpSrv})
 $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 

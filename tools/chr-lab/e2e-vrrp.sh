@@ -143,6 +143,9 @@ expect 2 '[:len [/ip/address/find where address="192.168.20.199/32" and comment~
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="masquerade" and src-address-list!="cfm-z-onboard"]] = 0' "r1: masquerade nur fürs Onboarding (LAN und MGMT werden geroutet)"
 # Verkehr an die VIP kommt über vrrp<VID> herein (Laborbefund 2026-10-01): VRRP-Interfaces in den Zonen, WAN-VRRP im WAN
 expect 2 '[:len [/interface/list/member/find where interface="vrrp40" and list="Z-guest"]] = 1 and [:len [/interface/list/member/find where interface="vrrp20" and list="Z-lan"]] = 1 and [:len [/interface/list/member/find where interface="vrrp20" and list="WAN"]] = 1' "r1: VRRP-Interfaces in den Zonen-Listen (vrrp20 auch im WAN)"
+# NTP der Router (TODO 59): r2 mit wan.ntp als Liste, r1 aus wan.dns
+expect 3 '[:tostr [/system/ntp/client/get servers]] = "192.168.20.1;198.51.100.1"' "r2: NTP-Server aus wan.ntp (Liste)"
+expect 2 '[:tostr [/system/ntp/client/get servers]] = "192.168.20.1"' "r1: NTP-Server aus wan.dns"
 
 step "5. Normalbetrieb: r1 ist Master"
 state 2 r1

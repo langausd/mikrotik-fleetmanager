@@ -6,7 +6,7 @@
 # Wird von manager-backup.rsc mit cfmIsBackup=true wiederverwendet.
 # ============================================================
 :global cfmG; :global cfmMf; :global cfmDl
-:global cfmEnsure; :global cfmLog; :global cfmDry; :global cfmHas
+:global cfmEnsure; :global cfmLog; :global cfmDry; :global cfmHas; :global cfmVlanKey
 :global cfmIsBackup
 
 :local backup ($cfmIsBackup = true)
@@ -84,7 +84,7 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
     :local ifn ("vlan" . $vid)
     :local oip (($nn->"addr") | ([:toip ($cfmMf->"ip")] & 0.0.0.255))
     :local oad ([:tostr $oip] . "/" . ($nn->"pfx"))
-    $cfmEnsure m="/interface/vlan" k=("vlan:" . $vid) n=({"name"=$ifn}) p=({"name"=$ifn;"interface"="bridge";"vlan-id"=[:tonum $vid]}) x=($v->"name")
+    $cfmEnsure m="/interface/vlan" k=("vlan:" . $vid) n=[$cfmVlanKey $vid] p=({"name"=$ifn;"interface"="bridge";"vlan-id"=[:tonum $vid]}) x=($v->"name")
     # Legt die Rolle router hier dieselbe Adresse an (ip:<VID>: .250+routerId bzw. das Gateway), gehört sie
     # ihr - sonst übernähmen beide Rollen das Objekt bei jedem Apply abwechselnd (Kommentarwechsel)
     :local rad ""

@@ -100,6 +100,8 @@ python3 tools/rsc-check-test.py # Tests des Prüfskripts
 * Ausgabe je Fund: `datei:zeile: FEHLER [regel] Erklärung`, am Anfang eine Zusammenfassung. Bei
   Fehlern ist der Rückgabewert 1.
 * Ist ein Fund gewollt, schreib `# rsc-check: erlaubt <regel>` in die Zeile darüber.
+* In einem Overlay gilt die 60-KB-Grenze nur für Dateien, die `upload-seed.sh` hochlädt (oberste Ebene,
+  `hosts/`, `roles/`, `lib/`, `meta/`); Exporte als Notiz, z.B. unter `ist/`, prüft es nur auf die übrigen Regeln.
 * Das Skript ersetzt weder `:parse` noch das Labor: Ob ein Befehl auf dem Gerät existiert, sieht es nicht.
 
 ## `git-hooks/pre-commit`
@@ -182,8 +184,8 @@ Fremdpakete. Verschlüsseltes QUIC (`udp/443`) zeigt nur die Adresse, den Namen 
 ## `wg-client-setup.sh`
 
 Legt die WireGuard-Verbindung zum Admin-Netz als NetworkManager-Verbindung an (Linux, braucht
-`nmcli`; `wg` aus `wireguard-tools` nur für `genkey`). Das geht in zwei Schritten, weil jede Seite den
-Public Key der anderen braucht:
+`nmcli`; den Schlüssel erzeugt `genkey` mit `wg` aus `wireguard-tools`, ohne das Paket mit OpenSSL). Das
+geht in zwei Schritten, weil jede Seite den Public Key der anderen braucht:
 
 ```bash
 tools/wg-client-setup.sh genkey      # 1. Schlüssel erzeugen, Public Key nach wireguard.rsc (peers)

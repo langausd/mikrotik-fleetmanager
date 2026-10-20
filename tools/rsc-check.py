@@ -68,6 +68,8 @@ GROESSE_MAX = 60000        # wie cfmParseWork in cfm/work/lib/mgr-core.rsc
 GROESSE_HINWEIS = 50000
 ERLAUBT = re.compile(r"rsc-check:\s*erlaubt\s+([\w,-]+)")
 IMPORT = ("/import", ":import", "import")
+# Unterverzeichnisse eines Overlays, die tools/upload-seed.sh hochlädt (dazu Dateien der obersten Ebene)
+UPLOAD_DIRS = ("hosts", "roles", "lib", "meta")
 
 
 def tokenize(text):
@@ -272,14 +274,15 @@ def check_rsc(path, text):
     return sorted(set(out), key=lambda f: (f.line, f.rule))
 
 
-def check_file(path, data):
-    """Prüft eine Datei: Inhalt (.rsc), Größe und Name (unter cfm/work/)."""
+def check_file(path, data, upload=True):
+    """Prüft eine Datei: Inhalt (.rsc), Größe und Name (unter cfm/work/). upload=False: liegt in einem
+    Overlay dort, wo tools/upload-seed.sh nichts hochlädt (z.B. Exporte als Notiz) - ohne Größenregel."""
     p = path.replace(os.sep, "/")
     work = "/cfm/work/" in "/" + p
     out = []
     if work and os.path.basename(p).startswith("."):
         out.append(Finding(path, 1, FEHLER, "dotfile", REGELN["dotfile"]))
-    if work or p.endswith(".rsc"):
+    if work or (p.endswith(".rsc") and upload):
         if len(data) > GROESSE_MAX:
             out.append(Finding(path, 1, FEHLER, "dateigroesse", REGELN["dateigroesse"]))
         elif len(data) > GROESSE_HINWEIS:
@@ -307,10 +310,16 @@ def files_from_git(root, staged):
         if not relevant(p):
             continue
         if staged:
-            yield p, git(root, "show", ":" + p)
+            yield p, git(root, "show", ":" + p), True
         elif os.path.isfile(os.path.join(root, p)):
             with open(os.path.join(root, p), "rb") as fh:
-                yield p, fh.read()
+                yield p, fh.read(), True
+
+
+def hochgeladen(rel):
+    """Lädt upload-seed.sh diese Datei eines Overlays hoch? rel = Pfad relativ zum Overlay (TODO 60)"""
+    teile = rel.replace(os.sep, "/").split("/")
+    return len(teile) == 1 or teile[0] in UPLOAD_DIRS
 
 
 def files_from_paths(paths):
@@ -328,8 +337,9 @@ def files_from_paths(paths):
         for p in cands:
             if emacs(os.path.basename(p)) or not os.path.isfile(p) or not want(p):
                 continue
+            up = not os.path.isdir(arg) or hochgeladen(os.path.relpath(p, arg))
             with open(p, "rb") as fh:
-                yield os.path.relpath(p), fh.read()
+                yield os.path.relpath(p), fh.read(), up
 
 
 def main(argv=None):
@@ -352,7 +362,7 @@ def main(argv=None):
         except (OSError, subprocess.CalledProcessError) as e:
             print(f"rsc-check: git nicht verwendbar ({e}); Pfade angeben", file=sys.stderr)
             return 2
-    findings = [f for p, data in files for f in check_file(p, data)]
+    findings = [f for p, data, up in files for f in check_file(p, data, up)]
     for f in sorted(findings, key=lambda f: (f.path, f.line, f.rule)):
         print(f"{f.path}:{f.line}: {f.level} [{f.rule}] {f.text}")
     nf = sum(f.level == FEHLER for f in findings)

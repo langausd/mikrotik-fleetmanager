@@ -141,6 +141,13 @@
 
 :if ($stage = "0" or $stage = "3") do={
   :onerror err in={
+    # 0) RAM-Log ohne system,info wie später die Rolle base (D79): Release und Enroll schreiben gleich
+    #    Dutzende Dateien, RouterOS loggt jede samt Inhalt - die Meldungen des Bootstraps fielen sonst aus
+    #    dem Puffer (Labor 2026-10-20). logMemory aus global.rsc setzt base beim ersten Apply
+    :local tp "info,!system"
+    :foreach id in=[/system/logging/find where action="memory"] do={
+      :if ([:pick [/system/logging/get $id topics] 0] = "info") do={ /system/logging/set $id topics=$tp }
+    }
     # 1) MGMT erreichbar machen
     $mgmt uplink=$uplink mv=$mv ip=$ip gw=$gw
 

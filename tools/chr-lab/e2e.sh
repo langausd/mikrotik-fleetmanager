@@ -58,7 +58,7 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 10' "cm1: 10 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 12' "cm1: 12 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 expect 1 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "cm1: SSH-Client ohne Host-Key-Prüfung (ab 7.25 nach dem Reset an, D71)"
@@ -170,6 +170,11 @@ expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: CAP
 expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2' "cm1: Provisioning-Regeln gerendert"
 
 step "9. Rolle router auf sw1 (über den echten Agent-Pfad)"
+# Vorhandenes VLAN-Interface unter fremdem Namen (TODO 56): GAST mit VID 40 und der späteren Router-Adresse
+# .251 (routerId 1) - die Rolle übernimmt es über Bridge + VLAN-ID und benennt es um, statt ein zweites anzulegen
+r 2 '/interface/vlan/add name=GAST interface=bridge vlan-id=40; /ip/address/add address=192.168.40.251/24 interface=GAST' >/dev/null
+out=$(mgr '$cfmPlan host=sw1 role=switch,router')
+echo "$out" | grep -q "übernommen: /interface/vlan vlan:40" && ! echo "$out" | grep -q "neu: /interface/vlan vlan:40" && ok "Probelauf: vorhandenes VLAN-Interface GAST (VID 40) wird übernommen" || { bad "Probelauf ohne Übernahme von GAST"; echo "$out" | grep "vlan:40" | head -3; }
 # gezielt sw1 (der Platzhalter ph1 aus Schritt 3 steht alphabetisch davor und hat auch "switch")
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"sw1"->"role") "switch,router"; $cfmInvSave $i; :global cfmManifests; $cfmManifests' >/dev/null
 mgr '$cfmPush host=sw1' >/dev/null
@@ -178,6 +183,8 @@ for _ in $(seq 1 60); do [ "$(stat sw1 role)" = "switch,router" ] && [ "$(stat s
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw"]] > 15' "sw1: Zonen-Firewall-Block"
 expect 2 '[:len [/interface/vrrp/find where comment~"^cfm:vrrp"]] >= 4' "sw1: VRRP je VLAN"
 expect 2 '[:len [/ip/dhcp-server/find where comment~"^cfm:dhcp"]] = 2' "sw1: DHCP für IoT + Gast"
+expect 2 '[:len [/interface/vlan/find where vlan-id=40]] = 1 and [/interface/vlan/get [find where vlan-id=40] name] = "vlan40" and [/interface/vlan/get [find where vlan-id=40] comment] ~ "^cfm:vlan:40"' "sw1: GAST als vlan40 übernommen, kein zweites VLAN-Interface (TODO 56)"
+expect 2 '[:len [/ip/address/find where address="192.168.40.251/24" and interface="vlan40" and comment~"^cfm:ip:40"]] = 1' "sw1: Adresse des übernommenen Interface bleibt (ip:40)"
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 0' "sw1: minimale Firewall durch Router-Firewall ersetzt"
 # NAT je Policy-Ziel (D38): Beispiel-policy mgmt/lan/iot/onboard mit *, Gäste per Hostfile wan@10.0.2.99
 # Die Freigabeliste iot-cloud hat zwei Adresslisten (mit und ohne Ports, D76) - je eine NAT-Regel
@@ -190,6 +197,8 @@ expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-addres
 # Eintrag mit Ports (D76): eigene Liste, Regel nur für tcp 443 und 8883
 expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud-tcp443_8883" and address=203.0.113.20]] = 1 and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-address-list="cfm-allow-iot-cloud-tcp443_8883" and protocol="tcp" and dst-port="443,8883"]] = 1' "sw1: Freigabe mit Ports (eigene Liste, tcp 443,8883)"
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and dst-port="53"]] = 4' "sw1: DNS-Umleitung für Zonen ohne Internet"
+# NTP der Router (TODO 59): WAN per DHCP ohne dns -> pool.ntp.org, dazu der NTP-Server der DHCP-Antwort
+expect 2 '[:tostr [/system/ntp/client/get servers]] = "0.pool.ntp.org;1.pool.ntp.org" and [/ip/dhcp-client/get [find where comment="cfm:dc:wan"] use-peer-ntp]' "sw1: NTP ohne wan.dns aus pool.ntp.org, dazu der DHCP-Server (use-peer-ntp)"
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Router-Rolle idempotent" || bad "Router idempotent: $(stat sw1 stats)"
@@ -243,6 +252,10 @@ expect 1 '[:len [/file/find where name~"^cfm/archive/v[124](/|\$)"]] = 0' "v1, v
 expect 1 '[:len [/file/find where name="cfm/archive/v3/index.dat"]] = 1' "v3 bleibt (sw1 meldet sie als bad)"
 mgr '$cfmStatus' | grep "^sw1" | grep -q "bad v" && bad "\$cfmStatus zeigt die alte bad v3 nach neuerem ok" || ok "\$cfmStatus: alte bad v3 nach neuerem ok ausgeblendet"
 expect 1 '[:len [/file/find where name="cfm/archive/v5/index.dat"]] = 1' "v5 bleibt (von den Ringen genutzt)"
+# $cfmStatus holt veraltete Stände selbst ab (Soll ≠ Ist): Status von sw1 am Manager künstlich auf v0
+v0=$(stat sw1 v)
+out=$(mgr ':global cfmJson; :global cfmWrite; :global cfmStColT; :set cfmStColT ({}); :local s [$cfmJson "cfm/state/sw1/status.dat"]; :set ($s->"v") 0; $cfmWrite "cfm/state/sw1/status.dat" [:serialize to=json $s]; :global cfmStatus; $cfmStatus')
+echo "$out" | grep -q "^frisch abgeholt:.* sw1" && ! echo "$out" | grep "^sw1" | grep -q " v0 " && [ "$(stat sw1 v)" = "$v0" ] && ok "\$cfmStatus holt den veralteten Stand von sw1 selbst ab (v$v0)" || { bad "\$cfmStatus ohne frischen Stand"; echo "$out" | head -4; }
 
 step "12. Identitätsprüfung vor dem Secret-Push, Geräteschlüssel erneuern"
 ser=$(stat sw1 serial)

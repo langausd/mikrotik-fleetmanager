@@ -138,7 +138,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
 | SSH-Key einer Person | Zeile in `authorized_keys.<user>` ergänzen/löschen → `$cfmRelease` (alle entziehen: Datei leeren) |
-| Status der Flotte | `$cfmStatus` (`bad vN` = gescheiterte Version, solange sie aktuell ist) |
+| Status der Flotte | `$cfmStatus` (`bad vN` = gescheiterte Version, solange sie aktuell ist; veraltete Stände holt er vorher selbst ab) |
 | Ring vorziehen | `$cfmPromote` (bzw. automatisch nach `ringSoak`) |
 | Zurück auf alten Stand | `$cfmRollback ver=12 all=yes` |
 | Sofort anwenden | `$cfmPush` / `$cfmPush host=sw1 force=yes` |

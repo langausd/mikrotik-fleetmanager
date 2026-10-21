@@ -39,7 +39,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Umgesetzt am 2026-10-20 (58a, D90), Test auf Hardware beim nächsten Gast-Schalten:** Gast-Schalter
   ohne Unterbrechung der übrigen SSIDs – feste WLAN-Interfaces (`create-enabled`), die Schalt-Skripte
   schalten nur die Interfaces der SSID; `tools/home-assistant/cfm_ssid.py` liest den Zustand an den
-  Interfaces (die Kopie in Home Assistant erneuern). Labor 7.24.5: `e2e.sh` 325, grün.
+  Interfaces (die Kopie in Home Assistant erneuern). Labor 7.24.5: `e2e.sh` 325, grün. Seit 2026-10-21 an
+  einem Standort in Betrieb (CAPsMAN mit eigenen Radios, vier APs; Plan danach leer), das erste Schalten steht aus.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -871,7 +872,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Skript `wg` nur noch bei `genkey`; `--keepalive` ist schon seit dem ersten Stand Standard 25. Offen
     bleibt nur der OpenSSL-Weg in `genkey`.
 58. **Schaltbare SSID ohne Unterbrechung der übrigen** (entschieden 2026-10-17) – *(a) umgesetzt 2026-10-20
-    (D90), Test auf Hardware offen:* Provisioning mit `create-enabled`, die Skripte schalten nur die
+    (D90), seit 2026-10-21 an einem Standort ausgerollt, Test beim ersten Schalten offen:* Provisioning mit
+    `create-enabled`, die Skripte schalten nur die
     Interfaces der SSID; Umstieg und Rückweg im Admin-Guide 6.8. Auf Hardware klären: Startet das Abschalten
     eines virtuellen AP das Radio neu? Was macht erneutes Provisionieren bei vorhandenen festen Interfaces
     (neue SSID in `wifi.rsc`, geänderter Pin)? Aufräumen der festen Interfaces eines abgebauten AP (bisher von

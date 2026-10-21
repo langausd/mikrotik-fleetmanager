@@ -105,6 +105,12 @@ python3 /config/cfm/cfm_ssid.py guest until    # → leer (aus bzw. ohne Auto-Au
 Fehlermeldungen gehen nach stderr, beginnen mit `cfm_ssid:` und stehen dann auch im HA-Log
 (Abschnitt 5). Optionen: `--config <Datei>` (andere Zugangsdatei), `--timeout <s>` (Standard 20).
 
+Ohne Zugang zum Container (kein `python3` im Terminal-Add-on, Schutzmodus nicht abschaltbar): Sind die
+Entitäten aus 3.3 schon angelegt, die Aktion `homeassistant.update_entity` auf `switch.gast_wlan` bzw.
+`sensor.gast_wlan_auto_aus` ausführen (Entwicklerwerkzeuge → Aktionen). HA ruft dabei `state` bzw. `until`
+im Container auf; danach Zustand der Entität und HA-Log ansehen (Abschnitt 5). Einen unveränderten
+Zustand schreibt `command_line` nicht neu – kein Fehler im Log heißt dann: der Aufruf lief durch.
+
 ### 3.3 `configuration.yaml`
 
 ```yaml

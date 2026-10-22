@@ -27,8 +27,8 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
   alle SSIDs (lokales Forwarding mit VLAN, WPA2/WPA3, 802.11r/k/v, 6 GHz). Fällt er aus, senden die
   APs mit einer lokalen Kopie der Haupt-SSID weiter.
 * **Betrieb:** `$cfmFind` findet ein Gerät live nach MAC, IP, Name, Port, AP, SSID oder Signal (D81).
-  Im Browser helfen zwei Lesezeichen für WebFig: cfm-Editor (Site-Daten bearbeiten, Release) und
-  cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche).
+  Im Browser startet ein Lesezeichen „cfm“ in WebFig den cfm-Editor (Site-Daten bearbeiten, Release)
+  und den cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche); den Code lädt es vom Gerät (D91).
 
 Alle Design-Entscheidungen samt verworfener Alternativen stehen in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Für den Einsatz in der eigenen Flotte:** [docs/admin-guide.md](docs/admin-guide.md) (Planung,
@@ -76,7 +76,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage auf den Manager laden: beim ersten Mal alles, danach nur Framework-Code (`--site` auch die Site-Daten, D72) |
 | `tools/pull-site.sh` | Site-Daten und Inventar vom Manager ins Overlay holen (Sicherung, D72) |
-| `tools/editor/` | Lesezeichen für WebFig (REST-API): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (D77), Gerätesuche (D81); `build.py` erzeugt `install.html` |
+| `tools/editor/` | Lesezeichen „cfm“ für WebFig (REST-API, lädt den Code vom Gerät, D91): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (D77), Gerätesuche (D81); `build.py` erzeugt `install.html` und `cfm/work/web/` |
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |

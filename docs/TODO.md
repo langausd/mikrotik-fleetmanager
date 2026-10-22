@@ -44,6 +44,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Erledigt am 2026-10-22 (E17, Update auf `main` + eigene Radios der CRS418):** 24 (eigene Radios
   des CAPsMAN, D53) – Client-Test und FT-Roaming zu den CAPs bestanden, dabei auch das Neustart-Verhalten
   geklärt (RouterOS provisioniert die eigenen Radios dabei selbst, ohne den cfm-Agent).
+* **Erledigt am 2026-10-22:** 52 (D91) – ein festes Lade-Lesezeichen „cfm“ startet cfm-Editor und
+  cfm-Monitor in der Fassung vom Gerät; neue Fassungen kommen mit dem Framework-Update, das Lesezeichen bleibt.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -55,7 +57,6 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   stable bis zum Wochenende 17./18.10. mit dem RC); mit 7.25 stable `e2e.sh` wiederholen (48).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
-* **Neu (Idee):** 52 (Lesezeichen ohne Hantieren: Lade-Lesezeichen, Userscript oder Container, 2026-10-15).
 * **Erledigt am 2026-10-16:** 53 (D81): Gerätesuche `$cfmFind` live am Manager, Lesezeichen cfm-WLAN heißt
   „cfm-Monitor“ mit Reiter Suche. **Entschieden, offen:** 54 (LibreNMS: SNMPv3 + Syslog). **Idee:** 55 (Netbox:
   Export oder als Quelle).
@@ -789,7 +790,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     [esp8266_milight_hub, Funkparameter](https://github.com/sidoh/esp8266_milight_hub/blob/master/lib/Radio/MiLightRadioConfig.cpp),
     [Milight-Funkprotokoll (Hackaday)](https://hackaday.io/project/5888-reverse-engineering-the-milight-on-air-protocol/log/18456-in-the-radio-domain).
 
-52. **Lesezeichen ohne Hantieren** (Wunsch des Nutzers, 2026-10-15) – Die Lesezeichen von D73/D77 müssen
+52. ~~**Lesezeichen ohne Hantieren**~~ (Wunsch des Nutzers, 2026-10-15) – *erledigt 2026-10-22 (D91): festes
+    Lade-Lesezeichen „cfm“, das die Fassung vom Gerät startet (`cfm/work/web/`, mit dem Release zu Manager und
+    CAPsMAN); entschieden aus den Wegen unten, im Labor geprüft (Verteilung je Rolle, Laden per REST mit nachgebildetem
+    Browser). Offen: im echten Browser an einem Standort nach dem nächsten Framework-Update einmal anlegen
+    und die alten Lesezeichen löschen.* –
+    Die Lesezeichen von D73/D77 müssen
     aus `install.html` in die Leiste gezogen und nach jeder neuen Fassung ersetzt werden. Auf dem Gerät
     selbst lässt sich nichts installieren: Wegen fehlender CORS-Header muss der Code unter derselben Adresse
     laufen wie `/rest`, `www` liefert keine eigenen Dateien aus, Skins sind nur JSON, Hotspot-Seiten liegen

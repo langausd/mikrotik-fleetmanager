@@ -46,6 +46,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   geklärt (RouterOS provisioniert die eigenen Radios dabei selbst, ohne den cfm-Agent).
 * **Erledigt am 2026-10-22:** 52 (D91) – ein festes Lade-Lesezeichen „cfm“ startet cfm-Editor und
   cfm-Monitor in der Fassung vom Gerät; neue Fassungen kommen mit dem Framework-Update, das Lesezeichen bleibt.
+* **Neu am 2026-10-22:** 61 (Trennschwelle per access-list, auch für Clients mit FT – erst von Hand an
+  der Hardware prüfen, ob RouterOS per FT übernommene Verbindungen laufend prüft).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -569,7 +571,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     rendern (z.B. Clients unter −75 dBm abweisen bzw. trennen), optional je Band oder AP; dazu prüfen,
     ob die Steering-Einstellungen (`rrm`/`wnm`, BSS Transition) aktiv zum Wechsel auffordern.
     Risiko: In Randbereichen ohne besseren AP verliert ein Client dann ganz die Verbindung – vorher
-    die Abdeckung prüfen (Löcher zwischen APs).
+    die Abdeckung prüfen (Löcher zwischen APs). Steering trennt Clients mit FT nicht → 61.
 40. **Lokaler Fallback der APs (D46), offene Punkte** (a vorbereitet, b/c/d/e erledigt) – *40a vorbereitet
     (D54):* `fallback="yes"` an einer SSID schaltet `slaves-static` ein und hängt den virtuellen APs
     eine lokale Kopie an; Test vor Ort (CAPsMAN-Dienst kurz aus). Hardware-Befund beim Ausrollen
@@ -911,3 +913,23 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `STAND.md` (`new-site.py`) verlangt aber „ohne Fund“. Vorschlag: außerhalb von `cfm/work/` die Größe nur
     für Dateien prüfen, die `upload-seed.sh` hochlädt (oberste Ebene, `hosts/`, `roles/`, `lib/`, `meta/`),
     sonst höchstens als Hinweis.
+61. **Trennschwelle per access-list, auch mit FT** (Wunsch des Nutzers, 2026-10-22; Anlass: Steering trennt
+    FT-Clients nicht, 39/D55) – Befund an einem Standort (18./19.10.): `steer` mit `kick` trennte einen
+    Client ohne FT zuverlässig nach `after` + `kick`, ein Handy mit `ft-wpa3-psk` nie (18 min bei −88…−93 dBm);
+    `minSignal` (access-list `reject`) griff bei einem Wechsel per FT nicht (Wechsel mit −83 bei Schwelle −80).
+    Laut RouterOS-Doku prüft die access-list nur Verbindungen **laufend**, die eine Regel **angenommen** hat
+    (`signal-range`, `time`), und trennt sie, wenn das Signal länger als `allow-signal-out-of-range` außerhalb
+    liegt (Standard `0s`, `always` = nur bei der Anmeldung). Die Regel `wacl:min` lehnt nur ab – eine
+    angenommene Verbindung unter der Schwelle trennt sie also nie. `interface` nimmt auch eine Interface-Liste.
+    Idee: je Band (oder AP) eine `accept`-Regel mit `signal-range=<Schwelle>..0` und
+    `allow-signal-out-of-range=<Zeit>` vor `wacl:min`, dazu `reject` darunter; `interface` = eine Liste der
+    WLAN-Interfaces des Bands. Seit D90 sind die Interfaces fest – der Grund aus D55 („Interfaces der CAPs
+    entstehen dynamisch“) fällt weg, solange alle Interfaces fest sind. **Offen, vor dem Bauen von Hand an
+    der Hardware prüfen:** (1) Wird eine per FT übernommene Verbindung überhaupt einer Regel zugeordnet und
+    laufend geprüft? Der Befund oben spricht eher dagegen; dann bringt der Weg für FT-Clients nichts.
+    (2) Wirkt eine Regel mit `interface=<Liste>` am CAPsMAN auf die Interfaces der CAPs (`wacl:min` am
+    CAPsMAN wirkt dort)? (3) Trennt sie hart – ohne vorherige 802.11v-Vorschläge, auch wenn kein besserer AP
+    da ist (Randbereiche, siehe 39). Vorab-Test ohne Framework am CAPsMAN, z.B.
+    `/interface/wifi/access-list add interface=<AP>-6g signal-range=-72..0 allow-signal-out-of-range=20s
+    action=accept comment=test place-before=0`, Client mit FT dorthin wechseln lassen und entfernen. Im Labor
+    nicht prüfbar (CHR ohne Radios).

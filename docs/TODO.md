@@ -250,6 +250,11 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   `geändert: /interface/wifi/steering wst:<n>: transition-time` (set=2). Harmlos; beheben durch
   Normalisieren (Sekunden in RouterOS-Schreibweise) vor dem Vergleich oder in `$cfmEnsure` allgemein für Zeiten.
   – *behoben 2026-10-19:* `$cfmSame` vergleicht zwei Dauern als Text (`1m30s`, `90s`) über `:totime`.
+* ~~**Steering `count`="unlimited" ist nie idempotent**~~ (Befund 2026-10-22 an einem Standort):
+  RouterOS liest `transition-request-count=unlimited` als Zahl 4294967295 zurück, `$cfmSame` verglich sie
+  mit `[:tonum "unlimited"]` – jeder Plan des CAPsMAN meldet `geändert: … wst:<n>: transition-request-count`
+  (set=1, harmlos, die eigenen Radios werden dabei nicht neu provisioniert). – *behoben am selben Tag:*
+  `$cfmSame` nimmt „unlimited“ bei Zahlen als 4294967295; Labor `e2e.sh` (Einzeltest neben dem für Dauern).
 * ~~**Nach dem Schalten einer SSID (D64) baut der nächste Apply das Provisioning neu**~~ (Befund 2026-10-19,
   7.24.5): Die Skripte `cfm-ssid-<key>-on/-off` ändern `slave-configurations` direkt, die Signatur des
   Regelblocks `wprov` (`sig=` im Kommentar) und `<cfm>/wifi-local.txt` stammen aber vom letzten Apply. Der
@@ -925,10 +930,16 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `allow-signal-out-of-range=<Zeit>` vor `wacl:min`, dazu `reject` darunter; `interface` = eine Liste der
     WLAN-Interfaces des Bands. Seit D90 sind die Interfaces fest – der Grund aus D55 („Interfaces der CAPs
     entstehen dynamisch“) fällt weg, solange alle Interfaces fest sind. **Offen, vor dem Bauen von Hand an
-    der Hardware prüfen:** (1) Wird eine per FT übernommene Verbindung überhaupt einer Regel zugeordnet und
-    laufend geprüft? Der Befund oben spricht eher dagegen; dann bringt der Weg für FT-Clients nichts.
+    der Hardware prüfen:** (1) ~~Wird eine per FT übernommene Verbindung überhaupt einer Regel zugeordnet und
+    laufend geprüft?~~ *Ja (Test von Hand 2026-10-22, 7.24.5, CAPsMAN mit CAP auf 7.25beta5): nach FT-Wechsel
+    viermal „disconnected, signal too weak“ ~20 s nach Unterschreiten der Schwelle, 0–4 s bis zur neuen
+    Verbindung.* Weitere Befunde dabei: Die Regel verweist per ID auf das Interface – nach dem Provisionieren
+    (auch der eigenen Radios) zeigt sie ins Leere (`*90`), der Apply muss sie also jedes Mal nachführen; jede
+    Änderung an der access-list prüft alle Verbindungen neu und trennt Clients, die dann unter eine
+    `reject`-Regel fallen („access-list changed“). Ob 802.11v-Vorschläge des Steerings (`period`/`count`) vor
+    der Trennung einen Wechsel bewirken, wird an dem Standort gemessen (selbst gewechselt vs. getrennt).
     (2) Wirkt eine Regel mit `interface=<Liste>` am CAPsMAN auf die Interfaces der CAPs (`wacl:min` am
-    CAPsMAN wirkt dort)? (3) Trennt sie hart – ohne vorherige 802.11v-Vorschläge, auch wenn kein besserer AP
+    CAPsMAN wirkt dort)? *Mit einzelnem Interface ja (getestet an einem CAP-Interface), mit Liste ungeprüft.* (3) Trennt sie hart – ohne vorherige 802.11v-Vorschläge, auch wenn kein besserer AP
     da ist (Randbereiche, siehe 39). Vorab-Test ohne Framework am CAPsMAN, z.B.
     `/interface/wifi/access-list add interface=<AP>-6g signal-range=-72..0 allow-signal-out-of-range=20s
     action=accept comment=test place-before=0`, Client mit FT dorthin wechseln lassen und entfernen. Im Labor

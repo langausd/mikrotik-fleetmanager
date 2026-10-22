@@ -229,6 +229,7 @@ echo "$out" | grep -q "übernommen: /ip/dhcp-server/lease lease:30:drucker-neu" 
 mgr ':global e2eL3; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL3' >/dev/null
 # Dauer als Text (transition-time der Steering-Profile liefert 1m30s für 90s)
 mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"] . "/" . [$cfmSame "1m30s" "80s"] . "/" . [$cfmSame "10d" "1w3d"])' | grep -q "S=true/false/true" && ok "\$cfmSame: Dauer als Text (1m30s = 90s)" || bad "\$cfmSame Dauer: $(mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"])' | tail -1)"
+mgr ':global cfmSame; :put ("U=" . [$cfmSame [:tonum 4294967295] "unlimited"] . "/" . [$cfmSame [:tonum 3] "unlimited"])' | grep -q "U=true/false" && ok "\$cfmSame: unlimited = 4294967295 (Steering count)" || bad "\$cfmSame unlimited: $(mgr ':global cfmSame; :put ("U=" . [$cfmSame [:tonum 4294967295] "unlimited"])' | tail -1)"
 out=$(mgr '$cfmShow host=sw1')
 echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && echo "$out" | grep -q "DHCP 50-200, Gateway der Clients .5" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen, dhcpGw" || { bad "\$cfmShow"; echo "$out" | tail -12; }
 out=$(mgr '$cfmShow host=sw1 objects=yes')

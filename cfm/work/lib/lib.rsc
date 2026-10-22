@@ -130,6 +130,8 @@
     :return ($1 = $d)
   }
   :if ($t = "time" and [:len $2] > 0) do={ :return ($1 = [:totime $2]) }
+  # "unlimited" liefert RouterOS als 2^32-1 (z.B. /interface/wifi/steering transition-request-count)
+  :if ($t = "num" and $2 = "unlimited") do={ :return ($1 = 4294967295) }
   :if ($t = "num" and [:len $2] > 0) do={ :return ($1 = [:tonum $2]) }
   :if ($t = "array" or [:typeof $2] = "array" or ([:typeof $2] = "str" and $2 ~ ",")) do={
     # als Mengen vergleichen; negierte Einträge ("!local" bei Policies) ignorieren

@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-20)
+## Übersicht offener Punkte (Stand 2026-10-22)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -41,11 +41,12 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   schalten nur die Interfaces der SSID; `tools/home-assistant/cfm_ssid.py` liest den Zustand an den
   Interfaces (die Kopie in Home Assistant erneuern). Labor 7.24.5: `e2e.sh` 325, grün. Seit 2026-10-21 an
   einem Standort in Betrieb (CAPsMAN mit eigenen Radios, vier APs; Plan danach leer), das erste Schalten steht aus.
+* **Erledigt am 2026-10-22 (Update auf `main` an einem Standort + eigene Radios der CRS418):** 24 (eigene Radios
+  des CAPsMAN, D53) – Client-Test und FT-Roaming zu den CAPs bestanden, dabei auch das Neustart-Verhalten
+  geklärt (RouterOS provisioniert die eigenen Radios dabei selbst, ohne den cfm-Agent).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
-* **Auf Hardware eingeschaltet, Client-Test offen:** 24 (eigene Radios des CAPsMAN, D53: hAP be³ mit
-  drei Radios, gepinnt, Gast-Schalter schaltet sie mit, 2026-10-03).
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
 * **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
@@ -441,16 +442,13 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     CAPsMAN dürfte solchen CAPs keinen Datapath mit `vlan-id` schicken. Erst mit einem solchen
     Gerät umsetzen und testen. *Seit 2026-10-04 warnen die Rolle `ap` (Log, Probelauf) und `$cfmCheck`
     (aus den gemeldeten Paketen), wenn ein AP das Paket hat.*
-24. **Eigene Radios des Managers** – *vorbereitet (D53):* Hostfile `capsmanRadios="yes"` auf dem
-    CAPsMAN provisioniert dessen eigene Radios über den eigenen CAPsMAN. Test vor Ort: SSIDs von den
-    eigenen Radios, Bridge-Port und VLAN, Interface-Namen, Roaming mit FT zu den CAPs, Schalter wieder
-    aus (Radios unkonfiguriert). – (z.B. CRS418-…-5axQ2axQ): Die Rolle `manager` rendert nur den
-    CAPsMAN, die eingebauten Radios bleiben unkonfiguriert. *Entschieden 2026-09-25: Sie sollen
-    mitfunken.* Offen ist das Wie, vor der Umsetzung als Designfrage vorlegen: Rolle `ap` zusätzlich
-    auf dem Manager (lokaler CAP des eigenen CAPsMAN – in der MikroTik-Doku prüfen, wie ein CAP den
-    CAPsMAN auf demselben Gerät findet) oder die Rolle `manager` stellt die lokalen Radios direkt
-    auf `configuration.manager=capsman`. Beide müssen im selben FT-Verbund wie die übrigen APs
-    landen. Test nur auf der Hardware des Pilots möglich.
+24. ~~**Eigene Radios des Managers**~~ – *erledigt (D53):* Hostfile `capsmanRadios="yes"` auf dem
+    CAPsMAN provisioniert dessen eigene Radios über den eigenen CAPsMAN
+    (`/interface/wifi/radio/provision [find where local]`, dieselben Regeln wie für die CAPs). Auf
+    Hardware seit 2026-10-03 an (hAP be³). Client-Test und FT zu den CAPs bestanden (an einem Standort,
+    2026-10-22, CRS418: Bridge-Port/VLAN korrekt, Roaming cm1-5g ↔ ap1-5g beidseitig); dabei auch das
+    Verhalten bei einem Neustart des Geräts geklärt: RouterOS provisioniert die eigenen Radios dabei
+    selbst neu, ohne den cfm-Agent (Einzelheiten D53).
 25. **WebFig per HTTPS** – *zurückgestellt (2026-10-01), bis Let's Encrypt über acme-dns mit einer
     öffentlichen Domain steht (dann Zertifikat per DNS-Challenge statt selbstsigniert).* – `services` kennt `www-ssl`, die Rolle `base` setzt aber nur Port und
     Adressen; ohne Zertifikat lauscht RouterOS dort nicht. Bis dahin geht das Web-Interface nur

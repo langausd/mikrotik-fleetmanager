@@ -118,8 +118,8 @@ Auf GitHub prüft zusätzlich die Action `rsc-check` (`.github/workflows/rsc-che
 
 ## `editor/`
 
-Zwei Lesezeichen für WebFig, die über die REST-API derselben Adresse arbeiten. Auf dem Gerät wird
-nichts installiert, und aus dem Netz wird nichts geladen.
+Zwei Werkzeuge für WebFig, die über die REST-API derselben Adresse arbeiten. Gestartet werden sie über ein
+festes Lesezeichen „cfm“ (D91), das ihren Code vom Gerät lädt. Aus dem Netz wird nichts geladen.
 
 * **cfm-Editor** (D73): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
   Release an Ring 0. Anmelden mit einem User der Gruppe `full`.
@@ -129,17 +129,18 @@ nichts installiert, und aus dem Netz wird nichts geladen.
 
 So richtest du sie ein:
 
-1. `tools/editor/install.html` im Browser öffnen (als lokale Datei).
-2. Die Knöpfe „cfm-Editor“ und „cfm-Monitor“ in die Lesezeichen-Leiste ziehen.
-3. WebFig öffnen (`http://<IP>/webfig/` des Managers bzw. des CAPsMAN), das Lesezeichen anklicken und
-   anmelden (der Passwort-Manager trägt die WebFig-Daten ein). Danach merkt sich der Browser die
-   Anmeldung bis zum Schließen, auch für das andere Lesezeichen. Voraussetzung: Dienst `www` (oder
-   `www-ssl`) in `services`.
+1. `tools/editor/install.html` im Browser öffnen (als lokale Datei) und den Knopf „cfm“ einmal in die
+   Lesezeichen-Leiste ziehen.
+2. WebFig öffnen (`http://<IP>/webfig/` des Managers bzw. des CAPsMAN), „cfm“ anklicken und anmelden
+   (der Passwort-Manager trägt die WebFig-Daten ein). Auf dem Manager wählst du Editor oder Monitor, auf
+   dem CAPsMAN startet gleich der Monitor. Der Browser merkt sich die Anmeldung bis zum Schließen.
+   Voraussetzung: Dienst `www` (oder `www-ssl`) in `services`.
 
-Nach einer Änderung an `cfm-editor.js` oder `cfm-monitor.js` baut `tools/editor/build.py` die Seite
-neu (ohne Kommentare und Einrückung: Firefox nimmt Lesezeichen nur bis 65 536 Zeichen an). Danach die Lesezeichen ersetzen; die neue Fassung ersetzt beim nächsten Klick auch die alte
-in einer offenen WebFig-Seite. Ein altes Lesezeichen „cfm-WLAN“ kannst du löschen. Mehr dazu im
-Admin-Guide, Abschnitte 8.1, 8.10 und 8.11.
+Den Code legt `tools/editor/build.py` nach `cfm/work/web/` (und baut `install.html`). Nach einer Änderung an
+`cfm-editor.js` oder `cfm-monitor.js`: `build.py`, mit `upload-seed.sh` hochladen, releasen – das
+Lesezeichen bleibt. Für Geräte mit einem Framework-Stand ohne `web/` stehen in `install.html` weiter die
+vollständigen Lesezeichen (Code im Lesezeichen, nach jeder Fassung neu ziehen). Alte Lesezeichen
+„cfm-Editor“, „cfm-Monitor“ und „cfm-WLAN“ kannst du danach löschen. Mehr im Admin-Guide, 8.1, 8.10, 8.11.
 
 ## `upgrade-mirror.py`
 

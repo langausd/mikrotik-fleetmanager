@@ -66,7 +66,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
 und die Meldungen bei Zustandswechseln), keine eigene grafische Oberfläche (Terminal-Befehle am
-Manager, dazu die Lesezeichen cfm-Editor und cfm-Monitor in WebFig, 8.1, 8.10, 8.11), keine RouterOS-Updates ohne deinen
+Manager, dazu cfm-Editor und cfm-Monitor in WebFig über das Lesezeichen „cfm“, 8.1, 8.10, 8.11), keine RouterOS-Updates ohne deinen
 Befehl, und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
 
@@ -851,16 +851,17 @@ das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – de
 Alle Befehle laufen im Terminal des Primary-Managers nach `/system script run cfm-mgr`.
 Die Site-Daten unter `cfm/work/` (`global.rsc`, `vlans.rsc`, …, `hosts/`, `authorized_keys.<user>`)
 führt der Manager (D72). Du bearbeitest sie auf einem dieser Wege:
-* **im Browser mit dem cfm-Editor** (D73): `tools/editor/install.html` öffnen und den Knopf
-  „cfm-Editor“ in die Lesezeichen-Leiste ziehen. Dann WebFig des Managers öffnen, das Lesezeichen
-  anklicken und mit einem RouterOS-User der Gruppe full anmelden (der Browser merkt sich die Anmeldung
-  bis zum Schließen, auch für cfm-Monitor). Links die Datei wählen, ändern,
+* **im Browser mit dem cfm-Editor** (D73): einmal `tools/editor/install.html` öffnen und den Knopf
+  „cfm“ in die Lesezeichen-Leiste ziehen (D91). Dann WebFig des Managers öffnen, „cfm“ anklicken, mit
+  einem RouterOS-User der Gruppe full anmelden und „cfm-Editor“ wählen (der Browser merkt sich die
+  Anmeldung bis zum Schließen, auch für cfm-Monitor). Links die Datei wählen, ändern,
   Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
   fragt er nach). Die Knöpfe oben: „Prüfen“ (`$cfmParseWork`, `$cfmCheck`), „Diff zum Release“
   (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten
   geht). `lib/` und `roles/` zeigt er nur an. Voraussetzung: Dienst `www` bzw. `www-ssl` in `services`;
-  das Lesezeichen lädt nichts aus dem Netz. Nach einer neuen Version von `cfm-editor.js`:
-  `tools/editor/build.py`, Lesezeichen ersetzen;
+  das Lesezeichen lädt nichts aus dem Netz, sondern den Code vom Manager (`cfm/dl/web/`, kommt mit dem
+  Framework-Update). Nach einer neuen Version von `cfm-editor.js`: `tools/editor/build.py`, hochladen,
+  releasen – das Lesezeichen bleibt;
 * im Terminal (auch im WebFig-Terminal): `/file edit cfm/work/vlans.rsc contents` (Strg+O speichert).
   Vorhandene Umlaute bleiben erhalten, neue lassen sich dort nicht eintippen;
 * in Winbox unter Files;
@@ -1298,10 +1299,10 @@ schreibt jede Meldung als JSON-Zeile.
 Ohne Home Assistant (6.7) zeigt das Lesezeichen **cfm-Monitor** (bis 2026-10-16 „cfm-WLAN“) im Reiter
 **WLAN** die Clients aller APs direkt in WebFig des CAPsMAN. Der Reiter **Suche** gehört zu 8.11.
 
-1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm-Monitor“ in die
-   Lesezeichen-Leiste ziehen (dieselbe Seite wie der cfm-Editor, 8.1).
-2. WebFig des **CAPsMAN** öffnen (Gerät mit Rolle `capsman`, ohne sie der Primary-Manager), das
-   Lesezeichen anklicken und anmelden – ein User mit Leserecht genügt. Auf einem anderen Gerät nennt
+1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm“ in die
+   Lesezeichen-Leiste ziehen (dasselbe Lesezeichen wie für den cfm-Editor, 8.1, D91).
+2. WebFig des **CAPsMAN** öffnen (Gerät mit Rolle `capsman`, ohne sie der Primary-Manager), „cfm“
+   anklicken und anmelden – ein User mit Leserecht genügt; auf dem Manager „cfm-Monitor“ wählen. Auf einem anderen Gerät nennt
    der Reiter WLAN den CAPsMAN (aus dem Manifest des Geräts) mit Link zu dessen WebFig.
    Voraussetzung ist der Dienst `www` in `services`.
 3. Oben je AP eine Kachel mit Frequenzen und den verbundenen Clients (Band, Signal in dBm, seit
@@ -1624,7 +1625,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 | Pfad | Inhalt |
 |---|---|
-| `work/` | Arbeitsstand (Daten, Rollen, Hostfiles, Bibliothek) |
+| `work/` | Arbeitsstand (Daten, Rollen, Hostfiles, Bibliothek, `web/` mit dem Code für das Lesezeichen „cfm“, D91) |
 | `archive/v<N>/` | freigegebene Versionen mit `index.dat` (Dateien + SHA-512) |
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
 | `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
@@ -1641,7 +1642,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 **Auf jedem Gerät:** User `cfm` (Manager-Schlüssel), Skripte `cfm-agent` und `cfm-conf`, Scheduler
 `cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
-`cfm/dl/`, `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
+`cfm/dl/` (auf Manager und CAPsMAN mit `web/` für das Lesezeichen „cfm“, D91), `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
 den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
 `cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); Bonds
 `cfm:bond:<name>` (Peer-Bond eines MLAG-Paars `peer-<Paar>`); mit isolierten VLANs die Interface-Liste

@@ -281,6 +281,7 @@
         }
         :if ($rel ~ "^lib/mgr-" and $rl ~ ",manager") do={ :set hit true }
         :if ($rel = "lib/lib-wifi.rsc" and $rl ~ ",(ap|capsman|manager),") do={ :set hit true }
+        :if (($rel = "web/cfm-editor.js" and $rl ~ ",manager") or ($rel = "web/cfm-monitor.js" and $rl ~ ",(capsman|manager)")) do={ :set hit true }
       }
       :if ($hit) do={ :set aff ($aff . " " . $name) }
     }

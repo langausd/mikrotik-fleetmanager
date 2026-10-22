@@ -59,6 +59,7 @@ expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find wh
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 12' "cm1: 12 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (D91)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 expect 1 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "cm1: SSH-Client ohne Host-Key-Prüfung (ab 7.25 nach dem Reset an, D71)"
@@ -82,6 +83,7 @@ expect 2 '[/ip/service/get [:pick [find where name="reverse-proxy" and !dynamic]
 r 2 '/system/script/add name=cfm-e2e-x source=":put 1"; /system/script/remove cfm-e2e-x; :log info "cfm-e2e-b"' >/dev/null
 expect 2 '[:tostr [/system/logging/get [find where action="memory" and default and topics~"info"] topics]] = "info;!system" and [:len [/log/find where message="cfm-e2e-b"]] = 1 and [:len [/log/find where topics~"system" and message~"cfm-e2e-x"]] = 0' "sw1: RAM-Log ohne system,info, script,info kommt an (D79)"
 expect 2 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "sw1: SSH-Client ohne Host-Key-Prüfung (D71)"
+expect 2 '[:len [/file/find where name~"^cfm/dl/web"]] = 0' "sw1 (switch): kein Lesezeichen-Code (D91)"
 case "$(stat sw1 ros)" in *" ("*) ok "sw1: RouterOS-Version mit Kanal gemeldet (bleibt beim Manager Text, 7.25)";; *) bad "sw1: ros=$(stat sw1 ros)";; esac
 
 step "3. Secrets-Push & Idempotenz"
@@ -547,6 +549,7 @@ out=$(mgr ':global cfmCheck; /file/add name="cfm/meta/inv2.rsc" contents=[/file/
 echo "$out" | grep -q "Rolle capsman mehrfach vergeben" && ok "Prüfung: nur ein CAPsMAN (Rolle capsman doppelt = Fehler)" || { bad "doppelte Rolle capsman nicht erkannt"; echo "$out" | tail -3; }
 applied sw1 && ok "sw1 als switch,router,capsman angewendet" || bad "sw1 capsman: $(stat sw1 res)"
 expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "sw1 (capsman): WLAN-Teil lib/lib-wifi.rsc geladen (D68)"
+expect 2 '[:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 0' "sw1 (capsman): nur cfm-Monitor für das Lade-Lesezeichen (D91)"
 # Kam der Secret-Sync des Manager-Ticks (1 min) schon dazwischen (langsames Labor), ist der CAPsMAN bereits mit PSK an
 expect 2 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2 and (([:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [/ppp/secret/get [find name="cfm:key"] comment] ~ "sv=0\$") or ([:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [:len [/interface/wifi/security/get [find name="cfm-main"] passphrase]] > 0))' "sw1: CAPsMAN gerendert, bleibt aus bis zur PSK (Secret-Push angefordert)"
 mgr '$cfmSecretPush host=sw1' >/dev/null

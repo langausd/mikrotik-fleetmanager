@@ -24,7 +24,7 @@
 }
 
 :global cfmWifiRender do={
-  :global cfmWifi; :global cfmEnsure; :global cfmLog; :global cfmDry; :global cfmVlans
+  :global cfmWifi; :global cfmEnsure; :global cfmBlock; :global cfmLog; :global cfmDry; :global cfmVlans
   :local w $cfmWifi
   :local d ($w->"defaults")
   :local mk ($w->"master")
@@ -50,11 +50,37 @@
     }
   }
   # Mindestsignal bei der Anmeldung (TODO 39): schwächere Clients weist der AP ab. Ein Wert für alle
-  # Bänder - die access-list kennt kein Band, nur Interfaces, und die der CAPs entstehen dynamisch.
+  # Bänder; je Band gibt es die Trennschwelle (unten).
   :local msg [:tostr ($w->"minSignal")]
   :if ([:len $msg] > 0) do={
     $cfmEnsure m="/interface/wifi/access-list" k="wacl:min" p=({"signal-range"=("-120.." . ([:tonum $msg] - 1));"action"="reject"})
   }
+  # Trennschwelle je Band (TODO 61, D92): "drop" im steer-Eintrag. Anders als der Kick des Steerings
+  # trennt sie auch Clients mit FT (Befund 2026-10-22). Zwei Regeln je Band, in dieser Reihenfolge:
+  # Anmeldung unter "join" (Standard = drop) abweisen, sonst annehmen und laufend prüfen - liegt der
+  # Client länger als "hold" (Standard 0s) unter "drop", trennt ihn der AP. join über drop = Abstand,
+  # sonst pendelt ein Client am Rand (getrennt, Sekunden später wieder angemeldet). Die Regeln zeigen
+  # auf die Liste cfm-wifi-<Band>g, nicht auf Interfaces: Ein Verweis auf ein Interface zeigt nach dem
+  # Neu-Provisionieren ins Leere, in die Liste trägt RouterOS die Interfaces über den datapath je Band
+  # (unten) selbst ein. Isolierte VLANs (D76) haben schon die Liste cfm-iso und bleiben ausgenommen.
+  :local cut ({})
+  :local acl ({})
+  :foreach b,c in=($w->"channels") do={
+    :local st ($w->"steer"->$b)
+    :if ([:typeof $st] = "array" and [:len [:tostr ($st->"drop")]] > 0) do={
+      :local dr [:tonum ($st->"drop")]
+      :local jn $dr
+      :if ([:len [:tostr ($st->"join")]] > 0) do={ :set jn [:tonum ($st->"join")] }
+      :local ln ("cfm-wifi-" . $b . "g")
+      :set ($cut->$b) $ln
+      $cfmEnsure m="/interface/list" k=("il:wifi-" . $b) n=({"name"=$ln}) p=({"name"=$ln})
+      :set ($acl->[:len $acl]) ({"interface"=$ln;"signal-range"=("-120.." . ($jn - 1));"action"="reject"})
+      :local ra ({"interface"=$ln;"signal-range"=($dr . "..0");"action"="accept"})
+      :if ([:len [:tostr ($st->"hold")]] > 0) do={ :set ($ra->"allow-signal-out-of-range") ($st->"hold") }
+      :set ($acl->[:len $acl]) $ra
+    }
+  }
+  $cfmBlock m="/interface/wifi/access-list" k="wcut" l=$acl
   # Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, D32), DFS-Kanäle optional meiden
   :foreach b,c in=($w->"channels") do={
     :local cp ({"name"=("cfm-" . $b . "g");"band"=($c->"band");"frequency"=($c->"freq");"width"=($c->"width")})
@@ -72,9 +98,13 @@
   :foreach b,c in=($w->"channels") do={
     :foreach f in={"sec";"ft";"ftOverDs";"pmf"} do={ :if ([:len [:tostr ($c->$f)]] > 0) do={ :set ($bov->$b) 1 } }
   }
-  # eigene Konfiguration je Band für weitere SSIDs: bei eigener Security (bov) oder eigenem Steering
+  # eigene Konfiguration je Band für weitere SSIDs: bei eigener Security (bov), eigenem Steering oder
+  # Trennschwelle (eigener datapath)
   :local bcf ({})
-  :foreach b,c in=($w->"channels") do={ :if ([:typeof ($bov->$b)] != "nothing" or ($stn->$b) != "cfm-steer") do={ :set ($bcf->$b) 1 } }
+  :foreach b,c in=($w->"channels") do={ :if ([:typeof ($bov->$b)] != "nothing" or ($stn->$b) != "cfm-steer" or [:typeof ($cut->$b)] != "nothing") do={ :set ($bcf->$b) 1 } }
+  # datapath je Band der Master-SSID (Trennschwelle), sonst cfm-<Master>
+  :local mdp ({})
+  :foreach b,c in=($w->"channels") do={ :set ($mdp->$b) ("cfm-" . $mk) }
   :foreach k,s in=($w->"ssids") do={
     :local o ({})
     :foreach f in={"sec";"ft";"ftOverDs";"pmf";"isolation"} do={
@@ -110,6 +140,19 @@
         :if ([:len $il] > 0 and $il != "none") do={ /interface/wifi/datapath/unset [find where name=$nm] interface-list; $cfmLog ("Datapath " . $nm . ": nicht mehr isoliert") }
       } do={}
     }
+    # datapath je Band mit Trennschwelle: wie oben, dazu die Liste des Bands (nicht bei isolierten VLANs)
+    :local dpb ({})
+    :foreach b,ln in=$cut do={
+      :if (!$isoS and ($k = $mk or (("," . ($s->"bands") . ",") ~ ("," . $b . ",")))) do={
+        :local dn ($nm . "-" . $b . "g")
+        :local bdp $dpp
+        :set ($bdp->"name") $dn
+        :set ($bdp->"interface-list") $ln
+        $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k . "-" . $b) n=({"name"=$dn}) p=$bdp
+        :set ($dpb->$b) $dn
+        :if ($k = $mk) do={ :set ($mdp->$b) $dn }
+      }
+    }
     $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k) n=({"name"=$nm}) p=({"name"=$nm;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$nm;"datapath"=$nm;"steering"="cfm-steer"})
     :foreach b,c in=($w->"channels") do={
       :if ([:typeof ($bcf->$b)] != "nothing" and ($k = $mk or (("," . ($s->"bands") . ",") ~ ("," . $b . ",")))) do={
@@ -124,7 +167,9 @@
           $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k . "-" . $b) n=({"name"=$bn}) p=$bp
         }
         :if ($k != $mk) do={
-          $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k . "-" . $b) n=({"name"=$bn}) p=({"name"=$bn;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$bsec;"datapath"=$nm;"steering"=($stn->$b)})
+          :local bd $nm
+          :if ([:typeof ($dpb->$b)] != "nothing") do={ :set bd ($dpb->$b) }
+          $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $k . "-" . $b) n=({"name"=$bn}) p=({"name"=$bn;"mode"="ap";"ssid"=($s->"ssid");"country"=($w->"country");"security"=$bsec;"datapath"=$bd;"steering"=($stn->$b)})
         }
       }
     }
@@ -139,7 +184,7 @@
       $cfmEnsure m="/interface/wifi/security/multi-passphrase" k=("mpp:" . $k . "." . $e) p=$mp a=({"passphrase"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
     }
   }
-  # Master-Konfiguration je Band (trägt den Kanal; Security des Bands, s.o.)
+  # Master-Konfiguration je Band (trägt den Kanal; Security und datapath des Bands, s.o.)
   :local ms ($w->"ssids"->$mk)
   :local msec ({})
   :foreach b,c in=($w->"channels") do={
@@ -148,7 +193,7 @@
   }
   :local mcfg do={
     :global cfmEnsure
-    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=("cfm-" . $mk);"steering"=$stg;"channel"=$ch})
+    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=$dp;"steering"=$stg;"channel"=$ch})
   }
   :local pinch do={
     :global cfmEnsure
@@ -162,7 +207,7 @@
       :local chn ("cfm-" . $b . "g")
       :local f [:tostr ($w->"radios"->$ap->$b)]
       :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
-      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b)
+      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b)
       :set ($cf->$b) ("cfm-l" . $b)
     }
     :return $cf
@@ -172,12 +217,12 @@
   :foreach apn,pins in=($w->"radios") do={
     :foreach b,f in=$pins do={
       :local chn [$pinch b=$b apn=$apn c=($w->"channels"->$b) f=$f]
-      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b)
+      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b)
       :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
     }
   }
   :foreach b,c in=($w->"channels") do={
-    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g") sec=($msec->$b) stg=($stn->$b)
+    $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g") sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b)
     :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b);"re"=""})
   }
   # MLO (Wi-Fi 7): Standard aus - ein MLD bietet kein FT an ("MLO does not support Fast Transition"),

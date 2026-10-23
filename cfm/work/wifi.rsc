@@ -28,7 +28,13 @@
 #            wenn er danach noch bleibt (leer = nie trennen). Optional "count"/"period" der Vorschläge
 #            (Standard 3 alle 30s). Schwellen vor Ort ermitteln, z.B.:
 #              "steer"={"2"={"threshold"=-78;"after"="10s";"kick"="5m"};"5"={"threshold"=-75;"after"="10s"}}
-#  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab
+#            Clients mit FT trennt "kick" nicht. Trennschwelle je Band (D92), auch mit FT: "drop" (dBm),
+#            optional "join" (Anmeldung erst ab diesem Pegel, Standard = drop; einige dB darüber, sonst
+#            pendelt ein Client am Rand) und "hold" (so lange darf er unter drop liegen, Standard 0s):
+#              "6"={"threshold"=-72;"after"="5s";"drop"=-74;"join"=-68;"hold"="30s"}
+#            Nicht für SSIDs in isolierten VLANs (D76).
+#  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab;
+#            eine laufende Verbindung trennt er deshalb nicht (dafür drop in steer)
 #  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback (D54,
 #            slaves-static; die Master-SSID tut das immer)
 #  switch    an einer weiteren SSID: "switch"="off"|"on" -> per Skript schaltbar (D64), Wert =

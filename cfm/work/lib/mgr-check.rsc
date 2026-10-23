@@ -527,8 +527,35 @@
   # Steering je Band und Mindestsignal (TODO 39): Schwellen in dBm, Band muss es geben
   :foreach bb,st in=($cfmWifi->"steer") do={
     :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: steer: Band " . $bb . " fehlt in channels") }
-    :local th [:tonum ($st->"threshold")]
-    :if ([:typeof $th] != "num" or $th > -40 or $th < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": threshold " . [:tostr ($st->"threshold")] . " ist kein Pegel in dBm (-100..-40)") }
+    :local hasDr ([:len [:tostr ($st->"drop")]] > 0)
+    # threshold (Steering) oder drop (Trennschwelle, TODO 61, D92) - eines von beiden
+    :if ([:len [:tostr ($st->"threshold")]] > 0 or !$hasDr) do={
+      :local th [:tonum ($st->"threshold")]
+      :if ([:typeof $th] != "num" or $th > -40 or $th < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": threshold " . [:tostr ($st->"threshold")] . " ist kein Pegel in dBm (-100..-40)") }
+    }
+    :foreach f in={"drop";"join"} do={
+      :if ([:len [:tostr ($st->$f)]] > 0) do={
+        :local v [:tonum ($st->$f)]
+        :if ([:typeof $v] != "num" or $v > -40 or $v < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": " . $f . " " . [:tostr ($st->$f)] . " ist kein Pegel in dBm (-100..-40)") }
+      }
+    }
+    :if (!$hasDr and ([:len [:tostr ($st->"join")]] > 0 or [:len [:tostr ($st->"hold")]] > 0)) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": join/hold wirken nur mit drop") }
+    :if ([:len [:tostr ($st->"hold")]] > 0 and !([:tostr ($st->"hold")] ~ "^([0-9]+[wdhms])+\$")) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": hold " . [:tostr ($st->"hold")] . " ist keine Dauer (z.B. 30s)") }
+    :if ($hasDr) do={
+      :local dr [:tonum ($st->"drop")]
+      :local jn $dr
+      :if ([:len [:tostr ($st->"join")]] > 0) do={ :set jn [:tonum ($st->"join")] }
+      :if ([:typeof $jn] = "num" and [:typeof $dr] = "num") do={
+        :if ($jn < $dr) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": join " . $jn . " liegt unter drop " . $dr . " - angemeldete Clients würden sofort getrennt") }
+        :if ($jn = $dr) do={ :set ($warn->[:len $warn]) ("wifi.rsc: steer " . $bb . ": join = drop - am Rand pendelt ein Client (getrennt, Sekunden später wieder angemeldet); join einige dB über drop setzen (D92)") }
+      }
+      # isolierte VLANs (D76) bleiben ausgenommen: ihr datapath trägt schon in cfm-iso ein
+      :foreach k,s in=($cfmWifi->"ssids") do={
+        :if ([:tostr ($cfmVlans->[:tostr ($s->"vlan")]->"isolate")] = "yes" and ($k = [:tostr ($cfmWifi->"master")] or (("," . ($s->"bands") . ",") ~ ("," . $bb . ",")))) do={
+          :set ($warn->[:len $warn]) ("wifi.rsc: steer " . $bb . ": drop gilt nicht für SSID " . $k . " (VLAN " . [:tostr ($s->"vlan")] . " isoliert, D76/D92)")
+        }
+      }
+    }
   }
   :if ([:len [:tostr ($cfmWifi->"minSignal")]] > 0) do={
     :local ms [:tonum ($cfmWifi->"minSignal")]

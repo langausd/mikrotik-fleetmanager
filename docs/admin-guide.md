@@ -22,7 +22,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 > CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64), das eingebaute Update
 > eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs (bisher mit Neuprovisionieren, D64), die
 > Umstellung auf Admin-Keys je User,
-> der Kanal-Scan über den CAPsMAN und Steering mit Mindestsignal (trennt bisher nur Clients ohne FT)
+> der Kanal-Scan über den CAPsMAN und Steering mit Mindestsignal (trennt nur Clients ohne FT; die
+> Trennschwelle je Band, D92, trennt auch Clients mit FT – von Hand erprobt, im Framework noch nicht)
 > liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
 > Fehler“, siehe auch [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 > **Noch nicht** mit echter Hardware erprobt sind der Backup-Manager,
@@ -321,10 +322,24 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   trennt ihn, wenn er danach noch bleibt (weglassen = nie trennen). Ob ein anderer AP ihn besser
   hört, prüft RouterOS nicht – Schwellen vor Ort ermitteln und erst vorsichtig (ohne `kick`)
   einschalten.
+  **Clients mit FT trennt der `kick` nicht** (Befund 2026-10-18/22, 7.24.5), und manche ignorieren die
+  Vorschläge. Dafür gibt es je Band die **Trennschwelle** (D92): `drop` (dBm), dazu `join` und `hold`,
+  z.B. `"6"={"threshold"=-72;"after"="5s";"drop"=-74;"join"=-68;"hold"="30s"}`. Eine Anmeldung unter
+  `join` weist der AP ab (Standard: gleich `drop`); liegt ein angemeldeter Client länger als `hold`
+  (Standard 0 s) unter `drop`, trennt er ihn – hart, ohne Vorschlag, auch nach einem Wechsel per FT; der
+  Client ist danach ein paar Sekunden weg. `join` einige dB über `drop` setzen, sonst pendelt ein Client
+  am Rand zwischen Trennen und Wiederanmelden (`$cfmCheck` weist darauf hin). Technisch: zwei
+  access-list-Regeln je Band für die Interface-Liste `cfm-wifi-<Band>g`, in die RouterOS die Interfaces
+  über einen eigenen datapath je Band (`cfm-<SSID>-<Band>g`) selbst einträgt – auch nach dem
+  Neu-Provisionieren. SSIDs in einem isolierten VLAN (D76) sind ausgenommen. **Jede Änderung an
+  `join`/`drop`/`hold` trennt beim Apply alle Clients des Bands einmal** (RouterOS prüft bei jeder Änderung
+  der access-list alle Verbindungen neu, ein Handy war danach bis zu 31 s weg) – Werte gebündelt ändern.
 * `minSignal`: Mindestsignal bei der Anmeldung (dBm, ein Wert für alle Bänder), z.B. `-82`.
-  Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP. Einen
-  Wechsel per FT zu einem schwachen AP verhindert die Schwelle nicht (Befund 2026-10-18, 7.24.5: Client
-  wechselte mit -83 dBm trotz Schwelle -80), nur neue Anmeldungen.
+  Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP. Eine
+  laufende Verbindung trennt sie nie, auch wenn das Signal danach sinkt (die access-list prüft laufend nur
+  Verbindungen, die eine Regel angenommen hat – dafür die Trennschwelle oben). Am 2026-10-18 wechselte ein
+  Client per FT mit -83 dBm trotz Schwelle -80; die Abweisung der Trennschwelle griff am 2026-10-23 dagegen
+  auch bei FT-Wechseln (Ursache des Unterschieds offen).
 * `others`: andere Funknetze im 2,4-GHz-Band (Zigbee, Thread, Milight, Bluetooth) für den
   Kanal-Vorschlag von `$cfmWifiScan` (D80), z.B. `"others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"}}`.
   Wirkt nur auf den Vorschlag und die Prüfung, nicht auf die Geräte; Typen und Gewichte in 8.7.

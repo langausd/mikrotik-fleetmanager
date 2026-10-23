@@ -46,8 +46,11 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   geklärt (RouterOS provisioniert die eigenen Radios dabei selbst, ohne den cfm-Agent).
 * **Erledigt am 2026-10-22:** 52 (D91) – ein festes Lade-Lesezeichen „cfm“ startet cfm-Editor und
   cfm-Monitor in der Fassung vom Gerät; neue Fassungen kommen mit dem Framework-Update, das Lesezeichen bleibt.
-* **Neu am 2026-10-22:** 61 (Trennschwelle per access-list, auch für Clients mit FT – erst von Hand an
-  der Hardware prüfen, ob RouterOS per FT übernommene Verbindungen laufend prüft).
+* **Neu am 2026-10-23:** 62 (Mitschnitt der 802.11v-Vorschläge per Sniffer: schickt RouterOS sie einem
+  Client mit FT, und wie antwortet er?).
+* **Umgesetzt am 2026-10-23:** 61 (D92) – Trennschwelle je Band (`drop`/`join`/`hold` im steer-Eintrag),
+  trennt anders als der Steering-Kick auch Clients mit FT; an einem Standort von Hand erprobt, im
+  Framework dort noch nicht eingeschaltet.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -576,7 +579,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     rendern (z.B. Clients unter −75 dBm abweisen bzw. trennen), optional je Band oder AP; dazu prüfen,
     ob die Steering-Einstellungen (`rrm`/`wnm`, BSS Transition) aktiv zum Wechsel auffordern.
     Risiko: In Randbereichen ohne besseren AP verliert ein Client dann ganz die Verbindung – vorher
-    die Abdeckung prüfen (Löcher zwischen APs). Steering trennt Clients mit FT nicht → 61.
+    die Abdeckung prüfen (Löcher zwischen APs). Steering trennt Clients mit FT nicht → 61 (D92, Trennschwelle).
 40. **Lokaler Fallback der APs (D46), offene Punkte** (a vorbereitet, b/c/d/e erledigt) – *40a vorbereitet
     (D54):* `fallback="yes"` an einer SSID schaltet `slaves-static` ein und hängt den virtuellen APs
     eine lokale Kopie an; Test vor Ort (CAPsMAN-Dienst kurz aus). Hardware-Befund beim Ausrollen
@@ -918,8 +921,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `STAND.md` (`new-site.py`) verlangt aber „ohne Fund“. Vorschlag: außerhalb von `cfm/work/` die Größe nur
     für Dateien prüfen, die `upload-seed.sh` hochlädt (oberste Ebene, `hosts/`, `roles/`, `lib/`, `meta/`),
     sonst höchstens als Hinweis.
-61. **Trennschwelle per access-list, auch mit FT** (Wunsch des Nutzers, 2026-10-22; Anlass: Steering trennt
-    FT-Clients nicht, 39/D55) – Befund an einem Standort (18./19.10.): `steer` mit `kick` trennte einen
+61. ~~**Trennschwelle per access-list, auch mit FT**~~ (Wunsch des Nutzers, 2026-10-22; Anlass: Steering trennt
+    FT-Clients nicht, 39/D55) – *umgesetzt 2026-10-23 (D92):* `steer` je Band mit `drop`/`join`/`hold`, zwei
+    Regeln je Band für die Liste `cfm-wifi-<Band>g`, die RouterOS über einen datapath je Band füllt; isolierte
+    VLANs ausgenommen. Labor `e2e.sh` (Objekte, Reihenfolge, Entfernen, Prüfungen); das Trennen von Hand an
+    einem Standort erprobt (Liste, Hysterese, FT). **Offen:** dort mit dem nächsten Framework-Update
+    einschalten und die Handregeln entfernen. – Befund an einem Standort (18./19.10.): `steer` mit `kick` trennte einen
     Client ohne FT zuverlässig nach `after` + `kick`, ein Handy mit `ft-wpa3-psk` nie (18 min bei −88…−93 dBm);
     `minSignal` (access-list `reject`) griff bei einem Wechsel per FT nicht (Wechsel mit −83 bei Schwelle −80).
     Laut RouterOS-Doku prüft die access-list nur Verbindungen **laufend**, die eine Regel **angenommen** hat
@@ -944,3 +951,14 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     `/interface/wifi/access-list add interface=<AP>-6g signal-range=-72..0 allow-signal-out-of-range=20s
     action=accept comment=test place-before=0`, Client mit FT dorthin wechseln lassen und entfernen. Im Labor
     nicht prüfbar (CHR ohne Radios).
+62. **Mitschnitt der Wechselvorschläge (802.11v) per Sniffer** (Wunsch des Nutzers, 2026-10-23; zu 61/D92) –
+    Ungeklärt ist, auf welcher Seite der Wechsel scheitert: Schickt RouterOS einem Client mit FT überhaupt
+    BSS-Transition-Requests (das wireless-Debug-Log zeigt sie nicht), und wie antwortet der Client
+    (BTM-Response mit accept/reject, oder gar nicht)? Befund an einem Standort: Ein Android-Handy mit FT blieb
+    7 h unter der Schwelle trotz Vorschlag alle 5 s; ein anderes Handy mit FT wechselte bei −75 selbst. Weg:
+    `/interface/wifi/sniffer` (vorhanden ab 7.24.5; Optionen, Ausgabe als Datei oder Strom an Wireshark noch
+    prüfen) auf einem freien Radio im Kanal des betroffenen APs – das Radio fehlt so lange im Netz (z.B. einen
+    AP kurz aus dem CAPsMAN nehmen oder ein Ersatzgerät). Filter auf die MAC des Clients, Action-Frames
+    (WNM). Nutzen: Klarheit für eine Fehlermeldung an den Hersteller; wechselt der Client auf Vorschläge,
+    ließen sich `drop`/`hold` der Trennschwelle großzügiger setzen – jede harte Trennung kostet ~3 s
+    Verbindung, ein Wechsel per FT fast nichts.

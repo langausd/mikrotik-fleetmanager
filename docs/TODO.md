@@ -240,6 +240,11 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   drei Labore parallel): In den 40 s mit `pvid=10` an cm1:ether3 kam kein MNDP-Paket von cm2 an (Zähler der
   Regel 0, kein Log), obwohl `discover-interval` 30 s ist; derselbe Code bestand im Parallellauf. Beheben:
   statt fest 40 s auf das erste Paket warten (bis etwa 70 s).
+* **Labor: `Rekey SFTP cm2` in `e2e.sh` Schritt 14g schlägt vereinzelt fehl** (2026-10-23, ein Lauf von zwei
+  mit demselben Code): `$cfmRekey host=cm2 sftp=yes` meldete `busy` – auf cm2 lief gerade der Agent (bzw. stand
+  `cfm-watchdog`), dann lehnt der Rekey bewusst ab (`mgr-vault.rsc`); die Folgeprüfung „cfmd-cm2 unverändert“
+  scheitert mit. Beheben: im Test vorher warten, bis auf cm2 kein Agent läuft, oder `$cfmRekey` wiederholt
+  nach kurzer Pause.
 * ~~**Umbenennen einer festen Lease löscht sie beim ersten Apply**~~ (Befund 2026-10-18, 7.24.5): In
   `leases.rsc` dieselbe Lease (gleiche MAC und Adresse) unter neuem Namen → der Plan zeigt
   `übernommen: … lease:<VID>:<neu>` (Kommentar wird umgeschrieben) **und** `entfernt: … lease:<VID>:<alt>` –

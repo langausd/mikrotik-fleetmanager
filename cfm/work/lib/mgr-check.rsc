@@ -213,6 +213,12 @@
   :foreach hn,hd in=[$cfmInvLoad] do={
     :if ([:typeof ($lName->$hn)] != "nothing") do={ :set ($err->[:len $err]) ("leases.rsc: Name " . $hn . " ist auch ein Gerät (gleicher DNS-Name)") }
   }
+  # NTP-Umleitung (D93): nur "redirect", braucht ein Router-Interface
+  :foreach vid,v in=$cfmVlans do={
+    :local nt [:tostr ($v->"ntp")]
+    :if ([:len $nt] > 0 and $nt != "redirect") do={ :set ($err->[:len $err]) ("vlans.rsc: VLAN " . $vid . ": ntp " . $nt . " (nur redirect)") }
+    :if ($nt = "redirect" and [:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": ntp redirect ohne Router (l3=no) wirkt nicht") }
+  }
   # Isolierte VLANs (D76): isolate yes/no, Ausnahmen auflösbar (Name mit MAC in leases.rsc oder MAC),
   # nicht das Onboarding-VLAN, ohne Router nur Broadcast und Ausnahmen
   :foreach vid,v in=$cfmVlans do={

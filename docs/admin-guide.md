@@ -253,6 +253,7 @@ Schlüssel ist die VLAN-ID als String.
 | `net`, `gw` | eigenes Subnetz bzw. Host-Anteil des Gateways (Standard `192.168.<VID>.0/24`, `.1`) |
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
 | `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, D82). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt. Ist das VLAN zugleich das WAN der Router (Internet-Router im LAN), nehmen sie DNS, DHCP und NTP aus diesem Netz trotzdem an (D86) |
+| `ntp` | `"redirect"`: NTP (`udp/123`) aus dem VLAN an jedes Ziel außer dem Router landet beim NTP-Server der Router – für Geräte mit fest eingebautem NTP-Server, z.B. OpenBeken (D93). Ein anderer NTP-Server im Haus ist aus dem VLAN dann nicht erreichbar |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
 | `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (D76) |

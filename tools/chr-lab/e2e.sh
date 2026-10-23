@@ -206,14 +206,15 @@ for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Router-Rolle idempotent" || bad "Router idempotent: $(stat sw1 stats)"
 # Feste Leases und DNS-Namen (D62), $cfmDiff und $cfmShow (D61)
 mgr ':global e2eL [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL . ":set (\$cfmLeases->\"30\") {\"drucker\"={\"mac\"=\"02:00:00:00:00:aa\";\"ip\"=20}}\n")' >/dev/null
-# dhcpGw (D82): Clients in VLAN 30 bekommen .5 als Gateway, DNS bleibt der Router (.1)
-mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 5\n")' >/dev/null
+# dhcpGw (D82): Clients in VLAN 30 bekommen .5 als Gateway, DNS bleibt der Router (.1); dazu NTP-Umleitung (D93)
+mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 5\n:set (\$cfmVlans->\"30\"->\"ntp\") \"redirect\"\n")' >/dev/null
 out=$(mgr '$cfmDiff')
 echo "$out" | grep -q "geändert: leases.rsc" && echo "$out" | grep -q "betroffen: alle Geräte" && echo "$out" | grep -qF '+ :set ($cfmLeases->"30")' && ok "\$cfmDiff: work/ gegen das letzte Release mit der neuen Zeile" || { bad "\$cfmDiff work/"; echo "$out" | tail -8; }
 rv=$(mgr '$cfmRelease msg=" Lease" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (Lease) angewendet" || bad "sw1 Apply v$rv"
 expect 2 '[:len [/ip/dhcp-server/lease/find where comment="cfm:lease:30:drucker" and mac-address="02:00:00:00:00:AA" and address="192.168.30.20" and server="dhcp30"]] = 1' "sw1: feste Lease (MAC in Großbuchstaben, Adresse aus dem Host-Anteil)"
 expect 2 '[/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] gateway] = "192.168.30.5" and [/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] dns-server] = "192.168.30.1"' "sw1: dhcpGw - Clients in VLAN 30 mit Gateway .5, DNS weiter der Router (D82)"
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and protocol="udp" and dst-port="123" and to-ports="123" and src-address="192.168.30.0/24" and dst-address-type="!local"]] = 1 and [:len [/ip/firewall/nat/find where comment~"^cfm:nat" and dst-port="123"]] = 1' "sw1: NTP-Umleitung nur für VLAN 30 (D93)"
 expect 2 '[:len [/ip/dns/static/find where name="drucker.internal" and address="192.168.30.20"]] = 1 and [:len [/ip/dns/static/find where name="sw1.internal" and address="192.168.10.21"]] = 1 and [:len [/ip/dns/static/find where name="cm1.internal"]] = 1' "sw1: DNS-Namen für Lease und Geräte (.internal)"
 mgr '$cfmDiff' | grep -q "keine Unterschiede" && ok "\$cfmDiff nach dem Release: keine Unterschiede" || bad "\$cfmDiff nach dem Release"
 out=$(mgr "\$cfmDiff ver=$((rv-1)) to=$rv")
@@ -231,14 +232,14 @@ mgr ':global e2eL3; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$
 mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"] . "/" . [$cfmSame "1m30s" "80s"] . "/" . [$cfmSame "10d" "1w3d"])' | grep -q "S=true/false/true" && ok "\$cfmSame: Dauer als Text (1m30s = 90s)" || bad "\$cfmSame Dauer: $(mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"])' | tail -1)"
 mgr ':global cfmSame; :put ("U=" . [$cfmSame [:tonum 4294967295] "unlimited"] . "/" . [$cfmSame [:tonum 3] "unlimited"])' | grep -q "U=true/false" && ok "\$cfmSame: unlimited = 4294967295 (Steering count)" || bad "\$cfmSame unlimited: $(mgr ':global cfmSame; :put ("U=" . [$cfmSame [:tonum 4294967295] "unlimited"])' | tail -1)"
 out=$(mgr '$cfmShow host=sw1')
-echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && echo "$out" | grep -q "DHCP 50-200, Gateway der Clients .5" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen, dhcpGw" || { bad "\$cfmShow"; echo "$out" | tail -12; }
+echo "$out" | grep -q "^Ports" && echo "$out" | grep -q "ether2 .*trunk" && echo "$out" | grep -q "drucker" && echo "$out" | grep -q "DNS-Namen unter .internal" && echo "$out" | grep -q "DHCP 50-200, Gateway der Clients .5, NTP zum Router" && ok "\$cfmShow: Ports, VLANs, Leases, DNS-Namen, dhcpGw, ntp" || { bad "\$cfmShow"; echo "$out" | tail -12; }
 out=$(mgr '$cfmShow host=sw1 objects=yes')
 echo "$out" | grep -q "# Soll-Objekte sw1" && echo "$out" | grep -q "^/ip/dhcp-server/lease lease:30:drucker:" && echo "$out" | grep -q "^/interface/bridge br:" && ok "\$cfmShow objects=yes: Soll-Objekte vom Gerät" || { bad "\$cfmShow objects=yes"; echo "$out" | head -5; }
 out=$(mgr ':global e2eL2 [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL2 . ":set (\$cfmLeases->\"40\") {\"x1\"={\"mac\"=\"zz\";\"ip\"=5};\"cm1\"={\"mac\"=\"02:00:00:00:00:bb\";\"ip\"=1}}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
 echo "$out" | grep -q "x1: MAC fehlt oder ungültig" && echo "$out" | grep -q "Name cm1 ist auch ein Gerät" && echo "$out" | grep -q "cm1: ip ist die Adresse des Gateways" && ok "Prüfung: Leases (MAC, Gerätename, Gateway)" || { bad "Prüfung Leases"; echo "$out" | tail -4; }
 mgr ':global e2eL2; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL2' >/dev/null
-out=$(mgr ':global e2eV2 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV2 . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 60\n:set (\$cfmVlans->\"20\"->\"dhcpGw\") 1\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
-echo "$out" | grep -q "ERR vlans.rsc: VLAN 30: dhcpGw 60 liegt im DHCP-Bereich 50-200" && echo "$out" | grep -q "W vlans.rsc: VLAN 20: dhcpGw 1 wirkt nur mit dhcp" && ok "Prüfung: dhcpGw im Pool bzw. ohne dhcp" || { bad "Prüfung dhcpGw"; echo "$out" | grep -i dhcpgw; }
+out=$(mgr ':global e2eV2 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV2 . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 60\n:set (\$cfmVlans->\"20\"->\"dhcpGw\") 1\n:set (\$cfmVlans->\"40\"->\"ntp\") \"yes\"\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "ERR vlans.rsc: VLAN 30: dhcpGw 60 liegt im DHCP-Bereich 50-200" && echo "$out" | grep -q "W vlans.rsc: VLAN 20: dhcpGw 1 wirkt nur mit dhcp" && echo "$out" | grep -q "ERR vlans.rsc: VLAN 40: ntp yes (nur redirect)" && ok "Prüfung: dhcpGw im Pool bzw. ohne dhcp, ntp nur redirect" || { bad "Prüfung dhcpGw/ntp"; echo "$out" | grep -i "dhcpgw\|ntp"; }
 mgr ':global e2eV2; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV2' >/dev/null
 
 step "10. Backup-Spiegel & Vault-Backup"

@@ -134,6 +134,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Effektive Konfiguration eines Geräts | `$cfmShow host=sw1` (Daten: Rollen, Ports mit Profil, VLANs, WLAN, Leases); `objects=yes`: alle Soll-Objekte vom Gerät |
 | Feste Adresse + DNS-Name für ein Gerät | `leases.rsc` → `$cfmRelease` (wirkt auf Routern) |
 | Uplink aus zwei Kabeln (LACP), redundant über zwei Switches (MLAG) | Hostfile `bonds` bzw. `mlag.rsc` → `$cfmRelease … all=yes` |
+| Zeit für IoT-Geräte mit fest eingebautem NTP-Server | `"ntp"="redirect"` am VLAN → `$cfmRelease` (D93) |
 | IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |

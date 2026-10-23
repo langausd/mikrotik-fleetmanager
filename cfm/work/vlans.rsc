@@ -10,6 +10,8 @@
 #         z.B. der Internet-Router im selben Netz (D82): "dhcpGw"=1; der Router bleibt Gateway (gw) für
 #         die übrigen VLANs und DNS-Server, sofern dns nichts anderes sagt
 #  lease  DHCP-Lease-Zeit (Default 30m)
+#  ntp    "redirect" = NTP (udp/123) an jedes Ziel außer dem Router landet beim Router - für Geräte mit
+#         fest eingebautem NTP-Server (D93)
 #  l3     "no" = Router legt kein Interface/IP an (reines L2-VLAN)
 #  onboard "yes" = Onboarding-VLAN (genau eins, siehe unten)
 #  isolate "yes" = Clients erreichen nur Gateway und Broadcast, nicht einander - auch nicht über

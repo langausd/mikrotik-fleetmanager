@@ -415,6 +415,17 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
     }
   }
 }
+# NTP-Umleitung je VLAN (D93, "ntp"="redirect"): Geräte mit fest eingebautem NTP-Server (z.B. OpenBeken)
+# bekommen die Zeit vom Router - jedes Ziel außer dem Router selbst, auch private (Internet-Router im LAN).
+# Über das Quellnetz, weil der Verkehr an die VIP über vrrp<VID> hereinkommt, sonst über vlan<VID>
+:foreach vid,v in=$cfmVlans do={
+  :if ([:tostr ($v->"ntp")] = "redirect" and [:tostr ($v->"l3")] != "no") do={
+    :local nn [$cfmNet $vid]
+    :if ([:len ($nn->"net")] > 0) do={
+      :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="redirect";"to-ports"="123";"src-address"=($nn->"net");"protocol"="udp";"dst-port"="123";"dst-address-type"="!local"})
+    }
+  }
+}
 # WireGuard über die VIP (D84): RouterOS antwortet sonst von der eigenen Adresse im WAN-VLAN, der Client
 # übernimmt sie als Endpoint und hängt nach einem Wechsel des Masters am alten Router. Mit dst-nat auf die
 # eigene Adresse gehört die Antwort zur Verbindung und geht von der VIP zurück (auch hinter einer Portfreigabe)

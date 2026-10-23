@@ -51,6 +51,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Umgesetzt am 2026-10-23:** 61 (D92) – Trennschwelle je Band (`drop`/`join`/`hold` im steer-Eintrag),
   trennt anders als der Steering-Kick auch Clients mit FT; an einem Standort von Hand erprobt, im
   Framework dort noch nicht eingeschaltet.
+* **Umgesetzt am 2026-10-23:** 63 (D93) – NTP-Umleitung je VLAN (`"ntp"="redirect"`), für Geräte mit
+  fest eingebautem NTP-Server; im Labor geprüft, am Standort noch nicht ausgerollt.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -962,3 +964,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (WNM). Nutzen: Klarheit für eine Fehlermeldung an den Hersteller; wechselt der Client auf Vorschläge,
     ließen sich `drop`/`hold` der Trennschwelle großzügiger setzen – jede harte Trennung kostet ~3 s
     Verbindung, ein Wechsel per FT fast nichts.
+63. ~~**NTP-Umleitung je VLAN**~~ (Wunsch des Nutzers, 2026-10-23) – *umgesetzt 2026-10-23 (D93):* OpenBeken-Lampen
+    haben einen fest eingebauten NTP-Server und bekommen in der IoT-Zone ohne Internet keine Zeit. `vlans.rsc`
+    `"ntp"="redirect"` leitet `udp/123` aus dem VLAN an jedes Ziel außer dem Router auf dessen NTP-Server um.
+    Offen: am Standort ausrollen und an einer Lampe prüfen (Zeit in der Weboberfläche, Zähler der Regel).

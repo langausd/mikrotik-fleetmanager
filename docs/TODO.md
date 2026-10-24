@@ -49,10 +49,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Neu am 2026-10-23:** 62 (Mitschnitt der 802.11v-Vorschläge per Sniffer: schickt RouterOS sie einem
   Client mit FT, und wie antwortet er?).
 * **Umgesetzt am 2026-10-23:** 61 (D92) – Trennschwelle je Band (`drop`/`join`/`hold` im steer-Eintrag),
-  trennt anders als der Steering-Kick auch Clients mit FT; an einem Standort von Hand erprobt, im
-  Framework dort noch nicht eingeschaltet.
+  trennt anders als der Steering-Kick auch Clients mit FT; an einem Standort von Hand erprobt und am
+  2026-10-24 dort eingeschaltet (6 GHz).
 * **Umgesetzt am 2026-10-23:** 63 (D93) – NTP-Umleitung je VLAN (`"ntp"="redirect"`), für Geräte mit
-  fest eingebautem NTP-Server; im Labor geprüft, am Standort noch nicht ausgerollt.
+  fest eingebautem NTP-Server; im Labor geprüft, am 2026-10-24 an einem Standort ausgerollt.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -932,8 +932,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     FT-Clients nicht, 39/D55) – *umgesetzt 2026-10-23 (D92):* `steer` je Band mit `drop`/`join`/`hold`, zwei
     Regeln je Band für die Liste `cfm-wifi-<Band>g`, die RouterOS über einen datapath je Band füllt; isolierte
     VLANs ausgenommen. Labor `e2e.sh` (Objekte, Reihenfolge, Entfernen, Prüfungen); das Trennen von Hand an
-    einem Standort erprobt (Liste, Hysterese, FT). **Offen:** dort mit dem nächsten Framework-Update
-    einschalten und die Handregeln entfernen. – Befund an einem Standort (18./19.10.): `steer` mit `kick` trennte einen
+    einem Standort erprobt (Liste, Hysterese, FT). Dort am 2026-10-24 mit dem Framework
+    eingeschaltet (6 GHz −74/−68/60 s), Handregeln entfernt; **offen:** Wirkung über einige Tage auswerten. – Befund an einem Standort (18./19.10.): `steer` mit `kick` trennte einen
     Client ohne FT zuverlässig nach `after` + `kick`, ein Handy mit `ft-wpa3-psk` nie (18 min bei −88…−93 dBm);
     `minSignal` (access-list `reject`) griff bei einem Wechsel per FT nicht (Wechsel mit −83 bei Schwelle −80).
     Laut RouterOS-Doku prüft die access-list nur Verbindungen **laufend**, die eine Regel **angenommen** hat
@@ -972,4 +972,4 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 63. ~~**NTP-Umleitung je VLAN**~~ (Wunsch des Nutzers, 2026-10-23) – *umgesetzt 2026-10-23 (D93):* OpenBeken-Lampen
     haben einen fest eingebauten NTP-Server und bekommen in der IoT-Zone ohne Internet keine Zeit. `vlans.rsc`
     `"ntp"="redirect"` leitet `udp/123` aus dem VLAN an jedes Ziel außer dem Router auf dessen NTP-Server um.
-    Offen: am Standort ausrollen und an einer Lampe prüfen (Zeit in der Weboberfläche, Zähler der Regel).
+    Am 2026-10-24 an einem Standort ausgerollt (Regel zählte sofort). Offen: Zeit an einer Lampe prüfen.

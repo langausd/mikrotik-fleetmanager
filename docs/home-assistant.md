@@ -5,8 +5,8 @@ Anleitung für die Einbindung in Home Assistant (HA): Abschnitte 1–6 schalten 
 voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidungen D64 und D90), die
 konkreten Werte bekommst du von ihm.
 
-**Ergebnis:** ein Schalter `switch.gast_wlan` mit echtem Zustand und optional ein Sensor, der zeigt,
-wann sich das Gast-WLAN selbst wieder abschaltet.
+**Ergebnis:** ein Schalter `switch.gast_wlan` mit echtem Zustand und optional Sensoren, die zeigen,
+wann sich das Gast-WLAN selbst wieder abschaltet und wer gerade eingebucht ist.
 
 ---
 
@@ -17,7 +17,9 @@ Home Assistant ──RouterOS-API, TCP 8728──▶ CAPsMAN (zentraler WLAN-Con
   command_line-Schalter                      ├─ Skript cfm-ssid-guest-on   ─┐ schalten die WLAN-Interfaces
   └─ cfm_ssid.py (Hilfsskript)               ├─ Skript cfm-ssid-guest-off  ─┘ der Gast-SSID an/ab
                                              ├─ WLAN-Interfaces            ◀── Zustand (on/off)
-                                             └─ Datei cfm/ssid-guest.txt   ◀── Zeitpunkt des Auto-Aus
+                                             ├─ Datei cfm/ssid-guest.txt   ◀── Zeitpunkt des Auto-Aus
+                                             └─ Registrierungstabelle,     ◀── eingebuchte Clients
+                                                DHCP-Leases
 ```
 
 * Der **CAPsMAN** ist der MikroTik, der alle Access Points (APs) steuert. Auf ihm legt cfm für jede
@@ -94,6 +96,7 @@ python3 /config/cfm/cfm_ssid.py guest state    # → on
 python3 /config/cfm/cfm_ssid.py guest until    # → 2026-10-05T21:49:29+02:00 (Auto-Aus)
 python3 /config/cfm/cfm_ssid.py guest off
 python3 /config/cfm/cfm_ssid.py guest until    # → leer (aus bzw. ohne Auto-Aus)
+python3 /config/cfm/cfm_ssid.py guest clients  # → {"clients": []} (aus bzw. niemand eingebucht)
 ```
 
 | Aufruf | Ausgabe (stdout) | Exit-Code |
@@ -101,6 +104,7 @@ python3 /config/cfm/cfm_ssid.py guest until    # → leer (aus bzw. ohne Auto-Au
 | `<key> on` / `<key> off` | nichts; kehrt erst zurück, wenn der CAPsMAN fertig ist (~1–3 s, beim ersten Schalten nach der Umstellung auf D90 ~10 s) | 0, bei Fehler 1 |
 | `<key> state` | `on` oder `off` | 0, bei Fehler 1 |
 | `<key> until` | Zeitpunkt des Auto-Aus als ISO 8601 mit Zeitzone, leer wenn aus oder ohne Auto-Aus | 0, bei Fehler 1 |
+| `<key> clients` | eingebuchte Clients der SSID als JSON in einer Zeile: `{"clients": [{"mac", "host", "ip", "interface", "ssid", "band", "signal", "uptime"}, …]}`, Hostname und IP aus den DHCP-Leases des CAPsMAN (leer, wenn keine Lease, also auch, wenn ein anderes Gerät DHCP-Server des Gast-VLANs ist), `signal` in dBm; leere Liste, wenn aus | 0, bei Fehler 1 |
 
 Fehlermeldungen gehen nach stderr, beginnen mit `cfm_ssid:` und stehen dann auch im HA-Log
 (Abschnitt 5). Optionen: `--config <Datei>` (andere Zugangsdatei), `--timeout <s>` (Standard 20).
@@ -139,6 +143,20 @@ command_line:
       availability: '{{ value is not none and value | length > 0 }}'
       command_timeout: 30
       scan_interval: 3600
+
+  # optional: wer gerade im Gast-WLAN ist (Anzahl, Liste im Attribut "clients"), siehe 3.4
+  - sensor:
+      name: Gast-WLAN Clients
+      unique_id: cfm_ssid_guest_clients
+      icon: mdi:account-multiple
+      command: python3 /config/cfm/cfm_ssid.py guest clients
+      value_template: '{{ value_json.clients | count }}'
+      json_attributes:
+        - clients
+      availability: '{{ value_json is defined and value_json.clients is defined }}'
+      command_timeout: 30
+      # praktisch nie von selbst, die Automation in 3.4 fragt nur bei Gast an ab
+      scan_interval: 86400
 ```
 
 Danach HA einmal neu starten. Spätere Änderungen übernimmt die Aktion `command_line.reload`.
@@ -172,6 +190,38 @@ automation:
         target:
           entity_id: sensor.gast_wlan_auto_aus
 ```
+
+Für den Client-Sensor aus 3.3: alle 5 min, aber nur solange das Gast-WLAN an ist, und sofort nach
+dem Schalten (beim Ausschalten leert sich die Liste). Bei 50 h Gast-WLAN sind das höchstens 600
+Anmeldungen, ohne Gast-WLAN keine.
+
+```yaml
+automation:
+  - alias: Gast-WLAN Clients aktualisieren
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+        id: takt
+      - trigger: state
+        entity_id: switch.gast_wlan
+        to: ["on", "off"]
+        id: geschaltet
+    conditions:
+      - condition: or
+        conditions:
+          - condition: trigger
+            id: geschaltet
+          - condition: state
+            entity_id: switch.gast_wlan
+            state: "on"
+    actions:
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.gast_wlan_clients
+```
+
+Die Liste enthält MACs und Hostnamen der Gäste. Wer das nicht in der HA-Datenbank haben will, nimmt
+den Sensor im `recorder` aus (`exclude: entities: [sensor.gast_wlan_clients]`).
 
 ### 3.5 Mehrere schaltbare SSIDs
 

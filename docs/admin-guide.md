@@ -712,7 +712,8 @@ In HA: **Anleitung [home-assistant.md](home-assistant.md)**, ein `command_line`-
 Hilfsskript `tools/home-assistant/cfm_ssid.py` (nur Python-Standardbibliothek). Es startet die
 Skripte per API (`/system/script/run` mit `number=cfm-ssid-guest-on`) und liest den Zustand mit den
 Rechten aus 6.7 an den WLAN-Interfaces (`on`, solange ein Interface mit der Konfiguration der SSID
-eingeschaltet ist), den Ablauf aus der Datei. Die Taster der Integration „Mikrotik Router“
+eingeschaltet ist), den Ablauf aus der Datei, auf Wunsch die eingebuchten Clients (Registrierungstabelle,
+Hostname und IP aus den DHCP-Leases des CAPsMAN). Die Taster der Integration „Mikrotik Router“
 schalten auch, kennen aber keinen Zustand. Jede Abfrage ist eine API-Anmeldung mit zwei Log-Zeilen
 am CAPsMAN – Abfrageintervall nicht unter 5 min.
 Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`.

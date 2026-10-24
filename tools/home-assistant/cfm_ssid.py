@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schaltbare SSID (D64) aus Home Assistant: ein- und ausschalten, Zustand abfragen.
+"""Schaltbare SSID (D64) aus Home Assistant: ein- und ausschalten, Zustand und Clients abfragen.
 
 Spricht die RouterOS-API des CAPsMAN (Port 8728, unverschlüsselt, D47) mit dem Lese-User aus
 capsmanApi (Gruppe read,api,test) und braucht nur die Python-Standardbibliothek; es läuft also im
@@ -9,6 +9,7 @@ Container von Home Assistant ohne Zusatzpakete. Anleitung: docs/home-assistant.m
   cfm_ssid.py guest off      # startet cfm-ssid-guest-off
   cfm_ssid.py guest state    # gibt "on" oder "off" aus
   cfm_ssid.py guest until    # Zeitpunkt des Auto-Aus (ISO 8601), leer ohne Auto-Aus
+  cfm_ssid.py guest clients  # eingebuchte Clients der SSID als JSON: {"clients": [...]}
 
 Zugangsdaten in einer JSON-Datei (Standard: cfm_ssid.json neben diesem Skript, sonst --config):
   {"host": "<MGMT-IP des CAPsMAN>", "user": "homeassistant", "password": "…"}   (optional "port")
@@ -152,10 +153,46 @@ def until(api, key):
     return ""
 
 
+def clients(api, key):
+    # Clients aus der Registrierungstabelle, beschränkt auf die Interfaces der SSID (wie state());
+    # Hostname und IP aus den DHCP-Leases (nur wenn der CAPsMAN auch DHCP-Server ist; bei mehreren
+    # Leases einer MAC, z.B. einer festen in einem anderen VLAN, zählt die gebundene). Ist die SSID aus,
+    # ist die Liste leer.
+    pat = re.compile(r"^cfm-%s(-[0-9]+g)?$" % re.escape(key))
+    ifaces = {r.get("name") for r in api.cmd("/interface/wifi/print", "=.proplist=name,configuration")
+              if pat.match(r.get("configuration", ""))}
+    regs = [r for r in api.cmd("/interface/wifi/registration-table/print",
+                               "=.proplist=interface,mac-address,ssid,band,signal,uptime")
+            if r.get("interface") in ifaces]
+    leases = {}
+    if regs:
+        for r in api.cmd("/ip/dhcp-server/lease/print",
+                         "=.proplist=mac-address,host-name,address,active-address,status"):
+            mac = r.get("mac-address", "").upper()
+            if mac not in leases or r.get("status") == "bound":
+                leases[mac] = r
+    out = []
+    for r in regs:
+        mac = r.get("mac-address", "").upper()
+        lease = leases.get(mac, {})
+        sig = r.get("signal", "")
+        out.append({
+            "mac": mac,
+            "host": lease.get("host-name", ""),
+            "ip": lease.get("active-address") or lease.get("address", ""),
+            "interface": r.get("interface", ""),
+            "ssid": r.get("ssid", ""),
+            "band": r.get("band", ""),
+            "signal": int(sig) if re.match(r"^-?[0-9]+$", sig) else None,
+            "uptime": r.get("uptime", ""),
+        })
+    return {"clients": sorted(out, key=lambda c: (c["interface"], c["mac"]))}
+
+
 def main():
     ap = argparse.ArgumentParser(description="Schaltbare SSID (D64) per RouterOS-API")
     ap.add_argument("key", help="Schlüssel der SSID in wifi.rsc (z.B. guest)")
-    ap.add_argument("action", choices=("on", "off", "state", "until"))
+    ap.add_argument("action", choices=("on", "off", "state", "until", "clients"))
     ap.add_argument("--config", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "cfm_ssid.json"))
     ap.add_argument("--timeout", type=float, default=20, help="Sekunden je Verbindung/Antwort")
     a = ap.parse_args()
@@ -170,6 +207,9 @@ def main():
             api.cmd("/system/script/run", number="cfm-ssid-%s-%s" % (a.key, a.action))
         elif a.action == "state":
             print(state(api, a.key))
+        elif a.action == "clients":
+            require_scripts(api, a.key)
+            print(json.dumps(clients(api, a.key), ensure_ascii=False))
         else:
             print(until(api, a.key))
     except (ApiError, OSError) as e:

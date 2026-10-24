@@ -463,8 +463,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 24. ~~**Eigene Radios des Managers**~~ – *erledigt (D53):* Hostfile `capsmanRadios="yes"` auf dem
     CAPsMAN provisioniert dessen eigene Radios über den eigenen CAPsMAN
     (`/interface/wifi/radio/provision [find where local]`, dieselben Regeln wie für die CAPs). Auf
-    Hardware seit 2026-10-03 an (hAP be³). Client-Test und FT zu den CAPs bestanden (an einem Standort,
-    2026-10-22, CRS418: Bridge-Port/VLAN korrekt, Roaming cm1-5g ↔ ap1-5g beidseitig); dabei auch das
+    Hardware seit 2026-10-03 an (hAP be³). Client-Test und FT zu den CAPs bestanden (an einem
+    Standort, 2026-10-22, CRS418: Bridge-Port/VLAN korrekt, Roaming cm1-5g ↔ ap1-5g beidseitig); dabei auch das
     Verhalten bei einem Neustart des Geräts geklärt: RouterOS provisioniert die eigenen Radios dabei
     selbst neu, ohne den cfm-Agent (Einzelheiten D53).
 25. **WebFig per HTTPS** – *zurückgestellt (2026-10-01), bis Let's Encrypt über acme-dns mit einer

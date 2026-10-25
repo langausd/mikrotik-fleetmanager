@@ -65,12 +65,23 @@ def read_pcapng(f, first):
         body = bh[8:12] + f.read(blen - 12)
         body = body[:blen - 12]
         if bt == 1:
-            links.append(struct.unpack(e + "H", body[:2])[0])
+            # Zeitauflösung aus if_tsresol (Option 9), Standard Mikrosekunden; /tool/sniffer schreibt 9 = ns
+            div, p = 1e6, 8
+            while p + 4 <= len(body):
+                code, olen = struct.unpack(e + "HH", body[p:p + 4])
+                if code == 0:
+                    break
+                if code == 9 and olen >= 1:
+                    v = body[p + 4]
+                    div = float(2 ** (v & 0x7F)) if v & 0x80 else 10.0 ** v
+                p += 4 + (olen + 3) // 4 * 4
+            links.append((struct.unpack(e + "H", body[:2])[0], div))
         elif bt == 6:
             iid, th, tl, cap, _ = struct.unpack(e + "IIIII", body[:20])
-            yield ((th << 32) | tl) / 1e6, links[iid] if iid < len(links) else 1, body[20:20 + cap]
+            link, div = links[iid] if iid < len(links) else (1, 1e6)
+            yield ((th << 32) | tl) / div, link, body[20:20 + cap]
         elif bt == 3:
-            yield 0.0, links[0] if links else 1, body[4:]
+            yield 0.0, links[0][0] if links else 1, body[4:]
         bh = f.read(12)
 
 

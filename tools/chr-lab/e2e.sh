@@ -489,6 +489,10 @@ expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] 
 expect 1 '[/system/script/get [find name="cfm-ssid-guest-on"] dont-require-permissions] = true and [:len [/system/script/find where name~"^cfm-ssid-(guest|event)-(on|off)\$"]] = 4 and [:len [/system/scheduler/find where name="cfm-ssid-check" and interval=10m]] = 1' "cm1: Schalt-Skripte (dont-require-permissions) und Prüfung alle 10 min"
 expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "configuration=\"cfm-guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "provisioning/set"]] = "nil"' "Schalt-Skript schaltet die Interfaces der Gast-SSID, nicht die Regeln"
 expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-check"] source]] "configuration=\"cfm-guest\""]] = "num"' "cfm-ssid-check setzt den Zustand auch an den Interfaces durch"
+# Veraltete CAP-Interfaces (Hardware 2026-10-26): Das CHR hat keine CAP-Radios, cfm-reprov steht mit leerer Liste da
+expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-reprov"] source]] ":local aps ({})"]] = "num"' "cm1: cfm-reprov ohne veraltete CAPs"
+r 1 '/system/script/run cfm-reprov' >/dev/null
+expect 1 '[:len [/log/find where message="cfm: reprov: keine veralteten CAPs"]] > 0' "cfm-reprov läuft und meldet: nichts zu tun"
 r 1 ':global cfmSsidguest; :put ("S=" . $cfmSsidguest)' | grep -q "S=off" && ok "Zustand für die Konsole: cfmSsidguest=off" || bad "cfmSsidguest: $(r 1 ':global cfmSsidguest; :put $cfmSsidguest' | tail -1)"
 s0=$(r 1 "$sig" | tail -1)
 r 1 '/system/script/run cfm-ssid-guest-on' >/dev/null

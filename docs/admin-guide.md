@@ -311,7 +311,8 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   Wi-Fi-7-CAPs neu provisionieren (siehe unten).
 * Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, D47)
   statt `cap-wifiN`; neu vergeben erst beim nächsten Provisionieren eines Radios
-  (`/interface/wifi/radio/provision [find where !local]` am CAPsMAN, alle APs ~3 s weg). Nur die
+  (`cfm-reprov`, siehe 6.8, oder `/interface/wifi/radio/provision [find where !local]` am CAPsMAN, alle
+  APs ~3 s weg). Nur die
   Radios der CAPs: `[find]` träfe auch die eigenen Radios des CAPsMAN (Flag `L`), die Regeln ohne
   `identity-regexp` würden sie als APs einschalten. Das MLD eines Wi-Fi-7-CAP heißt danach
   `mld-<Identity>-2g` (nur mit MLO); Radios ohne passende Regel (Band nicht in `channels`) behalten
@@ -707,6 +708,14 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
 
 Fällt `switch` an einer SSID weg, schaltet der nächste Apply ihre Interfaces ein und löscht die
 Zustandsdatei.
+
+**CAPs nach einer Regeländerung neu provisionieren (D94):** Ändern sich die Konfigurationen in den
+Regeln (neue SSID, Aufteilung nach Band, neuer Pin), behalten die festen Interfaces der CAPs die alten,
+bis ihr Radio neu provisioniert wird. Der Apply provisioniert nur die eigenen Radios des CAPsMAN. Er
+erkennt veraltete CAP-Radios und warnt (`CAP-Radio … veraltet`, im Probelauf als `WARNUNG`). Dann zu
+einer ruhigen Zeit am CAPsMAN `/system/script/run cfm-reprov`. Das Skript provisioniert die betroffenen
+APs nacheinander (je etwa 3 s ohne WLAN, 30 s Abstand) und setzt danach gleich den Schaltzustand durch:
+Neu provisionierte feste Interfaces entstehen eingeschaltet, auch die einer ausgeschalteten SSID.
 
 In HA: **Anleitung [home-assistant.md](home-assistant.md)**, ein `command_line`-Schalter mit dem
 Hilfsskript `tools/home-assistant/cfm_ssid.py` (nur Python-Standardbibliothek). Es startet die

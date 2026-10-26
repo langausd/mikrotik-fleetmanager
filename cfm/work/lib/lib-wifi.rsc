@@ -390,6 +390,64 @@
     $cfmEnsure m="/system/script" k="sys:ssid-check" n=({"name"="cfm-ssid-check"}) p=({"name"="cfm-ssid-check";"source"=$ck;"policy"="ftp,read,write,test"})
     $cfmEnsure m="/system/scheduler" k="sys:ssid-check" n=({"name"="cfm-ssid-check"}) p=({"name"="cfm-ssid-check";"interval"="10m";"start-time"="startup";"on-event"="/system/script/run cfm-ssid-check";"disabled"="no"})
   }
+  # Veraltete CAP-Interfaces (Hardware 2026-10-26): Ändern sich die Konfigurationen in den Regeln (neue
+  # SSID, Aufteilung nach Band), behalten die festen Interfaces der CAPs ihre alten, bis ihr Radio neu
+  # provisioniert wird - der Apply provisioniert nur die eigenen Radios. Je CAP-Radio die erste passende
+  # Regel (Identity, Band) gegen die Konfigurationen von Master und Slaves (nach Namen, also in der Folge
+  # aus slave-configurations bis 9 Slaves); dynamische Interfaces (vor D90) gelten auch als veraltet. Nur
+  # melden und cfm-reprov mit den betroffenen APs schreiben: Wann die ~3 s je AP passen, entscheidet der
+  # Mensch (Nutzer 2026-10-26). Neuprovisionieren legt die festen Interfaces neu an, eingeschaltet - das
+  # Skript setzt danach gleich den Schaltzustand durch.
+  :local stale ({})
+  :onerror e in={
+    :foreach r in=[/interface/wifi/radio/find where !local] do={
+      :local rd [/interface/wifi/radio/get $r]
+      :local cap [:tostr ($rd->"cap")]
+      :local id [:pick $cap 0 [:find $cap "@"]]
+      :local bs [:tostr ($rd->"bands")]
+      :local want ""
+      :foreach p in=$pl do={
+        :local re [:tostr ($p->"identity-regexp")]
+        :if ([:len $want] = 0 and ([:len $re] = 0 or $id ~ $re) and $bs ~ (($p->"supported-bands") . ":")) do={
+          :set want (($p->"master-configuration") . ";" . [:tostr ($p->"slave-configurations")])
+        }
+      }
+      :local mi [:tostr ($rd->"interface")]
+      :if ([:len $want] > 0 and [:len $mi] > 0) do={
+        :local dyn false
+        :local sl ({})
+        :foreach i in=[/interface/wifi/find where master-interface=$mi] do={
+          :if ([/interface/wifi/get $i dynamic]) do={ :set dyn true }
+          :set ($sl->[/interface/wifi/get $i name]) [/interface/wifi/get $i configuration]
+        }
+        :local m [/interface/wifi/find where name=$mi]
+        :local have ([/interface/wifi/get $m configuration] . ";")
+        :local j ""
+        :foreach n,c in=$sl do={
+          :if ([:len $j] > 0) do={ :set j ($j . ";") }
+          :set j ($j . $c)
+        }
+        :set have ($have . $j)
+        :if ([/interface/wifi/get $m dynamic]) do={ :set dyn true }
+        :if ($have != $want or $dyn) do={
+          :set ($stale->$id) 1
+          :local why ("Konfigurationen " . $have . ", laut Regel " . $want)
+          :if ($dyn) do={ :set why "dynamische Interfaces (vor D90)" }
+          $cfmWarn ("CAP-Radio " . $mi . " veraltet (" . $why . ") - neu provisionieren: /system/script/run cfm-reprov (~3 s ohne WLAN je AP)")
+        }
+      }
+    }
+  } do={ $cfmWarn ("Prüfung der CAP-Interfaces fehlgeschlagen: " . $e) }
+  :local al ""
+  :foreach a,x in=$stale do={
+    :if ([:len $al] > 0) do={ :set al ($al . ";") }
+    :set al ($al . "\"" . $a . "\"")
+  }
+  :local rp ("# cfm (Rolle capsman): CAPs mit veralteten Interfaces nacheinander neu provisionieren (~3 s ohne WLAN je AP),\n# danach den Schaltzustand der SSIDs durchsetzen. Die Liste schreibt jeder Apply neu.\n:local aps ({" . $al . "})\n")
+  :set rp ($rp . ":if ([:len \$aps] = 0) do={ :log info \"cfm: reprov: keine veralteten CAPs\" }\n")
+  :set rp ($rp . ":foreach a in=\$aps do={\n  :foreach r in=[/interface/wifi/radio/find where !local] do={\n    :local c [:tostr [/interface/wifi/radio/get \$r cap]]\n    :if ([:pick \$c 0 [:find \$c \"@\"]] = \$a) do={ /interface/wifi/radio/provision \$r }\n  }\n")
+  :set rp ($rp . "  :log info (\"cfm: reprov: \" . \$a . \" neu provisioniert\")\n  :delay 8s\n  :if ([:len [/system/script/find where name=\"cfm-ssid-check\"]] > 0) do={ /system/script/run cfm-ssid-check }\n  :delay 20s\n}\n")
+  $cfmEnsure m="/system/script" k="sys:reprov" n=({"name"="cfm-reprov"}) p=({"name"="cfm-reprov";"source"=$rp;"policy"="read,write,test"})
   # Eigene Radios (TODO 24, D53): Ein CAPsMAN verwaltet sich laut MikroTik nicht selbst als CAP, kann
   # seine Radios aber über /interface/wifi/radio/provision mit denselben Regeln provisionieren
   # (Profile, Pins, virtuelle APs; der Datapath trägt "bridge" für genau diesen Fall). Hostfile

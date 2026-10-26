@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-22)
+## Übersicht offener Punkte (Stand 2026-10-26)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -53,6 +53,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   2026-10-24 dort eingeschaltet (6 GHz).
 * **Umgesetzt am 2026-10-23:** 63 (D93) – NTP-Umleitung je VLAN (`"ntp"="redirect"`), für Geräte mit
   fest eingebautem NTP-Server; im Labor geprüft, am 2026-10-24 an einem Standort ausgerollt.
+* **Umgesetzt am 2026-10-26:** 58 (Teil „Neuprovisionieren mit festen Interfaces“, D94) – der Apply warnt bei
+  CAP-Radios, deren feste Interfaces nicht mehr zu den Regeln passen, `cfm-reprov` provisioniert sie
+  nacheinander und setzt den Schaltzustand durch. Labor 7.25: `e2e.sh` 341, grün. **Neu:** 64 („Erledigt“-Meldung
+  für `ros`), 65 (Fremdgerät per MAC ins Gäste-VLAN: (a) WLAN-Access-List, (b) Kabel wartet auf 802.1X).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -921,8 +925,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (D90), seit 2026-10-21 an einem Standort ausgerollt, Test beim ersten Schalten offen:* Provisioning mit
     `create-enabled`, die Skripte schalten nur die
     Interfaces der SSID; Umstieg und Rückweg im Admin-Guide 6.8. Auf Hardware klären: Startet das Abschalten
-    eines virtuellen AP das Radio neu? Was macht erneutes Provisionieren bei vorhandenen festen Interfaces
-    (neue SSID in `wifi.rsc`, geänderter Pin)? Aufräumen der festen Interfaces eines abgebauten AP (bisher von
+    eines virtuellen AP das Radio neu? ~~Was macht erneutes Provisionieren bei vorhandenen festen Interfaces
+    (neue SSID in `wifi.rsc`, geänderter Pin)?~~ *Geklärt 2026-10-26 (D94):* RouterOS legt sie neu an,
+    eingeschaltet; der Apply warnt bei veralteten CAP-Radios, `cfm-reprov` provisioniert nacheinander. Aufräumen der festen Interfaces eines abgebauten AP (bisher von
     Hand, Admin-Guide 7.4); bleiben beim Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios
     stehen? Zusammenspiel mit `slaves-static` (D54). (b) bleibt der Rückfall. – Ausgangslage: `cfm-ssid-<key>-on/-off`
     (D64) ändern die Provisioning-Regeln und provisionieren alle Radios neu; das baut je Radio Master und
@@ -1034,3 +1039,26 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       ab. Das gilt dann auch für `update` und `lizenz`, die schon heute ein `off` schicken, deren Aufgabe
       in HA aber bisher offen bleibt. Bitte der HA-Session über den Nutzer melden, wenn Feldnamen und
       Release stehen.
+65. **Fremdgerät mit der Haupt-SSID bzw. am gemeinsamen Dock ins Gäste-VLAN** (Wunsch des Nutzers, 2026-10-26)
+    – *Anlass:* Ein Firmen-Laptop soll nicht ins Hauptnetz, ist aber kein richtiger Gast (kennt die
+    Haupt-SSID). Er hängt zeitweise an derselben Dockingstation wie der Admin-Laptop, der dort über
+    NetworkManager das ungetaggte Haupt-VLAN und getaggt alle übrigen VLANs nutzt (auch MGMT). Zwei Teile:
+    * **(a) WLAN: VLAN je MAC über die Access-List** – *schnell umsetzbar:* `/interface/wifi/access-list`
+      mit `mac-address` und `vlan-id` (am CAPsMAN angenommen, Probe 2026-10-26). Geht auch mit WPA3 und FT;
+      PPSK scheidet für die Haupt-SSID aus, Multi-Passphrase verlangt WPA2 (D32). Vorschlag: aus den Leases
+      ableiten. Eine Lease mit MAC in einem VLAN, das nicht das VLAN der SSID ist, ergibt einen Eintrag vor
+      den Signal-Grenzen (`wcut`/`wacl`, D92), mit denselben Grenzen; oder ausdrücklich in `wifi.rsc`
+      (`"clients"={"<mac>"={"vlan"=175}}`). Auf Hardware klären: Gibt der CAPsMAN `vlan-id` aus der
+      Access-List an die CAPs weiter (wie bei PPSK)? Roaming/FT zwischen APs; Clients mit zufälliger MAC je
+      SSID (Windows: stabil je Netz) – `$cfmCheck` könnte auf lokal verwaltete MACs hinweisen. Labor: Regeln
+      und Reihenfolge (CHR ohne Radios).
+    * **(b) Kabel am gemeinsamen Dock** – *wartet auf 802.1X* (WPA-Enterprise/RADIUS, TODO 16): Port mit
+      dot1x und MAC-Auth, VLAN vom RADIUS. Die einfachen Wege tragen nicht: Eine Switch-Regel je MAC
+      (`src-mac-address` + `new-vlan-id`; das Menü gibt es auf dem QCA-8386 eines hAP be³, Wirkung
+      ungetestet) scheitert, wenn das Dock für beide Laptops mit seiner eigenen MAC sendet (ohne
+      MAC-Passthrough). Den Port ungetaggt ins Gäste-VLAN zu legen (`hybrid:<gast>`, Admin-Laptop dann
+      mit getaggtem Haupt-VLAN) wäre ohne Code möglich, schickt aber jedes Gerät ohne NM-Profil ins
+      Gastnetz. **Rückfall, wenn 802.1X zu lange dauert oder zu aufwändig wird:** das Port-Profil des
+      Dock-Ports umschalten – von Hand oder automatisiert über Home Assistant, z.B. nach dem Muster der
+      Schalt-Skripte (D64/D90: Skript `cfm-port-<name>-<profil>` mit `dont-require-permissions`, Zustand
+      in einer Datei, die jeder Apply übernimmt, damit ein Release nicht zurückschaltet).

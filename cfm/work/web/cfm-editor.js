@@ -1,6 +1,6 @@
-// cfm-editor.js a48f40490ee7 - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-editor.js ed25af6fdd7f - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = 'a48f40490ee7';
+const STAND = 'ed25af6fdd7f';
 const alt = window.__cfmEd;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
@@ -175,7 +175,7 @@ if (!core) throw new Error('kein cfm-Manager: work/lib/mgr-core.rsc fehlt');
 S.base = core.name.replace(/\/work\/lib\/mgr-core\.rsc$/, '');
 const w = S.base + '/work/';
 S.files = all.filter((f) => f.name.startsWith(w) && f.type !== 'directory')
-.map((f) => ({ ...f, rel: f.name.slice(w.length), ro: /^(lib|roles)\//.test(f.name.slice(w.length)) }))
+.map((f) => ({ ...f, rel: f.name.slice(w.length), ro: /^(lib|roles|web)\//.test(f.name.slice(w.length)) }))
 .sort((a, b) => (a.ro - b.ro) || (a.rel.includes('/') - b.rel.includes('/')) || a.rel.localeCompare(b.rel));
 const nav = $('nav');
 nav.textContent = '';
@@ -247,7 +247,7 @@ await loadList(); status();
 async function newFile() {
 const rel = prompt('Neue Datei unter ' + S.base + '/work/ (z.B. hosts/ap3.rsc, authorized_keys.anna):');
 if (!rel) return;
-if (!/^(hosts\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(rel) || /^(lib|roles)\//.test(rel)) { alert('Name nicht erlaubt: nur Site-Daten, z.B. hosts/<name>.rsc'); return; }
+if (!/^(hosts\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(rel) || /^(lib|roles|web)\//.test(rel)) { alert('Name nicht erlaubt: nur Site-Daten, z.B. hosts/<name>.rsc'); return; }
 try {
 await rest('PUT', '/file', { name: S.base + '/work/' + rel, contents: '' });
 await loadList();

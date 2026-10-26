@@ -1,6 +1,6 @@
 // cfm-Editor (D73): Lesezeichen für WebFig des Managers. Läuft in der WebFig-Seite und spricht die
 // REST-API derselben Adresse an (kein CORS, nichts auf dem Manager installiert). Bearbeitet die
-// Site-Daten in <mgrPath>/work/ (der Manager führt sie, D72); lib/ und roles/ nur lesen, die kommen
+// Site-Daten in <mgrPath>/work/ (der Manager führt sie, D72); lib/, roles/ und web/ (D91) nur lesen, die kommen
 // per tools/upload-seed.sh. Befehle laufen per :execute im Hintergrund, die Ausgabe kommt aus einer
 // Datei (REST bricht lange Aufrufe sonst ab). Bauen: tools/editor/build.py -> install.html
 (() => {
@@ -202,7 +202,7 @@
     S.base = core.name.replace(/\/work\/lib\/mgr-core\.rsc$/, '');
     const w = S.base + '/work/';
     S.files = all.filter((f) => f.name.startsWith(w) && f.type !== 'directory')
-      .map((f) => ({ ...f, rel: f.name.slice(w.length), ro: /^(lib|roles)\//.test(f.name.slice(w.length)) }))
+      .map((f) => ({ ...f, rel: f.name.slice(w.length), ro: /^(lib|roles|web)\//.test(f.name.slice(w.length)) }))
       .sort((a, b) => (a.ro - b.ro) || (a.rel.includes('/') - b.rel.includes('/')) || a.rel.localeCompare(b.rel));
     const nav = $('nav');
     nav.textContent = '';
@@ -278,7 +278,7 @@
   async function newFile() {
     const rel = prompt('Neue Datei unter ' + S.base + '/work/ (z.B. hosts/ap3.rsc, authorized_keys.anna):');
     if (!rel) return;
-    if (!/^(hosts\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(rel) || /^(lib|roles)\//.test(rel)) { alert('Name nicht erlaubt: nur Site-Daten, z.B. hosts/<name>.rsc'); return; }
+    if (!/^(hosts\/)?[A-Za-z0-9][A-Za-z0-9._-]*$/.test(rel) || /^(lib|roles|web)\//.test(rel)) { alert('Name nicht erlaubt: nur Site-Daten, z.B. hosts/<name>.rsc'); return; }
     try {
       await rest('PUT', '/file', { name: S.base + '/work/' + rel, contents: '' });
       await loadList();

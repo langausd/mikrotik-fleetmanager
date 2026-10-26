@@ -59,9 +59,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
   eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
 * **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
-* **RouterOS 7.25:** noch nicht stable (2026-10-20: stable 7.24.5, testing 7.25rc2, development
-  7.26beta3). Der Labortest aller Skripte lief am 2026-10-17 mit 7.25rc2 grün (48, wie entschieden: ohne
-  stable bis zum Wochenende 17./18.10. mit dem RC); mit 7.25 stable `e2e.sh` wiederholen (48).
+* **RouterOS 7.25:** stable seit 2026-10-22; Labortest aller Skripte am 2026-10-25 grün (48). Ein Standort
+  am 2026-10-25/26 komplett per `$cfmUpgrade` auf 7.25 (10 Geräte), Kabel-Ports des hAP be³ Media dort
+  getestet (48); Lade-Lesezeichen unter 7.25 im echten Browser geprüft (52). Offen: zweiter Standort (Plan
+  steht, mit dem Framework-Update), FT für MLD (D48).
 * **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
   ausgelagerten WLAN-Teil, D68).
 * **Erledigt am 2026-10-16:** 53 (D81): Gerätesuche `$cfmFind` live am Manager, Lesezeichen cfm-WLAN heißt
@@ -238,7 +239,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 * **Labor: Die MNDP-Prüfung in `e2e.sh` Schritt 14 schlägt vereinzelt fehl** (2026-10-20, ein Lauf von vier,
   drei Labore parallel): In den 40 s mit `pvid=10` an cm1:ether3 kam kein MNDP-Paket von cm2 an (Zähler der
-  Regel 0, kein Log), obwohl `discover-interval` 30 s ist; derselbe Code bestand im Parallellauf. Beheben:
+  Regel 0, kein Log), obwohl `discover-interval` 30 s ist; derselbe Code bestand im Parallellauf. Wieder
+  2026-10-25 (7.25, zwei Labore parallel; von Hand nachgestellt bestanden). Beheben:
   statt fest 40 s auf das erste Paket warten (bis etwa 70 s).
 * **Labor: `Rekey SFTP cm2` in `e2e.sh` Schritt 14g schlägt vereinzelt fehl** (2026-10-23, ein Lauf von zwei
   mit demselben Code): `$cfmRekey host=cm2 sftp=yes` meldete `busy` – auf cm2 lief gerade der Agent (bzw. stand
@@ -730,6 +732,25 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       Update vor einem Router-Umbau nötig macht; das PoE-Firmware-Update (kurze Unterbrechung aller
       PoE-Ports) gehört in ein eigenes Wartungsfenster; unter rc1 meldete ein Nutzer hAP-ax³-CAPs mit
       fehlenden SSIDs (zu rc2 noch keine Meldungen).
+    * **Labor mit 7.25 stable (2026-10-25, erschienen 2026-10-22, Stand `47646d9`):** alle Skripte grün –
+      `e2e.sh` 338 (ein ✘: MNDP-Prüfung in Schritt 14, der bekannte Timing-Fehler unter „Bekannte Fehler“,
+      zwei Labore parallel; von Hand nachgestellt: erstes Paket nach knapp 20 s, still verworfen),
+      `e2e-vrrp.sh` 120, `e2e-mlag.sh` 72, Onboarding 14/15/18. 7.25 meldet die Version jetzt als `7.25`
+      ohne Kanal-Zusatz („system - remove the channel label“); der Agent hängt den Kanal an, `$cfmUpgrade`
+      erkennt das Update (Schritt 13). Changelog-Punkte für die Hardware: „ethernet - fix occasional packet
+      loss on hAP be3 Media“ (Kabel-Ports an einem Standort aus, bis 7.25 läuft), „wifi - add more steering
+      debug logs“ (802.11v-Vorschläge bisher nicht im Log), „wifi-qcom - fix disconnects during fast
+      transition roaming“, FT für MLD (D48), PoE-Firmware 802.3at/bt (siehe oben, Wartungsfenster).
+    * **Hardware mit 7.25 (2026-10-25/26, ein Standort, 10 Geräte: hAP ax², hAP ax³, hAP be³ Media, cAP ax, CRS,
+      hEX, CHR):** `$cfmUpgrade` je Gerät ohne Fehler (16-MB-hEX per `via=mirror`, ein CRS mit wenig Flash per
+      `via=internet`), Firmware-Angleich mit zweitem Neustart wie erwartet. Befunde: Die eigenen Radios des
+      CAPsMAN zeigen ohne eingebuchten Client `running=false`, ihr Bridge-Port `inactive` – Beacons gehen
+      trotzdem raus, ein Client bucht sofort ein (CAPs zeigen `running` auch ohne Client). PoE-APs laufen nach
+      dem Neustart des PoE-Gebers etwa 5 min mit alter Uhrzeit (NTP `waiting`), `$cfmStatus` zeigt solange
+      falsche „ZULETZT“-Werte. **Kabel-Ports des hAP be³ Media** (packet-loss-Fix): zwei Ports gegen einen
+      Switch (2,5 Gbit/s, je eine VRF mit DHCP-Client), Ping, Zähler, Link-Wechsel und Neustart bestanden,
+      Langzeit 6 h ohne Verlust, ohne FCS-Fehler und Link-Abbruch (ein FCS-Fehler nur im Neustartfenster des
+      Switches).
 49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün (2026-10-12, 292).
     Punkte aus dem Changelog, die cfm berühren können:
     * „l3hw - add VRRP hardware offloading support“: D37 schaltet für VRRP das Routing im Switch-Chip
@@ -810,8 +831,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
 52. ~~**Lesezeichen ohne Hantieren**~~ (Wunsch des Nutzers, 2026-10-15) – *erledigt 2026-10-22 (D91): festes
     Lade-Lesezeichen „cfm“, das die Fassung vom Gerät startet (`cfm/work/web/`, mit dem Release zu Manager und
     CAPsMAN); entschieden aus den Wegen unten, im Labor geprüft (Verteilung je Rolle, Laden per REST mit nachgebildetem
-    Browser). Offen: im echten Browser an einem Standort nach dem nächsten Framework-Update einmal anlegen
-    und die alten Lesezeichen löschen.* –
+    Browser). Im echten Browser geprüft 2026-10-26 (Firefox 153 ESR, WebFig 7.25, an einem Standort): Formular,
+    401 bei falschem Passwort, Start des Monitors auf dem CAPsMAN (einzige Datei), Menü und Editor auf dem
+    Manager, gemerkte Anmeldung. Die Fehler `attrs is undefined` in der Konsole kommen von WebFig selbst (auch
+    ohne Lesezeichen). Dabei behoben: Der Editor führte `web/` unter „Site-Daten“ (bearbeitbar), jetzt wie `lib/`
+    und `roles/` nur lesen. Offen: am zweiten Standort nach dessen Framework-Update anlegen und die alten
+    Lesezeichen löschen.* –
     Die Lesezeichen von D73/D77 müssen
     aus `install.html` in die Leiste gezogen und nach jeder neuen Fassung ersetzt werden. Auf dem Gerät
     selbst lässt sich nichts installieren: Wegen fehlender CORS-Header muss der Code unter derselben Adresse
@@ -973,3 +998,39 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     haben einen fest eingebauten NTP-Server und bekommen in der IoT-Zone ohne Internet keine Zeit. `vlans.rsc`
     `"ntp"="redirect"` leitet `udp/123` aus dem VLAN an jedes Ziel außer dem Router auf dessen NTP-Server um.
     Am 2026-10-24 an einem Standort ausgerollt (Regel zählte sofort). Offen: Zeit an einer Lampe prüfen.
+64. **„Erledigt“-Meldung für neue RouterOS-Versionen (`ros`)** (Wunsch des Nutzers, 2026-10-26, aus der
+    HA-Session) – *Anlass:* Home Assistant macht aus jeder `action`-Meldung einen Eintrag in einer
+    To-do-Liste, der täglich im Bericht steht, bis man ihn abhakt. `ros` kommt nur einmal (`"state":"once"`),
+    ein „wieder ok“ gibt es nicht. Folge an einem Standort: Der Eintrag zu 7.24.5 (11.10.) stand nach dem
+    Update weiter als erster Punkt im Bericht, die neue 7.25 (24.10.) darunter wurde übersehen. *Ziel:* Sobald
+    kein aufgenommenes Gerät mehr älter ist als die gemeldete Version, meldet cfm das einmal, der Empfänger
+    schließt die Aufgabe. Vorschlag (Details entscheidet die Umsetzung):
+    * **`ros` als Zustand statt einmalig:** beim Melden `st="on"` statt `once` und die offene Version in
+      `meta/notify.dat` merken (z.B. `roso`, mit Präfix `v` wie `rosv`, wegen `:deserialize`).
+    * **Prüfung „alle aktuell“ in jedem `$cfmNotifyTick`**, nicht nur beim täglichen Abruf: dieselbe Schleife
+      wie beim Melden (`status.dat` `ros`, `$cfmVerGe`), braucht kein `upgrade.mikrotik.com`. Damit kommt die
+      Meldung kurz nach dem letzten `$cfmUpgrade`. Ist kein Gerät mehr älter als `roso`: `$cfmNotify ev="ros"
+      host="" st="off" msg="RouterOS <ver> auf allen Geräten"` und `roso` leeren. Scheitert die Zustellung,
+      bleibt `roso` stehen und der nächste Tick versucht es erneut (wie bei den übrigen Zuständen).
+    * **Neuere Version, während eine ältere offen ist** (z.B. 7.25.1 vor dem Update auf 7.25): erst `off` für
+      die alte („überholt durch 7.25.1“), dann `on` für die neue. Dann bleibt beim Empfänger nie mehr als
+      eine RouterOS-Aufgabe offen.
+    * **Schlüssel im JSON:** neues Feld `key`, damit der Empfänger `off` und `on` ohne Textvergleich
+      zuordnet: `"<ev>:<host>"` wie in `meta/notify.dat`, bei `ros` `"ros:<ver>"`. Zusätzlich bei `ros` das
+      Feld `ver`. Bestehende Empfänger, die nur `level`/`device`/`message` lesen, laufen unverändert weiter.
+    * **Bewusst ausgelassene Version:** Der Nutzer hakt die Aufgabe beim Empfänger ab. cfm meldet dieselbe
+      Version nicht erneut (bleibt wie heute über `rosv`). Kommt später doch das `off`, findet der Empfänger
+      keine offene Aufgabe mehr, das ist harmlos.
+    * **Offene Frage:** Geräte, die absichtlich auf einer älteren Version bleiben (z.B. 16-MB-Geräte, siehe
+      38), verhindern das `off` dauerhaft. Reicht Abhaken von Hand, oder braucht es eine Ausnahmeliste
+      (z.B. `rosHold` in `global.rsc`)? Ebenso offen: Ein später aufgenommenes älteres Gerät öffnet heute
+      keine neue Meldung.
+    * **Doku:** Admin-Guide (Tabelle der Meldungsarten, `ros`, Felder) und `docs/home-assistant.md`
+      Abschnitt 7 (Felder `state`, `key`, `ver`, Hinweis: `off` schließt die Aufgabe; Beispiel für
+      `todo.update_item … status: completed`). Labor: `on` beim Melden, `off` genau einmal nach dem Update
+      aller Geräte, überholte Version während `on`, Zustellfehler mit Wiederholung.
+    * **Empfänger an einem Standort (macht die HA-Session):** `automation.mikrotik_meldung_empfangen` legt
+      `key` in die Beschreibung der Aufgabe und hakt bei `state=off` die offene Aufgabe mit diesem Schlüssel
+      ab. Das gilt dann auch für `update` und `lizenz`, die schon heute ein `off` schicken, deren Aufgabe
+      in HA aber bisher offen bleibt. Bitte der HA-Session über den Nutzer melden, wenn Feldnamen und
+      Release stehen.

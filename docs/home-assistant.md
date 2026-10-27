@@ -317,16 +317,26 @@ z.B. aufs Handy weiter.
 | `site` | Standort (z.B. `Haus`) |
 | `host` | betroffenes Gerät (leer bei der Probemeldung) |
 | `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `test` |
-| `state` | `on` = eingetreten, `off` = wieder in Ordnung, `once` = einmalig (Onboarding, neue RouterOS-Version, Probe) |
+| `state` | `on` = eingetreten, `off` = wieder in Ordnung bzw. erledigt (bei `ros`: alle Geräte haben die Version, oder sie ist überholt), `once` = einmalig (Onboarding, Probe) |
 | `msg` | Beschreibung ohne Standort und Gerät |
 | `text` | fertiger Text: `<site>: <host> - <msg>` |
 | `time` | Zeit des Managers |
 | `level` | `error`, `warning` (auch jedes „wieder ok“), `action` (Admin-Eingriff nötig: Update gescheitert, Lizenz, neue RouterOS-Version), `info` (Probe) |
 | `device` | betroffenes Gerät (bei Probe und neuer RouterOS-Version der Manager) |
 | `message` | wie `text` |
+| `key` | ordnet `on` und `off` einander zu: `<ev>:<host>` (z.B. `apply:ap1`), bei `ros` `ros:<Version>` |
+| `ver` | nur bei `ros`: die Version (z.B. `7.25.1`) |
 
 Ein Empfänger, der nur `level`, `device` und `message` auswertet (etwa `info` nur ins Log,
 `action` als Aufgabe), funktioniert ohne Anpassung.
+
+**Aufgaben schließen:** Macht HA aus Meldungen Einträge einer To-do-Liste, schließt das `off` mit
+demselben `key` den offenen Eintrag – auch bei `ros`: Sind alle Geräte auf der neuen Version, kommt
+`off` mit `RouterOS <Version> auf allen Geräten`; kommt vorher eine neuere Version, erst `off` für die
+alte („überholt durch …“), dann `on` für die neue. Bleibt ein Gerät absichtlich auf einer älteren
+Version, den Eintrag von Hand abhaken. `todo.update_item` findet einen Eintrag über Titel oder UID:
+den `key` also in den Titel nehmen (z.B. `[apply:ap1] …`) oder die Einträge selbst durchsuchen
+(`todo.get_items`, dann über die Beschreibung).
 
 Nur Wichtiges aufs Handy, z.B. ohne „wieder ok“: Bedingung
 `{{ trigger.json.state != 'off' }}` vor die Aktion setzen. `local_only: true` lässt nur Aufrufe aus

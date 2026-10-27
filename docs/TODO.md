@@ -60,6 +60,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Erledigt am 2026-10-27 (vor dem Update eines Standorts):** 65a (D95, Client-VLAN je MAC über `"wifi"="yes"` an
   der Lease; Hardware-Test der Weitergabe an die CAPs offen), drei „Bekannte Fehler“ – Audit-Purge mit
   verschwundenen Folgeobjekten, Labor-Wackler MNDP (14) und `Rekey SFTP cm2` (14g). Labor 7.25: `e2e.sh` 347, grün.
+* **Erledigt am 2026-10-27 vormittags:** 64 (D96) – `ros` als Zustand mit „erledigt“-Meldung (`off`, sobald alle
+  Geräte aktuell sind oder die Version überholt ist), Felder `key`/`ver` an den Meldungen. Labor 7.25: `e2e.sh` 354, grün.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -1011,7 +1013,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     haben einen fest eingebauten NTP-Server und bekommen in der IoT-Zone ohne Internet keine Zeit. `vlans.rsc`
     `"ntp"="redirect"` leitet `udp/123` aus dem VLAN an jedes Ziel außer dem Router auf dessen NTP-Server um.
     Am 2026-10-24 an einem Standort ausgerollt (Regel zählte sofort). Offen: Zeit an einer Lampe prüfen.
-64. **„Erledigt“-Meldung für neue RouterOS-Versionen (`ros`)** (Wunsch des Nutzers, 2026-10-26, aus der
+64. ~~**„Erledigt“-Meldung für neue RouterOS-Versionen (`ros`)**~~ – *umgesetzt 2026-10-27 (D96):* `ros` als Zustand
+    (`roso`), `off` sobald alle aktuell bzw. „überholt“, Felder `key`/`ver`; offene Frage entschieden: keine
+    Ausnahmeliste, ausgelassene Geräte beim Empfänger abhaken. Empfänger in HA: HA-Session. – (Wunsch des Nutzers, 2026-10-26, aus der
     HA-Session) – *Anlass:* Home Assistant macht aus jeder `action`-Meldung einen Eintrag in einer
     To-do-Liste, der täglich im Bericht steht, bis man ihn abhakt. `ros` kommt nur einmal (`"state":"once"`),
     ein „wieder ok“ gibt es nicht. Folge an einem Standort: Der Eintrag zu 7.24.5 (11.10.) stand nach dem

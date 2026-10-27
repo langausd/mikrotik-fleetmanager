@@ -1310,18 +1310,21 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 | `onboard` | Onboarding gescheitert oder abgelaufen (`"state":"once"`, kein „wieder ok“) |
 | `primary` | nur vom **Backup-Manager**: Spiegel-Abruf per SFTP beim Primary scheitert seit `notify.stale` (`device` = Primary) |
 | `primary-tick` | nur vom Backup-Manager: Primary erreichbar, aber der neueste gespiegelte Gerätestatus ist älter als `notify.stale` – sein Manager-Tick steht |
-| `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), solange ein aufgenommenes Gerät älter ist; je Version einmal (`"state":"once"`) |
+| `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), wenn ein aufgenommenes Gerät älter ist (`"on"`, offen in `meta/notify.dat` `roso`). `"off"`, sobald kein Gerät mehr älter ist (in jedem Tick geprüft, also kurz nach dem letzten `$cfmUpgrade`), oder `"off"` mit „überholt durch …“, wenn eine neuere Version kommt, bevor alle aktualisiert sind – dann erst danach das `"on"` der neuen. Absichtlich ausgelassene Geräte halten die Meldung offen: beim Empfänger abhaken (TODO 64) |
 
 Zusätzlich trägt jede Meldung `level`, `device` und `message` für einfache Empfänger: `level` ist
 `error` (`apply`, `onboard`, `stumm`, `primary`, `primary-tick`), `warning` (`wlan` und jedes „wieder ok“), `action`
 (Admin-Eingriff nötig: `update`, `lizenz`, `ros`) oder `info` (Probemeldung); `device` ist das
-betroffene Gerät (bei `ros` der Manager), `message` gleich `text`. Für `ros` braucht der Manager
+betroffene Gerät (bei `ros` der Manager), `message` gleich `text`. `key` ordnet `"on"` und `"off"` ohne
+Textvergleich einander zu: `<ev>:<host>` (z.B. `apply:ap1`), bei `ros` `ros:<Version>` mit dem Feld `ver`
+(TODO 64); ein Empfänger, der aus Meldungen Aufgaben macht, schließt mit dem `"off"` die Aufgabe mit
+demselben `key`. Für `ros` braucht der Manager
 einen Weg zu `upgrade.mikrotik.com` (HTTPS). Der Backup-Manager meldet nur `primary`/`primary-tick`
 (Zustand in `meta/notify-b.dat`) und braucht dafür ebenfalls einen Weg zu `notify.url`. `stale` muss
 größer sein als das Agent-Intervall `interval`, sonst gelten Geräte zwischen zwei Läufen als stumm.
 
 Body (UTF-8):
-`{"site":"Haus","host":"ap1","ev":"apply","state":"on","msg":"Apply-Fehler: failed …","text":"Haus: ap1 - Apply-Fehler: failed …","time":"2026-10-08 12:00:00","level":"error","device":"ap1","message":"Haus: ap1 - Apply-Fehler: failed …"}`.
+`{"site":"Haus","host":"ap1","ev":"apply","state":"on","msg":"Apply-Fehler: failed …","text":"Haus: ap1 - Apply-Fehler: failed …","time":"2026-10-08 12:00:00","level":"error","device":"ap1","message":"Haus: ap1 - Apply-Fehler: failed …","key":"apply:ap1"}`.
 `text` ist fertig zum Anzeigen. Kommt eine Meldung nicht an (Log `cfm: Meldung nicht zugestellt`),
 bleibt sie offen und der nächste Tick versucht es erneut. Probe: `$cfmNotify test=yes`. Die Adresse des
 Empfängers muss der Manager erreichen (Route, Firewall des Gateways); das MGMT-VLAN braucht dafür kein

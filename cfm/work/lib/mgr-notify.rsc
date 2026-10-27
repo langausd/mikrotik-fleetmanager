@@ -1,18 +1,23 @@
 # ============================================================
 # cfm lib/mgr-notify.rsc – Manager-Funktionen: Benachrichtigungen (D66)
-#   $cfmNotify ev=<art> host=<n> st=on|off|once msg=<text>   eine Meldung per HTTP-POST (JSON)
+#   $cfmNotify ev=<art> host=<n> st=on|off|once msg=<text> [key=<k>] [ver=<v>]   eine Meldung per HTTP-POST (JSON)
 #   $cfmNotify test=yes                                       Probemeldung an notify.url
 #   $cfmNotifyTick                                            Zustände prüfen, Wechsel melden
 #                                                             (aus $cfmTick, nur auf dem Primary)
 #   $cfmNotifyBackupTick                                      auf dem Backup: Primary stumm? (ev primary)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # Ziel: global.rsc "notify"={"url"=…;"stale"="30m";"licWarn"="14d"}, url leer = aus.
-# Der Body ist JSON: {"site","host","ev","state","msg","text","time"} - z.B. für einen
+# Der Body ist JSON: {"site","host","ev","state","msg","text","time","key"} - z.B. für einen
 # Webhook-Trigger von Home Assistant (docs/home-assistant.md), ntfy o.ä. mit derselben URL-Form.
 # Dazu level/device/message für einen einfachen Empfänger: level error (apply, onboard, stumm), warning
 # (wlan, "wieder ok"), action (update, lizenz, ros = Admin-Eingriff nötig), info (Probe); device = das
-# betroffene Gerät, message = text. Neue RouterOS-Version (ros): einmal am Tag NEWESTa7.<rosChannel>
-# bei upgrade.mikrotik.com, je neuer Version eine Meldung, solange ein aufgenommenes Gerät älter ist.
+# betroffene Gerät, message = text. key ordnet "on" und "off" ohne Textvergleich zu (TODO 64): "<ev>:<host>",
+# bei ros "ros:<Version>" und zusätzlich das Feld ver.
+# Neue RouterOS-Version (ros): einmal am Tag NEWESTa7.<rosChannel> bei upgrade.mikrotik.com. Ist ein
+# aufgenommenes Gerät älter, "on" (offen in notify.dat roso); sobald keins mehr älter ist, "off" (in jedem
+# Tick geprüft, also kurz nach dem letzten $cfmUpgrade). Kommt eine neuere Version, während eine ältere
+# offen ist: erst "off" für die alte (überholt), dann "on" für die neue. Absichtlich ausgelassene Geräte
+# halten die Meldung offen - abhaken beim Empfänger (Nutzer 2026-10-27).
 # Gemeldet wird nur ein Wechsel: einmal beim Eintreten ("on"), einmal bei "wieder ok" ("off"),
 # gemerkt in meta/notify.dat. Scheitert die Zustellung, bleibt der Zustand offen und der nächste
 # Tick versucht es erneut (pro Tick nach dem ersten Fehler keine weiteren Versuche).
@@ -44,6 +49,8 @@
   }
   :local e [:tostr $ev]; :local s [:tostr $st]; :local m [:tostr $msg]; :local h [:tostr $host]
   :if ($test = "yes") do={ :set e "test"; :set s "once"; :set m "Probemeldung von cfm" }
+  :local k [:tostr $key]
+  :if ([:len $k] = 0) do={ :set k ($e . ":" . $h) }
   :if ([:len $s] = 0) do={ :set s "once" }
   :local site [:tostr ($nc->"site")]
   :if ([:len $site] = 0) do={ :set site [/system/identity/get name] }
@@ -58,7 +65,9 @@
   :if ($e = "test") do={ :set lv "info" }
   :local dv $h
   :if ([:len $dv] = 0) do={ :set dv [/system/identity/get name] }
-  :local j ("{\"site\":" . [$cfmJStr $site] . ",\"host\":" . [$cfmJStr $h] . ",\"ev\":" . [$cfmJStr $e] . ",\"state\":" . [$cfmJStr $s] . ",\"msg\":" . [$cfmJStr $m] . ",\"text\":" . [$cfmJStr $t] . ",\"time\":" . [$cfmJStr $tm] . ",\"level\":" . [$cfmJStr $lv] . ",\"device\":" . [$cfmJStr $dv] . ",\"message\":" . [$cfmJStr $t] . "}")
+  :local j ("{\"site\":" . [$cfmJStr $site] . ",\"host\":" . [$cfmJStr $h] . ",\"ev\":" . [$cfmJStr $e] . ",\"state\":" . [$cfmJStr $s] . ",\"msg\":" . [$cfmJStr $m] . ",\"text\":" . [$cfmJStr $t] . ",\"time\":" . [$cfmJStr $tm] . ",\"level\":" . [$cfmJStr $lv] . ",\"device\":" . [$cfmJStr $dv] . ",\"message\":" . [$cfmJStr $t] . ",\"key\":" . [$cfmJStr $k])
+  :if ([:len [:tostr $ver]] > 0) do={ :set j ($j . ",\"ver\":" . [$cfmJStr $ver]) }
+  :set j ($j . "}")
   :local ok false
   :onerror x in={
     /tool/fetch url=$u http-method=post http-header-field="Content-Type: application/json" http-data=$j output=none as-value
@@ -143,7 +152,7 @@
   :foreach k,m in=$cur do={
     :if (!$down and [:typeof ($act->$k)] != "array") do={
       :local p [:find $k ":"]
-      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="on" msg=$m]) do={
+      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="on" msg=$m key=$k]) do={
         :set ($act->$k) ({"t"=$now;"m"=$m})
         :set n ($n + 1)
         :set chg true
@@ -154,7 +163,7 @@
   :foreach k,a in=$act do={
     :if (!$down and [:typeof ($cur->$k)] = "nothing") do={
       :local p [:find $k ":"]
-      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="off" msg=("wieder ok (war: " . [:tostr ($a->"m")] . ")")]) do={
+      :if ([$cfmNotify ev=[:pick $k 0 $p] host=[:pick $k ($p + 1) [:len $k]] st="off" msg=("wieder ok (war: " . [:tostr ($a->"m")] . ")") key=$k]) do={
         :set ($gone->$k) 1
         :set n ($n + 1)
       } else={ :set down true }
@@ -253,8 +262,35 @@
   :local down ($sr->"down")
   :local chg ($sr->"chg")
   :set ($nj->"act") ($sr->"act")
-  # neue RouterOS-Version: einmal am Tag fragen, je Version einmal melden (als Text gespeichert -
-  # :deserialize machte aus "7.24.5" eine IP-Adresse, deshalb mit Präfix v)
+  # Neue RouterOS-Version (TODO 64). Versionen als Text mit Präfix v gespeichert - :deserialize machte aus
+  # "7.24.5" eine IP-Adresse. rosv = zuletzt gesehene, roso = gemeldet und offen ("" = keine).
+  # Geräte älter als Version $1 (aufgenommen, mit bekannter Version) -> " name=ver …"
+  :local older do={
+    :global cfmInvLoad; :global cfmEnrolled; :global cfmJson; :global cfmVerGe
+    :local o ""
+    :foreach name,d in=[$cfmInvLoad] do={
+      :if ([$cfmEnrolled $d]) do={
+        :local rv [:tostr ([$cfmJson ($b . "/state/" . $name . "/status.dat")]->"ros")]
+        :set rv [:pick $rv 0 [:find ($rv . " ") " "]]
+        :if ([:len $rv] > 0 and ![$cfmVerGe $rv $1]) do={ :set o ($o . " " . $name . "=" . $rv) }
+      }
+    }
+    :return $o
+  }
+  # Übergang vom Stand vor TODO 64 (ros nur einmal gemeldet): Die zuletzt gemeldete Version gilt als offen,
+  # das "off" kommt, sobald alle Geräte sie haben
+  :if ([:typeof ($nj->"roso")] = "nothing") do={ :set ($nj->"roso") [:tostr ($nj->"rosv")]; :set chg true }
+  :local ro [:tostr ($nj->"roso")]
+  # offene Version erledigt: in jedem Tick, braucht upgrade.mikrotik.com nicht
+  :if (!$down and [:len $ro] > 1) do={
+    :local ov [:pick $ro 1 [:len $ro]]
+    :if ([:len [$older $ov b=$b]] = 0) do={
+      :if ([$cfmNotify ev="ros" host="" st="off" msg=("RouterOS " . $ov . " auf allen Geräten") key=("ros:" . $ov) ver=$ov]) do={
+        :set ($nj->"roso") ""; :set ro ""; :set n ($n + 1); :set chg true
+      } else={ :set down true }
+    }
+  }
+  # einmal am Tag nach einer neuen Version fragen
   :local rst [:tonum ($nj->"rost")]
   :if ([:typeof $rst] != "num") do={ :set rst 0 }
   :if (!$down and ($now - $rst) > 86400) do={
@@ -262,17 +298,18 @@
     :set chg true
     :local nv [$cfmRosLatest]
     :if ([:len $nv] > 0 and ("v" . $nv) != [:tostr ($nj->"rosv")]) do={
-      :local old ""
-      :foreach name,d in=[$cfmInvLoad] do={
-        :if ([$cfmEnrolled $d]) do={
-          :local rv [:tostr ([$cfmJson ($b . "/state/" . $name . "/status.dat")]->"ros")]
-          :set rv [:pick $rv 0 [:find ($rv . " ") " "]]
-          :if ([:len $rv] > 0 and ![$cfmVerGe $rv $nv]) do={ :set old ($old . " " . $name . "=" . $rv) }
-        }
-      }
+      :local old [$older $nv b=$b]
       :if ([:len $old] > 0) do={
+        :local ok true
+        # eine ältere offene Version zuerst schließen: beim Empfänger bleibt nie mehr als eine offen
+        :if ([:len $ro] > 1 and $ro != ("v" . $nv)) do={
+          :local ov [:pick $ro 1 [:len $ro]]
+          :set ok [$cfmNotify ev="ros" host="" st="off" msg=("RouterOS " . $ov . " überholt durch " . $nv) key=("ros:" . $ov) ver=$ov]
+          :if ($ok) do={ :set ($nj->"roso") ""; :set n ($n + 1) }
+        }
         :local ch [:tostr ($cfmG->"rosChannel")]; :if ([:len $ch] = 0) do={ :set ch "stable" }
-        :if ([$cfmNotify ev="ros" host="" st="once" msg=("RouterOS " . $nv . " (" . $ch . ") verfügbar, älter:" . $old . " - prüfen mit \$cfmUpgrade ver=" . $nv . " all=yes check=yes")]) do={ :set ($nj->"rosv") ("v" . $nv); :set n ($n + 1) } else={ :set ($nj->"rost") 0 }
+        :if ($ok) do={ :set ok [$cfmNotify ev="ros" host="" st="on" msg=("RouterOS " . $nv . " (" . $ch . ") verfügbar, älter:" . $old . " - prüfen mit \$cfmUpgrade ver=" . $nv . " all=yes check=yes") key=("ros:" . $nv) ver=$nv] }
+        :if ($ok) do={ :set ($nj->"rosv") ("v" . $nv); :set ($nj->"roso") ("v" . $nv); :set n ($n + 1) } else={ :set ($nj->"rost") 0 }
       } else={ :set ($nj->"rosv") ("v" . $nv) }
     }
   }

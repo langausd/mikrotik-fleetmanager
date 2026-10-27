@@ -737,31 +737,46 @@ grep '"ev": "test"' "$NL" | grep -q '"level": "info", "device": "cm1", "message"
 # Zustände von sw1 im gesammelten Status vortäuschen: stumm, Apply-Fehler, WLAN lokal, Update fehlgeschlagen
 setst() { mgr ':global cfmJson; :global cfmWrite; :global cfmRead; :global cfmNow; :global e2eS; :if ([:typeof $e2eS] != "str") do={ :set e2eS [$cfmRead "cfm/state/sw1/status.dat"] }; :local s [$cfmJson "cfm/state/sw1/status.dat"]; :set ($s->"seen") ([$cfmNow] - 3600); :set ($s->"res") "failed e2e"; :set ($s->"wfb") 1; :set ($s->"upg") "fehlgeschlagen 7.0.0"; $cfmWrite "cfm/state/sw1/status.dat" [:serialize to=json $s]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])'; }
 rest() { mgr ':global cfmWrite; :global e2eS; $cfmWrite "cfm/state/sw1/status.dat" $e2eS; :set e2eS; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])'; }
+# Zählungen nur für sw1: ros meldet seit TODO 64 auch "on" (host leer)
+ON='"host": "sw1", "ev": "[a-z]*", "state": "on"'; OFF='"host": "sw1", "ev": "[a-z]*", "state": "off"'
 setst >/dev/null
-nwait '"state": "on"' 4 && for e in stumm apply wlan update; do grep -q "\"host\": \"sw1\", \"ev\": \"$e\", \"state\": \"on\"" "$NL" || bad "keine Meldung $e"; done && ok "vier Meldungen beim Eintreten (stumm, apply, wlan, update)" || { bad "Meldungen beim Eintreten: $(grep -c '"state": "on"' "$NL")"; grep '"state": "on"' "$NL" | cut -c1-160; }
+nwait "$ON" 4 && for e in stumm apply wlan update; do grep -q "\"host\": \"sw1\", \"ev\": \"$e\", \"state\": \"on\"" "$NL" || bad "keine Meldung $e"; done && ok "vier Meldungen beim Eintreten (stumm, apply, wlan, update)" || { bad "Meldungen beim Eintreten: $(grep -c "$ON" "$NL")"; grep "$ON" "$NL" | cut -c1-160; }
 grep '"ev": "apply", "state": "on"' "$NL" | grep -q '"level": "error"' && grep '"ev": "stumm", "state": "on"' "$NL" | grep -q '"level": "error"' && grep '"ev": "wlan", "state": "on"' "$NL" | grep -q '"level": "warning"' && grep '"ev": "update", "state": "on"' "$NL" | grep -q '"level": "action"' && ok "level: apply/stumm error, wlan warning, update action" || bad "level beim Eintreten: $(grep '"state": "on"' "$NL" | grep -o '"ev": "[a-z]*".*"level": "[a-z]*"' | sed 's/"state.*"level"/ level/' | tr '\n' ' ')"
 grep '"ev": "apply", "state": "on"' "$NL" | grep -q '"msg": "Apply-Fehler: failed e2e"' && grep '"ev": "stumm", "state": "on"' "$NL" | grep -q '"msg": "stumm: kein Status seit 6[0-9] min"' && ok "Texte: Apply-Fehler, stumm seit 60 min" || bad "Meldungstexte: $(grep '"state": "on"' "$NL" | cut -c1-200 | head -2)"
 setst >/dev/null; sleep 2
-[ "$(grep -c '"state": "on"' "$NL")" = 4 ] && ok "kein zweites Mal, solange der Zustand bleibt" || bad "Wiederholung: $(grep -c '"state": "on"' "$NL") Meldungen"
+[ "$(grep -c "$ON" "$NL")" = 4 ] && ok "kein zweites Mal, solange der Zustand bleibt" || bad "Wiederholung: $(grep -c "$ON" "$NL") Meldungen"
 rest >/dev/null
-nwait '"state": "off"' 4 && grep '"ev": "apply", "state": "off"' "$NL" | grep -q '"msg": "wieder ok (war: Apply-Fehler: failed e2e)"' && ok "vier Meldungen \"wieder ok\"" || { bad "Meldungen wieder ok: $(grep -c '"state": "off"' "$NL")"; }
-[ "$(grep '"state": "off"' "$NL" | grep -c '"level": "warning"')" = 4 ] && ok "\"wieder ok\" mit level warning" || bad "level von wieder ok"
+nwait "$OFF" 4 && grep '"ev": "apply", "state": "off"' "$NL" | grep -q '"msg": "wieder ok (war: Apply-Fehler: failed e2e)"' && ok "vier Meldungen \"wieder ok\"" || { bad "Meldungen wieder ok: $(grep -c "$OFF" "$NL")"; }
+[ "$(grep "$OFF" "$NL" | grep -c '"level": "warning"')" = 4 ] && ok "\"wieder ok\" mit level warning" || bad "level von wieder ok"
 # neue RouterOS-Version (level action): echte Abfrage bei MikroTik (Internet über ether1 aus Schritt 13),
 # dann mit vorgetäuschter Version; je Version nur einmal, auch wenn erneut gefragt wird
 mgr ':global cfmRosLatest; :put ("RL=" . [$cfmRosLatest])' | grep -qE '^RL=7\.[0-9]+' && ok "neueste RouterOS-Version bei MikroTik abgefragt" || bad "NEWESTa7 nicht abrufbar: $(mgr ':global cfmRosLatest; :put ("RL=" . [$cfmRosLatest])' | tail -1)"
-rost() { mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"rost") 0; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmRosFake "7.99.1"; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick]); :set cfmRosFake'; }
+rost() { mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"rost") 0; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmRosFake "'"${1:-7.99.1}"'"; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick]); :set cfmRosFake'; }
 rost >/dev/null
-nwait 'RouterOS 7.99.1' && grep 'RouterOS 7.99.1' "$NL" | grep -q '"state": "once", "msg": "RouterOS 7.99.1 (stable) verfügbar, älter: .*sw1=7\.[0-9.]*.*"level": "action"' && ok "neue Version gemeldet (level action, ältere Geräte genannt)" || { bad "Meldung neue Version"; grep '"ev": "ros"' "$NL" | tail -1 | cut -c1-250; }
+nwait 'RouterOS 7.99.1' && grep 'RouterOS 7.99.1' "$NL" | grep -q '"state": "on", "msg": "RouterOS 7.99.1 (stable) verfügbar, älter: .*sw1=7\.[0-9.]*.*"level": "action".*"key": "ros:7.99.1", "ver": "7.99.1"' && ok "neue Version gemeldet (on, level action, ältere Geräte genannt, key ros:7.99.1, ver)" || { bad "Meldung neue Version"; grep '"ev": "ros"' "$NL" | tail -1 | cut -c1-250; }
 rost >/dev/null; sleep 2
 [ "$(grep -c 'RouterOS 7.99.1' "$NL")" = 1 ] && ok "dieselbe Version kein zweites Mal" || bad "Version mehrfach gemeldet: $(grep -c 'RouterOS 7.99.1' "$NL")"
 expect 1 '[:len ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"act")] = 0' "notify.dat: keine offenen Zustände"
+# ros als Zustand (TODO 64): offen in roso; neuere Version schließt die alte (überholt) vor dem neuen "on";
+# sind alle Geräte aktuell, "off" in jedem Tick; Übergang: ohne roso gilt die zuletzt gemeldete als offen
+grep '"ev": "apply", "state": "on"' "$NL" | grep -q '"key": "apply:sw1"' && grep '"ev": "test"' "$NL" | grep -q '"key": "test:"' && ok "key <ev>:<host> an allen Meldungen (TODO 64)" || bad "key fehlt: $(grep '"ev": "apply", "state": "on"' "$NL" | head -1 | cut -c1-200)"
+expect 1 '[:tostr ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"roso")] = "v7.99.1"' "notify.dat: roso v7.99.1 offen"
+rost 7.99.2 >/dev/null
+nwait 'RouterOS 7.99.2 (stable)' && grep -n '"ev": "ros"' "$NL" | grep -A1 '"msg": "RouterOS 7.99.1 überholt durch 7.99.2"' | grep -q '"state": "on", "msg": "RouterOS 7.99.2' && grep 'überholt durch 7.99.2' "$NL" | grep -q '"state": "off".*"key": "ros:7.99.1", "ver": "7.99.1"' && ok "neuere Version: erst off für 7.99.1 (überholt), dann on für 7.99.2" || { bad "überholte Version"; grep '"ev": "ros"' "$NL" | tail -3 | cut -c1-200; }
+mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso") "v7.0"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null
+nwait 'RouterOS 7.0 auf allen Geräten' && grep 'RouterOS 7.0 auf allen Geräten' "$NL" | grep -q '"state": "off".*"key": "ros:7.0", "ver": "7.0"' && ok "alle Geräte aktuell: off mit key ros:7.0 im nächsten Tick" || { bad "off für erledigte Version"; grep '"ev": "ros"' "$NL" | tail -2 | cut -c1-200; }
+expect 1 '[:tostr ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"roso")] = ""' "notify.dat: roso danach leer"
+mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso"); :set ($j->"rosv") "v7.1"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null
+nwait 'RouterOS 7.1 auf allen Geräten' && ok "Übergang vom Stand vor TODO 64: zuletzt gemeldete Version (rosv) gilt als offen, off" || { bad "Übergang rosv -> roso"; grep '"ev": "ros"' "$NL" | tail -2 | cut -c1-200; }
+n1=$(grep -c '"ev": "ros"' "$NL"); mgr ':global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null; sleep 2
+[ "$(grep -c '"ev": "ros"' "$NL")" = "$n1" ] && ok "danach keine weitere ros-Meldung" || bad "weitere ros-Meldung: $(grep '"ev": "ros"' "$NL" | tail -1 | cut -c1-160)"
 # Empfänger weg: nichts gilt als gemeldet, der nächste Tick holt es nach
 kill $npid 2>/dev/null; wait $npid 2>/dev/null; n0=$(grep -c . "$NL")
 setst >/dev/null
 expect 1 '[:len [/log/find where message~"^cfm: Meldung nicht zugestellt"]] >= 1 and [:len ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"act")] = 0' "Empfänger aus: Warnung im Log, nichts als gemeldet vermerkt"
 sink; setst >/dev/null
-nwait '"state": "on"' 8 && ok "Empfänger zurück: Meldungen nachgeholt" || bad "nicht nachgeholt: $(grep -c '"state": "on"' "$NL")"
-rest >/dev/null; nwait '"state": "off"' 8 || bad "wieder ok nach dem Nachholen fehlt"
+nwait "$ON" 8 && ok "Empfänger zurück: Meldungen nachgeholt" || bad "nicht nachgeholt: $(grep -c "$ON" "$NL")"
+rest >/dev/null; nwait "$OFF" 8 || bad "wieder ok nach dem Nachholen fehlt"
 # Spiegel auf cm2 sofort anstoßen: als User cfm (dessen Schlüssel braucht der SFTP-Abruf) im Hintergrund,
 # ssh-exec selbst liefe vorher in seine Zeitgrenze; Ergebnis in e2e-mir.txt auf cm2
 mirror() { local f="e2e-mir-$RANDOM.txt"

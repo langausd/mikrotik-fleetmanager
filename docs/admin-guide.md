@@ -395,6 +395,14 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
   und fliegt nach dem Umzug raus. Eine umbenannte Lease (gleiche MAC und Adresse) übernimmt der Apply
   unter dem neuen Namen, sie bleibt bestehen.
 * Die MAC darf klein geschrieben sein, die Rolle schreibt sie wie RouterOS groß.
+* **`"wifi"="yes"`** (D95): Das Gerät landet im WLAN an jeder SSID im VLAN dieser Lease, z.B. ein
+  Firmen-Laptop mit der Haupt-SSID im Gäste-VLAN: `"40"={"firma-laptop"={"mac"="…";"ip"=30;"wifi"="yes"}}`.
+  Der CAPsMAN (und der lokale Fallback der APs) legt dafür vorn in der Access-List Einträge je MAC mit
+  `vlan-id` an, mit denselben Signal-Grenzen wie für alle (`minSignal`, Trennschwelle je Band). Die MAC
+  muss fest sein: Viele Geräte nehmen je SSID eine zufällige, die unter Windows je Netz gleich bleibt,
+  unter Android/iOS meist auch (abschaltbar je Netz). `$cfmCheck` weist auf lokal verwaltete MACs hin,
+  verlangt `yes`/`no`, nur ein VLAN mit `wifi` je MAC und warnt, wenn das VLAN nicht in `trunk-ap` liegt.
+  Am Kabel wirkt das nicht (TODO 65).
 * Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
 * Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).
 
@@ -1000,6 +1008,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
 | Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
 | Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
+| Ein Gerät im WLAN in ein anderes VLAN (per MAC) | Lease in `leases.rsc` im Ziel-VLAN mit `"wifi"="yes"` → Release (D95) |
 | WLAN-Kanäle ansehen | `$cfmChannels` |
 | Clients je AP und Roaming verfolgen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (8.10) |
 | Gerät finden: wo hängt MAC, IP oder Name? | `$cfmFind <text>` bzw. cfm-Monitor, Reiter Suche; was hängt an einem Port: `$cfmFind host=<gerät> port=<port>`; schwache WLAN-Clients: `$cfmFind signal=-75` (8.11) |

@@ -529,10 +529,14 @@
   :foreach m in=$cfmMenus do={
     :onerror e in={
       :local ff [:parse (":return [" . $m . "/find]")]
+      # Gibt es das Objekt noch? Dynamische Folgeobjekte (Connected-Route einer Adresse, Bridge-VLAN eines
+      # VLAN-Interface) verschwinden mit einem eben entfernten Objekt; get liefert dann ohne Fehler nur .id
+      # und Standardwerte - das sah aus wie ein unverwaltetes Objekt, remove meldete FEHLER (Befund 2026-10-17)
+      :local fx [:parse (":return [:len [" . $m . "/find where .id=\$I]]")]
       :foreach id in=[$ff] do={
         :local g [$cfmRun ($m . "/get") I=$id]
         :local c [:tostr ($g->"comment")]
-        :if (!($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1) and !($m = "/system/logging" and [:tostr ($g->"action")] = $skipLog) and !($m = "/user" and ($g->"name") = "admin")) do={
+        :if ([$fx I=$id] > 0 and !($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1) and !($m = "/system/logging" and [:tostr ($g->"action")] = $skipLog) and !($m = "/user" and ($g->"name") = "admin")) do={
           :set n ($n + 1)
           :local ref ("A" . $n)
           :local sum ""

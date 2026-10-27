@@ -118,6 +118,15 @@ mgr '$cfmAudit host=sw1' | grep -qE "/user name=admin|action=cfmremote" && bad "
 ref=$(mgr '$cfmAudit host=sw1' | grep "hand.lan" | awk '{print $1}')
 mgr "\$cfmAudit host=sw1 op=mark sel=$ref" >/dev/null
 expect 2 '[/ip/dns/static/get [find name=hand.lan] comment] ~ "^cfm-override"' "Audit mark -> cfm-override"
+# purge eines VLAN-Interface samt Adresse: dynamische Folgeobjekte (Bridge-VLAN, Connected-Route) verschwinden
+# mit, ohne FEHLER-Zeilen (Befund 2026-10-17)
+r 2 '/interface/vlan/add name=hand99 interface=bridge vlan-id=99; /ip/address/add address=192.168.99.1/24 interface=hand99' >/dev/null
+sleep 2
+sel=$(mgr '$cfmAudit host=sw1' | grep -E "^A[0-9]+ .*(name|interface)=hand99" | awk '{print $1}' | paste -sd, -)
+out=$(mgr "\$cfmAudit host=sw1 op=purge sel=$sel")
+# die Adresse steht danach mit interface=*N da; verschwundene Folgeobjekte erschienen vorher als Zeile ohne Felder (und verschoben die Nummern)
+[ "$(echo "$out" | grep -c " -> entfernt")" = 2 ] && ! echo "$out" | grep -qE "FEHLER|^A[0-9]+ /[a-z0-9/-]+ *$" && ok "Audit purge ($sel): VLAN-Interface samt Adresse entfernt, keine FEHLER" || { bad "Audit purge ($sel)"; echo "$out" | tail -6; }
+expect 2 '[:len [/interface/vlan/find where name=hand99]] = 0 and [:len [/ip/address/find where address="192.168.99.1/24"]] = 0 and [:len [/ip/dns/static/find where name=hand.lan]] = 1' "sw1: hand99 und Adresse weg, markiertes hand.lan bleibt"
 
 step "6. Probelauf (\$cfmPlan): zeigt Änderungen, wendet nichts an"
 mgr ':global e2eV [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV . ":set (\$cfmVlans->\"99\") {\"name\"=\"PLAN\";\"zone\"=\"lan\"}\n")' >/dev/null
@@ -370,7 +379,8 @@ echo "$out" | grep -qE "^(cm1 +ether3 +cm2 +ether2|cm2 +ether2 +cm1 +ether3) +ok
 expect 3 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]] = "num"' "cm2 (stp=none): Nachbarsuche mit MNDP"
 n0=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=10 frame-types=admit-all' >/dev/null
-sleep 40
+# auf das erste Paket warten statt fest 40 s: discover-interval ist 30 s, kam aber vereinzelt später (TODO)
+for _ in $(seq 1 14); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; done
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=1 frame-types=admit-only-vlan-tagged' >/dev/null
 n1=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
 expect 1 '[/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets] > 0' "cm1: MNDP mit Quelle 0.0.0.0 still verworfen (D78)"
@@ -456,6 +466,20 @@ out=$(r 1 ':local a [:pick [/interface/wifi/access-list/find where comment~"^cfm
 echo "$out" | grep -q "A=reject/-120..-73/cfm-wifi-5g B=accept/-78..0/00:00:30 O=true" && ok "cm1: access-list abweisen unter join (-72), dann annehmen bis drop (-78, 30 s)" || { bad "access-list der Trennschwelle"; echo "$out" | tail -2; }
 out=$(mgr '$cfmPlan host=cm1')
 echo "$out" | grep -qE "wcut|wdp:|il:wifi|Regelblock" && { bad "Trennschwelle erscheint im Probelauf erneut"; echo "$out" | grep -E "wcut|wdp:|il:wifi|Regelblock"; } || ok "Trennschwelle ohne Scheinänderung im Probelauf"
+# Client-VLAN je MAC (TODO 65a, D95): Lease mit "wifi"="yes" -> vorn im Block wcut die Grenzen je MAC mit
+# vlan-id der Lease, zuletzt "annehmen mit VLAN", danach die allgemeinen Regeln. Dazu minSignal (Regel je MAC)
+mgr ':global e2eLw [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; :global e2eWw [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eWw . ":set (\$cfmWifi->\"minSignal\") -80\n"); /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eLw . ":set (\$cfmLeases->\"40\") {\"firma\"={\"mac\"=\"F4:00:00:00:00:41\";\"ip\"=41;\"wifi\"=\"yes\"};\"zufall\"={\"mac\"=\"02:00:00:00:00:42\";\"ip\"=42;\"wifi\"=\"yes\"};\"falsch\"={\"mac\"=\"F4:00:00:00:00:43\";\"ip\"=43;\"wifi\"=\"ja\"}}\n:set (\$cfmLeases->\"30\") {\"firma-alt\"={\"mac\"=\"F4:00:00:00:00:41\";\"ip\"=41;\"wifi\"=\"yes\"}}\n")' >/dev/null
+out=$(mgr ':global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "W leases.rsc: VLAN 40 zufall: wifi: lokal verwaltete (zufällige) MAC" && echo "$out" | grep -q "ERR leases.rsc: VLAN 40 falsch: wifi nur" && echo "$out" | grep -q "ERR leases.rsc: VLAN 40 firma: wifi: MAC schon mit wifi in VLAN 30" && ok "\$cfmCheck: wifi-Lease mit zufälliger MAC (Hinweis), falscher Wert, MAC in zwei VLANs (Fehler)" || { bad "\$cfmCheck wifi-Lease"; echo "$out" | grep -i "leases"; }
+mgr ':global e2eLw; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eLw . ":set (\$cfmLeases->\"40\") {\"firma\"={\"mac\"=\"F4:00:00:00:00:41\";\"ip\"=41;\"wifi\"=\"yes\"}}\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" Client-VLAN je MAC" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Client-VLAN je MAC) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
+out=$(r 1 ':foreach i in=[/interface/wifi/access-list/find where comment~"^cfm:wcut"] do={ :local g [/interface/wifi/access-list/get $i]; :put ([:tostr ($g->"mac-address")] . "|" . ($g->"action") . "|" . [:tostr ($g->"signal-range")] . "|" . [:tostr ($g->"vlan-id")] . "|" . [:tostr ($g->"interface")]) }' | tr -d '\r' | paste -sd' ' -)
+exp="F4:00:00:00:00:41|reject|-120..-73||cfm-wifi-5g F4:00:00:00:00:41|accept|-78..0|40|cfm-wifi-5g F4:00:00:00:00:41|reject|-120..-81|| F4:00:00:00:00:41|accept||40| |reject|-120..-73||cfm-wifi-5g |accept|-78..0||cfm-wifi-5g"
+[ "$(echo $out)" = "$exp" ] && ok "cm1: access-list je MAC vor den allgemeinen Regeln, endet mit annehmen + VLAN 40" || { bad "access-list je MAC"; echo "  ist:  $out"; echo "  soll: $exp"; }
+out=$(mgr '$cfmPlan host=cm1')
+echo "$out" | grep -qE "wcut|Regelblock" && { bad "access-list je MAC erscheint im Probelauf erneut"; echo "$out" | grep -E "wcut|Regelblock"; } || ok "access-list je MAC ohne Scheinänderung im Probelauf"
+mgr ':global e2eLw; :global e2eWw; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eLw; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eWw' >/dev/null
 out=$(mgr ':global cfmCheck; :global e2eV3 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"steer\"->\"2\") {\"drop\"=-70;\"join\"=-75}\n:set (\$cfmWifi->\"steer\"->\"5\"->\"join\")\n"); /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV3 . ":set (\$cfmVlans->\"40\"->\"isolate\") \"yes\"\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
 echo "$out" | grep -q "ERR wifi.rsc: steer 2: join -75 liegt unter drop -70" && ok "\$cfmCheck: join unter drop" || { bad "join unter drop nicht erkannt"; echo "$out" | grep -i steer; }
 echo "$out" | grep -q "W wifi.rsc: steer 5: join = drop" && echo "$out" | grep -q "W wifi.rsc: steer 5: drop gilt nicht für SSID guest (VLAN 40 isoliert" && ok "\$cfmCheck: join = drop und isolierte SSID als Hinweis" || { bad "Hinweise der Trennschwelle fehlen"; echo "$out" | grep -i steer; }
@@ -796,9 +820,13 @@ echo "$out" | grep -q "Rekey SFTP cm2: neuer Manager-Schlüssel nicht auf allen 
 [ "$(r 2 ':put [:len [/user/ssh-keys/find where user=cfm]]' | head -1)" = "$n2a" ] && ok "sw1: Trust-Keys wie vorher ($n2a)" || bad "sw1: Trust-Keys nach dem Abbruch: $(r 2 ':put [:len [/user/ssh-keys/find where user=cfm]]' | head -1)"
 mirror | grep -q MIR=true && ok "cm2 spiegelt nach dem Abbruch weiter (alter Schlüssel)" || bad "cm2 spiegelt nach dem Abbruch nicht"
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"ph2"); $cfmInvSave $i; /ppp/secret/remove [find where name="cfm:mac.SERIAL-PH2"]' >/dev/null
-# Backup-Manager cm2: zweiphasig
+# Backup-Manager cm2: zweiphasig. Läuft auf cm2 gerade der Agent (oder steht cfm-watchdog), lehnt der Rekey
+# bewusst ab (busy) - vorher warten, bei busy einmal nach Pause wiederholen (vereinzelter Fehlschlag, TODO)
+idle3() { for _ in $(seq 1 60); do [ "$(r 3 ':put ([:len [/system/scheduler/find where name="cfm-watchdog"]] + [:len [/system/script/job/find where script="cfm-agent"]])' | tail -1 | tr -dc 0-9)" = 0 ] && return 0; sleep 5; done; return 1; }
 c0=$(fp 1 cfmd-cm2)
+idle3
 out=$(mgr '$cfmRekey host=cm2 sftp=yes')
+echo "$out" | grep -q "gerade nicht möglich" && { echo "  (Rekey cm2: gerade nicht möglich, neuer Versuch)"; sleep 10; idle3; out=$(mgr '$cfmRekey host=cm2 sftp=yes'); }
 echo "$out" | grep -q "Rekey SFTP cm2: Manager-Schlüssel auf 3 Geräten, alter entfernt" && echo "$out" | grep -q "Rekey SFTP cm2: neuer SFTP-/Host-Schlüssel aktiv" && ok "Rekey SFTP cm2 (Manager, zweiphasig)" || { bad "Rekey SFTP cm2"; echo "$out" | tail -4; }
 c1=$(fp 1 cfmd-cm2)
 [ -n "$c1" ] && [ "$c0" != "$c1" ] && ok "cm1: cfmd-cm2 mit neuem Schlüssel" || bad "cfmd-cm2 unverändert"

@@ -173,7 +173,7 @@
   }
   # Feste Leases (D62): VLAN mit DHCP der Router, Name als DNS-Label (eindeutig, kein Gerätename),
   # MAC und Adresse je VLAN eindeutig, Adresse im Netz und nicht die des Gateways
-  :local lName ({})
+  :local lName ({}); :local lWifi ({})
   :foreach vid,ls in=$cfmLeases do={
     :local v ($cfmVlans->[:tostr $vid])
     :if ([:typeof $v] != "array") do={ :set ($err->[:len $err]) ("leases.rsc: VLAN " . $vid . " fehlt in vlans.rsc") } else={
@@ -198,7 +198,17 @@
         :if (!($mac ~ "^([0-9A-F][0-9A-F]:){5}[0-9A-F][0-9A-F]\$")) do={ :set ($err->[:len $err]) ($w . "MAC fehlt oder ungültig (AA:BB:CC:DD:EE:FF)") } else={
           :if ([:typeof ($lMac->$mac)] != "nothing") do={ :set ($err->[:len $err]) ($w . "MAC schon bei " . ($lMac->$mac)) }
           :set ($lMac->$mac) $ln
+          # Client-VLAN je MAC (D95): ein Gerät mit zufälliger MAC je SSID landet nach einem Wechsel wieder im
+          # VLAN der SSID; das VLAN muss auf den AP-Uplinks liegen (wie bei PPSK)
+          :if ([:tostr ($ld->"wifi")] = "yes") do={
+            :if ([:typeof ($lWifi->$mac)] != "nothing") do={ :set ($err->[:len $err]) ($w . "wifi: MAC schon mit wifi in VLAN " . ($lWifi->$mac) . " - nur ein VLAN je MAC") }
+            :set ($lWifi->$mac) $vid
+            :if ([:typeof [:find "26AE" [:pick $mac 1 2]]] = "num") do={ :set ($warn->[:len $warn]) ($w . "wifi: lokal verwaltete (zufällige) MAC - wechselt das Gerät sie, gilt wieder das VLAN der SSID") }
+            :if ([:len $apTag] > 0 and ![$inSpec $apTag v=[:tostr $vid]]) do={ :set ($warn->[:len $warn]) ($w . "wifi: VLAN " . $vid . " fehlt im AP-Uplink-Profil trunk-ap") }
+          }
         }
+        :local wf [:tostr ($ld->"wifi")]
+        :if ([:len $wf] > 0 and $wf != "yes" and $wf != "no") do={ :set ($err->[:len $err]) ($w . "wifi nur \"yes\" oder \"no\"") }
         :local h [:tonum ($ld->"ip")]
         :if ([:typeof $h] != "num" or $h < 1 or $h > $hmax) do={ :set ($err->[:len $err]) ($w . "ip = Host-Anteil 1-" . $hmax) } else={
           :if ($h = $gwh) do={ :set ($err->[:len $err]) ($w . "ip ist die Adresse des Gateways") }

@@ -80,7 +80,37 @@
       :set ($acl->[:len $acl]) $ra
     }
   }
-  $cfmBlock m="/interface/wifi/access-list" k="wcut" l=$acl
+  # Client-VLAN je MAC (TODO 65a, D95): Eine Lease mit "wifi"="yes" in leases.rsc schickt dieses Gerät an
+  # jeder SSID in das VLAN der Lease (z.B. ein Firmen-Laptop mit der Haupt-SSID ins Gäste-VLAN). Die
+  # Einträge stehen vorn im Block wcut, vor dessen Regeln und wacl:min (die Access-List nimmt den ersten
+  # passenden Eintrag; im selben Block bleibt die Reihenfolge auch, wenn wcut später erst entsteht). Sie
+  # bilden die Grenzen je MAC nach und enden mit "annehmen mit VLAN": Fiele das Gerät bei schwachem Signal
+  # durch, griffen die allgemeinen Regeln ohne vlan-id - es landete doch im VLAN der SSID.
+  :global cfmLeases
+  :local mac ({})
+  :if ([:typeof $cfmLeases] = "array") do={
+    :foreach vid,ls in=$cfmLeases do={
+      :foreach n,l in=$ls do={
+        :if ([:tostr ($l->"wifi")] = "yes" and [:len [:tostr ($l->"mac")]] = 17) do={
+          :local ma [:tostr ($l->"mac")]
+          :foreach b,ln in=$cut do={
+            :local st ($w->"steer"->$b)
+            :local dr [:tonum ($st->"drop")]
+            :local jn $dr
+            :if ([:len [:tostr ($st->"join")]] > 0) do={ :set jn [:tonum ($st->"join")] }
+            :set ($mac->[:len $mac]) ({"mac-address"=$ma;"interface"=$ln;"signal-range"=("-120.." . ($jn - 1));"action"="reject"})
+            :local ra ({"mac-address"=$ma;"interface"=$ln;"signal-range"=($dr . "..0");"action"="accept";"vlan-id"=[:tonum $vid]})
+            :if ([:len [:tostr ($st->"hold")]] > 0) do={ :set ($ra->"allow-signal-out-of-range") ($st->"hold") }
+            :set ($mac->[:len $mac]) $ra
+          }
+          :if ([:len $msg] > 0) do={ :set ($mac->[:len $mac]) ({"mac-address"=$ma;"signal-range"=("-120.." . ([:tonum $msg] - 1));"action"="reject"}) }
+          :set ($mac->[:len $mac]) ({"mac-address"=$ma;"action"="accept";"vlan-id"=[:tonum $vid]})
+        }
+      }
+    }
+  }
+  :foreach r in=$acl do={ :set ($mac->[:len $mac]) $r }
+  $cfmBlock m="/interface/wifi/access-list" k="wcut" l=$mac
   # Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, D32), DFS-Kanäle optional meiden
   :foreach b,c in=($w->"channels") do={
     :local cp ({"name"=("cfm-" . $b . "g");"band"=($c->"band");"frequency"=($c->"freq");"width"=($c->"width")})

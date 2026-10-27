@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-26)
+## Übersicht offener Punkte (Stand 2026-10-27)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -57,6 +57,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   CAP-Radios, deren feste Interfaces nicht mehr zu den Regeln passen, `cfm-reprov` provisioniert sie
   nacheinander und setzt den Schaltzustand durch. Labor 7.25: `e2e.sh` 341, grün. **Neu:** 64 („Erledigt“-Meldung
   für `ros`), 65 (Fremdgerät per MAC ins Gäste-VLAN: (a) WLAN-Access-List, (b) Kabel wartet auf 802.1X).
+* **Erledigt am 2026-10-27 (vor dem Update eines Standorts):** 65a (D95, Client-VLAN je MAC über `"wifi"="yes"` an
+  der Lease; Hardware-Test der Weitergabe an die CAPs offen), drei „Bekannte Fehler“ – Audit-Purge mit
+  verschwundenen Folgeobjekten, Labor-Wackler MNDP (14) und `Rekey SFTP cm2` (14g). Labor 7.25: `e2e.sh` 347, grün.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -241,12 +244,14 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
-* **Labor: Die MNDP-Prüfung in `e2e.sh` Schritt 14 schlägt vereinzelt fehl** (2026-10-20, ein Lauf von vier,
+* ~~**Labor: Die MNDP-Prüfung in `e2e.sh` Schritt 14 schlägt vereinzelt fehl**~~ – *behoben 2026-10-27:* wartet bis
+  70 s auf das erste Paket. (2026-10-20, ein Lauf von vier,
   drei Labore parallel): In den 40 s mit `pvid=10` an cm1:ether3 kam kein MNDP-Paket von cm2 an (Zähler der
   Regel 0, kein Log), obwohl `discover-interval` 30 s ist; derselbe Code bestand im Parallellauf. Wieder
   2026-10-25 (7.25, zwei Labore parallel; von Hand nachgestellt bestanden). Beheben:
   statt fest 40 s auf das erste Paket warten (bis etwa 70 s).
-* **Labor: `Rekey SFTP cm2` in `e2e.sh` Schritt 14g schlägt vereinzelt fehl** (2026-10-23, ein Lauf von zwei
+* ~~**Labor: `Rekey SFTP cm2` in `e2e.sh` Schritt 14g schlägt vereinzelt fehl**~~ – *behoben 2026-10-27:* wartet,
+  bis auf cm2 kein Agent läuft, und wiederholt bei „gerade nicht möglich“ einmal. (2026-10-23, ein Lauf von zwei
   mit demselben Code): `$cfmRekey host=cm2 sftp=yes` meldete `busy` – auf cm2 lief gerade der Agent (bzw. stand
   `cfm-watchdog`), dann lehnt der Rekey bewusst ab (`mgr-vault.rsc`); die Folgeprüfung „cfmd-cm2 unverändert“
   scheitert mit. Beheben: im Test vorher warten, bis auf cm2 kein Agent läuft, oder `$cfmRekey` wiederholt
@@ -296,7 +301,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein
   WLAN-Interface unter dem Werksnamen (cfm benennt sie um). Ohne erkennbare Folge; Ursache offen.
-* **`$cfmAudit op=purge` meldet FEHLER für dynamische Folgeobjekte** (Befund 2026-10-17: ein
+* ~~**`$cfmAudit op=purge` meldet FEHLER für dynamische Folgeobjekte**~~ – *behoben 2026-10-27:* `get` auf ein
+  eben verschwundenes Objekt liefert ohne Fehler nur `.id`, das Audit prüft jetzt, ob es das Objekt noch gibt;
+  zugleich verschoben solche Zeilen die Nummern (`sel=A2` konnte ein anderes Objekt treffen als im Bericht). Labor: `e2e.sh`
+  Schritt 5. – (Befund 2026-10-17: ein
   VLAN-Interface samt Adresse entfernt, zwei FEHLER-Zeilen für Objekte, die RouterOS dazu dynamisch
   angelegt hatte): Sie verschwinden mit dem entfernten Objekt, das Löschen danach scheitert.
   Harmlos, aber verwirrend; dynamische Einträge beim Purge überspringen.
@@ -1043,7 +1051,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     – *Anlass:* Ein Firmen-Laptop soll nicht ins Hauptnetz, ist aber kein richtiger Gast (kennt die
     Haupt-SSID). Er hängt zeitweise an derselben Dockingstation wie der Admin-Laptop, der dort über
     NetworkManager das ungetaggte Haupt-VLAN und getaggt alle übrigen VLANs nutzt (auch MGMT). Zwei Teile:
-    * **(a) WLAN: VLAN je MAC über die Access-List** – *schnell umsetzbar:* `/interface/wifi/access-list`
+    * ~~**(a) WLAN: VLAN je MAC über die Access-List**~~ – *umgesetzt 2026-10-27 (D95):* `"wifi"="yes"` an der
+      Lease, Einträge je MAC vorn im Block `wcut`; auf Hardware offen: Weitergabe von `vlan-id` an die CAPs,
+      FT-Roaming. – *Vorschlag war:* `/interface/wifi/access-list`
       mit `mac-address` und `vlan-id` (am CAPsMAN angenommen, Probe 2026-10-26). Geht auch mit WPA3 und FT;
       PPSK scheidet für die Haupt-SSID aus, Multi-Passphrase verlangt WPA2 (D32). Vorschlag: aus den Leases
       ableiten. Eine Lease mit MAC in einem VLAN, das nicht das VLAN der SSID ist, ergibt einen Eintrag vor

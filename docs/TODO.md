@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-28)
+## Übersicht offener Punkte (Stand 2026-10-29)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -66,18 +66,22 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Fasttrack-Ausnahme je Netz; Queue-Typen ohne `comment` über `cfmByName`. Labor 7.25: Limit und PCQ gemessen
   (unter der 1-Mbit/s-Grenze der CHR), `e2e.sh` 359, grün. Offen auf Hardware: Umgeht Fasttrack ohne die
   Ausnahme wirklich die Queue (CHR hat keinen Fast Path), Last der CPU auf der CRS418.
+* **Am 2026-10-28/29 an einem Standort (Hardware, v31/v32):** D97 ausgerollt und mit einem Gast-WLAN bestätigt
+  (Limit greift in beiden Richtungen, keine Gast-Verbindung im Fasttrack); dazu drei neue „Bekannte Fehler“ – Datei
+  beim Abholen gelöscht und gleichnamig neu geladen (Apply des Managers scheiterte, Rollback mit Neustart), `force`
+  löscht `bad` nicht, neue SSIDs schalten den CAPsMAN bis zum Secret-Push aus.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
-* **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“, dazu das
-  eingebaute Update mit `via=internet` (38, D63; über den Spiegel auf einem hEX gelaufen).
+* **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“. Das eingebaute Update
+  (38, D63) lief über den Spiegel (hEX) und per `via=internet` (CRS, 7.25).
 * **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
 * **RouterOS 7.25:** stable seit 2026-10-22; Labortest aller Skripte am 2026-10-25 grün (48). Ein Standort
   am 2026-10-25/26 komplett per `$cfmUpgrade` auf 7.25 (10 Geräte), Kabel-Ports des hAP be³ Media dort
-  getestet (48); Lade-Lesezeichen unter 7.25 im echten Browser geprüft (52). Offen: zweiter Standort (Plan
-  steht, mit dem Framework-Update), FT für MLD (D48).
-* **Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47 (erstes Release mit dem
-  ausgelagerten WLAN-Teil, D68).
+  getestet (48); Lade-Lesezeichen unter 7.25 im echten Browser geprüft (52). Zweiter Standort am 2026-10-27/28
+  ebenfalls auf 7.25 (3 Geräte). Offen: FT für MLD (D48).
+* ~~**Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47~~ – an beiden Standorten
+  erledigt (2026-10-11/14); bleibt als Anleitung für Installationen von vor D68.
 * **Erledigt am 2026-10-16:** 53 (D81): Gerätesuche `$cfmFind` live am Manager, Lesezeichen cfm-WLAN heißt
   „cfm-Monitor“ mit Reiter Suche. **Entschieden, offen:** 54 (LibreNMS: SNMPv3 + Syslog). **Idee:** 55 (Netbox:
   Export oder als Quelle).
@@ -247,10 +251,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   mit `cache: 'no-store'`. Wechsel erscheinen in den Ereignissen doppelt (live und „Log“).
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
-* **Bandbreitenlimit (D97)** am ersten Gast-VLAN mit `limit`: Speedtest eines Gastes gegen das Limit, mit
-  `limitClient` zwei Clients gleichzeitig; `/ip/settings/print` (`ipv4-fasttrack-packets` steigt für die
-  übrigen Netze) und `/queue/simple/print stats` (Rate des Gastnetzes). Gegenprobe der Annahme aus der
-  MikroTik-Doku: Ausnahme kurz abschalten – läuft der Gast dann ungebremst? CPU-Last der CRS418 unter Volllast.
+* **Bandbreitenlimit (D97)** – *Grundtest bestanden 2026-10-28/29* (CRS418, ein Client: 19,8 Mbit/s bei
+  `limitClient` 20M, Queue bremst in beiden Richtungen, keine Gast-Verbindung im Fasttrack). Offen: zwei Clients
+  gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der MikroTik-Doku – Ausnahme kurz
+  abschalten, läuft der Gast dann ungebremst?; CPU-Last der CRS418 unter Volllast.
 
 ## Bekannte Fehler
 
@@ -723,7 +727,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Geräte mit Rolle `ap`. Funkt der CAPsMAN selbst mit (`capsmanRadios`), fehlt er in der Rechnung;
     seine Radios lassen sich direkt scannen (auch abgeschaltet, Hardware 2026-10-03). Einbauen, damit
     ein Vorschlag alle Sender kennt.
-47. **Erstes Release nach dem Update auf D68 (einmalig je bestehender Installation)** – Das erste Release nach
+47. **Erstes Release nach dem Update auf D68 (einmalig je bestehender Installation)** – *an beiden Standorten
+    erledigt (2026-10-11/14); gilt nur noch für Installationen von vor D68.* Das erste Release nach
     dem Hochladen baut noch der installierte Manager-Code. Der kennt `lib/lib-wifi.rsc` nicht, die
     Manifeste der WLAN-Geräte (Rollen `ap`, `capsman`, `manager`) nennen die Datei dann nicht. Geräte,
     die seit ihrem letzten Apply neu gestartet sind, haben die WLAN-Funktionen nicht mehr im Speicher
@@ -797,6 +802,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       Switch (2,5 Gbit/s, je eine VRF mit DHCP-Client), Ping, Zähler, Link-Wechsel und Neustart bestanden,
       Langzeit 6 h ohne Verlust, ohne FCS-Fehler und Link-Abbruch (ein FCS-Fehler nur im Neustartfenster des
       Switches).
+    * **Hardware mit 7.25, zweiter Standort (2026-10-27/28, 3 Geräte: CRS418 als Router/Manager/CAPsMAN, 2× hAP
+      ax²):** `$cfmUpgrade` je Gerät, Firmware angeglichen. Die Neustarts brachten die CAP-Radios ohne `cfm-reprov`
+      auf feste Interfaces (D90/D94). Lade-Lesezeichen, Client- und FT-Test (auch FT-SAE in einer WPA3-SSID) bestanden.
 49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün (2026-10-12, 292).
     Punkte aus dem Changelog, die cfm berühren können:
     * „l3hw - add VRRP hardware offloading support“: D37 schaltet für VRRP das Routing im Switch-Chip
@@ -1112,7 +1120,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     (D97):* `vlans.rsc` → `"limit"="50M/10M"` (ganzes Netz, PCQ teilt gleich auf) und/oder `"limitClient"` (je
     Client, eigene PCQ-Typen); Fasttrack-Ausnahme je Netz (`src-`/`dst-address` vor der Fasttrack-Regel); gilt für
     allen gerouteten Verkehr des Netzes. `/queue/type` kennt kein `comment` → `cfmByName` (Schlüssel = Name
-    `cfm-…`). Labor siehe D97; Hardware-Test unter „Noch nicht mit echter Hardware getestet“. – *Anlass:*
+    `cfm-…`). Labor siehe D97; auf Hardware am 2026-10-28/29 bestätigt (Gast-WLAN, D97), Rest unter „Noch nicht
+    mit echter Hardware getestet“. – *Anlass:*
     An einem Standort kommt ein Gast-WLAN (eigenes VLAN, Zone `guest`, Policy `"guest"="*wan"`, isoliert) dazu,
     das nur Internet bekommt und in der Bandbreite begrenzt sein soll. Bis das umgesetzt ist, läuft es ohne Limit.
     Das Framework kennt bisher keine Queues.

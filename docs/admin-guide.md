@@ -4,31 +4,32 @@ Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7)
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.24.5 und 7.25rc2 (zuvor 7.24.2 und 7.25rc1, der Gesamttest
-> auch mit 7.26beta1) laufen der Gesamttest (325 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> **Teststand:** Im CHR-Labor mit RouterOS 7.25 (zuvor 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch
+> mit 7.26beta1) laufen der Gesamttest (359 Prüfungen, darunter Manager-Bootstrap mit Reset,
 > Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
-> festen Leases und DNS-Namen, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
+> festen Leases, DNS-Namen und Bandbreitenlimit, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
 > Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
 > Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
 > einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (120 Prüfungen) und der Test von
-> LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten: ein CRS418 als Router, Primary-Manager
-> und CAPsMAN mit zwei hAP ax² (Roaming mit FT bestätigt), und ein zweiter Standort mit zehn Geräten – der
+> LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten, alle
+> Geräte mit RouterOS 7.25: ein CRS418 als Router, Primary-Manager und CAPsMAN (mit eigenen Radios) mit zwei
+> hAP ax² (Roaming mit FT bestätigt, Haupt-, Legacy-, Gast- und Test-SSID, Gast-VLAN mit Bandbreitenlimit), und
+> ein zweiter Standort mit zehn Geräten – der
 > Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset), ein CRS310 als
 > Switch der Server, ein hAP be³ als CAPsMAN mit eigenen Radios, APs (hAP be³, hAP ax³, cAP ax) mit
-> lokalem Fallback, hEX und L009 als Switches, RouterOS 7.23.1 bis 7.25beta5. Dort routen seit dem
+> lokalem Fallback, hEX und L009 als Switches. Dort routen seit dem
 > 17.10. vier Geräte (hAP be³, CHR, CRS310, CRS328) alle VLANs per VRRP hinter einer Fritz!Box als
 > Internet-Gateway, mit DHCP, festen Leases und DNS-Namen und WireGuard-Zugang; die Ausfalltests per
 > Neustart liefen durch. Automatisches Onboarding im
-> CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64), das eingebaute Update
-> eines hEX mit 16 MB Flash vom Spiegel, schaltbare SSIDs (bisher mit Neuprovisionieren, D64), die
-> Umstellung auf Admin-Keys je User,
-> der Kanal-Scan über den CAPsMAN und Steering mit Mindestsignal (trennt nur Clients ohne FT; die
-> Trennschwelle je Band, D92, trennt auch Clients mit FT – von Hand erprobt, im Framework noch nicht)
-> liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
+> CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64) bis 7.25, das eingebaute Update
+> vom Spiegel (hEX mit 16 MB Flash) und per `via=internet` (CRS), schaltbare SSIDs (seit D90 mit festen
+> Interfaces), die Umstellung auf Admin-Keys je User, der Kanal-Scan über den CAPsMAN, Steering mit
+> Mindestsignal und die Trennschwelle je Band (D92), die NTP-Umleitung je VLAN (D93) und das Bandbreitenlimit
+> je VLAN (D97) liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
 > Fehler“, siehe auch [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
 > **Noch nicht** mit echter Hardware erprobt sind der Backup-Manager,
 > das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, weitere SSIDs im
-> lokalen Fallback, das eingebaute Update mit `via=internet`, LACP-Bonds, MLAG und isolierte VLANs
+> lokalen Fallback, LACP-Bonds, MLAG und isolierte VLANs
 > (D74–D76); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
@@ -199,8 +200,8 @@ Bevor du etwas einspielst, kläre diese Punkte:
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
 
 **Hardware und Software:**
-* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2 und
-  7.26beta1, auf Hardware 7.23.1 bis 7.25beta5 (siehe Teststand oben).
+* RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2, 7.25 und
+  7.26beta1, auf Hardware seit 7.23.1, inzwischen 7.25 (siehe Teststand oben).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
   Internetzugang für die Paket-Downloads (ohne Internet: Pakete von Hand ablegen, 8.6).
@@ -984,7 +985,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | VLAN hinzufügen | Zeile in `vlans.rsc` mit `zone`; ggf. `policy` ergänzen → Release. Trunks tragen es automatisch |
 | VLAN entfernen | Zeile löschen → Release. Interfaces, Adressen, DHCP, Bridge-Einträge verschwinden überall |
 | Port umkonfigurieren | Profil im Hostfile ändern → Release |
-| SSID ändern/hinzufügen | `wifi.rsc` → Release; neue SSID: `$cfmSecret key=psk.<key> value=…` |
+| SSID ändern/hinzufügen | `wifi.rsc` → Release; neue SSID: `$cfmSecret key=psk.<key> value=…` vor dem Release, **danach** sofort `$cfmSecretPush` (das Release legt das Profil erst an; bis zum Push bleibt der CAPsMAN aus), mit `capsmanRadios` dann `$cfmPush host=<capsman> force=yes`, zuletzt `cfm-reprov` (TODO, „Bekannte Fehler“) |
 | PSK wechseln | `$cfmSecret key=psk.<key> value=…` (kein Release nötig) |
 | Admin-Benutzer | `users` in `global.rsc` → Release, dann `$cfmSecret key=user.<name> value=…` |
 | SSH-Key einer Person hinzufügen/entziehen | Zeile in `authorized_keys.<user>` ergänzen bzw. löschen → Release; alle Keys entziehen: Datei leeren, nicht löschen (Kapitel 4) |
@@ -1574,7 +1575,7 @@ aus. Auf GitHub prüft die Action `rsc-check` jeden Push. Das Skript ersetzt wed
 cd tools/chr-lab
 ./lab.sh start 3          # CHR-Image chr-<version>.img in ~/.cache/cfm-chr-lab
 ./e2e.sh fresh            # Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager,
-                          # Router, Leases/DNS, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
+                          # Router, Leases/DNS, Bandbreitenlimit, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
                           # RouterOS-Downgrade und Update vom Spiegel, Netzplan, PPSK, WLAN-Scan,
                           # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply),
                           # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User, Gerätesuche …

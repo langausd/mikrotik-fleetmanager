@@ -254,6 +254,30 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
+* **Apply scheitert am Manager-Modul: „no such item (/file/get)“ in `roles/manager.rsc`** (Befund 2026-10-28,
+  Hardware: CRS418 als Router + Manager, 7.25, Framework-Update mit geänderten `mgr-check`/`mgr-show`):
+  `failed roles/manager.rsc: Script Error: no such item (/file/get; line 26)` → Rollback per Backup-Load, Neustart.
+  Nach dem Neustart lagen alle Dateien in `cfm/dl` mit dem neuen Stand und ließen sich über den Namen lesen.
+  Vermutung: `$cfmGetFiles` löscht eine geänderte Datei und lädt sie unter demselben Namen neu; RouterOS hält die
+  gelöschte noch als Eintrag ohne Inhalt (Labor-Eigenheit, siehe DECISIONS), `/file/get <Name>` trifft ihn.
+  Beheben: geänderte Dateien nicht vorher löschen (`/tool/fetch` überschreibt), nur Dateien entfernen, die nicht
+  mehr im Manifest stehen; ggf. `/file get` der Rolle `manager` bei „no such item“ nach kurzer Pause wiederholen.
+  Labor: im CHR bisher nicht aufgetreten (e2e lädt Manager-Module bei jedem Framework-Update).
+* **Neue SSID: CAPsMAN bis zum nächsten Manager-Tick aus, eigene Radios ohne virtuelle SSIDs** (Befund 2026-10-28,
+  Release mit drei neuen SSIDs, Passphrasen vorher im Vault): Erst der Apply legt die Security-Profile `cfm-<ssid>` an,
+  ein Secret-Push davor geht für sie ins Leere. Der Apply auf dem CAPsMAN schaltet ihn deshalb aus (`$cfmPskMissing`)
+  und fordert den Push an (SV 0); der kommt erst mit dem nächsten Manager-Tick (bis 10 min, so lange kein WLAN aus
+  dem CAPsMAN). Außerdem überspringt die Rolle bei ausgeschaltetem CAPsMAN die eigenen Radios (`capsmanRadios`), der
+  Push schaltet ihn zwar ein, provisioniert sie aber nicht – sie behalten bis zum nächsten Apply (Reapply 1 d) nur den
+  Master. Abhilfe von Hand: `$cfmSecretPush`, `$cfmPush host=<cm> force=yes`, `cfm-reprov`. Beheben: Manager pusht
+  sofort, wenn ein Gerät nach dem Apply SV 0 meldet (`$cfmCollect`/Tick des Release-Ablaufs), und der Secret-Push
+  provisioniert die eigenen Radios, wenn er den CAPsMAN einschaltet (oder fordert einen Apply an).
+* **Erzwungener Apply einer `bad`-Version lässt `bad` stehen** (Befund 2026-10-28, gleiche Gelegenheit):
+  `$cfmPush host=<g> force=yes` wendete v31 an (`res=ok`), `bad` blieb v31 – `$cfmStatus` zeigt „bad v31 ok“, die
+  Benachrichtigung `apply:<g>` bleibt offen, der tägliche Reapply wird als „fehlerhaft markiert“ übersprungen. Erledigt
+  sich mit dem nächsten Release (ältere `bad` blendet der Manager aus). Beheben: im Agent nach erfolgreichem Apply
+  `bad` löschen, wenn es die angewendete Version ist; Labor: `e2e.sh` Schritt 7 (force nach bad) um den Status ergänzen.
+
 * ~~**Labor: Die MNDP-Prüfung in `e2e.sh` Schritt 14 schlägt vereinzelt fehl**~~ – *behoben 2026-10-27:* wartet bis
   70 s auf das erste Paket. (2026-10-20, ein Lauf von vier,
   drei Labore parallel): In den 40 s mit `pvid=10` an cm1:ether3 kam kein MNDP-Paket von cm2 an (Zähler der

@@ -49,12 +49,15 @@
   "/ip/address";"/routing/table";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";
   "/ip/dhcp-server/lease";"/ip/dhcp-client";
   "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
+  "/queue/type";"/queue/simple";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";
   "/interface/wifi/steering";"/interface/wifi/access-list";"/interface/wifi/configuration";"/interface/wifi/provisioning";
   "/system/logging/action";"/system/logging";"/user/group";"/user";
   "/system/script";"/system/scheduler";"/tool/netwatch"
 }
+# Menüs ohne "comment" (D97): Schlüssel ist der Name, cfm gehören die Objekte mit Namen "cfm-…"
+:global cfmByName {"/queue/type"=1}
 
 # Probelauf: cfmDry=true (setzt der Agent), Meldungen landen dann in cfmPlanOut statt im Log
 :global cfmDry
@@ -196,10 +199,11 @@
 
 # Index "key -> id" aller cfm-getaggten Objekte eines Menüs (einmal pro Lauf)
 :global cfmIndex do={
-  :global cfmIdx; :global cfmSeen; :global cfmMenus; :global cfmDry
+  :global cfmIdx; :global cfmSeen; :global cfmMenus; :global cfmDry; :global cfmByName
   :if ([:typeof ($cfmIdx->$1)] = "array") do={ :return true }
   # doppelt getaggte Objekte entfernen (im Probelauf nur überspringen: D=true)
   :local code (":local r ({}); :foreach i in=[" . $1 . "/find where comment~\"^cfm:\"] do={ :local c [:tostr [" . $1 . "/get \$i comment]]; :local s [:find \$c \" \"]; :if ([:typeof \$s] = \"nil\") do={ :set s [:len \$c] }; :local k [:pick \$c 4 \$s]; :if ([:typeof (\$r->\$k)] = \"nothing\") do={ :set (\$r->\$k) \$i } else={ :if (!\$D) do={ " . $1 . "/remove \$i } } }; :return \$r")
+  :if (($cfmByName->$1) = 1) do={ :set code (":local r ({}); :foreach i in=[" . $1 . "/find where name~\"^cfm-\"] do={ :set (\$r->[" . $1 . "/get \$i name]) \$i }; :return \$r") }
   :local f
   :onerror e in={ :set f [:parse $code] } do={ :error ($e . " IN(index): " . $code) }
   :set ($cfmIdx->$1) [$f D=($cfmDry = true)]
@@ -221,10 +225,12 @@
 #  m=Menü  k=Schlüssel (-> comment "cfm:<k>")  p=Soll-Props
 #  n=natürlicher Schlüssel zum Übernehmen vorhandener Objekte (optional)
 #  a=Props nur beim Anlegen (optional)  x=Kommentar-Zusatztext (optional)
+#  Menüs in cfmByName: k ist der Name ("cfm-…", steht in p), kein Kommentar
 :global cfmEnsure do={
   :global cfmIndex; :global cfmIdx; :global cfmSeen; :global cfmRun; :global cfmIds
-  :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort
+  :global cfmSame; :global cfmStat; :global cfmLog; :global cfmDry; :global cfmShort; :global cfmByName
   $cfmIndex $m
+  :local bn (($cfmByName->$m) = 1)
   :local tag ("cfm:" . $k)
   :if ([:len $x] > 0) do={ :set tag ($tag . " " . $x) }
   :set ($cfmSeen->$m->$k) 1
@@ -257,7 +263,7 @@
   :if ([:typeof $id] = "nothing") do={
     :local pp $p
     :if ([:typeof $a] = "array") do={ :foreach kk,vv in=$a do={ :set ($pp->$kk) $vv } }
-    :set ($pp->"comment") $tag
+    :if (!$bn) do={ :set ($pp->"comment") $tag }
     :set id [$cfmRun ($m . "/add") P=$pp]
     :set ($cfmIdx->$m->$k) $id
     :set ($cfmStat->"add") (($cfmStat->"add") + 1)
@@ -267,7 +273,7 @@
   :local cur [$cfmRun ($m . "/get") I=$id]
   :local ch ({})
   :foreach kk,vv in=$p do={ :if (![$cfmSame ($cur->$kk) $vv]) do={ :set ($ch->$kk) $vv } }
-  :if ([:tostr ($cur->"comment")] != $tag) do={ :set ($ch->"comment") $tag }
+  :if (!$bn and [:tostr ($cur->"comment")] != $tag) do={ :set ($ch->"comment") $tag }
   :if ([:len $ch] > 0) do={
     $cfmRun ($m . "/set") I=$id P=$ch
     :set ($cfmStat->"set") (($cfmStat->"set") + 1)
@@ -408,6 +414,35 @@
   :return {"net"=$net;"addr"=$a;"pfx"=[:pick $net ($s + 1) [:len $net]];"gw"=($a + [:tonum $g])}
 }
 
+# Bandbreite "Download/Upload" ($1, z.B. "50M/10M", Einheiten k/M/G ohne Komma, D97) -> {"d";"u"} in bit/s,
+# "" wenn ungültig oder leer
+:global cfmLimit do={
+  :local s [:tostr $1]
+  :local p [:find $s "/"]
+  :if ([:typeof $p] = "nil") do={ :return "" }
+  :local r ({})
+  :foreach k,t in={"d"=[:pick $s 0 $p];"u"=[:pick $s ($p + 1) [:len $s]]} do={
+    :local m 1
+    :local e [:pick $t ([:len $t] - 1)]
+    :if ($e = "k") do={ :set m 1000 }
+    :if ($e = "M") do={ :set m 1000000 }
+    :if ($e = "G") do={ :set m 1000000000 }
+    :if ($m > 1) do={ :set t [:pick $t 0 ([:len $t] - 1)] }
+    :if (!($t ~ "^[0-9]+\$")) do={ :return "" }
+    :set ($r->$k) ([:tonum $t] * $m)
+  }
+  :return $r
+}
+# bit/s in der Schreibweise, die RouterOS zurückliest (größte Einheit, die glatt teilt: 1500000 = "1500k")
+:global cfmRateFmt do={
+  :local n [:tonum $1]
+  :if ($n = 0) do={ :return "0" }
+  :foreach de in={{1000000000000;"T"};{1000000000;"G"};{1000000;"M"};{1000;"k"}} do={
+    :if ($n % ($de->0) = 0) do={ :return ([:tostr ($n / ($de->0))] . ($de->1)) }
+  }
+  :return [:tostr $n]
+}
+
 # Natürlicher Schlüssel des VLAN-Interface vlan<VID> ($1 = VID, TODO 56): das Interface dieses Namens, sonst
 # eines auf der Bridge mit dieser VLAN-ID (z.B. "GAST" aus einer Konfiguration von Hand). $cfmEnsure übernimmt
 # es dann und benennt es in vlan<VID> um; Adressen, DHCP und Firewall verweisen in RouterOS über die ID und
@@ -517,7 +552,7 @@
 # Eigener Name, nicht $cfmAudit: Den Manager-Befehl gleichen Namens (mgr-core) würde jeder Import
 # dieser Datei überschreiben, und $cfmLoadData importiert sie bei fast jedem Manager-Befehl.
 :global cfmAuditDev do={
-  :global cfmMenus; :global cfmRun; :global cfmLog
+  :global cfmMenus; :global cfmRun; :global cfmLog; :global cfmByName
   :local sa ({})
   :foreach s in=[:toarray $sel] do={ :set ($sa->$s) 1 }
   :local all ($sel = "all")
@@ -536,6 +571,7 @@
       :foreach id in=[$ff] do={
         :local g [$cfmRun ($m . "/get") I=$id]
         :local c [:tostr ($g->"comment")]
+        :if (($cfmByName->$m) = 1 and [:tostr ($g->"name")] ~ "^cfm-") do={ :set c "cfm" }
         :if ([$fx I=$id] > 0 and !($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1) and !($m = "/system/logging" and [:tostr ($g->"action")] = $skipLog) and !($m = "/user" and ($g->"name") = "admin")) do={
           :set n ($n + 1)
           :local ref ("A" . $n)

@@ -13,7 +13,7 @@
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
-  :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp; :global cfmMgrData
+  :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp; :global cfmMgrData; :global cfmLimit
   :global cfmMlag; :global cfmMlagOf
   :local b [$cfmMB]
   # dir=<verzeichnis>: statt work/ prüfen ($cfmPlan from=)
@@ -228,6 +228,18 @@
     :local nt [:tostr ($v->"ntp")]
     :if ([:len $nt] > 0 and $nt != "redirect") do={ :set ($err->[:len $err]) ("vlans.rsc: VLAN " . $vid . ": ntp " . $nt . " (nur redirect)") }
     :if ($nt = "redirect" and [:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": ntp redirect ohne Router (l3=no) wirkt nicht") }
+  }
+  # Bandbreitenlimit (D97): "Download/Upload" mit k/M/G, wirkt nur mit Router-Interface und Subnetz
+  :foreach vid,v in=$cfmVlans do={
+    :local any false
+    :foreach f in={"limit";"limitClient"} do={
+      :local lv [:tostr ($v->$f)]
+      :if ([:len $lv] > 0) do={
+        :set any true
+        :if ([:typeof [$cfmLimit $lv]] != "array") do={ :set ($err->[:len $err]) ("vlans.rsc: VLAN " . $vid . ": " . $f . " " . $lv . " (Download/Upload, z.B. 50M/10M; Einheiten k, M, G ohne Komma)") }
+      }
+    }
+    :if ($any and ([:tostr ($v->"l3")] = "no" or [:len ([$cfmNet $vid]->"net")] = 0)) do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": limit ohne Router-Interface (l3=no) oder Subnetz wirkt nicht") }
   }
   # Isolierte VLANs (D76): isolate yes/no, Ausnahmen auflösbar (Name mit MAC in leases.rsc oder MAC),
   # nicht das Onboarding-VLAN, ohne Router nur Broadcast und Ausnahmen

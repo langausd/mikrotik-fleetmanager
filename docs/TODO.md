@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-27)
+## Übersicht offener Punkte (Stand 2026-10-28)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -62,6 +62,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   verschwundenen Folgeobjekten, Labor-Wackler MNDP (14) und `Rekey SFTP cm2` (14g). Labor 7.25: `e2e.sh` 347, grün.
 * **Erledigt am 2026-10-27 vormittags:** 64 (D96) – `ros` als Zustand mit „erledigt“-Meldung (`off`, sobald alle
   Geräte aktuell sind oder die Version überholt ist), Felder `key`/`ver` an den Meldungen. Labor 7.25: `e2e.sh` 354, grün.
+* **Umgesetzt am 2026-10-28:** 66 (D97) – Bandbreitenlimit je VLAN (`limit` gesamt, `limitClient` je Client, PCQ),
+  Fasttrack-Ausnahme je Netz; Queue-Typen ohne `comment` über `cfmByName`. Labor 7.25: Limit und PCQ gemessen
+  (unter der 1-Mbit/s-Grenze der CHR), `e2e.sh` 359, grün. Offen auf Hardware: Umgeht Fasttrack ohne die
+  Ausnahme wirklich die Queue (CHR hat keinen Fast Path), Last der CPU auf der CRS418.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -243,6 +247,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   mit `cache: 'no-store'`. Wechsel erscheinen in den Ereignissen doppelt (live und „Log“).
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
+* **Bandbreitenlimit (D97)** am ersten Gast-VLAN mit `limit`: Speedtest eines Gastes gegen das Limit, mit
+  `limitClient` zwei Clients gleichzeitig; `/ip/settings/print` (`ipv4-fasttrack-packets` steigt für die
+  übrigen Netze) und `/queue/simple/print stats` (Rate des Gastnetzes). Gegenprobe der Annahme aus der
+  MikroTik-Doku: Ausnahme kurz abschalten – läuft der Gast dann ungebremst? CPU-Last der CRS418 unter Volllast.
 
 ## Bekannte Fehler
 
@@ -1076,3 +1084,35 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       Dock-Ports umschalten – von Hand oder automatisiert über Home Assistant, z.B. nach dem Muster der
       Schalt-Skripte (D64/D90: Skript `cfm-port-<name>-<profil>` mit `dont-require-permissions`, Zustand
       in einer Datei, die jeder Apply übernimmt, damit ein Release nicht zurückschaltet).
+66. ~~**Bandbreitenlimit je Zone/VLAN (Gast-WLAN)**~~ (Wunsch des Nutzers, 2026-10-28) – *umgesetzt am selben Tag
+    (D97):* `vlans.rsc` → `"limit"="50M/10M"` (ganzes Netz, PCQ teilt gleich auf) und/oder `"limitClient"` (je
+    Client, eigene PCQ-Typen); Fasttrack-Ausnahme je Netz (`src-`/`dst-address` vor der Fasttrack-Regel); gilt für
+    allen gerouteten Verkehr des Netzes. `/queue/type` kennt kein `comment` → `cfmByName` (Schlüssel = Name
+    `cfm-…`). Labor siehe D97; Hardware-Test unter „Noch nicht mit echter Hardware getestet“. – *Anlass:*
+    An einem Standort kommt ein Gast-WLAN (eigenes VLAN, Zone `guest`, Policy `"guest"="*wan"`, isoliert) dazu,
+    das nur Internet bekommt und in der Bandbreite begrenzt sein soll. Bis das umgesetzt ist, läuft es ohne Limit.
+    Das Framework kennt bisher keine Queues.
+    * **Hindernis Fasttrack:** Die Rolle `router` setzt im `forward`-Block `fasttrack-connection` für alle
+      `established,related` (`roles/router.rsc`, nach der `cfm-mgmt`-Regel). Fasttrack-Verbindungen umgehen
+      Simple Queues und Queue Trees – eine begrenzte Zone muss davon ausgenommen sein, z.B. eine
+      `accept`-Regel `established,related` mit `in-interface-list`/`out-interface-list` `Z-<zone>` vor dem
+      Fasttrack (die Listen gibt es schon), oder Fasttrack nur für `connection-mark=!cfm-limit`. Die
+      L3-Hardware-Offload ist auf Routern ohnehin aus (D37) – die Last trägt die CPU; auf einer CRS418
+      (Router + CAPsMAN) messen.
+    * **Datenmodell (in der Session entscheiden, ≥ 2 Varianten vorlegen):** Feld an der VLAN-Zeile in
+      `vlans.rsc`, z.B. `"limit"="20M/5M"` (Download/Upload aus Sicht der Clients). Offen: Limit **je Client**
+      (PCQ, `pcq-rate` mit Klassifizierung `dst-address`/`src-address`, optional Gesamtgrenze `max-limit`) oder
+      **gesamt für das Netz** (eine Simple Queue `target=<Netz>`) – oder beides (`"limit"` gesamt,
+      `"limitClient"` je Client). Ggf. `burst`. Gilt nur für Zonen mit Router-Interface (nicht `l3=no`).
+    * **Umsetzung:** Rolle `router` rendert `/queue/type` (PCQ je Richtung) und `/queue/simple` mit cfm-Tag
+      (`$cfmEnsure`, Reconciler räumt ab, wenn `limit` wegfällt); bei VRRP auf jedem Router (nur der Master
+      leitet weiter, schadet nicht). Reihenfolge der Simple Queues beachten (erste passende gewinnt; fremde
+      Queues des Standorts nicht verdrängen). `$cfmCheck`: Syntax von `limit`, Warnung bei Zone ohne
+      Router-Interface. Gilt das Limit auch für Verkehr zwischen Zonen (z.B. Gast → nichts, IoT → Broker)? Für
+      Gast egal (nur `wan`), allgemein entscheiden.
+    * **Labor:** `e2e.sh` – Queues/Typen und Fasttrack-Ausnahme vorhanden, nach Entfernen von `limit`
+      aufgeräumt; Durchsatz messen (z.B. `/tool/bandwidth-test` oder `fetch` einer großen Datei zwischen zwei
+      CHR durch den Router, mit und ohne Limit) – Messweg im Labor gibt es noch nicht. Gegenprobe: andere Zonen
+      bleiben im Fasttrack.
+    * **Doku:** DECISIONS (neue D-Nummer), Admin-Guide (`vlans.rsc`-Tabelle, Aufgabenliste „Gast-WLAN
+      begrenzen“), danach am Standort im VLAN des Gast-WLANs einschalten (Site-Daten, Release).

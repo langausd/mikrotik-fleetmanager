@@ -11,7 +11,7 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
-:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey
+:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey; :global cfmLimit; :global cfmRateFmt
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -140,6 +140,33 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         }
       }
     }
+  }
+}
+
+# --- Bandbreitenlimit je VLAN (D97): "limit" für das ganze Netz, "limitClient" je Client (Download/Upload aus
+#     Sicht der Clients). Eine Simple Queue je VLAN mit dem Netz als target (aller Verkehr des Netzes); PCQ
+#     teilt unter den Clients gleich auf, mit limitClient über eigene Queue-Typen mit pcq-rate (ohne comment,
+#     Schlüssel = Name). max-limit liest RouterOS als Upload/Download und in eigener Schreibweise zurück.
+#     Fasttrack umgeht die Queues - der Firewall-Block nimmt diese Netze davon aus ---
+:local limNets ({})
+:foreach vid,v in=$cfmVlans do={
+  :local lt [$cfmLimit ($v->"limit")]
+  :local lc [$cfmLimit ($v->"limitClient")]
+  :local nn [$cfmNet $vid]
+  :if ([:tostr ($v->"l3")] != "no" and [:len ($nn->"net")] > 0 and ([:typeof $lt] = "array" or [:typeof $lc] = "array")) do={
+    :local qd "pcq-download-default"
+    :local qu "pcq-upload-default"
+    :if ([:typeof $lc] = "array") do={
+      :set qd ("cfm-pcq" . $vid . "-down")
+      :set qu ("cfm-pcq" . $vid . "-up")
+      $cfmEnsure m="/queue/type" k=$qd p=({"name"=$qd;"kind"="pcq";"pcq-classifier"="dst-address";"pcq-rate"=($lc->"d")})
+      $cfmEnsure m="/queue/type" k=$qu p=({"name"=$qu;"kind"="pcq";"pcq-classifier"="src-address";"pcq-rate"=($lc->"u")})
+    }
+    :local ml "0/0"
+    :if ([:typeof $lt] = "array") do={ :set ml ([$cfmRateFmt ($lt->"u")] . "/" . [$cfmRateFmt ($lt->"d")]) }
+    :local qn ("vlan" . $vid)
+    $cfmEnsure m="/queue/simple" k=("q:" . $vid) n=({"name"=$qn}) p=({"name"=$qn;"target"=($nn->"net");"max-limit"=$ml;"queue"=($qu . "/" . $qd)}) x=($v->"name")
+    :set ($limNets->[:len $limNets]) ($nn->"net")
   }
 }
 
@@ -306,6 +333,11 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :local mz [:tostr ($cfmVlans->$mv->"zone")]
 :if (($zones->$mz) = 1) do={
   :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"src-address-list"="cfm-mgmt";"out-interface-list"=("Z-" . $mz)})
+}
+# Netze mit Bandbreitenlimit (D97) nicht in den Fasttrack, sonst umgehen ihre Verbindungen die Queue
+:foreach ln in=$limNets do={
+  :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related";"src-address"=$ln})
+  :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related";"dst-address"=$ln})
 }
 :set ($r->[:len $r]) ({"chain"="forward";"action"="fasttrack-connection";"connection-state"="established,related"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related,untracked"})

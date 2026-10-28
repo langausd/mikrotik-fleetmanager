@@ -119,7 +119,8 @@ nächsten Apply zurückgesetzt.
 
 Aufräumen und Audit umfassen die Menüs aus `cfmMenus` im Kopf von `lib/lib.rsc` (Bonds, Bridge
 samt Bridge-Filter, VLANs, Adressen, Routen und Routing-Tabellen, DHCP samt statischer Leases,
-Firewall inkl. Mangle, DNS, WLAN, Benutzer, Skripte, Scheduler …). Seit D62 gehören statische
+Firewall inkl. Mangle, DNS, Queues, WLAN, Benutzer, Skripte, Scheduler …). Queue-Typen haben in RouterOS
+keinen Kommentar: Dort gehören cfm die Typen mit Namen `cfm-…` (D97). Seit D62 gehören statische
 DHCP-Leases, Mangle-Regeln und Routing-Tabellen dazu, seit D74/D76 Bonds und Bridge-Filter: Auf
 einem Bestandsgerät zeigt `$cfmAudit` von Hand angelegte feste Leases, Bonds oder Filterregeln
 (z.B. eine DHCP-Sperre am Uplink) deshalb als unverwaltet – sie bleiben, solange du sie nicht per
@@ -254,6 +255,7 @@ Schlüssel ist die VLAN-ID als String.
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
 | `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, D82). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt. Ist das VLAN zugleich das WAN der Router (Internet-Router im LAN), nehmen sie DNS, DHCP und NTP aus diesem Netz trotzdem an (D86) |
 | `ntp` | `"redirect"`: NTP (`udp/123`) aus dem VLAN an jedes Ziel außer dem Router landet beim NTP-Server der Router – für Geräte mit fest eingebautem NTP-Server, z.B. OpenBeken (D93). Ein anderer NTP-Server im Haus ist aus dem VLAN dann nicht erreichbar |
+| `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (D97) |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
 | `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (D76) |
@@ -1001,6 +1003,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
 | Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
 | IoT-Gerät soll selbst einen Dienst im LAN erreichen (z.B. MQTT-Broker) | Liste in `allow` mit Adresse und Port, z.B. `"broker"={"192.168.20.30:tcp/1883"}`, `policy` `"iot"="allow:broker"` ohne NAT-Kennzeichen → Release. Abfragen aus dem LAN ins IoT-Netz brauchen keine Freigabe (`lan` → `iot`) |
+| Gast-WLAN begrenzen | `"limit"="50M/10M"` (ganzes Netz) und/oder `"limitClient"="10M/2M"` (je Client) an der VLAN-Zeile → Release (D97). Wirkt auf neue Verbindungen; Probe: `/queue/simple/print stats` am Router |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN (nur diese SSID, die übrigen senden weiter, D90), z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
@@ -1509,7 +1512,9 @@ Eigene Schlüssel mit eigenem Präfix (hier `post:`): Ein Schlüssel, den auch e
 `dns:<name>` für die Leases der Rolle `router`), meint dasselbe Objekt, und beide setzen bei jedem
 Apply ihre Werte.
 
-Neue Menüs, die aufgeräumt werden sollen, gehören in die Liste `cfmMenus` in `lib/lib.rsc`.
+Neue Menüs, die aufgeräumt werden sollen, gehören in die Liste `cfmMenus` in `lib/lib.rsc`. Kennt ein
+Menü kein `comment` (z.B. `/queue/type`), kommt es zusätzlich in `cfmByName`: Dort ist `k` der Name, der
+mit `cfm-` beginnen muss (D97).
 Der WLAN-Teil (`$cfmWifiRender`, `$cfmCapsmanOn` …) steht in `lib/lib-wifi.rsc` und ist nur auf
 Geräten mit Rolle `ap`, `capsman` oder `manager` geladen (D68).
 

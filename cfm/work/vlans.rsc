@@ -12,6 +12,9 @@
 #  lease  DHCP-Lease-Zeit (Default 30m)
 #  ntp    "redirect" = NTP (udp/123) an jedes Ziel außer dem Router landet beim Router - für Geräte mit
 #         fest eingebautem NTP-Server (D93)
+#  limit  Bandbreite des ganzen Netzes "Download/Upload" aus Sicht der Clients, z.B. "50M/10M" (k/M/G, ohne
+#         Komma); die Clients teilen sie gleich auf (PCQ). Gilt für allen gerouteten Verkehr des Netzes (D97)
+#  limitClient  Obergrenze je Client, z.B. "10M/2M" - mit oder ohne limit
 #  l3     "no" = Router legt kein Interface/IP an (reines L2-VLAN)
 #  onboard "yes" = Onboarding-VLAN (genau eins, siehe unten)
 #  isolate "yes" = Clients erreichen nur Gateway und Broadcast, nicht einander - auch nicht über

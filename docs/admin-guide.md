@@ -5,7 +5,7 @@ wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
 > **Teststand:** Im CHR-Labor mit RouterOS 7.25 (zuvor 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch
-> mit 7.26beta1) laufen der Gesamttest (372 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> mit 7.26beta1) laufen der Gesamttest (373 Prüfungen, darunter Manager-Bootstrap mit Reset,
 > Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
 > festen Leases, DNS-Namen und Bandbreitenlimit, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
 > Benachrichtigungen, SNMPv3, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
@@ -226,7 +226,8 @@ irgendetwas ausgerollt wird.
 | `managers` | Manager-IPs, Primary zuerst (Fallback-Reihenfolge der Geräte) | |
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
 | `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, D62). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
-| `tz`, `ntp`, `dns`, `syslog` | Zeitzone, NTP/DNS für Nicht-Router (Router: `wan` im Hostfile), Syslog-Ziel | |
+| `tz`, `ntp`, `dns` | Zeitzone, NTP/DNS für Nicht-Router (Router: `wan` im Hostfile) | |
+| `syslog` | Adresse eines Syslog-Servers, z.B. LibreNMS (8.12); leer = aus. RouterOS selbst nimmt keinen Syslog entgegen, auch der Manager nicht. Wird es geleert, entfernt der nächste Apply die Aktion `cfmremote` und ihre Einträge | leer (`new-site.py`) |
 | `syslogFormat` | Format an den Syslog-Server: `syslog` = RFC-Kopf mit Facility `daemon` und Schwere aus dem Topic (LibreNMS sortiert danach), `default` = RouterOS-eigenes Format (TODO 54). Ältere RouterOS-Versionen ohne `remote-log-format` bleiben beim eigenen | `syslog` |
 | `snmp` | SNMPv3 nur lesend für LibreNMS (8.12): `{"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"=…;"location"=…}`. Ohne `from` bleibt `/snmp` unangetastet | `{}` |
 | `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (D79). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
@@ -1042,8 +1043,9 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
   Minute, D89); alle übrigen Zeilen stammen aus dem letzten Manager-Tick.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
-* Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`). Konfig-Änderungen
-  und Anmeldungen (`system,info`) stehen nur im Syslog, nicht im RAM-Puffer (`logMemory`, D79).
+* Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`), wenn ein
+  Syslog-Server mitschreibt. Konfig-Änderungen und Anmeldungen (`system,info`) stehen nur dort, nicht im
+  RAM-Puffer (`logMemory`, D79) – ohne Syslog-Server gehen sie verloren (`"logMemory"="info"` holt sie zurück).
 * `$cfmCollect host=<name>` holt Status und Export sofort statt beim nächsten Tick.
 
 ### 8.6 RouterOS-Updates

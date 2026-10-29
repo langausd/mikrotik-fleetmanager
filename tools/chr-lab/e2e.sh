@@ -970,6 +970,11 @@ r 2 '/tool/snmp-get address=127.0.0.1 oid=1.3.6.1.2.1.1.6.0 version=2c community
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "SNMP idempotent" || bad "SNMP idempotent: $(stat sw1 stats)"
+# syslog leer: Aktion und Einträge verschwinden, keine ungültigen Einträge bleiben (RouterOS lässt sie sonst stehen)
+mgr ':local f [/file/find name="cfm/work/global.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmG->\"syslog\") \"\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne Syslog" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 || bad "sw1 Apply v$rv (ohne Syslog): $(stat sw1 res)"
+expect 2 '[:len [/system/logging/action/find where name="cfmremote"]] = 0 and [:len [/system/logging/find where invalid]] = 0 and [:len [/system/logging/find where !default]] = 0' "sw1: syslog leer entfernt Aktion cfmremote und ihre Einträge"
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

@@ -72,7 +72,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   löscht `bad` nicht, neue SSIDs schalten den CAPsMAN bis zum Secret-Push aus.
 * **Erledigt am 2026-10-29:** die drei „Bekannten Fehler“ vom 2026-10-28 – Dateien beim Abholen überschreiben statt
   löschen, `force` löscht `bad`, neue Master-SSID: Nachfassen nach dem Push (D98, Secret-Push sofort, erzwungener
-  Apply für die eigenen Radios) – und 54 (D99, SNMPv3 für LibreNMS, Syslog im RFC-Format). Labor 7.25: `e2e.sh` 372 grün.
+  Apply für die eigenen Radios) – und 54 (D99, SNMPv3 für LibreNMS, Syslog im RFC-Format); leeres `syslog` räumt Aktion und Einträge weg (beide Standorte schickten an ihren Manager, der keinen Syslog annimmt). Labor 7.25: `e2e.sh` 373 grün.
   Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push, SNMP gegen LibreNMS (siehe unten).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,

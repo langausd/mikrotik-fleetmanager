@@ -391,6 +391,13 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
     :local lid [/system/logging/find where action="cfmremote" and topics=$t]
     :if ([:len $lid] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmremote" topics=$t }
   }
+} else={
+  # syslog leer: die Einträge entfernen, solange es cfmremote noch gibt - die Aktion selbst entfernt die GC.
+  # Löscht man nur die Aktion, bleiben die Einträge ungültig stehen, und find action="cfmremote" trifft
+  # danach auch die Standardregeln (RouterOS 7.25)
+  :if ([:len [/system/logging/action/find where name="cfmremote"]] > 0 and $cfmDry != true) do={
+    /system/logging/remove [find where action="cfmremote"]
+  }
 }
 # --- SNMPv3 nur lesend für LibreNMS (TODO 54): authPriv, nur von snmp.from (die MGMT-Adresse des Servers;
 #     der input-Block lässt das MGMT-Netz ohnehin durch). Passwörter NUR im Vault (snmp.auth, snmp.priv),

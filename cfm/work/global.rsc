@@ -78,8 +78,10 @@
 #             Fallback, RouterOS-Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz des
 #             Managers (Erneuerung überfällig oder Ablauf in weniger als licWarn). Optional "site" =
 #             Name in der Meldung (Default: Identity des Managers). Probe: $cfmNotify test=yes
-#  syslog     Syslog-Server (leer = aus), z.B. LibreNMS. syslogFormat: "syslog" (Standard) = RFC-Kopf mit
-#             Facility daemon und Schwere aus dem Topic; "default" = RouterOS-eigenes Format.
+#  syslog     Syslog-Server (leer = aus), z.B. LibreNMS - nicht der Manager: RouterOS nimmt keinen Syslog
+#             entgegen (im Labor nur Testziel; new-site.py legt Sites mit leerem syslog an).
+#             syslogFormat: "syslog" (Standard) = RFC-Kopf mit Facility daemon und Schwere aus dem Topic;
+#             "default" = RouterOS-eigenes Format.
 #  snmp       SNMPv3 nur lesend für LibreNMS (TODO 54), {} = aus (/snmp bleibt dann unangetastet), z.B.
 #             {"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"="admin@example.org";
 #             "location"="Standort A"}. from = Adresse(n) des Servers im MGMT-VLAN, auth = SHA1|SHA256

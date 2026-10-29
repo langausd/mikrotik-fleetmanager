@@ -112,6 +112,8 @@ def main(argv=None):
         user = a.user
     if a.mgmt_extra:
         s = sub1(s, r'"mgmtExtra"=\{[^}]*\}', '"mgmtExtra"={' + ";".join(f'"{n}"' for n in a.mgmt_extra) + "}", "mgmtExtra")
+    # Syslog aus: das Labor-Muster schickt an den Manager, RouterOS nimmt aber keinen Syslog entgegen
+    s = sub1(s, r'"syslog"="[^"]*"', '"syslog"=""', "syslog")
     write(gp, s)
 
     # bootstrap-manager.rsc mit ausgefülltem Kopf
@@ -174,8 +176,10 @@ Mit `tools/new-site.py` aus den neutralen Beispieldaten angelegt: Manager `{name
 ### Vor dem Einsatz
 
 - [ ] **Adressen:** Passt das Beispielnetz? Sonst in `global.rsc` `mgmtVlan`, `managers`, `ntp`, `dns`,
-      `syslog`, in `vlans.rsc` die VLANs und in `meta/inventory.rsc` die `ip`-Werte ändern (und den
+      in `vlans.rsc` die VLANs und in `meta/inventory.rsc` die `ip`-Werte ändern (und den
       Kopf von `bootstrap-manager.rsc`).
+- [ ] **Syslog** (optional): `syslog` in `global.rsc` ist leer (aus). Ziel nur ein echter Syslog-Server,
+      z.B. LibreNMS (Admin-Guide 8.12) – RouterOS nimmt keinen Syslog entgegen, auch der Manager nicht.
 - [ ] **Zugang:** `mgmtExtra` in `global.rsc` enthält deinen Admin-PC oder dessen Netz. Nicht-Router
       verwerfen alles andere.
 - [ ] **Gateway** {gw} im MGMT-VLAN vorhanden (Default-Route, DNS und NTP der Geräte), bis ein

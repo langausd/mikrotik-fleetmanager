@@ -119,6 +119,19 @@
           :set c ($c . ":if ([:len [/interface/wireguard/find where name=\"wg-admin\"]] > 0) do={ /interface/wireguard/set [find where name=\"wg-admin\"] private-key=\"" . [$cfmEsc $wk] . "\" } else={ :set ok false };")
         }
       }
+      # SNMPv3 (TODO 54): ein Satz für alle Geräte; fehlt die Community noch (Apply steht aus), beim nächsten Mal
+      :local snmp ($cfmG->"snmp")
+      :if ([:typeof $snmp] = "array") do={
+        :if ([:len ($snmp->"from")] > 0) do={
+          :local su [:tostr ($snmp->"user")]
+          :if ([:len $su] = 0) do={ :set su "librenms" }
+          :local pa [$cfmVaultGet "snmp.auth"]
+          :local pv [$cfmVaultGet "snmp.priv"]
+          :if ([:len $pa] > 0 and [:len $pv] > 0) do={
+            :set c ($c . ":if ([:len [/snmp/community/find where name=\"" . $su . "\"]] > 0) do={ /snmp/community/set [find where name=\"" . $su . "\"] authentication-password=\"" . [$cfmEsc $pa] . "\" encryption-password=\"" . [$cfmEsc $pv] . "\" } else={ :set ok false };")
+          }
+        }
+      }
       # WLAN-Passphrasen: an den CAPsMAN (D45) und an die APs für ihren lokalen Fallback (D46)
       :local iscm false
       :foreach cm in=$cms do={ :if ([:tostr ($cm->"n")] = $name) do={ :set iscm true } }
@@ -163,8 +176,13 @@
       # Ein neuer CAPsMAN wartet mit dem Einschalten auf die Passphrasen (cfmCapsmanOn)
       # Nur mit der Passphrase der Master-SSID im Vault – sonst schaltet die Rolle ihn beim nächsten Apply
       # wieder aus ($cfmPskMissing), und jeder Secret-Push schaltete hin und her
-      :if ($iscm and [:len [$cfmVaultGet ("psk." . [:tostr ($cfmWifi->"master")])]] > 0) do={ :set c ($c . ":if (\$ok) do={ :onerror e in={ /interface/wifi/capsman/set enabled=yes } do={} };") }
-      :set c ($c . ":if (\$ok) do={ /ppp/secret/set [find where name=\"cfm:key\"] comment=\"cfm-sys:key sv=" . $vv . "\" }; :put \$ok")
+      # Schaltet der Push ihn ein, fehlen den eigenen Radios die übrigen SSIDs: Die Rolle hat sie bei
+      # ausgeschaltetem CAPsMAN nicht provisioniert (capsmanRadios). Dann einen erzwungenen Apply anstoßen -
+      # erst nach dem neuen SV, sonst meldete er noch den alten (Befund 2026-10-28)
+      :set c ($c . ":local ra false;")
+      :if ($iscm and [:len [$cfmVaultGet ("psk." . [:tostr ($cfmWifi->"master")])]] > 0) do={ :set c ($c . ":if (\$ok) do={ :onerror e in={ :if (![/interface/wifi/capsman/get enabled] and [:len [/interface/wifi/radio/find where local]] > 0) do={ :set ra true }; /interface/wifi/capsman/set enabled=yes } do={} };") }
+      :set c ($c . ":if (\$ok) do={ /ppp/secret/set [find where name=\"cfm:key\"] comment=\"cfm-sys:key sv=" . $vv . "\" };")
+      :set c ($c . ":if (\$ra) do={ :execute \":global cfmArg \\\"force\\\"; /system script run cfm-agent\"; :log info \"cfm: CAPsMAN per Secret-Push eingeschaltet - Apply fuer die eigenen Radios\" }; :put \$ok")
       :local r [$cfmExec ip=($d->"ip") cmd=$c]
       :if (($r->"output") ~ "true") do={ :set done ($done + 1); :log info ("cfm: Secrets v" . $vv . " -> " . $name) } else={
         :log warning ("cfm: Secret-Push " . $name . " unvollständig/fehlgeschlagen: " . [:pick ($r->"output") 0 120]) }

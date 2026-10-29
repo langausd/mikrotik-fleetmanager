@@ -495,6 +495,27 @@
       :if ([:len [$cfmVaultGet ("user." . $au)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: Passwort des API-Users fehlt, \$cfmSecret key=user." . $au . " value=...") }
     }
   }
+  # SNMPv3 für LibreNMS (TODO 54): Adressen, Protokoll, Passwörter im Vault (RouterOS: mindestens 8 Zeichen)
+  :local snmp ($cfmG->"snmp")
+  :if ([:typeof $snmp] = "array") do={
+    :if ([:len ($snmp->"from")] > 0) do={
+      :foreach a in=($snmp->"from") do={
+        :local ip [:tostr $a]
+        :if ([:typeof [:find $ip "/"]] != "nil") do={ :set ip [:pick $ip 0 [:find $ip "/"]] }
+        :if ([:typeof [:toip $ip]] != "ip") do={ :set ($err->[:len $err]) ("global.rsc: snmp from: " . $a . " ist keine IPv4-Adresse/kein Netz") }
+      }
+      :local sa [:tostr ($snmp->"auth")]
+      :if ([:len $sa] > 0 and !($sa ~ "^(SHA1|SHA256|SHA384|SHA512)\$")) do={ :set ($err->[:len $err]) ("global.rsc: snmp auth=" . $sa . " unbekannt (SHA1|SHA256|SHA384|SHA512)") }
+      :foreach k in={"snmp.auth";"snmp.priv"} do={
+        :local pw [$cfmVaultGet $k]
+        :if ([:len $pw] = 0) do={ :set ($warn->[:len $warn]) ("Vault: SNMP-Passwort fehlt, \$cfmSecret key=" . $k . " value=...") } else={
+          :if ([:len $pw] < 8) do={ :set ($err->[:len $err]) ("Vault: " . $k . " ist kürzer als 8 Zeichen (RouterOS lehnt es ab)") }
+        }
+      }
+    }
+  } else={ :if ([:typeof $snmp] != "nothing") do={ :set ($err->[:len $err]) "global.rsc: snmp muss ein Array sein ({\"from\"=…})" } }
+  :local slf [:tostr ($cfmG->"syslogFormat")]
+  :if ([:len $slf] > 0 and $slf != "syslog" and $slf != "default") do={ :set ($err->[:len $err]) ("global.rsc: syslogFormat=" . $slf . " unbekannt (syslog|default)") }
   # Kanal-Pinning (radios): bekannte APs, bekannte Bänder
   :foreach apn,pins in=($cfmWifi->"radios") do={
     :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . ", nicht im Inventar") } else={

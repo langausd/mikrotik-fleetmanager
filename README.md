@@ -93,7 +93,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 
 | Rolle | Inhalt |
 |---|---|
-| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, RAM-Log ohne `system,info` (D79), Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Agent |
+| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, SNMPv3 für LibreNMS (`snmp`, D99), RAM-Log ohne `system,info` (D79), Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Trennschwelle je Band, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus; feste Interfaces, die übrigen SSIDs senden beim Schalten weiter) |

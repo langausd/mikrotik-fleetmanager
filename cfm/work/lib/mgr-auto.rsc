@@ -1,8 +1,8 @@
 # ============================================================
 # cfm lib/mgr-auto.rsc – Manager-Funktionen: Automatik
 #   $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick"), $cfmOnbTickRun (Scheduler
-#   cfm-mgr-onb-tick, fest 1m), $cfmAutoPromote, $cfmSecretSync, $cfmHookState, $cfmMirror,
-#   $cfmPromoteManager; Benachrichtigungen: lib/mgr-notify.rsc
+#   cfm-mgr-onb-tick, fest 1m), $cfmAutoPromote, $cfmSecretSync, $cfmFollow (Scheduler cfm-mgr-follow,
+#   Nachfassen nach einem Push), $cfmHookState, $cfmMirror, $cfmPromoteManager; Benachrichtigungen: lib/mgr-notify.rsc
 # ============================================================
 # ---------- Automatik (Scheduler cfm-mgr-tick) ----------
 :global cfmAutoPromote do={
@@ -47,6 +47,59 @@
       :set ($cfmSpTry->$name) $now
       $cfmSecretPush host=$name
     }
+  }
+}
+
+# Nachfassen nach einem Push (Befund 2026-10-28): Legt der Apply auf einem CAPsMAN eine neue Master-SSID
+# an, fehlt ihrem Profil die Passphrase - er bleibt aus, bis der Secret-Push kommt ($cfmPskMissing meldet
+# SV 0), mit dem allgemeinen Tick bis zu mgrTick ohne WLAN. $cfmPush trägt angestoßene CAPsMAN-Geräte
+# deshalb in meta/follow.dat ein (Name -> Zeitpunkt), der Scheduler cfm-mgr-follow holt alle 30 s ihren
+# Status ab. Meldet einer einen Lauf seit dem Push mit veraltetem SV, pusht er die Secrets sofort. Nach
+# 10 min ohne Meldung übernimmt wieder der allgemeine Tick ($cfmSecretSync); leer, entfernt er sich.
+:global cfmFollowAdd do={
+  :global cfmMB; :global cfmJson; :global cfmWrite
+  :local f ([$cfmMB] . "/meta/follow.dat")
+  :local q [$cfmJson $f]
+  :foreach n,t in=$1 do={ :set ($q->$n) $t }
+  $cfmWrite $f [:serialize to=json $q]
+  :if ([:len [/system/scheduler/find where name="cfm-mgr-follow"]] = 0) do={
+    /system/scheduler/add name="cfm-mgr-follow" interval=30s comment="cfm-sys:follow" on-event=":if ([:len [/system/script/job/find where script=\"cfm-mgr-follow\"]] < 2) do={ :global cfmTickBusy; :if (\$cfmTickBusy != true) do={ :onerror e in={ /system script run cfm-mgr; :global cfmFollow; \$cfmFollow } do={ :log warning (\"cfm: follow: \" . \$e) } } }"
+  }
+}
+
+:global cfmFollow do={
+  :global cfmMB; :global cfmJson; :global cfmWrite; :global cfmNow; :global cfmCollect; :global cfmSecretPush
+  :global cfmSpTry; :global cfmFileEx
+  :local b [$cfmMB]
+  :local f ($b . "/meta/follow.dat")
+  :local vv [:tonum ([$cfmJson ($b . "/meta/vault.dat")]->"ver")]
+  :if ([:typeof $vv] != "num") do={ :set vv 0 }
+  :local now [$cfmNow]
+  :local rest ({})
+  :foreach name,t in=[$cfmJson $f] do={
+    :local done (($now - [:tonum $t]) > 600)
+    :if (!$done) do={
+      $cfmCollect host=$name
+      :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
+      # seen = Start des Laufs, der den Status geschrieben hat: erst ein Lauf nach dem Push zählt
+      :if ([:tonum ($s->"seen")] >= [:tonum $t]) do={
+        :set done true
+        :local sv [:tostr ($s->"sv")]
+        :local p [:find $sv "sv="]
+        :if ([:typeof $p] != "nil") do={ :set sv [:pick $sv ($p + 3) [:len $sv]] }
+        :if (($s->"res") = "ok" and $vv > 0 and [:tonum $sv] != $vv) do={
+          :log info ("cfm: " . $name . " meldet nach dem Push Secrets v" . $sv . " (Vault v" . $vv . ") - Secret-Push sofort")
+          :if ([:typeof $cfmSpTry] != "array") do={ :set cfmSpTry ({}) }
+          :set ($cfmSpTry->$name) $now
+          $cfmSecretPush host=$name
+        }
+      }
+    }
+    :if (!$done) do={ :set ($rest->$name) $t }
+  }
+  :if ([:len $rest] > 0) do={ $cfmWrite $f [:serialize to=json $rest] } else={
+    :if ([$cfmFileEx $f]) do={ /file/remove $f }
+    /system/scheduler/remove [find where name="cfm-mgr-follow"]
   }
 }
 

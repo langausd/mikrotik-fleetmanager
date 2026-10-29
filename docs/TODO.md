@@ -70,6 +70,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (Limit greift in beiden Richtungen, keine Gast-Verbindung im Fasttrack); dazu drei neue „Bekannte Fehler“ – Datei
   beim Abholen gelöscht und gleichnamig neu geladen (Apply des Managers scheiterte, Rollback mit Neustart), `force`
   löscht `bad` nicht, neue SSIDs schalten den CAPsMAN bis zum Secret-Push aus.
+* **Erledigt am 2026-10-29:** die drei „Bekannten Fehler“ vom 2026-10-28 – Dateien beim Abholen überschreiben statt
+  löschen, `force` löscht `bad`, neue Master-SSID: Nachfassen nach dem Push (D98, Secret-Push sofort, erzwungener
+  Apply für die eigenen Radios) – und 54 (D99, SNMPv3 für LibreNMS, Syslog im RFC-Format). Labor 7.25: `e2e.sh` 372 grün.
+  Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push, SNMP gegen LibreNMS (siehe unten).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -83,7 +87,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * ~~**Einmalig beim nächsten Framework-Update jeder bestehenden Installation:** 47~~ – an beiden Standorten
   erledigt (2026-10-11/14); bleibt als Anleitung für Installationen von vor D68.
 * **Erledigt am 2026-10-16:** 53 (D81): Gerätesuche `$cfmFind` live am Manager, Lesezeichen cfm-WLAN heißt
-  „cfm-Monitor“ mit Reiter Suche. **Entschieden, offen:** 54 (LibreNMS: SNMPv3 + Syslog). **Idee:** 55 (Netbox:
+  „cfm-Monitor“ mit Reiter Suche. ~~**Entschieden, offen:** 54 (LibreNMS: SNMPv3 + Syslog)~~ – umgesetzt 2026-10-29 (D99). **Idee:** 55 (Netbox:
   Export oder als Quelle).
 * **Erledigt am 2026-10-16:** 51 (D80): andere Funknetze im 2,4-GHz-Band (`wifi.rsc` → `others`) in
   den Kosten von `$cfmWifiScan`, Kanalvorschlag für neue Zigbee-/Thread-Netze, Kanalsatz 1/5/9; offen
@@ -251,6 +255,11 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   mit `cache: 'no-store'`. Wechsel erscheinen in den Ereignissen doppelt (live und „Log“).
 * ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
   (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
+* **Neue Master-SSID mit eigenen Radios (D98):** Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
+  erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
+  Master-SSID: Ausfall nur für die Dauer des Applys plus höchstens 30 s, Log `meldet nach dem Push Secrets v0`.
+* **SNMPv3 (D99)** gegen LibreNMS: Abfrage aller Geräte über die MGMT-Adresse des Servers, Syslog im RFC-Format
+  (Schwere richtig einsortiert?), sysLocation aus Hostfile bzw. `global.rsc`.
 * **Bandbreitenlimit (D97)** – *Grundtest bestanden 2026-10-28/29* (CRS418, ein Client: 19,8 Mbit/s bei
   `limitClient` 20M, Queue bremst in beiden Richtungen, keine Gast-Verbindung im Fasttrack). Offen: zwei Clients
   gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der MikroTik-Doku – Ausnahme kurz
@@ -258,7 +267,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 
 ## Bekannte Fehler
 
-* **Apply scheitert am Manager-Modul: „no such item (/file/get)“ in `roles/manager.rsc`** (Befund 2026-10-28,
+* ~~**Apply scheitert am Manager-Modul: „no such item (/file/get)“ in `roles/manager.rsc`**~~ – *behoben 2026-10-29:*
+  `$cfmGetFiles` überschreibt geänderte Dateien per `/tool/fetch`, gelöscht werden nur Dateien, die das Manifest
+  nicht mehr nennt (DECISIONS, Umsetzungsentscheidungen); im CHR nicht nachstellbar, beim nächsten Framework-Update
+  eines Standorts beobachten. (Befund 2026-10-28,
   Hardware: CRS418 als Router + Manager, 7.25, Framework-Update mit geänderten `mgr-check`/`mgr-show`):
   `failed roles/manager.rsc: Script Error: no such item (/file/get; line 26)` → Rollback per Backup-Load, Neustart.
   Nach dem Neustart lagen alle Dateien in `cfm/dl` mit dem neuen Stand und ließen sich über den Namen lesen.
@@ -267,7 +279,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   Beheben: geänderte Dateien nicht vorher löschen (`/tool/fetch` überschreibt), nur Dateien entfernen, die nicht
   mehr im Manifest stehen; ggf. `/file get` der Rolle `manager` bei „no such item“ nach kurzer Pause wiederholen.
   Labor: im CHR bisher nicht aufgetreten (e2e lädt Manager-Module bei jedem Framework-Update).
-* **Neue SSID: CAPsMAN bis zum nächsten Manager-Tick aus, eigene Radios ohne virtuelle SSIDs** (Befund 2026-10-28,
+* ~~**Neue SSID: CAPsMAN bis zum nächsten Manager-Tick aus, eigene Radios ohne virtuelle SSIDs**~~ – *behoben
+  2026-10-29 (D98):* `$cfmPush` fasst bei CAPsMAN-Geräten alle 30 s nach (`cfm-mgr-follow`) und pusht die Secrets,
+  sobald einer SV 0 meldet; schaltet der Push den CAPsMAN ein und hat er eigene Radios, folgt dort ein erzwungener
+  Apply. Labor: `e2e.sh` Schritt 14 (6-GHz-Profil); die eigenen Radios nur auf Hardware. (Befund 2026-10-28,
   Release mit drei neuen SSIDs, Passphrasen vorher im Vault): Erst der Apply legt die Security-Profile `cfm-<ssid>` an,
   ein Secret-Push davor geht für sie ins Leere. Der Apply auf dem CAPsMAN schaltet ihn deshalb aus (`$cfmPskMissing`)
   und fordert den Push an (SV 0); der kommt erst mit dem nächsten Manager-Tick (bis 10 min, so lange kein WLAN aus
@@ -276,7 +291,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   Master. Abhilfe von Hand: `$cfmSecretPush`, `$cfmPush host=<cm> force=yes`, `cfm-reprov`. Beheben: Manager pusht
   sofort, wenn ein Gerät nach dem Apply SV 0 meldet (`$cfmCollect`/Tick des Release-Ablaufs), und der Secret-Push
   provisioniert die eigenen Radios, wenn er den CAPsMAN einschaltet (oder fordert einen Apply an).
-* **Erzwungener Apply einer `bad`-Version lässt `bad` stehen** (Befund 2026-10-28, gleiche Gelegenheit):
+* ~~**Erzwungener Apply einer `bad`-Version lässt `bad` stehen**~~ – *behoben 2026-10-29:* Der Agent löscht `bad`
+  nach einem erfolgreichen Apply derselben Version; Labor: `e2e.sh` Schritt 7. (Befund 2026-10-28, gleiche Gelegenheit):
   `$cfmPush host=<g> force=yes` wendete v31 an (`res=ok`), `bad` blieb v31 – `$cfmStatus` zeigt „bad v31 ok“, die
   Benachrichtigung `apply:<g>` bleibt offen, der tägliche Reapply wird als „fehlerhaft markiert“ übersprungen. Erledigt
   sich mit dem nächsten Release (ältere `bad` blendet der Manager aus). Beheben: im Agent nach erfolgreichem Apply
@@ -926,7 +942,11 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * Grenzen: In Netzen mit fremdem DHCP (z.B. Fritz!Box) kennt cfm IPs nur aus der ARP-Tabelle eines
       eigenen Routers mit Adresse im VLAN, Namen nur aus `leases.rsc`. Rolle `ap` läuft im Labor nicht
       (CHR ohne Radios) – WLAN-Teil nur mit Hardware testbar.
-54. **LibreNMS anbinden: SNMPv3 und Syslog** (entschieden 2026-10-16) – LibreNMS übernimmt Verlauf und
+54. **LibreNMS anbinden: SNMPv3 und Syslog** (entschieden 2026-10-16) – *umgesetzt 2026-10-29 (D99):* `global.rsc` →
+    `snmp` (Community authPriv nur von `from`, `public` aus, Passwörter `snmp.auth`/`snmp.priv` im Vault),
+    `syslogFormat` (Standard `syslog`), Hostfile `location`; Admin-Guide 8.12. **Offen:** Test gegen LibreNMS an einem
+    Standort; per `snmpwalk` am hAP prüfen, was das `wifi`-Paket liefert (siehe unten); Geräte per LibreNMS-API aus
+    dem Inventar anlegen (Nutzer: später). – LibreNMS übernimmt Verlauf und
     Messwerte (FDB/ARP mit Suche, LLDP-Karte, Port-Graphen, Alerts) und wird der geplante externe
     Syslog-Server (22). Rolle `base`: SNMPv3 authPriv nur von der LibreNMS-Adresse, Freigabe UDP 161 im
     input-Block, Schlüssel `snmp` in `global.rsc`, Passwort über den Vault/`$cfmSecretPush`; `syslog`

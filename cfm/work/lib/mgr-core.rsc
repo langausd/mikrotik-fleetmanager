@@ -59,7 +59,8 @@
 #   $cfmOnboard manual=yes [name=<n>] [sw=.. port=..]  Switch nicht verwaltet: Port schaltet der Admin
 #   $cfmOnboardStatus | $cfmOnboardAbort | $cfmPending | $cfmApprove serial=.. name=.. ip=..
 # Automatisch: $cfmTick (Scheduler cfm-mgr-tick, Intervall global.rsc "mgrTick", Default 10m),
-# $cfmOnbTickRun (Scheduler cfm-mgr-onb-tick, fest 1m, nur fürs Onboarding)
+# $cfmOnbTickRun (Scheduler cfm-mgr-onb-tick, fest 1m, nur fürs Onboarding), $cfmFollow (Scheduler
+# cfm-mgr-follow, 30 s, nur nach einem Push an einen CAPsMAN, bis er gemeldet hat)
 # ============================================================
 
 # Dateien über den Namen ansprechen statt per /file/find (TODO 21): find wertet jede Datei aus
@@ -474,20 +475,30 @@
 
 # ---------- Push-Trigger ----------
 :global cfmPush do={
-  :global cfmInvLoad; :global cfmExec; :global cfmEnrolled
+  :global cfmInvLoad; :global cfmExec; :global cfmEnrolled; :global cfmCapsmen; :global cfmNow; :global cfmFollowAdd
   :local c ":execute \"/system script run cfm-agent\""
   :if ($force = "yes") do={ :set c ":execute \":global cfmArg \\\"force\\\"; /system script run cfm-agent\"" }
   # nicht aufgenommene Geräte nie anstoßen: Unter der geplanten Adresse kann ein fremdes Gerät stehen
   :local skip ""
-  :foreach name,d in=[$cfmInvLoad] do={
+  :local inv [$cfmInvLoad]
+  :local cms ({})
+  :foreach cm in=[$cfmCapsmen $inv] do={ :set ($cms->($cm->"n")) 1 }
+  :local fq ({})
+  :foreach name,d in=$inv do={
     :if (([:len $host] = 0 or $host = $name) and ([:len [:tostr $ring]] = 0 or [:tostr $ring] = [:tostr ($d->"ring")])) do={
       :if ([$cfmEnrolled $d]) do={
+        :local t [$cfmNow]
         :local r [$cfmExec ip=($d->"ip") cmd=$c]
-        :if (($r->"exit-code") = 0) do={ :put ("Push -> " . $name) } else={ :put ("Push -> " . $name . " FEHLER " . ($r->"output")) }
+        :if (($r->"exit-code") = 0) do={
+          :put ("Push -> " . $name)
+          # CAPsMAN: nach dem Apply nachfassen, ob er Secrets braucht ($cfmFollow)
+          :if ([:typeof ($cms->$name)] != "nothing") do={ :set ($fq->$name) $t }
+        } else={ :put ("Push -> " . $name . " FEHLER " . ($r->"output")) }
       } else={ :set skip ($skip . " " . $name) }
     }
   }
   :if ([:len $skip] > 0) do={ :put ("kein Push (nicht aufgenommen):" . $skip) }
+  :if ([:len $fq] > 0) do={ $cfmFollowAdd $fq }
 }
 
 # ---------- Status ----------

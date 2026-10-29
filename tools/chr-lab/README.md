@@ -48,7 +48,7 @@ stoppen die VMs selbst, `lab.sh` brauchst du nur zum Nachsehen.
 
 | Aufruf | VMs | Dauer | Was geprüft wird |
 |---|---|---|---|
-| `./e2e.sh fresh` | 3 | ~80 min | Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager, Router, Leases, Bandbreitenlimit, Archiv, Schlüsselwechsel, RouterOS-Update (auch vom Spiegel), Netzplan, Gerätesuche, PPSK, WLAN-Daten, Bestandsgeräte, CAPsMAN-Umzug, Watchdog, Admin-Keys, Benachrichtigungen … |
+| `./e2e.sh fresh` | 3 | ~80 min | Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager, Router, Leases, Bandbreitenlimit, Archiv, Schlüsselwechsel, RouterOS-Update (auch vom Spiegel), Netzplan, Gerätesuche, PPSK, WLAN-Daten, Bestandsgeräte, CAPsMAN-Umzug, Watchdog, Admin-Keys, Benachrichtigungen, SNMPv3 … |
 | `./e2e-onboard.sh fresh` | 3 | ~10 min | automatisches Onboarding eines „Werksgeräts“ (192.168.88.1) |
 | `./e2e-onboard.sh fresh dhcp` | 3 | ~10 min | dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE) |
 | `./e2e-onboard.sh fresh manual` | 3 | ~10 min | Switch, den cfm nicht verwaltet (`$cfmOnboard manual=yes`) |

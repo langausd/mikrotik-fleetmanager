@@ -189,17 +189,20 @@
 # letzten Lauf schon mit dem richtigen Hash liegt, bleibt (D69): Jeder SFTP-Abruf dauert mindestens
 # 1 s, auch für kleine Dateien - ein Apply lud sonst jedes Mal alle Dateien neu. Dateien, die das
 # Manifest nicht nennt, kommen weg (base prüft z.B. nur, ob authorized_keys.<user> da ist).
+# Geänderte Dateien überschreibt /tool/fetch an Ort und Stelle: Gelöscht und gleich unter demselben
+# Namen neu geladen, fand /file/get sie später im Apply nicht mehr ("no such item" in roles/manager.rsc,
+# Hardware 7.25, 2026-10-28; nach dem Neustart des Rollbacks war die Datei wieder lesbar).
 :global cfmGetFiles do={
   :global cfmFetch
   :local need ({})
   :foreach fe in=($mf->"files") do={ :set ($need->($d . "/" . ($fe->0))) ($fe->1) }
   :foreach f in=[/file/find where name~("^" . $d . "/") and type!="directory"] do={
     :local fn [/file/get $f name]
-    :local ok false
-    :if ([:typeof ($need->$fn)] != "nothing") do={
+    :if ([:typeof ($need->$fn)] = "nothing") do={ /file/remove $f } else={
+      :local ok false
       :onerror e in={ :set ok ([:convert [/file/get $f contents] transform=sha512 to=hex] = ($need->$fn)) } do={}
+      :if ($ok) do={ :set ($need->$fn) }
     }
-    :if ($ok) do={ :set ($need->$fn) } else={ /file/remove $f }
   }
   :local src [:tostr ($mf->"src")]
   :if ([:len $src] = 0) do={ :set src ("archive/v" . ($mf->"v")) }
@@ -511,6 +514,9 @@
     :set ($st->"mfh") $mfh
     :set ($st->"t") $now
     :set ($st->"res") "ok"
+    # Eine erzwungene, früher gescheiterte Version ist jetzt angewendet - sonst übersprang der tägliche
+    # Reapply sie als fehlerhaft, und $cfmStatus und die Meldung apply:<Gerät> blieben bei "bad"
+    :if ([:tostr ($st->"bad")] = [:tostr $v]) do={ :set ($st->"bad") }
     :set ($st->"stats") $cfmStat
     # effektiver adminUser-Wert (inkl. Hostfile-Ausnahme), danach richtet sich der Secret-Push
     :global cfmAU

@@ -53,7 +53,7 @@
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";
   "/interface/wifi/steering";"/interface/wifi/access-list";"/interface/wifi/configuration";"/interface/wifi/provisioning";
-  "/system/logging/action";"/system/logging";"/user/group";"/user";
+  "/system/logging/action";"/system/logging";"/snmp/community";"/user/group";"/user";
   "/system/script";"/system/scheduler";"/tool/netwatch"
 }
 # Menüs ohne "comment" (D97): Schlüssel ist der Name, cfm gehören die Objekte mit Namen "cfm-…"

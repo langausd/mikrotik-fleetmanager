@@ -165,6 +165,17 @@ waitssh 2; sleep 20
 expect 2 '[:len [/ip/address/find where address="192.168.10.21/24"]] = 1' "sw1 nach Rollback erreichbar konfiguriert"
 mgr '$cfmStatus' | grep "^sw1" | grep -q "bad v3" && ok "\$cfmStatus zeigt bad v3 (neuer als IST)" || bad "\$cfmStatus ohne bad v3"
 mgr '$cfmRollback ver=2 all=yes' >/dev/null
+# force auf eine als bad markierte Version, die jetzt klappt: danach ist bad weg (Befund 2026-10-28) - v4 von Hand als bad
+agentwait 2 4 sw1 || bad "sw1 Apply v4 (Rollback)"
+r 2 ':local f "cfm/state.json"; :local s [:deserialize from=json [/file/get $f contents]]; :set ($s->"bad") 4; /file/set $f contents=[:serialize to=json $s]' >/dev/null
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+[ "$(stat sw1 res)" = ok ] && [ -z "$(stat sw1 bad)" ] && ! mgr '$cfmStatus' | grep "^sw1" | grep -q "bad v" && ok "force auf bad v4: angewendet, bad gelöscht" || bad "force nach bad: res=$(stat sw1 res) bad=$(stat sw1 bad)"
+# bad v3 wiederherstellen: Schritt 11 braucht sie (Archiv behält gemeldete bad-Versionen)
+r 2 ':local f "cfm/state.json"; :local s [:deserialize from=json [/file/get $f contents]]; :set ($s->"bad") 3; /file/set $f contents=[:serialize to=json $s]' >/dev/null
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+[ "$(stat sw1 bad)" = 3 ] || bad "sw1: bad v3 nicht wiederhergestellt ($(stat sw1 bad))"
 
 step "8. Backup-Manager cm2"
 echo "put $LAB/bs.rsc cfm-bootstrap.rsc" | put 3
@@ -461,13 +472,19 @@ mgr '$cfmSecret key=ppsk.iot.gast value="PPSK-Gast-2026"; :global cfmSecretPush;
 expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot.gast"] passphrase] = "PPSK-Gast-2026"' "PPSK-Passphrase per Secret-Push gesetzt"
 # 6 GHz: Security je Band (nur WPA3, PMF required) für Master und Slave-SSID, MLO aus (TODO 32)
 mgr '/file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5955,5975\";\"width\"=\"20/40/80mhz\";\"sec\"=\"wpa3-psk\";\"pmf\"=\"required\"}\n:set (\$cfmWifi->\"ssids\"->\"guest\"->\"bands\") \"2,5,6\"\n")' >/dev/null
+# Neues Band-Profil ohne Passphrase: Der Apply schaltet den CAPsMAN aus und meldet SV 0, $cfmFollow (Scheduler
+# cfm-mgr-follow nach dem Push) pusht die Secrets sofort (Befund 2026-10-28). Den Tick dafür sperren (cfmSpTry)
+mgr ':global cfmSpTry; :if ([:typeof $cfmSpTry] != "array") do={ :set cfmSpTry ({}) }; :set ($cfmSpTry->"cm1") [$cfmNow]' >/dev/null
 rv=$(mgr '$cfmRelease msg=" 6 GHz" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (6 GHz) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
 expect 1 '[:tostr [/interface/wifi/security/get [find name="cfm-main-6g"] authentication-types]] = "wpa3-psk" and [/interface/wifi/security/get [find name="cfm-main-6g"] management-protection] = "required" and [:tostr [/interface/wifi/security/get [find name="cfm-main"] authentication-types]] ~ "wpa2-psk"' "cm1: eigenes Security-Profil für 6 GHz (WPA3, PMF required), 2,4/5 GHz unverändert"
 expect 1 '[/interface/wifi/configuration/get [find name="cfm-m6"] security] = "cfm-main-6g" and [/interface/wifi/configuration/get [find name="cfm-guest-6g"] security] = "cfm-guest-6g" and [:tostr [/interface/wifi/provisioning/get [find where supported-bands=6ghz-ax] slave-configurations]] ~ "cfm-guest-6g"' "cm1: Master- und Slave-Konfiguration auf 6 GHz mit dem Band-Profil"
 expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and multi-link-mode=disabled]] = [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]]' "cm1: MLO in allen Provisioning-Regeln aus"
-mgr ':global cfmSecretPush; $cfmSecretPush host=cm1' >/dev/null
+for _ in $(seq 1 30); do r 1 ':put [:len [/interface/wifi/security/get [find name="cfm-main-6g"] passphrase]]' | tail -1 | grep -qx 0 || break; sleep 4; done
 expect 1 '[/interface/wifi/security/get [find name="cfm-main-6g"] passphrase] = [/interface/wifi/security/get [find name="cfm-main"] passphrase] and [:len [/interface/wifi/security/get [find name="cfm-main"] passphrase]] > 0' "cm1: Secret-Push setzt die Passphrase auch im 6-GHz-Profil"
+expect 1 '[:len [/log/find where message~"cm1 meldet nach dem Push Secrets v0"]] > 0 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: Secret-Push gleich nach dem Apply (\$cfmFollow), CAPsMAN wieder an"
+for _ in $(seq 1 20); do r 1 ':put [:len [/system/scheduler/find where name="cfm-mgr-follow"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+expect 1 '[:len [/system/scheduler/find where name="cfm-mgr-follow"]] = 0 and [:len [/file/find where name="cfm/meta/follow.dat"]] = 0' "cm1: cfm-mgr-follow räumt sich nach der Meldung weg"
 # Trennschwelle je Band (TODO 61, D92): Liste cfm-wifi-5g, datapath je Band mit interface-list, zwei
 # access-list-Regeln (abweisen unter join, annehmen bis drop mit hold) in dieser Reihenfolge; ohne drop
 # ist alles wieder weg. Das CHR hat keine Radios - geprüft werden die Objekte, nicht das Trennen
@@ -933,6 +950,26 @@ b1=$(brz)
   || { bad "cm1: Apply während \$cfmCheck/\$cfmShow: vorher '$b0', nachher '$b1', $a, res $(stat cm1 res)"; diag step14j; }
 w=$(r 1 ':foreach i in=[/log/find where message~"^cfm: Apply wartete"] do={ :put [/log/get $i message] }' | tail -1)
 [ -n "$w" ] && echo "    ($w)" || echo "    (Apply fiel in eine Lücke zwischen zwei Befehlen, dort ohne Wartezeit)"
+
+step "14k. SNMPv3 und Syslog-Format für LibreNMS (TODO 54)"
+out=$(mgr ':global e2eG14k [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14k . ":set (\$cfmG->\"snmp\") {\"from\"={\"127.0.0.1\";\"10.0.2.2\"};\"auth\"=\"MD5\"}\n"); $cfmSecret key=snmp.auth value="kurz"; :global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "ERR global.rsc: snmp auth=MD5 unbekannt" && echo "$out" | grep -q "ERR Vault: snmp.auth ist kürzer als 8 Zeichen" && echo "$out" | grep -q "W Vault: SNMP-Passwort fehlt, .*snmp.priv" && ok "Prüfung: snmp auth, Passwortlänge, fehlendes Passwort" || { bad "Prüfung snmp"; echo "$out" | grep -i snmp; }
+# from mit 127.0.0.1: die Abfrage per /tool/snmp-get läuft auf dem Gerät selbst
+mgr ':global e2eG14k; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14k . ":set (\$cfmG->\"snmp\") {\"from\"={\"127.0.0.1\";\"10.0.2.2\"};\"auth\"=\"SHA512\";\"contact\"=\"lab@example.org\";\"location\"=\"Labor\"}\n"); $cfmSecret key=snmp.auth value="snmp-auth-lab1"; $cfmSecret key=snmp.priv value="snmp-priv-lab1"' >/dev/null
+mgr ':local f [/file/find name="cfm/work/hosts/sw1.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmHost->\"location\") \"Rack 1\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" SNMP" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 && ok "sw1 und cm1 haben v$rv (SNMP) angewendet" || bad "Apply v$rv (SNMP): sw1 $(stat sw1 res), cm1 $(stat cm1 res)"
+expect 2 '[/snmp/get enabled] and [/snmp/get location] = "Rack 1" and [/snmp/get contact] = "lab@example.org" and [/snmp/community/get [find default] disabled]' "sw1: SNMP an, Ort aus dem Hostfile, public abgeschaltet"
+expect 1 '[/snmp/get location] = "Labor"' "cm1: Ort aus global.rsc"
+expect 2 '[:len [/snmp/community/find where name="librenms" and comment~"^cfm:snmp:librenms" and security="private" and authentication-protocol="SHA512" and encryption-protocol="AES" and read-access and !write-access]] = 1 and [:tostr [/snmp/community/get [find name="librenms"] addresses]] = "127.0.0.1/32;10.0.2.2/32"' "sw1: Community librenms (authPriv SHA512/AES, nur lesend, nur from)"
+expect 2 '[/system/logging/action/get [find name="cfmremote"] remote-log-format] = "syslog"' "sw1: Syslog im RFC-Format (syslogFormat)"
+mgr ':put ("SP=" . [$cfmSecretPush host=sw1])' | grep -q "SP=1" && ok "Secret-Push mit den SNMP-Passwörtern" || bad "Secret-Push SNMP"
+q='/tool/snmp-get address=127.0.0.1 oid=1.3.6.1.2.1.1.6.0 version=3 community=librenms security=private authentication-protocol=SHA512 encryption-protocol=AES encryption-password=snmp-priv-lab1 authentication-password='
+r 2 "${q}snmp-auth-lab1" | grep -q "Rack 1" && ! r 2 "${q}falsch-12345" | grep -q "Rack 1" && ok "sw1: SNMPv3-Abfrage mit den Passwörtern aus dem Vault, falsches Passwort abgewiesen" || bad "sw1: SNMPv3-Abfrage"
+r 2 '/tool/snmp-get address=127.0.0.1 oid=1.3.6.1.2.1.1.6.0 version=2c community=public' | grep -q "Rack 1" && bad "sw1: public (v2c) antwortet noch" || ok "sw1: public (v2c) antwortet nicht"
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "SNMP idempotent" || bad "SNMP idempotent: $(stat sw1 stats)"
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

@@ -5,10 +5,10 @@ wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
 
 > **Teststand:** Im CHR-Labor mit RouterOS 7.25 (zuvor 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch
-> mit 7.26beta1) laufen der Gesamttest (359 Prüfungen, darunter Manager-Bootstrap mit Reset,
+> mit 7.26beta1) laufen der Gesamttest (372 Prüfungen, darunter Manager-Bootstrap mit Reset,
 > Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
 > festen Leases, DNS-Namen und Bandbreitenlimit, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
-> Benachrichtigungen, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
+> Benachrichtigungen, SNMPv3, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
 > Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
 > einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (120 Prüfungen) und der Test von
 > LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten, alle
@@ -67,7 +67,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
   mit SSID und Signal bei WLAN-Clients (8.11).
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
-und die Meldungen bei Zustandswechseln), keine eigene grafische Oberfläche (Terminal-Befehle am
+und die Meldungen bei Zustandswechseln; Messwerte und Verlauf liefert LibreNMS über SNMPv3, 8.12), keine eigene grafische Oberfläche (Terminal-Befehle am
 Manager, dazu cfm-Editor und cfm-Monitor in WebFig über das Lesezeichen „cfm“, 8.1, 8.10, 8.11), keine RouterOS-Updates ohne deinen
 Befehl, und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
@@ -227,6 +227,8 @@ irgendetwas ausgerollt wird.
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
 | `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, D62). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
 | `tz`, `ntp`, `dns`, `syslog` | Zeitzone, NTP/DNS für Nicht-Router (Router: `wan` im Hostfile), Syslog-Ziel | |
+| `syslogFormat` | Format an den Syslog-Server: `syslog` = RFC-Kopf mit Facility `daemon` und Schwere aus dem Topic (LibreNMS sortiert danach), `default` = RouterOS-eigenes Format (TODO 54). Ältere RouterOS-Versionen ohne `remote-log-format` bleiben beim eigenen | `syslog` |
+| `snmp` | SNMPv3 nur lesend für LibreNMS (8.12): `{"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"=…;"location"=…}`. Ohne `from` bleibt `/snmp` unangetastet | `{}` |
 | `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (D79). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
 | `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (D57) | `10m` |
@@ -502,6 +504,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
 | `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste. Mit eigenem `gw` und WireGuard-Peers zusätzlich die Route ins WG-Netz über das MGMT-Gateway (D84) |
 | `bridgeFrames` | `"admit-all"`: die Bridge (CPU) nimmt weiter ungetaggte Frames an, statt nur getaggte – für eine Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll |
+| `location` | SNMP-Standort dieses Geräts (sysLocation, z.B. `"Keller, Rack 1"`), sonst `snmp.location` aus `global.rsc` |
 | `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (D53). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Bei einem Neustart des Geräts provisioniert RouterOS die eigenen Radios selbst wieder, ohne den cfm-Agent (vor der ersten SSH-Verbindung des Agents im Log, D53) – kein Unterschied zu echten CAPs. Client-Test und FT-Roaming zu den CAPs bestanden (hAP be³ und CRS418, D53) |
 
 Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
@@ -513,7 +516,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog, RAM-Log ohne `system,info` (`logMemory`, D79); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog (`syslogFormat`), SNMPv3 nur lesend für LibreNMS (`snmp`, D99), RAM-Log ohne `system,info` (`logMemory`, D79); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Provisioning mit festen Interfaces (D90); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
@@ -609,10 +612,17 @@ Im Terminal des Managers laden die Befehle mit `/system script run cfm-mgr`. Dan
 $cfmSecret key=user.netadmin value="…"      # für jeden Benutzer aus global.rsc users
 $cfmSecret key=psk.main value="…"        # für jede SSID aus wifi.rsc
 $cfmSecret key=vaultpw value="…"         # Passwort des verschlüsselten Vault-Backups
+$cfmSecret key=snmp.auth value="…"       # nur mit snmp in global.rsc: SNMPv3-Passwörter (je mind. 8 Zeichen)
+$cfmSecret key=snmp.priv value="…"
 ```
 
 Bewahre `vaultpw` getrennt und sicher auf (Passwortmanager). Ohne es ist das Vault-Backup im
 Notfall wertlos. Der Manager verteilt die Secrets automatisch, sobald ein Gerät „ok“ meldet.
+Einen CAPsMAN, den `$cfmPush` (auch der eines Releases) angestoßen hat, fragt er danach alle 30 s ab
+(Scheduler `cfm-mgr-follow`, höchstens 10 min): Legt der Apply eine neue Master-SSID an, schaltet er den
+CAPsMAN aus, bis ihre Passphrase da ist – der Secret-Push folgt dann gleich, nicht erst mit dem nächsten
+Manager-Tick. Schaltet der Push den CAPsMAN wieder ein und hat er eigene Radios, stößt er dort einen
+erzwungenen Apply an, der sie mit allen SSIDs provisioniert.
 
 Sobald dein Benutzer auf einem Gerät aktiv ist, schaltet cfm dort den Werks-User `admin` ab
 (`adminUser`). Arbeite am Manager deshalb mit deinem eigenen Benutzer: Die Rolle `manager`
@@ -1022,7 +1032,8 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 
 * `$cfmStatus` zeigt je Gerät Ring, Soll- und Ist-Version, Ergebnis (`ok`, `failed …`,
   `bad vN` = Version N ist gescheitert, der Agent wendet sie nicht erneut an (vorn in der Spalte;
-  ausgeblendet, sobald eine neuere Version ok läuft), `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
+  ausgeblendet, sobald eine neuere Version ok läuft; `$cfmPush host=<n> force=yes` wendet sie trotzdem an und
+  löscht `bad`, wenn es klappt), `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
   sendet nur die lokale Kopie der `master`-SSID, D46; `nicht aufgenommen` = Inventar-Eintrag ohne
   Geräteschlüssel, z.B. Platzhalter oder per `$cfmRegister` vorgemerkt – solche Geräte stößt der
   Manager nicht an, D49), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
@@ -1412,6 +1423,34 @@ Treffer stehen in einer Tabelle, sortierbar per Klick auf die Spalte. Ein Klick 
 SSID, VLAN oder MAC sucht danach, z.B. „was hängt noch an diesem Port?“. Eigene Namen aus dem Reiter
 WLAN gelten auch hier.
 
+### 8.12 LibreNMS: SNMPv3 und Syslog (TODO 54)
+
+LibreNMS übernimmt Verlauf und Messwerte (Port-Graphen, FDB/ARP mit Suche, LLDP-Karte, Alerts) und
+sammelt den Syslog. Steht der Server in einem Client-VLAN, bekommt er eine **zweite Schnittstelle im
+MGMT-VLAN** (feste Adresse, ohne Gateway, kein IP-Forwarding); SNMP und Syslog laufen nur über diese
+Adresse. Der input-Block lässt das MGMT-Netz ohnehin durch, auf genau diese Adresse beschränkt die
+SNMP-Community selbst – nicht `mgmtExtra`, das vollen Management-Zugang gäbe.
+
+```
+# global.rsc
+"syslog"="192.168.10.31";
+"snmp"={"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"="admin@example.org";"location"="Haus"};
+# am Manager (je mindestens 8 Zeichen), dann releasen
+$cfmSecret key=snmp.auth value="…"
+$cfmSecret key=snmp.priv value="…"
+```
+
+Die Rolle `base` legt auf jedem Gerät die Community `librenms` an (authPriv, `auth` SHA256 bzw.
+SHA1/SHA384/SHA512, Verschlüsselung AES – 128 Bit, mehr kann RouterOS nicht –, nur lesend, nur von
+`from`), schaltet die Standard-Community `public` ab (v1/v2c ohne Passwort; löschen lässt RouterOS sie
+nicht) und SNMP ein, mit `contact` und `location` (je Gerät überschreibbar per Hostfile `location`). Bis
+der Secret-Push die Passwörter bringt, trägt die Community Zufallswerte; legt der Apply sie neu an, fordert
+er den Push an (SV 0), der Manager schickt die Passwörter mit seinem nächsten Tick (sofort: `$cfmSecretPush`).
+In LibreNMS: Gerät per Adresse aus dem MGMT-VLAN, SNMP v3, `authPriv`, Benutzer `librenms`, dieselben
+Protokolle. Fällt `snmp` weg, entfernt der nächste Apply die Community; SNMP selbst bleibt eingeschaltet,
+antwortet aber niemandem mehr (`public` bleibt aus). Syslog: `syslog` auf die MGMT-Adresse des Servers,
+`syslogFormat` `syslog` (Standard).
+
 ---
 
 ## 9. Sicherheitsnetze und Notfälle
@@ -1578,7 +1617,7 @@ cd tools/chr-lab
                           # Router, Leases/DNS, Bandbreitenlimit, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
                           # RouterOS-Downgrade und Update vom Spiegel, Netzplan, PPSK, WLAN-Scan,
                           # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply),
-                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User, Gerätesuche …
+                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User, Gerätesuche, SNMPv3 …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
@@ -1674,7 +1713,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
 | `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
 | `pkg/<ver>/` | RouterOS-Pakete für `$cfmUpgrade` (oder unter `pkgPath`) |
-| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat`, `notify.dat` (offene Meldungen, D66), `hook.dat` (Stand der Git-Sicherung); auf dem Backup-Manager `notify-b.dat` und nach der Beförderung `PROMOTED` |
+| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat`, `notify.dat` (offene Meldungen, D66), `hook.dat` (Stand der Git-Sicherung), nach einem Push an einen CAPsMAN `follow.dat` (Nachfassen, Scheduler `cfm-mgr-follow`); auf dem Backup-Manager `notify-b.dat` und nach der Beförderung `PROMOTED` |
 | `onb/` | Arbeitsdateien des Onboardings (`probe.rsc`, `probe.txt`, `go.rsc`, `<name>-bootstrap.rsc`) |
 | `cfm-bootstrap.rsc` | Bootstrap-Datei für neue Geräte (`$cfmBootstrap`) |
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
@@ -1698,7 +1737,7 @@ Auf dem CAPsMAN feste WLAN-Interfaces je Radio der APs (`<Identity>-<Band>g` sam
 Provisioning `create-enabled`, D90; sie bleiben nach dem Abbau eines AP stehen), mit schaltbaren SSIDs
 (D64) Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
 samt Scheduler, Zustand in `cfm/ssid-<key>.txt`; mit eigenen Radios (`capsmanRadios`, D53) der Merker
-`cfm/wifi-local.txt`. Nach einem Audit liegt der Bericht in `cfm/out/audit.txt`.
+`cfm/wifi-local.txt`. Mit `snmp` (TODO 54) die Community `cfm:snmp:<user>`. Nach einem Audit liegt der Bericht in `cfm/out/audit.txt`.
 
 ---
 

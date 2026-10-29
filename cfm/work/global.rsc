@@ -11,6 +11,8 @@
   "ntp"="192.168.10.1";
   "dns"="192.168.10.1";
   "syslog"="192.168.10.2";
+  "syslogFormat"="syslog";
+  "snmp"={};
   "logMemory"="info,!system";
   "interval"="15m";
   "reapply"="1d";
@@ -76,6 +78,16 @@
 #             Fallback, RouterOS-Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz des
 #             Managers (Erneuerung überfällig oder Ablauf in weniger als licWarn). Optional "site" =
 #             Name in der Meldung (Default: Identity des Managers). Probe: $cfmNotify test=yes
+#  syslog     Syslog-Server (leer = aus), z.B. LibreNMS. syslogFormat: "syslog" (Standard) = RFC-Kopf mit
+#             Facility daemon und Schwere aus dem Topic; "default" = RouterOS-eigenes Format.
+#  snmp       SNMPv3 nur lesend für LibreNMS (TODO 54), {} = aus (/snmp bleibt dann unangetastet), z.B.
+#             {"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"="admin@example.org";
+#             "location"="Standort A"}. from = Adresse(n) des Servers im MGMT-VLAN, auth = SHA1|SHA256
+#             (Standard)|SHA384|SHA512, Verschlüsselung immer AES (128 Bit, mehr kann RouterOS nicht).
+#             location gilt für alle Geräte, der Hostfile-Schlüssel "location" überschreibt sie je Gerät.
+#             Passwörter NUR im Vault, ein Satz für alle Geräte (mindestens 8 Zeichen):
+#             $cfmSecret key=snmp.auth value=... und key=snmp.priv (Secret-Push). Die Standard-Community
+#             public (v1/v2c) wird abgeschaltet.
 #  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (D47), z.B. für Home Assistant (welcher
 #             Client an welchem AP). {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}
 #             öffnet dort den Dienst api nur für from, legt den User (Gruppe cfm-api: read,api,test) an,

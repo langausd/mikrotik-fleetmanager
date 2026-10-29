@@ -377,7 +377,13 @@ $cfmBlock m="/ipv6/firewall/filter" k="fw6" l=$r6
 $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfmG->"tz")})
 :local sl [:tostr ($cfmG->"syslog")]
 :if ([:len $sl] > 0) do={
-  $cfmEnsure m="/system/logging/action" k="log:remote" n=({"name"="cfmremote"}) p=({"name"="cfmremote";"target"="remote";"remote"=$sl})
+  :local slp ({"name"="cfmremote";"target"="remote";"remote"=$sl})
+  # Format (TODO 54): "syslog" = RFC-Kopf mit Facility daemon und Schwere aus dem Topic (LibreNMS sortiert
+  # danach), "default" = RouterOS-eigenes Format. remote-log-format kennen erst neuere Versionen
+  :local slf [:tostr ($cfmG->"syslogFormat")]
+  :if ([:len $slf] = 0) do={ :set slf "syslog" }
+  :onerror e in={ :if ([:typeof ([/system/logging/action/get [find where name="remote" and default]]->"remote-log-format")] != "nothing") do={ :set ($slp->"remote-log-format") $slf } } do={}
+  $cfmEnsure m="/system/logging/action" k="log:remote" n=({"name"="cfmremote"}) p=$slp
   # ohne $cfmEnsure (kein "comment"): manche RouterOS-Builds (beobachtet auf hAP AX²,
   # wifiwave2) lehnen /system/logging/add mit "comment" ab ("expected end of command"),
   # obwohl derselbe Aufruf auf anderer Hardware (z.B. CRS418) funktioniert.
@@ -386,6 +392,38 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
     :if ([:len $lid] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmremote" topics=$t }
   }
 }
+# --- SNMPv3 nur lesend für LibreNMS (TODO 54): authPriv, nur von snmp.from (die MGMT-Adresse des Servers;
+#     der input-Block lässt das MGMT-Netz ohnehin durch). Passwörter NUR im Vault (snmp.auth, snmp.priv),
+#     per Secret-Push; bis dahin Zufallswerte. Die Standard-Community public (v1/v2c ohne Passwort, von
+#     überall) lässt sich nicht löschen, sie wird abgeschaltet. Ohne snmp bleibt /snmp unangetastet. ---
+:local snmp ($cfmG->"snmp")
+:local snOn false
+:if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ :set snOn true } }
+:if ($snOn) do={
+  :local su [:tostr ($snmp->"user")]
+  :if ([:len $su] = 0) do={ :set su "librenms" }
+  :local sa [:tostr ($snmp->"auth")]
+  :if ([:len $sa] = 0) do={ :set sa "SHA256" }
+  # RouterOS liest Hostadressen als x.x.x.x/32 zurück
+  :local sf ({})
+  :foreach a in=($snmp->"from") do={
+    :local x [:tostr $a]
+    :if ([:typeof [:find $x "/"]] = "nil") do={ :set x ($x . "/32") }
+    :set ($sf->[:len $sf]) $x
+  }
+  :local loc [:tostr ($cfmHost->"location")]
+  :if ([:len $loc] = 0) do={ :set loc [:tostr ($snmp->"location")] }
+  :local rc "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+  # Neu angelegt (erster Rollout, anderer user) trägt sie Zufallspasswörter: Secret-Push anfordern (SV 0)
+  :if ([:len [/snmp/community/find where name=$su]] = 0 and $cfmDry != true) do={
+    :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={}
+    $cfmLog ("SNMP-Community " . $su . " neu - Secret-Push angefordert")
+  }
+  $cfmEnsure m="/snmp/community" k=("snmp:" . $su) n=({"name"=$su}) p=({"name"=$su;"addresses"=$sf;"security"="private";"authentication-protocol"=$sa;"encryption-protocol"="AES";"read-access"="yes";"write-access"="no"}) a=({"authentication-password"=[:rndstr length=32 from=$rc];"encryption-password"=[:rndstr length=32 from=$rc]})
+  $cfmSet m="/snmp/community" n=({"default"=true}) p=({"disabled"="yes"})
+  $cfmSet m="/snmp" p=({"enabled"="yes";"contact"=[:tostr ($snmp->"contact")];"location"=$loc})
+}
+
 # RAM-Log ohne system,info (D79): RouterOS loggt jede Konfig-Änderung (bei Skripten samt Quelltext) und
 # jede Anmeldung als system,info - ein Framework-Update verdrängte so die Hälfte der 1000 Zeilen des
 # Managers. logMemory = Topics der Regel info -> memory (RouterOS-Standard "info"); Syslog bekommt alles.

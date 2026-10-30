@@ -73,7 +73,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Erledigt am 2026-10-29:** die drei „Bekannten Fehler“ vom 2026-10-28 – Dateien beim Abholen überschreiben statt
   löschen, `force` löscht `bad`, neue Master-SSID: Nachfassen nach dem Push (D98, Secret-Push sofort, erzwungener
   Apply für die eigenen Radios) – und 54 (D99, SNMPv3 für LibreNMS, Syslog im RFC-Format); leeres `syslog` räumt Aktion und Einträge weg (beide Standorte schickten an ihren Manager, der keinen Syslog annimmt). Labor 7.25: `e2e.sh` 373 grün.
-  Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push, SNMP gegen LibreNMS (siehe unten).
+  Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push, Syslog an LibreNMS (siehe unten); SNMP
+  gegen LibreNMS bestanden 2026-10-30.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -258,8 +259,9 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * **Neue Master-SSID mit eigenen Radios (D98):** Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
   Master-SSID: Ausfall nur für die Dauer des Applys plus höchstens 30 s, Log `meldet nach dem Push Secrets v0`.
-* **SNMPv3 (D99)** gegen LibreNMS: Abfrage aller Geräte über die MGMT-Adresse des Servers, Syslog im RFC-Format
-  (Schwere richtig einsortiert?), sysLocation aus Hostfile bzw. `global.rsc`.
+* **SNMPv3 (D99)** gegen LibreNMS – *SNMP bestanden 2026-10-30* (10 Geräte, RouterOS 7.25, LibreNMS 26.6.1: authPriv
+  SHA256/AES über die MGMT-Adresse, sysLocation aus Hostfile mit Umlauten, danach Probelauf 0/0/0). Offen: Syslog im
+  RFC-Format (Schwere richtig einsortiert?).
 * **Bandbreitenlimit (D97)** – *Grundtest bestanden 2026-10-28/29* (CRS418, ein Client: 19,8 Mbit/s bei
   `limitClient` 20M, Queue bremst in beiden Richtungen, keine Gast-Verbindung im Fasttrack). Offen: zwei Clients
   gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der MikroTik-Doku – Ausnahme kurz
@@ -944,9 +946,12 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       (CHR ohne Radios) – WLAN-Teil nur mit Hardware testbar.
 54. **LibreNMS anbinden: SNMPv3 und Syslog** (entschieden 2026-10-16) – *umgesetzt 2026-10-29 (D99):* `global.rsc` →
     `snmp` (Community authPriv nur von `from`, `public` aus, Passwörter `snmp.auth`/`snmp.priv` im Vault),
-    `syslogFormat` (Standard `syslog`), Hostfile `location`; Admin-Guide 8.12. **Offen:** Test gegen LibreNMS an einem
-    Standort; per `snmpwalk` am hAP prüfen, was das `wifi`-Paket liefert (siehe unten); Geräte per LibreNMS-API aus
-    dem Inventar anlegen (Nutzer: später). – LibreNMS übernimmt Verlauf und
+    `syslogFormat` (Standard `syslog`), Hostfile `location`; Admin-Guide 8.12. *SNMP an einem Standort bestanden
+    2026-10-30* (Befunde: hAP be³ meldet nur CPU-Temperatur und -Takt, keine Spannung/Leistung – die liefert der
+    PoE-Switch je Port als Sensor; der CAPsMAN (wifi-Paket, 7.25) zeigt unter `…14988.1.1.1` nur drei Zähler des alten
+    `wireless`-Pakets mit 0, keine Clients – Signal/SSID bleiben bei `$cfmFind`/cfm-Monitor; direkt am CAP noch
+    ungeprüft). **Offen:** Syslog; Geräte per LibreNMS-API aus dem Inventar anlegen (Nutzer: später; von Hand geht
+    `lnms device:add --v3` mit den v3-Daten aus den Einstellungen, Admin-Guide 8.12). – LibreNMS übernimmt Verlauf und
     Messwerte (FDB/ARP mit Suche, LLDP-Karte, Port-Graphen, Alerts) und wird der geplante externe
     Syslog-Server (22). Rolle `base`: SNMPv3 authPriv nur von der LibreNMS-Adresse, Freigabe UDP 161 im
     input-Block, Schlüssel `snmp` in `global.rsc`, Passwort über den Vault/`$cfmSecretPush`; `syslog`

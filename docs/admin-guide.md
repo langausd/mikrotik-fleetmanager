@@ -1449,7 +1449,10 @@ nicht) und SNMP ein, mit `contact` und `location` (je Gerät überschreibbar per
 der Secret-Push die Passwörter bringt, trägt die Community Zufallswerte; legt der Apply sie neu an, fordert
 er den Push an (SV 0), der Manager schickt die Passwörter mit seinem nächsten Tick (sofort: `$cfmSecretPush`).
 In LibreNMS: Gerät per Adresse aus dem MGMT-VLAN, SNMP v3, `authPriv`, Benutzer `librenms`, dieselben
-Protokolle. Fällt `snmp` weg, entfernt der nächste Apply die Community; SNMP selbst bleibt eingeschaltet,
+Protokolle. Hinterlegt man die v3-Daten einmal zentral (bis 26.x Global Settings → Poller → SNMP → „SNMP v3
+Authentication“ bzw. `snmp.v3`, neuere Versionen: Secrets und `snmp.default_credentials`), legt
+`lnms device:add --v3 -d '{{ $sysName_fallback }}' <adresse>` die Geräte ohne Passwort auf der Kommandozeile an.
+Fällt `snmp` weg, entfernt der nächste Apply die Community; SNMP selbst bleibt eingeschaltet,
 antwortet aber niemandem mehr (`public` bleibt aus). Syslog: `syslog` auf die MGMT-Adresse des Servers,
 `syslogFormat` `syslog` (Standard).
 

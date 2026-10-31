@@ -99,7 +99,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Trennschwelle je Band, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus; feste Interfaces, die übrigen SSIDs senden beim Schalten weiter) |
-| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, optional Upstream/Adlisten/Ausnahmen/Weiterleitungen/Abfrage-Log aus `dns.rsc` (D101), NTP-Server, WireGuard-Fernzugang (optional) |
+| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, optional Upstream/Adlisten/Ausnahmen/Weiterleitungen/Abfrage-Log aus `dns.rsc` (D101) und DNS-Selbstbedienung für Clients (D102), NTP-Server, WireGuard-Fernzugang (optional) |
 | `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only; Geräte ziehen erst nach `$cfmPromoteManager` von hier (SFTP-User bis dahin gesperrt) |
 
@@ -138,6 +138,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Uplink aus zwei Kabeln (LACP), redundant über zwei Switches (MLAG) | Hostfile `bonds` bzw. `mlag.rsc` → `$cfmRelease … all=yes` |
 | Zeit für IoT-Geräte mit fest eingebautem NTP-Server | `"ntp"="redirect"` am VLAN → `$cfmRelease` (D93) |
 | Werbung/Tracker blocken, Ausnahmen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → `$cfmRelease` (D101) |
+| Clients schalten gesperrte Domains selbst befristet frei | `dns.rsc` `self` → `$cfmRelease`, `$cfmSecret key=user.dns`; Lesezeichen „cfm“ → cfm-DNS (Admin-Guide 8.14, D102) |
 | Bandbreite eines Netzes begrenzen (z.B. Gast-WLAN) | `"limit"="50M/10M"`, optional `"limitClient"` je Client, am VLAN → `$cfmRelease` (D97) |
 | IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |

@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-10-29)
+## Übersicht offener Punkte (Stand 2026-11-01)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -78,6 +78,10 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Umgesetzt am 2026-10-31:** 67 (D100) – `"asymRouting"="internet"` am WAN-VLAN: VIP als Gateway, obwohl der
   Internet-Router im selben Netz steht (`notrack` für Verkehr ins Internet). Labor 7.25: `e2e-vrrp.sh` 137,
   `e2e.sh` 374, grün. Offen auf Hardware (TODO 67).
+* **Umgesetzt am 2026-10-31:** 68 (D101) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
+  Weiterleitung, Abfrage-Log) und 69 (D102) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
+  402, `e2e-vrrp.sh` 137, grün. Hardware an einem Standort (vier Router, VRRP): D101 v90, D102 v91 – Freischaltung
+  aus dem Client-VLAN binnen 3 s, dauerhaft machen und löschen als Admin ok. Offen: Syslog-Weg des Abfrage-Logs (68).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -1191,6 +1195,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Namensschema der Standorte für `forward` (später, mit einem Standort-VPN der Router); DoH als Option.
 69. **DNS-Selbstbedienung für Clients: eigene Abfragen sehen, gesperrte Domain freischalten** (Wunsch des Nutzers,
     2026-10-31, D102) – *umgesetzt am selben Tag:* `dns.rsc` `self` (Admin-Guide Kapitel 4), Lesezeichen cfm-DNS
-    (`tools/editor/cfm-dns.js`), Skript `cfm-dnsreq` der Rolle `router`, Labor `e2e.sh` Schritt 14l. **Offen:**
-    Hardware; `www-ssl` für die Anmeldung; befristete Freischaltung auch auf den anderen Routern (VRRP-Wechsel);
+    (`tools/editor/cfm-dns.js`), Skript `cfm-dnsreq` der Rolle `router`, Labor `e2e.sh` Schritt 14l. *Hardware
+    bestanden 2026-10-31* (hAP ax³ als VRRP-Master, 7.25: Freischaltung nach 3 s, dauerhaft/löschen ok, 20 000
+    Log-Zeilen in 2,3 s gelesen). Befund: Nach `$cfmSecret` verteilt erst der nächste Tick das Passwort – sofort
+    mit `$cfmSecretPush host=` (Admin-Guide 8.14). **Offen:** `www-ssl` für die Anmeldung; befristete Freischaltung auch auf den anderen Routern (VRRP-Wechsel);
     `mgr-check.rsc` nähert sich der 60-KB-Grenze (55 KB) – beim nächsten Prüfblock aufteilen.

@@ -59,6 +59,9 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 * **RouterOS-Updates** per Befehl: Der Manager lädt die Pakete und verteilt sie, sofort oder in
   einem Wartungsfenster.
 * Jedes Gerät bekommt eine **minimale Firewall**, die nur Management-Zugriffe zulässt.
+* Die Router lösen **DNS** nach `dns.rsc` auf: eigene Upstreams, Werbe-/Tracker-Sperrlisten, Ausnahmen,
+  Weiterleitung je Domain, Abfrage-Log je Client (D101). Clients sehen im Browser ihre gesperrten
+  Abfragen und schalten eine Domain selbst für ein paar Stunden frei (Lesezeichen cfm-DNS, D102, 8.14).
 * Die **Verkabelung** wird per LLDP erfasst und gegen einen Soll-Stand geprüft; daraus entsteht
   ein Netzplan.
 * **Zustandswechsel** (Apply-Fehler, stumme Geräte, APs ohne CAPsMAN, gescheiterte Updates …)
@@ -68,7 +71,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
 und die Meldungen bei Zustandswechseln; Messwerte und Verlauf liefert LibreNMS über SNMPv3, 8.12), keine eigene grafische Oberfläche (Terminal-Befehle am
-Manager, dazu cfm-Editor und cfm-Monitor in WebFig über das Lesezeichen „cfm“, 8.1, 8.10, 8.11), keine RouterOS-Updates ohne deinen
+Manager, dazu cfm-Editor, cfm-Monitor und cfm-DNS in WebFig über das Lesezeichen „cfm“, 8.1, 8.10, 8.14), keine RouterOS-Updates ohne deinen
 Befehl, und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
 
@@ -513,8 +516,10 @@ Domain selbst für ein paar Stunden frei – ohne zusätzlichen Dienst, alles au
   VRRP-Wechsel ist eine befristete weg). Die Sichtschranke wirkt nur im Browser – per REST könnte der User
   das ganze Log lesen. Anmeldung über `http`, also unverschlüsselt im VLAN. Browser mit „DNS über HTTPS“
   umgehen den Router (dann sieht er nichts). Das Lesezeichen lädt das ganze Log (RouterOS filtert REST-
-  Abfragen des Logs nicht), 20 000 Zeilen ≈ 2 s auf einem CHR; Standard alle 30 s, nur bei sichtbarem Tab.
+  Abfragen des Logs nicht), 20 000 Zeilen ≈ 2 s auf einem CHR, 2,3 s auf einem hAP ax³ (Hardware
+  2026-10-31, gemessen ohne REST); Standard alle 30 s, nur bei sichtbarem Tab.
 * Fällt `self` weg, räumt der nächste Apply User, Gruppe, Skript, Scheduler und die befristeten Einträge weg.
+* Bedienung im Alltag, Einrichtung Schritt für Schritt: 8.14.
 
 ### `authorized_keys.<user>` (optional)
 
@@ -975,7 +980,7 @@ führt der Manager (D72). Du bearbeitest sie auf einem dieser Wege:
 * **im Browser mit dem cfm-Editor** (D73): einmal `tools/editor/install.html` öffnen und den Knopf
   „cfm“ in die Lesezeichen-Leiste ziehen (D91). Dann WebFig des Managers öffnen, „cfm“ anklicken, mit
   einem RouterOS-User der Gruppe full anmelden und „cfm-Editor“ wählen (der Browser merkt sich die
-  Anmeldung bis zum Schließen, auch für cfm-Monitor). Links die Datei wählen, ändern,
+  Anmeldung bis zum Schließen, auch für cfm-Monitor und cfm-DNS). Links die Datei wählen, ändern,
   Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
   fragt er nach). Die Knöpfe oben: „Prüfen“ (`$cfmParseWork`, `$cfmCheck`), „Diff zum Release“
   (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten
@@ -1402,6 +1407,7 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 | `onboard` | Onboarding gescheitert oder abgelaufen (`"state":"once"`, kein „wieder ok“) |
 | `primary` | nur vom **Backup-Manager**: Spiegel-Abruf per SFTP beim Primary scheitert seit `notify.stale` (`device` = Primary) |
 | `primary-tick` | nur vom Backup-Manager: Primary erreichbar, aber der neueste gespiegelte Gerätestatus ist älter als `notify.stale` – sein Manager-Tick steht |
+| `dnsreq` | nur von einem **Router** mit DNS-Selbstbedienung (D102, 8.14), direkt und sofort, nicht über den Manager-Tick: ein Client hat eine Domain freigeschaltet (`result` `allowed`), verlängert (`extended`) oder wurde wegen `self.deny` abgewiesen (`denied`); `"state":"once"`, `level` `action`, dazu `domain`, `client`, `result`, `until` (Ablauf, Unixzeit), `key` `dnsreq:<Domain>`. Ohne Wiederholung: Kommt sie nicht an, steht nur im Log des Routers `cfm: DNS-Freischaltung: Meldung nicht zugestellt: …` |
 | `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), wenn ein aufgenommenes Gerät älter ist (`"on"`, offen in `meta/notify.dat` `roso`). `"off"`, sobald kein Gerät mehr älter ist (in jedem Tick geprüft, also kurz nach dem letzten `$cfmUpgrade`), oder `"off"` mit „überholt durch …“, wenn eine neuere Version kommt, bevor alle aktualisiert sind – dann erst danach das `"on"` der neuen. Absichtlich ausgelassene Geräte halten die Meldung offen: beim Empfänger abhaken (TODO 64) |
 
 Zusätzlich trägt jede Meldung `level`, `device` und `message` für einfache Empfänger: `level` ist
@@ -1590,6 +1596,47 @@ ins Internet (vorher auf den Internet-Router zurückstellen). Der saubere Endzus
 Transfernetz für den Internet-Router (dann ist die VIP für alle das Gateway, auch für einen zweiten
 Internet-Anschluss); dort entfällt der Schalter.
 
+### 8.14 DNS: Sperren ansehen und freischalten (D101, D102)
+
+Die Router sperren Werbung und Tracker nach `dns.rsc` (`adlists`, 4. Datenmodell). Klemmt dadurch eine
+Seite, gibt es drei Wege:
+
+* **Du als Admin, dauerhaft:** Domain in `dns.rsc` `allow` eintragen, `$cfmRelease` – gilt auf allen Routern.
+* **Du als Admin, nachsehen:** auf dem Router `/log/print where buffer=cfmdns` (gesperrt: `done query: #<n> <Name>`
+  ohne Antwort dahinter), oder bequemer das Lesezeichen cfm-DNS mit deinem Admin-User:
+  Es zeigt alle Clients.
+* **Der Client selbst, befristet:** mit `self` in `dns.rsc` (Einrichtung unten).
+
+**Einrichtung (einmal):**
+1. In `dns.rsc` `"self"={"zones"={"lan"};"hours"=2}` (Zonen, deren Clients es dürfen; optional `deny`:
+   Domains, die nie per Selbstbedienung frei werden). `$cfmCheck` warnt, solange das Passwort fehlt.
+2. `$cfmRelease`. Danach gibt es auf den Routern die Gruppe `cfm-dns`, den User `dns` (noch aus),
+   das Skript `cfm-dnsreq` und WebFig/REST aus den Zonen.
+3. `$cfmSecret key=user.dns value="…"` – Passwort für alle Clients gemeinsam. Der Manager verteilt es im
+   nächsten Tick (`mgrTick`, nach der nächsten Statusmeldung der Router), sofort mit
+   `$cfmSecretPush host=<router>` je Router. Erst dann ist der User `dns` an.
+
+**Für die Clients** (zum Weitergeben):
+1. Einmal `install.html` öffnen (vom Admin, liegt in `tools/editor/`) und den Knopf „cfm“ in die
+   Lesezeichen-Leiste ziehen.
+2. `http://<Gateway>/` öffnen – die Adresse des Routers im eigenen Netz, mit VRRP die VIP – und das
+   Lesezeichen „cfm“ anklicken, „cfm-DNS“ wählen, als `dns` anmelden.
+3. Reiter **Gesperrt**: gesperrte Namen der letzten Minuten; Reiter **Abfragen**: die häufigsten Namen;
+   Reiter **Freischaltungen**: was gerade frei ist und bis wann. Die Ansicht zeigt nur die eigene IP.
+4. Bei einem gesperrten Namen „Freischalten anfragen“, den Namen bei Bedarf auf die Hauptdomain kürzen
+   (`ads.beispiel.de` → `beispiel.de` gibt alle Subdomains frei). Die Freischaltung wirkt sofort für
+   `hours` Stunden; danach Seite neu laden (der Browser hat die Sperre evtl. noch im Cache).
+
+**Was du davon mitbekommst:** jede Freischaltung als Meldung `ev=dnsreq` an `notify.url` (8.9), in Home
+Assistant also als Benachrichtigung. Mit deinem Admin-User siehst du im Reiter Freischaltungen alle
+Einträge und machst eine befristete **dauerhaft** (bleibt auf diesem Router, jeder Apply erinnert dich, sie
+nach `allow` zu übernehmen) oder **löschst** sie. Hardware-Test 2026-10-31 (hAP ax³ als VRRP-Master):
+Freischaltung nach 3 s wirksam, dauerhaft machen und löschen ok.
+
+**Wichtig:** Eine Freischaltung gilt für alle Clients dieses Routers und nur auf ihm; fällt die VIP auf
+einen anderen Router, ist eine befristete dort nicht da. Clients mit „DNS über HTTPS“ im Browser gehen am
+Router vorbei – ihre Abfragen sieht er nicht, sperrt sie aber auch nicht. Sicherheit: 10.
+
 ---
 
 ## 9. Sicherheitsnetze und Notfälle
@@ -1658,6 +1705,12 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
 * **Onboarding:** Das Onboarding-VLAN ist nur während einer Sitzung an genau einem Port
   untagged und erreicht nur die MikroTik-Update-Server. RouterOS prüft bei `ssh-exec`/`fetch`
   keine Host-Schlüssel. Sorge deshalb dafür, dass niemand anderes im Onboarding-VLAN hängt.
+* **DNS-Selbstbedienung (D102):** Der gemeinsame User `dns` darf nichts ändern, aber per REST alles
+  lesen, was die Gruppe `read` zeigt: die Konfiguration des Routers ohne Passwörter und Schlüssel
+  (`!sensitive`) und das ganze DNS-Log aller Clients – die Beschränkung auf die eigene IP macht nur das
+  Lesezeichen. Anmeldung über `http`, also im Klartext im VLAN. Passwort deshalb nur an Leute geben, denen
+  du das zutraust, und `self.zones` auf vertrauenswürdige Zonen beschränken (keine Gäste). Wechsel:
+  `$cfmSecret key=user.dns value=…`, dann `$cfmSecretPush host=<router>`.
 * **`vaultpw`** gehört offline in einen Passwortmanager, nicht auf den Manager allein.
 * **Git-Host:** nur Forced Command für den Manager-Schlüssel, der Lese-User `cfm-git` am Manager.
 * **Persönliche Admin-SSH-Keys:** optional über `authorized_keys.<user>` je Person (siehe
@@ -1864,7 +1917,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 **Auf jedem Gerät:** User `cfm` (Manager-Schlüssel), Skripte `cfm-agent` und `cfm-conf`, Scheduler
 `cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
-`cfm/dl/` (auf Manager und CAPsMAN mit `web/` für das Lesezeichen „cfm“, D91), `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
+`cfm/dl/` (auf Manager und CAPsMAN mit `web/` für das Lesezeichen „cfm“, D91; auf Routern `web/cfm-dns.js`), `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
 den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
 `cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); Bonds
 `cfm:bond:<name>` (Peer-Bond eines MLAG-Paars `peer-<Paar>`); mit isolierten VLANs die Interface-Liste
@@ -1876,7 +1929,10 @@ Auf dem CAPsMAN feste WLAN-Interfaces je Radio der APs (`<Identity>-<Band>g` sam
 Provisioning `create-enabled`, D90; sie bleiben nach dem Abbau eines AP stehen), mit schaltbaren SSIDs
 (D64) Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
 samt Scheduler, Zustand in `cfm/ssid-<key>.txt`; mit eigenen Radios (`capsmanRadios`, D53) der Merker
-`cfm/wifi-local.txt`. Mit `snmp` (TODO 54) die Community `cfm:snmp:<user>`. Nach einem Audit liegt der Bericht in `cfm/out/audit.txt`.
+`cfm/wifi-local.txt`. Mit `snmp` (TODO 54) die Community `cfm:snmp:<user>`. Auf Routern mit `dns.rsc` (D101) die
+Adlisten, der Forwarder `cfm-upstream`, `FWD`-Einträge `cfm:dnsallow:`/`cfm:dnsfwd:`, die Log-Aktion
+`cfmdns` samt Regeln; mit `self` (D102) Gruppe `cfm-dns`, User `dns`, Skript und Scheduler `cfm-dnsreq`
+sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>` (Letztere fasst cfm nicht an). Nach einem Audit liegt der Bericht in `cfm/out/audit.txt`.
 
 ---
 
@@ -1891,6 +1947,9 @@ samt Scheduler, Zustand in `cfm/ssid-<key>.txt`; mit eigenen Radios (`capsmanRad
 | Log `cfm: authorized_keys.<user>: Key N nicht angelegt …`, danach „vorhandene Keys bleiben stehen“ | Zeile ist kein Key, den RouterOS annimmt (nur rsa, ed25519, ed25519-sk) | Zeile korrigieren, releasen; bis dahin entfernt cfm für diesen User keine Keys |
 | Warnung „Paket wifi-qcom-ac“ (Log des AP bzw. `$cfmCheck`) | AP mit altem Treiber übernimmt das VLAN einer SSID nicht vom CAPsMAN (TODO 23) | Gerät nicht als `ap` unter cfm betreiben |
 | Secret-Push: „Identitätsprüfung fehlgeschlagen“ | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
+| cfm-DNS: Anmeldung als `dns` scheitert | User noch aus (Passwort nicht verteilt), Client nicht in `self.zones`, oder `http://` des Gateways nicht erreichbar | `$cfmSecretPush host=<router>` (sonst erst im nächsten Tick); `/user/print where name=dns`; `/ip/service/print` (`www`, `available-from`) |
+| Freischaltung im Lesezeichen ok, Seite bleibt gesperrt | Browser nutzt „DNS über HTTPS“ oder einen anderen DNS-Server; Cache des Clients; anderer Router hält die VIP | DoH im Browser aus; `ipconfig /flushdns` bzw. Browser neu; `/ip/dns/static/print where comment~"dnsui"` auf dem Master |
+| Jeder Apply warnt „dauerhafte Freischaltungen … nach dns.rsc allow übernehmen“ | `dnsui:perm`-Einträge aus dem Lesezeichen | Domain in `dns.rsc` `allow`, releasen, Eintrag im Lesezeichen löschen – oder nur löschen |
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |

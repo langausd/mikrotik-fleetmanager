@@ -316,8 +316,8 @@ z.B. aufs Handy weiter.
 |---|---|
 | `site` | Standort (z.B. `Haus`) |
 | `host` | betroffenes Gerät (leer bei der Probemeldung) |
-| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `test` |
-| `state` | `on` = eingetreten, `off` = wieder in Ordnung bzw. erledigt (bei `ros`: alle Geräte haben die Version, oder sie ist überholt), `once` = einmalig (Onboarding, Probe) |
+| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `dnsreq` (von einem Router: Client hat per DNS-Selbstbedienung eine Domain freigeschaltet, D102), `test` |
+| `state` | `on` = eingetreten, `off` = wieder in Ordnung bzw. erledigt (bei `ros`: alle Geräte haben die Version, oder sie ist überholt), `once` = einmalig (Onboarding, Probe, `dnsreq`) |
 | `msg` | Beschreibung ohne Standort und Gerät |
 | `text` | fertiger Text: `<site>: <host> - <msg>` |
 | `time` | Zeit des Managers |
@@ -326,9 +326,12 @@ z.B. aufs Handy weiter.
 | `message` | wie `text` |
 | `key` | ordnet `on` und `off` einander zu: `<ev>:<host>` (z.B. `apply:ap1`), bei `ros` `ros:<Version>` |
 | `ver` | nur bei `ros`: die Version (z.B. `7.25.1`) |
+| `domain`, `client`, `result`, `until` | nur bei `dnsreq`: freigeschaltete Domain, IP des Clients, `allowed`/`extended`/`denied`, Ablauf (Unixzeit) |
 
 Ein Empfänger, der nur `level`, `device` und `message` auswertet (etwa `info` nur ins Log,
-`action` als Aufgabe), funktioniert ohne Anpassung.
+`action` als Aufgabe), funktioniert ohne Anpassung. Achtung: `dnsreq` hat `level` `action` und
+`state` `once` – ein `off` kommt nie; wer daraus Aufgaben macht, schließt sie beim Erledigen von Hand
+(oder legt für `dnsreq` gar keine an).
 
 **Aufgaben schließen:** Macht HA aus Meldungen Einträge einer To-do-Liste, schließt das `off` mit
 demselben `key` den offenen Eintrag – auch bei `ros`: Sind alle Geräte auf der neuen Version, kommt

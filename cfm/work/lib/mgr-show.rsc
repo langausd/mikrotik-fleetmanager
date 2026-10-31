@@ -131,6 +131,13 @@
       :if ([:typeof $lm] = "num" and $lm > 0) do={ :set t ($t . ", Log im RAM " . $lm . " Zeilen") }
       :if ([:tostr ($cfmDns->"log"->"syslog")] = "yes") do={ :set t ($t . ", Log an Syslog") }
       :put $t
+      # Selbstbedienung (D102)
+      :local ds ($cfmDns->"self")
+      :if ([:len ($ds->"zones")] > 0) do={
+        :local sh [:tostr ($ds->"hours")]; :if ([:len $sh] = 0) do={ :set sh "2" }
+        :local su [:tostr ($ds->"user")]; :if ([:len $su] = 0) do={ :set su "dns" }
+        :put ("DNS-Selbstbedienung: Zonen " . [:tostr ($ds->"zones")] . ", User " . $su . ", Freischaltung " . $sh . " h, " . [:len ($ds->"deny")] . " Domains ausgenommen")
+      }
     }
   }
   # --- WLAN ---
@@ -295,7 +302,7 @@
         }
         :if ($rel ~ "^lib/mgr-" and $rl ~ ",manager") do={ :set hit true }
         :if ($rel = "lib/lib-wifi.rsc" and $rl ~ ",(ap|capsman|manager),") do={ :set hit true }
-        :if (($rel = "web/cfm-editor.js" and $rl ~ ",manager") or ($rel = "web/cfm-monitor.js" and $rl ~ ",(capsman|manager)")) do={ :set hit true }
+        :if (($rel = "web/cfm-editor.js" and $rl ~ ",manager") or ($rel = "web/cfm-monitor.js" and $rl ~ ",(capsman|manager)") or ($rel = "web/cfm-dns.js" and $rl ~ ",router,")) do={ :set hit true }
       }
       :if ($hit) do={ :set aff ($aff . " " . $name) }
     }

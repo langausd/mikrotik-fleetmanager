@@ -193,7 +193,7 @@ Mit `tools/new-site.py` aus den neutralen Beispieldaten angelegt: Manager `{name
 - [ ] **Optional:** `wireguard.rsc` (Fernzugang, nur mit Rolle `router`, Admin-Guide 8.8),
       `leases.rsc` (feste DHCP-Leases und DNS-Namen, nur mit Rolle `router`, Admin-Guide Kapitel 4),
       `mlag.rsc` (MLAG-Paare, Admin-Guide Kapitel 4), `dns.rsc` (DNS der Router: Upstream, Adlisten,
-      Ausnahmen, Weiterleitungen, Abfrage-Log, Admin-Guide Kapitel 4) und `authorized_keys.<user>` (persönliche
+      Ausnahmen, Weiterleitungen, Abfrage-Log, Selbstbedienung, Admin-Guide Kapitel 4) und `authorized_keys.<user>` (persönliche
       SSH-Keys je Person, Admin-Guide Kapitel 4).
 - [ ] **Prüfen:** `tools/rsc-check.py {rel}` ohne Fund.
 

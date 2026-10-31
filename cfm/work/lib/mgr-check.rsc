@@ -237,7 +237,7 @@
   :local dn "dns.rsc: "
   :local dnOk do={ :return ([:tostr $1] ~ "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+\\.?\$") }
   :foreach k,v in=$cfmDns do={
-    :if (!($k ~ "^(servers|cache|adlists|allow|forward|log)\$")) do={ :set ($warn->[:len $warn]) ($dn . "unbekannter Schlüssel " . $k . " (servers, cache, adlists, allow, forward, log)") }
+    :if (!($k ~ "^(servers|cache|adlists|allow|forward|log|self)\$")) do={ :set ($warn->[:len $warn]) ($dn . "unbekannter Schlüssel " . $k . " (servers, cache, adlists, allow, forward, log, self)") }
   }
   :foreach a in=($cfmDns->"servers") do={ :if ([:typeof [:toip $a]] != "ip") do={ :set ($err->[:len $err]) ($dn . "servers: " . $a . " ist keine IPv4-Adresse") } }
   :local dc [:tostr ($cfmDns->"cache")]
@@ -259,6 +259,29 @@
   :local dls [:tostr ($cfmDns->"log"->"syslog")]
   :if ([:len $dls] > 0 and $dls != "yes" and $dls != "no") do={ :set ($err->[:len $err]) ($dn . "log syslog " . $dls . " (yes oder no)") }
   :if ($dls = "yes" and [:len [:tostr ($cfmG->"syslog")]] = 0) do={ :set ($warn->[:len $warn]) ($dn . "log syslog=yes wirkt nur mit syslog in global.rsc") }
+  # DNS-Selbstbedienung (D102): Zonen vorhanden, deny als Domainnamen, hours 1..168, User-Name, RAM-Log nötig
+  :local ds ($cfmDns->"self")
+  :if ([:typeof $ds] = "array") do={
+    :foreach k,v in=$ds do={ :if (!($k ~ "^(zones|deny|hours|user)\$")) do={ :set ($warn->[:len $warn]) ($dn . "self: unbekannter Schlüssel " . $k . " (zones, deny, hours, user)") } }
+    :if ([:len ($ds->"zones")] = 0) do={ :set ($warn->[:len $warn]) ($dn . "self ohne zones - Selbstbedienung aus") }
+    :foreach z in=($ds->"zones") do={
+      :local zf false
+      :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"zone")] = $z and [:tostr ($v->"l3")] != "no") do={ :set zf true } }
+      :if (!$zf) do={ :set ($err->[:len $err]) ($dn . "self zones: keine geroutete Zone " . $z . " in vlans.rsc") }
+    }
+    :foreach a in=($ds->"deny") do={ :if (![$dnOk $a] or [:tostr $a] ~ "[A-Z]") do={ :set ($err->[:len $err]) ($dn . "self deny: " . $a . " ist kein Domainname (klein geschrieben)") } }
+    :local sh [:tostr ($ds->"hours")]
+    :if ([:len $sh] > 0 and (!($sh ~ "^[0-9]+\$") or [:tonum $sh] < 1 or [:tonum $sh] > 168)) do={ :set ($err->[:len $err]) ($dn . "self hours " . $sh . " (Stunden, 1 bis 168)") }
+    :local su [:tostr ($ds->"user")]
+    :if ([:len $su] = 0) do={ :set su "dns" }
+    :if (!($su ~ "^[a-z][a-z0-9_-]*\$") or [:typeof ($cfmG->"users"->$su)] != "nothing" or $su = [:tostr ($cfmG->"capsmanApi"->"user")]) do={ :set ($err->[:len $err]) ($dn . "self user " . $su . " (Kleinbuchstaben, nicht einer der users oder der capsmanApi-User)") }
+    :if ([:len ($ds->"zones")] > 0) do={
+      :if ([:len [$cfmVaultGet ("user." . $su)]] = 0) do={ :set ($warn->[:len $warn]) ($dn . "self: Passwort fehlt, \$cfmSecret key=user." . $su . " value=... (bis dahin ist der User aus)") }
+      :if ([:tonum $dlm] = 0 or [:len [:tostr $dlm]] = 0) do={ :set ($err->[:len $err]) ($dn . "self braucht log memory (das Lesezeichen liest den RAM-Puffer cfmdns)") }
+      :if ([:len [:tostr ($cfmG->"notify"->"url")]] = 0) do={ :set ($warn->[:len $warn]) ($dn . "self ohne notify.url in global.rsc - Freischaltungen werden nicht gemeldet") }
+      :if ([:len ($cfmDns->"servers")] = 0) do={ :set ($warn->[:len $warn]) ($dn . "self ohne servers: Freischaltungen gehen an wan.dns der Router, ein Router ohne wan.dns bekommt keine Selbstbedienung") }
+    }
+  }
   # Asymmetrisches Routing (D100): nur "internet". Der Verkehr ins Internet läuft ohne conntrack - mit NAT
   # der Zone setzen die Router kein notrack (Warnung, Hostfiles können die policy überschreiben), NTP-Umleitung
   # und Limit greifen dafür nicht bzw. nur im Upload

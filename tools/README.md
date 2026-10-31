@@ -15,7 +15,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`new-site.py`](#new-sitepy) | eine neue Site (Overlay) aus den Beispieldaten anlegen |
 | [`rsc-check.py`](#rsc-checkpy) | RouterOS-Fallen in `.rsc`-Dateien finden, ohne Gerät |
 | [`git-hooks/pre-commit`](#git-hookspre-commit) | `rsc-check.py` vor jedem Commit |
-| [`editor/`](#editor) | cfm-Editor und cfm-Monitor als Lesezeichen für WebFig |
+| [`editor/`](#editor) | cfm-Editor, cfm-Monitor und cfm-DNS als Lesezeichen für WebFig |
 | [`upgrade-mirror.py`](#upgrade-mirrorpy) | RouterOS-Update für Geräte ohne Internet |
 | [`pcap-ziele.py`](#pcap-zielepy) | Internet-Ziele eines Geräts aus einem Mitschnitt, Vorschlag für `allow` |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
@@ -118,7 +118,7 @@ Auf GitHub prüft zusätzlich die Action `rsc-check` (`.github/workflows/rsc-che
 
 ## `editor/`
 
-Zwei Werkzeuge für WebFig, die über die REST-API derselben Adresse arbeiten. Gestartet werden sie über ein
+Drei Werkzeuge für WebFig, die über die REST-API derselben Adresse arbeiten. Gestartet werden sie über ein
 festes Lesezeichen „cfm“ (D91), das ihren Code vom Gerät lädt. Aus dem Netz wird nichts geladen.
 
 * **cfm-Editor** (D73): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
@@ -126,6 +126,10 @@ festes Lesezeichen „cfm“ (D91), das ihren Code vom Gerät lädt. Aus dem Net
 * **cfm-Monitor** (D77, D81; früher cfm-WLAN): Reiter WLAN mit den Clients je AP live und Roaming als
   Zeitleiste (in WebFig des CAPsMAN, Leserecht genügt); Reiter Suche findet Geräte nach MAC, IP, Name,
   Port, AP oder SSID (`$cfmFind`, in WebFig des Managers, Gruppe `full`).
+* **cfm-DNS** (D102): DNS-Selbstbedienung in WebFig eines Routers mit `self` in `dns.rsc` – gesperrte Namen
+  der letzten Minuten, häufigste Abfragen, „Freischalten anfragen“. Der User `dns` sieht nur das eigene
+  Gerät, ein Admin alle und macht Freischaltungen dauerhaft. Für die Clients: `install.html` weitergeben,
+  „cfm“ ziehen, WebFig des eigenen Gateways öffnen.
 
 So richtest du sie ein:
 
@@ -133,11 +137,11 @@ So richtest du sie ein:
    Lesezeichen-Leiste ziehen.
 2. WebFig öffnen (`http://<IP>/webfig/` des Managers bzw. des CAPsMAN), „cfm“ anklicken und anmelden
    (der Passwort-Manager trägt die WebFig-Daten ein). Auf dem Manager wählst du Editor oder Monitor, auf
-   dem CAPsMAN startet gleich der Monitor. Der Browser merkt sich die Anmeldung bis zum Schließen.
+   dem CAPsMAN startet gleich der Monitor, auf einem Router cfm-DNS. Der Browser merkt sich die Anmeldung bis zum Schließen.
    Voraussetzung: Dienst `www` (oder `www-ssl`) in `services`.
 
 Den Code legt `tools/editor/build.py` nach `cfm/work/web/` (und baut `install.html`). Nach einer Änderung an
-`cfm-editor.js` oder `cfm-monitor.js`: `build.py`, mit `upload-seed.sh` hochladen, releasen – das
+`cfm-editor.js`, `cfm-monitor.js` oder `cfm-dns.js`: `build.py`, mit `upload-seed.sh` hochladen, releasen – das
 Lesezeichen bleibt. Für Geräte mit einem Framework-Stand ohne `web/` stehen in `install.html` weiter die
 vollständigen Lesezeichen (Code im Lesezeichen, nach jeder Fassung neu ziehen). Alte Lesezeichen
 „cfm-Editor“, „cfm-Monitor“ und „cfm-WLAN“ kannst du danach löschen. Mehr im Admin-Guide, 8.1, 8.10, 8.11.

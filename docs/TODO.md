@@ -1190,20 +1190,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Resolver-Container eines Standorts nach Parallelbetrieb abbauen; Selbstbedienung für Clients siehe 69;
     Namensschema der Standorte für `forward` (später, mit einem Standort-VPN der Router); DoH als Option.
 69. **DNS-Selbstbedienung für Clients: eigene Abfragen sehen, gesperrte Domain freischalten** (Wunsch des Nutzers,
-    2026-10-31, D102) – *entschieden, Umsetzung offen.* Ohne eigenen Dienst: dritte App `cfm-dns.js` im
-    Lesezeichen `cfm` (D91), auf den Routern der Rolle `router`. Bausteine:
-    * `dns.rsc` neuer Schlüssel `self`: `zones` (Zonen mit Zugang zu WebFig/REST des Gateways, Port 80 in
-      `local-input` und `available-from`), `deny` (Domain samt Subdomains nie per Selbstbedienung), `hours`
-      (Dauer, Standard 2). Ohne `self` nichts davon.
-    * Gemeinsamer User `dns` (Gruppe mit `read,web,rest-api`, Passwort im Vault), von cfm auf den Routern angelegt.
-    * Ansicht: `/rest/log?buffer=cfmdns`, `query`/`done` über `#n` verbunden, gesperrt = `0.0.0.0`; nur die eigene
-      IP (aus `/user/active`, `via=rest-api`; bei mehreren Adressen Auswahl), User der Gruppe `full` sehen alle.
-      Namen aus den DHCP-Leases.
-    * Anfrage: `/execute` `:log info "cfm-dnsreq: <Domain> <IP>"`, dann `/system/script/run cfm-dnsreq`
-      (`dont-require-permissions=yes`, Policy `read,write`; beides mit einem `read`-User im Labor 7.25 geprüft –
-      `:global` aus `/execute` kommt im Skript nicht an). Das Skript prüft Name und `deny`, legt `FWD` an
-      `cfm-upstream` mit Kommentar `dnsui:tmp:<Ablauf>` an und meldet `ev=dnsreq` an `notify.url` (D66).
-      Begrenzung nur durch `deny` (Nutzer).
-    * Scheduler räumt abgelaufene `dnsui:tmp:` weg; Admin macht im Lesezeichen daraus `dnsui:perm` (GC lässt
-      `dnsui:` stehen), `$cfmShow`/`$cfmCheck` erinnern an die Übernahme nach `allow`.
-    * Labor: Schritt in `e2e.sh` (Ansicht per REST, Anfrage als `read`-User, `deny`, Ablauf, Notify).
+    2026-10-31, D102) – *umgesetzt am selben Tag:* `dns.rsc` `self` (Admin-Guide Kapitel 4), Lesezeichen cfm-DNS
+    (`tools/editor/cfm-dns.js`), Skript `cfm-dnsreq` der Rolle `router`, Labor `e2e.sh` Schritt 14l. **Offen:**
+    Hardware; `www-ssl` für die Anmeldung; befristete Freischaltung auch auf den anderen Routern (VRRP-Wechsel);
+    `mgr-check.rsc` nähert sich der 60-KB-Grenze (55 KB) – beim nächsten Prüfblock aufteilen.

@@ -31,9 +31,11 @@
   # RouterOS-Skript); base liest nur die Dateien der User aus users
   :foreach p,h in=$fx do={ :if ($p ~ "^authorized_keys\\.") do={ :set ($want->[:len $want]) ({$p;0;0}) } }
   # Lesezeichen für WebFig (D91): das Lade-Lesezeichen "cfm" startet sie vom Gerät - der Editor nur auf
-  # dem Manager, der Monitor auch auf dem CAPsMAN; optional, kein /import (ältere Versionen haben kein web/)
+  # dem Manager, der Monitor auch auf dem CAPsMAN, cfm-DNS auf den Routern; optional, kein /import (ältere Versionen haben kein web/)
   :if ($rl ~ ",manager") do={ :set ($want->[:len $want]) ({"web/cfm-editor.js";0;0}) }
   :if ($rl ~ ",(capsman|manager)") do={ :set ($want->[:len $want]) ({"web/cfm-monitor.js";0;0}) }
+  # DNS-Selbstbedienung (D102) auf den Routern
+  :if ($rl ~ ",router,") do={ :set ($want->[:len $want]) ({"web/cfm-dns.js";0;0}) }
   :set ($want->[:len $want]) ({("hosts/" . $name . ".rsc");1;0})
   :set ($want->[:len $want]) ({"roles/base.rsc";1;1})
   :if ($rl ~ ",manager-backup,") do={ :set ($want->[:len $want]) ({"roles/manager.rsc";0;1}) }

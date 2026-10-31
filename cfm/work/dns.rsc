@@ -12,6 +12,11 @@
 #  "log"={"memory"=20000;"syslog"="yes"}   Abfrage-Log je Client (Topic dns): memory = Zeilen im
 #                           RAM-Puffer cfmdns (0 = aus), syslog = zusätzlich an den Syslog-Server (global.rsc
 #                           syslog). Aus beidem: kein Log
+#  "self"={"zones"={"lan"};"deny"={"tracker.example"};"hours"=2}   DNS-Selbstbedienung (D102): Clients der
+#                           Zonen öffnen WebFig ihres Gateways, sehen im Lesezeichen cfm-DNS ihre Abfragen und
+#                           schalten eine gesperrte Domain für hours (Standard 2) selbst frei - außer deny
+#                           (samt Subdomains); Meldung an notify.url. Anmeldung mit user (Standard "dns",
+#                           Passwort: $cfmSecret key=user.dns value=...). Braucht log.memory
 # Beispiel:
 #  :global cfmDns {
 #    "servers"={"9.9.9.9";"149.112.112.112";"86.54.11.100";"86.54.11.200"};
@@ -19,7 +24,8 @@
 #    "adlists"={"https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"};
 #    "allow"={"beispiel.de"};
 #    "forward"={"standort2.example"="192.168.20.2"};
-#    "log"={"memory"=20000;"syslog"="no"}
+#    "log"={"memory"=20000;"syslog"="no"};
+#    "self"={"zones"={"lan"};"deny"={"tracker.example"};"hours"=2}
 #  }
 # Leer bleibt es bei ({}) - ein leeres {} liest RouterOS als Codeblock (Syntaxfehler beim /import).
 # ============================================================

@@ -975,10 +975,10 @@ t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "SNMP idempotent" || bad "SNMP idempotent: $(stat sw1 stats)"
 
-step "14l. DNS der Router aus dns.rsc (D101): Upstream, Adliste, Ausnahme, Weiterleitung, Abfrage-Log"
+step "14l. DNS der Router aus dns.rsc (D101): Upstream, Adliste, Ausnahme, Weiterleitung, Abfrage-Log; Selbstbedienung (D102)"
 # Adliste vom Host (QEMU: 10.0.2.2 = Host), Upstream der DNS der QEMU-Umgebung (10.0.2.3). Echte Namen,
 # keine example.*: manche Resolver hinter dem Host sperren die (NXDOMAIN)
-mkdir -p "$LAB/adlist"; printf '0.0.0.0 www.mikrotik.com\n0.0.0.0 www.wikipedia.org\n0.0.0.0 ads.debian.org\n' > "$LAB/adlist/lab-hosts.txt"
+mkdir -p "$LAB/adlist"; printf '0.0.0.0 www.mikrotik.com\n0.0.0.0 www.wikipedia.org\n0.0.0.0 ads.debian.org\n0.0.0.0 www.heise.de\n' > "$LAB/adlist/lab-hosts.txt"
 python3 -m http.server $((LABPORT + 91)) --bind 127.0.0.1 --directory "$LAB/adlist" > "$LAB/adlist.log" 2>&1 & apid=$!
 out=$(mgr ':global e2eD14l [/file/get [/file/find name="cfm/work/dns.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14l . ":set cfmDns {\"servers\"={\"10.0.2.3\";\"x\"};\"cache\"=\"64X\";\"adlists\"={\"ftp://a\"};\"allow\"={\"kein name\"};\"forward\"={\"lab.example\"=\"y\"};\"log\"={\"memory\"=\"viel\";\"syslog\"=\"ja\"};\"servrs\"=1}\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
 n=0; for m in "ERR dns.rsc: servers: x ist keine" "ERR dns.rsc: cache 64X" "ERR dns.rsc: adlists: ftp://a" "ERR dns.rsc: allow: kein name" "ERR dns.rsc: forward lab.example: y" "ERR dns.rsc: log memory viel" "ERR dns.rsc: log syslog ja" "W dns.rsc: unbekannter Schlüssel servrs"; do echo "$out" | grep -qF "$m" && n=$((n+1)); done
@@ -991,7 +991,7 @@ expect 2 '[:tostr [/ip/dns/get servers]] = "10.0.2.3" and [/ip/dns/get cache-siz
 expect 2 '[:len [/ip/dns/adlist/find where comment~"^cfm:dnsal:" and url~"lab-hosts.txt"]] = 1 and [:len [/ip/dns/forwarders/find where name="cfm-upstream" and comment~"^cfm:dnsfw:"]] = 1' "sw1: Adliste und Forwarder cfm-upstream"
 expect 2 '[/ip/dns/static/get [find where comment~"^cfm:dnsallow:wikipedia.org"] forward-to] = "cfm-upstream" and [/ip/dns/static/get [find where comment~"^cfm:dnsfwd:tot.example"] forward-to] = "192.0.2.1,192.0.2.2" and [/ip/dns/static/get [find where comment~"^cfm:dnsfwd:debian.org"] match-subdomain]' "sw1: Ausnahme und Weiterleitungen als FWD mit match-subdomain"
 expect 2 '[:len [/system/logging/find where action="cfmdns"]] = 1 and [/system/logging/action/get [find name="cfmdns"] memory-lines] = 500 and [:len [/system/logging/find where action="cfmremote" and topics~"dns"]] = 1' "sw1: Abfrage-Log im RAM (500 Zeilen) und an den Syslog-Server"
-for _ in $(seq 1 20); do r 2 ':put ("N=" . [/ip/dns/adlist/get [find where comment~"^cfm:dnsal:"] name-count])' | grep -q "N=3" && break; sleep 3; done
+for _ in $(seq 1 20); do r 2 ':put ("N=" . [/ip/dns/adlist/get [find where comment~"^cfm:dnsal:"] name-count])' | grep -q "N=4" && break; sleep 3; done
 q() { r 1 ':onerror e in={ :put ("R=" . [:resolve domain-name="'"$1"'" server=192.168.10.21]) } do={ :put "R=err" }' | grep -o 'R=.*' | cut -d= -f2; }
 a1=$(q www.mikrotik.com); a2=$(q www.wikipedia.org); a3=$(q www.debian.org); a4=$(q a.tot.example)
 [ "$a1" = "0.0.0.0" ] && ok "Adliste sperrt www.mikrotik.com (0.0.0.0)" || bad "Adliste: www.mikrotik.com -> $a1"
@@ -1001,6 +1001,49 @@ r 2 ':foreach i in=[/log/find where buffer=cfmdns] do={ :put [/log/get $i messag
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "DNS idempotent" || bad "DNS idempotent: $(stat sw1 stats)"
+# --- DNS-Selbstbedienung (D102): als User dns von cm1 (192.168.10.2, Zone mgmt) per REST an sw1 ---
+NP=$((LABPORT + 92)); NL="$LAB/notify-dns.log"; : > "$NL"; sink
+mgr ':global e2eG14m [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14m . ":set (\$cfmG->\"notify\"->\"url\") \"http://10.0.2.2:'"$NP"'/hook\"\n:set (\$cfmG->\"notify\"->\"site\") \"Labor\"\n")' >/dev/null
+out=$(mgr ':global e2eD14m [/file/get [/file/find name="cfm/work/dns.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14m . ":set (\$cfmDns->\"self\") {\"zones\"={\"nope\"};\"deny\"={\"Kein Name\"};\"hours\"=0;\"user\"=\"netadmin\";\"x\"=1}\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14m . ":set (\$cfmDns->\"self\") {\"zones\"={\"mgmt\";\"lan\"};\"deny\"={\"mikrotik.com\"};\"hours\"=1}\n"); :set ck [$cfmCheck]; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
+n=0; for m in "ERR dns.rsc: self zones: keine geroutete Zone nope" "ERR dns.rsc: self deny: Kein Name" "ERR dns.rsc: self hours 0" "ERR dns.rsc: self user netadmin" "W dns.rsc: self: unbekannter Schlüssel x" "W dns.rsc: self: Passwort fehlt"; do echo "$out" | grep -qF "$m" && n=$((n+1)); done
+[ $n = 6 ] && ok "Prüfung self: Zonen, deny, hours, User, Tippfehler, Passwort fehlt" || { bad "Prüfung self ($n/6)"; echo "$out" | grep -i self; }
+mgr '$cfmSecret key=user.dns value="Dns-Lab-2026"' >/dev/null
+rv=$(mgr '$cfmRelease msg=" DNS-Selbstbedienung" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (self) angewendet" || bad "Apply v$rv (self): sw1 $(stat sw1 res)"
+mgr ':put ("SP=" . [$cfmSecretPush host=sw1])' >/dev/null
+expect 2 '[:tostr [/user/group/get [find name=cfm-dns] policy]] ~ "^read;api;rest-api" and ![/user/get [find name=dns] disabled] and [/system/script/get [find name=cfm-dnsreq] dont-require-permissions] and [/system/scheduler/get [find name=cfm-dnsreq] interval] = 1m' "sw1: Gruppe cfm-dns, User dns (Secret-Push), Skript und Scheduler"
+expect 2 '![/ip/service/get [find name=www] disabled] and [:tostr [/ip/service/get [find name=www] available-from]] ~ "192.168.20.0/24" and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and in-interface-list="Z-lan" and dst-port="80"]] = 1' "sw1: WebFig/REST für self.zones (www, Firewall Z-lan)"
+mgr '$cfmShow host=sw1' | grep -q "DNS-Selbstbedienung: Zonen mgmt;lan, User dns, Freischaltung 1 h, 1 Domains ausgenommen" && ok "\$cfmShow nennt die Selbstbedienung" || bad "\$cfmShow ohne Selbstbedienung"
+rq() { r 1 ':onerror e in={ :put ("B=" . ([/tool/fetch url="http://192.168.10.21/rest'"$1"'" user=dns password="Dns-Lab-2026" output=user as-value]->"data")) } do={ :put ("B=FEHLER " . $e) }' | sed -n 's/^B=//p'; }
+rp() { r 1 ':onerror e in={ :put ("B=" . ([/tool/fetch url="http://192.168.10.21/rest'"$1"'" http-method=post http-header-field="Content-Type: application/json" http-data="'"$2"'" user=dns password="Dns-Lab-2026" output=user as-value]->"data")) } do={ :put ("B=FEHLER " . $e) }' | sed -n 's/^B=//p'; }
+dreq() { rp /execute '{\"script\":\":log info \\\"cfm-dnsreq: '"$1"' 192.168.10.2\\\"; /system/script/run cfm-dnsreq\",\"as-string\":\"yes\"}'; }
+q www.heise.de >/dev/null
+rq '/log?buffer=cfmdns&.proplist=message' | grep -q 'query from 192.168.10.2: #[0-9]* www.heise.de' && rq '/user/active' | grep -q '"address":"192.168.10.2","group":"cfm-dns","name":"dns".*"via":"rest-api"' && ok "User dns liest das Abfrage-Log und seine eigene Adresse (REST)" || bad "User dns: Log/user/active per REST"
+a=$(rp /ip/dns/static/add '{\"name\":\"x.example\",\"type\":\"FWD\",\"forward-to\":\"cfm-upstream\"}'); b=$(rp /password '{\"old-password\":\"Dns-Lab-2026\",\"new-password\":\"x1234567\",\"confirm-new-password\":\"x1234567\"}')
+case "$a$b" in FEHLER*FEHLER*) ok "User dns darf nicht schreiben und sein Passwort nicht ändern";; *) bad "User dns schreibt: '$a' / '$b'";; esac
+a1=$(q www.heise.de); dreq heise.de >/dev/null; a2=$(q www.heise.de)
+[ "$a1" = "0.0.0.0" ] && [ -n "$a2" ] && [ "$a2" != "0.0.0.0" ] && [ "$a2" != err ] && ok "Anfrage heise.de schaltet www.heise.de sofort frei ($a1 -> $a2)" || bad "Freischaltung heise.de: $a1 -> $a2"
+expect 2 '[/ip/dns/static/get [find where name="heise.de"] comment] ~ "^dnsui:tmp:[0-9]+ 192.168.10.2\$" and [/ip/dns/static/get [find where name="heise.de"] forward-to] = "cfm-upstream" and [/ip/dns/static/get [find where name="heise.de"] match-subdomain]' "FWD heise.de mit dnsui:tmp:<Ablauf> <IP>"
+dreq www.mikrotik.com >/dev/null; dreq 'Kein_Name!' >/dev/null; dreq heise.de >/dev/null
+expect 2 '[:len [/ip/dns/static/find where name="www.mikrotik.com"]] = 0 and [:len [/log/find where message~"DNS-Freischaltung www.mikrotik.com abgelehnt .self.deny."]] = 1 and [:len [/log/find where message~"DNS-Freischaltung . abgelehnt .kein g"]] = 1 and [:len [/log/find where message~"^cfm: DNS-Freischaltung heise.de"]] = 2' "deny und ungültiger Name abgelehnt, jede Anfrage genau einmal bearbeitet"
+r 2 '/system/script/run cfm-dnsreq' >/dev/null
+expect 2 '[:len [/log/find where message~"^cfm: DNS-Freischaltung"]] = 4' "zweiter Lauf (Scheduler) bearbeitet nichts doppelt"
+nwait '"result": "allowed"' && grep '"result": "allowed"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "dnsreq".*"domain": "heise.de", "client": "192.168.10.2"' && nwait '"result": "denied"' && nwait '"result": "extended"' && ! grep -q '"result": "invalid"' "$NL" && ok "Meldungen an notify.url: allowed, extended, denied (JSON wie D66)" || { bad "Meldungen dnsreq"; tail -3 "$NL" | cut -c1-200; }
+r 2 '/ip/dns/static/set [find where name="heise.de"] comment="dnsui:tmp:1 192.168.10.2"; /system/script/run cfm-dnsreq' >/dev/null
+expect 2 '[:len [/ip/dns/static/find where name="heise.de"]] = 0' "abgelaufene Freischaltung entfernt"
+dreq heise.de >/dev/null; r 2 '/ip/dns/static/set [find where name="heise.de"] comment="dnsui:perm 192.168.10.2 2026-10-31"' >/dev/null
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+expect 2 '[:len [/ip/dns/static/find where name="heise.de" and comment~"^dnsui:perm"]] = 1 and [:len [/log/find where message~"dnsui:perm.* heise.de"]] > 0' "dnsui:perm bleibt beim Apply stehen, Warnung zur Übernahme nach allow"
+stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Selbstbedienung idempotent" || bad "Selbstbedienung idempotent: $(stat sw1 stats)"
+# self entfernen: User, Gruppe, Skript, Scheduler, befristete Einträge und www gehen, dnsui:perm und der Forwarder bleiben
+r 2 '/ip/dns/static/add name=tmp.example type=FWD forward-to=cfm-upstream comment="dnsui:tmp:9999999999 x"' >/dev/null
+mgr ':global e2eG14m; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG14m; :global e2eD14m; /file/set [/file/find name="cfm/work/dns.rsc"] contents=$e2eD14m' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne Selbstbedienung" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 || bad "sw1 Apply v$rv (ohne self): $(stat sw1 res)"
+expect 2 '[:len [/user/find where name=dns]] = 0 and [:len [/user/group/find where name=cfm-dns]] = 0 and [:len [/system/script/find where name=cfm-dnsreq]] = 0 and [:len [/system/scheduler/find where name=cfm-dnsreq]] = 0 and [:len [/ip/dns/static/find where comment~"^dnsui:tmp:"]] = 0 and [:len [/ip/dns/static/find where comment~"^dnsui:perm"]] = 1 and [:len [/ip/dns/forwarders/find where name=cfm-upstream]] = 1 and [/ip/service/get [find name=www] disabled]' "sw1: ohne self User, Gruppe, Skript, Scheduler, befristete Einträge und www weg, dnsui:perm und Forwarder bleiben"
+r 2 '/ip/dns/static/remove [find where comment~"^dnsui:"]' >/dev/null
+kill $npid 2>/dev/null
 mgr ':global e2eD14l; /file/set [/file/find name="cfm/work/dns.rsc"] contents=$e2eD14l' >/dev/null
 rv=$(mgr '$cfmRelease msg=" ohne DNS" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 || bad "sw1 Apply v$rv (ohne dns.rsc): $(stat sw1 res)"

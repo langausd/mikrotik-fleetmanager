@@ -173,6 +173,16 @@
           }
         }
       }
+      # User der DNS-Selbstbedienung auf den Routern (D102); fehlt er noch (Apply steht aus), beim nächsten Mal
+      :global cfmDns
+      :if ($rl ~ ",router," and [:len ($cfmDns->"self"->"zones")] > 0) do={
+        :local su [:tostr ($cfmDns->"self"->"user")]
+        :if ([:len $su] = 0) do={ :set su "dns" }
+        :local spw [$cfmVaultGet ("user." . $su)]
+        :if ([:len $spw] > 0) do={
+          :set c ($c . ":if ([:len [/user/find where name=\"" . $su . "\"]] > 0) do={ /user/set [find where name=\"" . $su . "\"] password=\"" . [$cfmEsc $spw] . "\" disabled=no } else={ :set ok false };")
+        }
+      }
       # Ein neuer CAPsMAN wartet mit dem Einschalten auf die Passphrasen (cfmCapsmanOn)
       # Nur mit der Passphrase der Master-SSID im Vault – sonst schaltet die Rolle ihn beim nächsten Apply
       # wieder aus ($cfmPskMissing), und jeder Secret-Push schaltete hin und her

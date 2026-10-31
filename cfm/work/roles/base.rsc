@@ -309,6 +309,23 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 } do={}
 # reverse-proxy (RouterOS 7.2x) ist ab Werk an, Port 443 ohne Adressbeschränkung (TODO 30); ältere
 # Versionen kennen den Dienst nicht, $cfmSet findet dann nichts
+# DNS-Selbstbedienung (D102): Auf Routern erreichen die Netze der Zonen aus dns.rsc self.zones WebFig/REST
+# zusätzlich zu den Management-Netzen (Dienst www, ohne Eintrag in services auf Port 80) - für das Lesezeichen
+# cfm-DNS am eigenen Gateway
+:global cfmDns
+:local selfN ({})
+:if ($isRouter and [:typeof ($cfmDns->"self")] = "array") do={
+  :foreach vid,v in=$cfmVlans do={
+    :if ([:tostr ($v->"l3")] != "no" and [:len [:tostr ($v->"zone")]] > 0) do={
+      :foreach z in=($cfmDns->"self"->"zones") do={
+        :if ($z = ($v->"zone")) do={
+          :local nn [$cfmNet $vid]
+          :if ([:len ($nn->"net")] > 0) do={ :set ($selfN->($nn->"net")) 1 }
+        }
+      }
+    }
+  }
+}
 :foreach s in={"telnet";"ftp";"www";"www-ssl";"reverse-proxy";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
   :local addr [$cfmKeys $an]
@@ -316,6 +333,11 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
     :set port ($capi->"port")
     :if ([:len [:tostr $port]] = 0) do={ :set port 8728 }
     :set addr ($capi->"from")
+  }
+  :if ($s = "www" and [:len $selfN] > 0) do={
+    :if ([:len $port] = 0) do={ :set port 80 }
+    :local aa ({}); :foreach x in=$addr do={ :set ($aa->$x) 1 }; :foreach x,y in=$selfN do={ :set ($aa->$x) 1 }
+    :set addr [$cfmKeys $aa]
   }
   :if ([:len $port] > 0) do={
     :local sp ({"disabled"="no";"port"=$port})

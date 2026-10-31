@@ -28,7 +28,8 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
   APs mit einer lokalen Kopie der Haupt-SSID weiter.
 * **Betrieb:** `$cfmFind` findet ein Gerät live nach MAC, IP, Name, Port, AP, SSID oder Signal (D81).
   Im Browser startet ein Lesezeichen „cfm“ in WebFig den cfm-Editor (Site-Daten bearbeiten, Release)
-  und den cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche); den Code lädt es vom Gerät (D91).
+  und den cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche), auf Routern cfm-DNS (Clients sehen gesperrte
+  Domains und schalten sie befristet frei, D102); den Code lädt es vom Gerät (D91).
 
 Alle Design-Entscheidungen samt verworfener Alternativen stehen in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Für den Einsatz in der eigenen Flotte:** [docs/admin-guide.md](docs/admin-guide.md) (Planung,
@@ -67,7 +68,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
 | `cfm/work/mlag.rsc` | MLAG-Paare: zwei Switches, Peer-Ports, doppelt angebundene Geräte (D75) |
-| `cfm/work/dns.rsc` | optional: DNS der Router – Upstream, Adlisten, Ausnahmen, Weiterleitung je Domain, Abfrage-Log (D101) |
+| `cfm/work/dns.rsc` | optional: DNS der Router – Upstream, Adlisten, Ausnahmen, Weiterleitung je Domain, Abfrage-Log (D101), Selbstbedienung für Clients (D102) |
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
@@ -77,7 +78,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
 | `tools/upload-seed.sh` | Vorlage auf den Manager laden: beim ersten Mal alles, danach nur Framework-Code (`--site` auch die Site-Daten, D72) |
 | `tools/pull-site.sh` | Site-Daten und Inventar vom Manager ins Overlay holen (Sicherung, D72) |
-| `tools/editor/` | Lesezeichen „cfm“ für WebFig (REST-API, lädt den Code vom Gerät, D91): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (D77), Gerätesuche (D81); `build.py` erzeugt `install.html` und `cfm/work/web/` |
+| `tools/editor/` | Lesezeichen „cfm“ für WebFig (REST-API, lädt den Code vom Gerät, D91): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (D77), Gerätesuche (D81); cfm-DNS – gesperrte Domains sehen und befristet freischalten (D102); `build.py` erzeugt `install.html` und `cfm/work/web/` |
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |

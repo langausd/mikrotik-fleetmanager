@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Baut aus cfm-editor.js und cfm-monitor.js die Fassungen für die Geräte und die Seite install.html.
+"""Baut aus cfm-editor.js, cfm-monitor.js und cfm-dns.js die Fassungen für die Geräte und die Seite install.html.
 
 Aufruf: tools/editor/build.py   -> cfm/work/web/*.js und tools/editor/install.html
 Das Lade-Lesezeichen „cfm“ (cfm-loader.js, D91) wird einmal in die Lesezeichen-Leiste gezogen und startet
@@ -36,6 +36,18 @@ Lesezeichen anklicken und anmelden; ein User mit Leserecht genügt, die Ansicht 
 anmelden. Klick auf Gerät, Port, AP, SSID oder VLAN in der Tabelle sucht danach.</li>
 <li>Ist der Manager zugleich CAPsMAN, gehen beide Reiter an derselben Stelle. Der WLAN-Verlauf bleibt
 24 h im Browser; Namen per Klick.</li>
+</ol>"""),
+    ("cfm-dns.js", "cfm-DNS", """
+<p>DNS-Selbstbedienung (D102): gesperrte Namen der letzten Minuten, häufigste Abfragen, Freischaltungen; eine
+gesperrte Domain für einige Stunden freischalten lassen. Nur auf Routern mit <code>self</code> in
+<code>dns.rsc</code>.</p>
+<ol>
+<li>WebFig des eigenen Gateways öffnen (z.B. <code>http://192.168.20.1/</code>), Lesezeichen anklicken.</li>
+<li>Mit dem User der DNS-Selbstbedienung anmelden (<code>self.user</code>, Standard <code>dns</code>): Die Seite
+zeigt nur die Abfragen des eigenen Geräts. Ein Admin (Gruppe full) sieht alle Clients und macht eine
+Freischaltung dauerhaft oder nimmt sie zurück.</li>
+<li>„Freischalten anfragen“ gilt samt Subdomains für alle Geräte, die diesen Router fragen, und meldet sich
+beim Admin (<code>notify.url</code>).</li>
 </ol>"""),
 ]
 

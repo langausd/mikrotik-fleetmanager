@@ -1,12 +1,14 @@
 // cfm (TODO 52, D91): Lade-Lesezeichen für WebFig, einmal anlegen. Meldet an der REST-API derselben Adresse an
-// (wie cfm-Editor/cfm-Monitor) und startet deren aktuelle Fassung vom Gerät: web/cfm-editor.js und
-// web/cfm-monitor.js kommen mit tools/upload-seed.sh auf den Manager und mit dem Release zu den Rollen manager
-// und capsman (cfm/dl/web/). Lädt nichts aus dem Netz. Bauen: tools/editor/build.py -> install.html
+// (wie cfm-Editor/cfm-Monitor) und startet deren aktuelle Fassung vom Gerät: web/cfm-editor.js,
+// web/cfm-monitor.js und web/cfm-dns.js kommen mit tools/upload-seed.sh auf den Manager und mit dem Release zu
+// den Rollen manager, capsman und router (cfm/dl/web/). Lädt nichts aus dem Netz. Bauen: tools/editor/build.py
+// -> install.html
 (() => {
   document.getElementById('cfmld')?.remove();
   const APPS = [
     { file: 'cfm-editor.js', title: 'cfm-Editor', note: 'Site-Daten bearbeiten, Probelauf, Release', where: 'nur auf dem Manager' },
     { file: 'cfm-monitor.js', title: 'cfm-Monitor', note: 'WLAN-Clients live, Gerätesuche', where: 'auf dem Manager und dem CAPsMAN' },
+    { file: 'cfm-dns.js', title: 'cfm-DNS', note: 'Gesperrte Namen, Freischaltung anfragen', where: 'auf den Routern' },
   ];
   // freigegebener Stand (Agent, cfm/dl) vor dem hochgeladenen (Manager, work/ - erst nach dem Release verteilt)
   const DIRS = ['cfm/dl/web/', 'flash/cfm/dl/web/', 'cfm/work/web/', 'flash/cfm/work/web/'];
@@ -66,10 +68,11 @@
       const st = await xhrLogin(u.value, p.value);
       if (st !== 200) { msg.textContent = 'Anmeldung fehlgeschlagen (' + (st || 'keine Verbindung') + ').'; p.select(); return; }
       restOk(true);
+      try { sessionStorage.setItem('cfmRestUser', u.value); } catch (e2) { /* ohne Merker fragt cfm-DNS selbst */ }
       menu().catch((e2) => { msg.textContent = 'Fehler: ' + e2.message; });
     };
     box(el('form', { onsubmit: go, style: 'display:grid;gap:8px' }, el('b', {}, 'cfm'),
-      el('div', {}, 'Anmeldung an der REST-API dieses Geräts (Editor: User der Gruppe full, Monitor: Leserecht genügt).'),
+      el('div', {}, 'Anmeldung an der REST-API dieses Geräts (Editor: User der Gruppe full, Monitor: Leserecht genügt, DNS: User der DNS-Selbstbedienung).'),
       u, p, el('button', { class: 'prim', type: 'submit' }, 'Anmelden'), msg,
       el('button', { type: 'button', onclick: close }, 'Schließen')));
     u.focus();

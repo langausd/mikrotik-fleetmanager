@@ -48,7 +48,7 @@
   "/interface/vrrp";"/interface/list";"/interface/list/member";
   "/ip/address";"/routing/table";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";
   "/ip/dhcp-server/lease";"/ip/dhcp-client";
-  "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ip/firewall/raw";"/ipv6/firewall/filter";"/ip/dns/static";
+  "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ip/firewall/raw";"/ipv6/firewall/filter";"/ip/dns/forwarders";"/ip/dns/adlist";"/ip/dns/static";
   "/queue/type";"/queue/simple";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";
@@ -416,6 +416,18 @@
 
 # Bandbreite "Download/Upload" ($1, z.B. "50M/10M", Einheiten k/M/G ohne Komma, D97) -> {"d";"u"} in bit/s,
 # "" wenn ungültig oder leer
+:global cfmKib do={
+  # Größe in KiB (D101, DNS-Cache): "64M", "1G", "512k" oder eine Zahl (KiB); ungültig -> ""
+  :local t [:tostr $1]
+  :local m 1
+  :local e [:pick $t ([:len $t] - 1)]
+  :if ($e = "k" or $e = "K") do={ :set t [:pick $t 0 ([:len $t] - 1)] }
+  :if ($e = "M") do={ :set m 1024; :set t [:pick $t 0 ([:len $t] - 1)] }
+  :if ($e = "G") do={ :set m 1048576; :set t [:pick $t 0 ([:len $t] - 1)] }
+  :if (!($t ~ "^[0-9]+\$")) do={ :return "" }
+  :return ([:tonum $t] * $m)
+}
+
 :global cfmLimit do={
   :local s [:tostr $1]
   :local p [:find $s "/"]

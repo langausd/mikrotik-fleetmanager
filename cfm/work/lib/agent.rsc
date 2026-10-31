@@ -254,6 +254,7 @@
   # optionale Datendatei (D62): ohne sie keine alten Werte aus einem früheren Lauf behalten
   :global cfmLeases; :set cfmLeases ({})
   :global cfmMlag; :set cfmMlag ({})
+  :global cfmDns; :set cfmDns ({})
   :global cfmSeen; :global cfmDir; :global cfmWrite; :global cfmLog
   :local pf ($cfmDir . "/post.json")
   :local cur ""

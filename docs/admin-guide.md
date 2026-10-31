@@ -444,6 +444,48 @@ läuft der Verkehr über den anderen weiter.
   STP-Priorität und kein `stp="none"`; `$cfmShow host=<knoten>` zeigt Peer- und MLAG-Bonds.
 * Ohne Paare steht dort `:global cfmMlag ({})`. Ältere Releases ohne die Datei bleiben gültig.
 
+### `dns.rsc`
+
+DNS der Router (D101, nur Rolle `router`): Upstream-Server, Adblocking, Ausnahmen, Weiterleitung je Domain
+und ein Abfrage-Log je Client. Ohne Einträge (`:global cfmDns ({})`) bleibt es beim bisherigen Verhalten:
+Die Router fragen `wan.dns` aus dem Hostfile und beantworten selbst nur die Namen aus D62.
+
+```
+:global cfmDns {
+  "servers"={"9.9.9.9";"149.112.112.112";"86.54.11.100";"86.54.11.200"};
+  "cache"="64M";
+  "adlists"={"https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"};
+  "allow"={"beispiel.de";"cdn.beispiel.com"};
+  "forward"={"standort2.example"="192.168.20.2";"vpn.example"={"10.8.0.1";"10.8.0.2"}};
+  "log"={"memory"=20000;"syslog"="no"}
+}
+```
+
+* `servers`: Upstream statt `wan.dns`, in dieser Reihenfolge. Damit hängt die Namensauflösung nicht mehr
+  am Internet-Router oder an einem Resolver im Haus.
+* `cache`: DNS-Cache (`k`/`M`/`G` oder KiB als Zahl, RouterOS-Standard 2 MB). Die Adlisten liegen im Cache,
+  je 100 000 Namen gut 7 MB (Hardware: 79 315 Namen ≈ 5,7 MB). Ohne `cache` mit Adlisten warnt `$cfmCheck`.
+  Fällt `cache` weg, bleibt der zuletzt gesetzte Wert stehen.
+* `adlists`: Sperrlisten im hosts-Format (`0.0.0.0 name`). Gesperrte Namen beantwortet der Router mit
+  `0.0.0.0`; RouterOS lädt die Listen alle 4 Stunden neu und prüft das Zertifikat gegen seinen eingebauten
+  Speicher (`ssl-verify` bleibt beim Standard `yes`, kein eigenes Zertifikat nötig, Labor 7.25). `http://` geht, `$cfmCheck` warnt.
+* `allow`: Ausnahmen – die Domain **samt Subdomains** geht als statischer `FWD`-Eintrag an den Forwarder
+  `cfm-upstream` (alle Upstreams, so trägt ein Ausfall des ersten die Ausnahme nicht mit). Eine Liste mit
+  Ausnahmen braucht `servers` oder `wan.dns`.
+* `forward`: Domain samt Subdomains an einen anderen DNS-Server (Adresse oder Liste), z.B. die Namen eines
+  anderen Standorts über ein VPN. Der Server muss Anfragen der Router annehmen.
+* `log`: Abfrage-Log je Client über das Topic `dns` (ohne `packet`): `query from <Client>: #<n> <Name> <Typ>`
+  und `done query: #<n> <Name> <Antwort>` (gesperrt: ohne Antwort). `memory` = Zeilen im RAM-Puffer
+  `cfmdns` (0 = aus, nichts auf Platte; ansehen mit `/log/print where buffer=cfmdns`), `syslog="yes"`
+  schickt dieselben Zeilen zusätzlich an den Syslog-Server aus `global.rsc` (dort z.B. eigener Stream mit
+  kurzer Aufbewahrung). Mit `packet` würde das Log etwa zehnmal so lang, deshalb nicht.
+* Mehrere Router mit VRRP bekommen dieselbe Einstellung, jeder lädt die Adlisten selbst.
+* `$cfmCheck` prüft Adressen, Größe, URLs, Domainnamen und die Log-Schalter und warnt bei unbekannten
+  Schlüsseln. `$cfmShow host=<router>` zeigt eine Zusammenfassung. Fehlen die Einträge, räumt der nächste
+  Apply Adlisten, Forwarder, FWD-Einträge und Log-Regeln wieder weg.
+* Nicht dabei: DNSSEC-Prüfung im Router (den Upstream so wählen, dass er prüft, z.B. Quad9), Regeln je
+  Client, Statistik je Domain (RouterOS zählt je Adliste nur `match-count`).
+
 ### `authorized_keys.<user>` (optional)
 
 Persönliche Admin-SSH-Keys **je User** (D65), eine Datei je Person: `authorized_keys.alice` gilt nur
@@ -522,7 +564,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Provisioning mit festen Interfaces (D90); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS; NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (D100); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS (Upstream, Adlisten, Ausnahmen, Weiterleitungen und Abfrage-Log aus `dns.rsc`, D101); NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (D100); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, D67) |
 
@@ -1013,6 +1055,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Feste Adresse und DNS-Name für ein Gerät im VLAN | `leases.rsc` → Release (nur mit Rolle `router`) |
 | Uplink aus zwei Kabeln (LACP) | Hostfile `bonds` und Profil unter `ports` auf beiden Seiten → Release beider Geräte zugleich (D74) |
 | Server oder Switch redundant an zwei Switches | Paar in `mlag.rsc`, Ports aus den Hostfiles nehmen, Gegenstelle mit LACP-Bond → Release mit `all=yes` im Wartungsfenster (D75) |
+| Werbung/Tracker blocken, Ausnahme eintragen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → Release (D101) |
 | IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
 | Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
 | IoT-Gerät soll selbst einen Dienst im LAN erreichen (z.B. MQTT-Broker) | Liste in `allow` mit Adresse und Port, z.B. `"broker"={"192.168.20.30:tcp/1883"}`, `policy` `"iot"="allow:broker"` ohne NAT-Kennzeichen → Release. Abfragen aus dem LAN ins IoT-Netz brauchen keine Freigabe (`lan` → `iot`) |

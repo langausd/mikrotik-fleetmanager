@@ -23,7 +23,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK = os.path.join(ROOT, "cfm", "work")
-DATA = ["global.rsc", "vlans.rsc", "profiles.rsc", "wifi.rsc", "wireguard.rsc", "leases.rsc", "mlag.rsc"]
+DATA = ["global.rsc", "vlans.rsc", "profiles.rsc", "wifi.rsc", "wireguard.rsc", "leases.rsc", "mlag.rsc", "dns.rsc"]
 
 
 def read(p):
@@ -192,7 +192,8 @@ Mit `tools/new-site.py` aus den neutralen Beispieldaten angelegt: Manager `{name
 - [ ] **Domain** in `global.rsc` (`domain`, Standard `internal`; nicht `.local`, das gehört mDNS).
 - [ ] **Optional:** `wireguard.rsc` (Fernzugang, nur mit Rolle `router`, Admin-Guide 8.8),
       `leases.rsc` (feste DHCP-Leases und DNS-Namen, nur mit Rolle `router`, Admin-Guide Kapitel 4),
-      `mlag.rsc` (MLAG-Paare, Admin-Guide Kapitel 4) und `authorized_keys.<user>` (persönliche
+      `mlag.rsc` (MLAG-Paare, Admin-Guide Kapitel 4), `dns.rsc` (DNS der Router: Upstream, Adlisten,
+      Ausnahmen, Weiterleitungen, Abfrage-Log, Admin-Guide Kapitel 4) und `authorized_keys.<user>` (persönliche
       SSH-Keys je Person, Admin-Guide Kapitel 4).
 - [ ] **Prüfen:** `tools/rsc-check.py {rel}` ohne Fund.
 

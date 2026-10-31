@@ -25,6 +25,8 @@
   :set ($want->[:len $want]) ({"leases.rsc";1;0})
   # optional (D75): MLAG-Paare; ältere Versionen haben keine mlag.rsc
   :set ($want->[:len $want]) ({"mlag.rsc";1;0})
+  # optional (D101): DNS der Router (Upstreams, Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log)
+  :set ($want->[:len $want]) ({"dns.rsc";1;0})
   # authorized_keys.<user> (D65, persönliche Admin-SSH-Keys je User): optional, kein /import (kein
   # RouterOS-Skript); base liest nur die Dateien der User aus users
   :foreach p,h in=$fx do={ :if ($p ~ "^authorized_keys\\.") do={ :set ($want->[:len $want]) ({$p;0;0}) } }

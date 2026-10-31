@@ -12,6 +12,7 @@
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog; :global cfmWarn
 :global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey; :global cfmLimit; :global cfmRateFmt
+:global cfmDns; :global cfmKib
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -202,7 +203,56 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   }
   :set wdns [:tostr ($wan->"dns")]
 }
-$cfmSet m="/ip/dns" p=({"allow-remote-requests"="yes";"servers"=$wdns})
+# --- DNS der Router (D101, dns.rsc optional): Upstreams, Cache, Adlisten, Ausnahmen, Weiterleitung je Domain,
+#     Abfrage-Log. Ohne dns.rsc fragen die Router wan.dns wie bisher ---
+:local dp ({"allow-remote-requests"="yes";"servers"=$wdns})
+:local dup $wdns
+:if ([:len ($cfmDns->"servers")] > 0) do={ :set dup ($cfmDns->"servers"); :set ($dp->"servers") $dup }
+:if ([:len [:tostr ($cfmDns->"cache")]] > 0) do={ :set ($dp->"cache-size") [:tostr [$cfmKib ($cfmDns->"cache")]] }
+$cfmSet m="/ip/dns" p=$dp
+# Adlisten (hosts-Format, Aktualisierung alle 4 h durch RouterOS); Zertifikat gegen den eingebauten Speicher.
+# ssl-verify bleibt beim Standard yes: RouterOS meldet es nur als no zurück, gesetzt wäre es bei jedem Lauf neu
+:foreach u in=($cfmDns->"adlists") do={
+  $cfmEnsure m="/ip/dns/adlist" k=("dnsal:" . $u) n=({"url"=$u}) p=({"url"=$u})
+}
+# Ausnahmen und Weiterleitungen sind FWD-Einträge mit match-subdomain (die Domain samt Subdomains). Ausnahmen
+# gehen an den Forwarder cfm-upstream mit allen Upstreams - so trägt ein Ausfall des ersten sie nicht mit
+:if ([:len ($cfmDns->"allow")] > 0 and [:len $dup] > 0) do={
+  $cfmEnsure m="/ip/dns/forwarders" k="dnsfw:upstream" n=({"name"="cfm-upstream"}) p=({"name"="cfm-upstream";"dns-servers"=$dup})
+  :foreach a in=($cfmDns->"allow") do={
+    $cfmEnsure m="/ip/dns/static" k=("dnsallow:" . $a) n=({"name"=$a;"type"="FWD"}) p=({"name"=$a;"type"="FWD";"forward-to"="cfm-upstream";"match-subdomain"="yes"})
+  }
+}
+:foreach fd,fs in=($cfmDns->"forward") do={
+  # Ziel: eine Adresse oder eine Liste (RouterOS: durch Komma getrennt)
+  :local ft ""
+  :foreach s in=[:toarray $fs] do={ :if ([:len $ft] > 0) do={ :set ft ($ft . ",") }; :set ft ($ft . [:tostr $s]) }
+  $cfmEnsure m="/ip/dns/static" k=("dnsfwd:" . $fd) n=({"name"=$fd;"type"="FWD"}) p=({"name"=$fd;"type"="FWD";"forward-to"=$ft;"match-subdomain"="yes"})
+}
+# Abfrage-Log je Client: Topic dns ohne packet ("query from <Client>: #n <Name>" / "done query: #n … <Antwort>").
+# log.memory = Zeilen im RAM-Puffer cfmdns (0/leer = aus), log.syslog = "yes" zusätzlich an den Syslog-Server
+# (cfmremote aus base). Regeln ohne comment wie in base; topics kommen als Liste zurück
+:local dlr do={
+  :local r ({})
+  :foreach i in=[/system/logging/find where action=$1] do={ :if ([:tostr [/system/logging/get $i topics]] = "dns;!packet") do={ :set ($r->[:len $r]) $i } }
+  :return $r
+}
+:local dlm [:tonum ($cfmDns->"log"->"memory")]
+:if ([:typeof $dlm] = "num" and $dlm > 0) do={
+  $cfmEnsure m="/system/logging/action" k="log:dns" n=({"name"="cfmdns"}) p=({"name"="cfmdns";"target"="memory";"memory-lines"=[:tostr $dlm]})
+  :if ([:len [$dlr "cfmdns"]] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmdns" topics="dns,!packet" }
+} else={
+  # Regel vor der Aktion entfernen (die Aktion räumt die GC weg, eine Regel ohne Aktion bliebe ungültig stehen)
+  :if ([:len [/system/logging/action/find where name="cfmdns"]] > 0 and $cfmDry != true) do={ /system/logging/remove [find where action="cfmdns"] }
+}
+:if ([:len [/system/logging/action/find where name="cfmremote"]] > 0) do={
+  :local drs [$dlr "cfmremote"]
+  :if ([:tostr ($cfmDns->"log"->"syslog")] = "yes") do={
+    :if ([:len $drs] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmremote" topics="dns,!packet" }
+  } else={
+    :if ([:len $drs] > 0 and $cfmDry != true) do={ :foreach i in=$drs do={ /system/logging/remove $i } }
+  }
+}
 # DNS-Namen (D62): feste Leases und alle aufgenommenen Geräte (MGMT-Adresse, Liste im Manifest) als
 # <name>.<domain>; bei gleichem Namen gilt die Lease ($cfmCheck meldet das als Fehler)
 :local dom [:tostr ($cfmG->"domain")]

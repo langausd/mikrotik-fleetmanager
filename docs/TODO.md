@@ -1184,3 +1184,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Internet, Ausfall des Internet-Routers – interne Wege bleiben, VRRP-Wechsel), Portfreigabe auf einen Host mit
     Gateway VIP. **Ziel danach:** Transfernetz für den Internet-Router (dann VIP für alle, zweiter Anschluss als
     Backup möglich), der Schalter entfällt.
+68. **DNS der Router: Upstream, Adblock, Ausnahmen, Weiterleitung je Domain, Abfrage-Log** (Wunsch des Nutzers,
+    2026-10-31) – *umgesetzt 2026-10-31 (D101):* optionale `dns.rsc` (Admin-Guide Kapitel 4). **Offen:**
+    Hardware (RAM und Laden der Adlisten auf allen Routern, Abfrage-Log über Syslog), danach die Resolver-Container
+    eines Standorts nach Parallelbetrieb abbauen; Pflege der Ausnahmen und Statistik aus Home Assistant (eigene,
+    nicht von cfm verwaltete Liste wie D90); Namensschema der Standorte für `forward` (später, mit einem
+    Standort-VPN der Router); DoH als Option.

@@ -67,6 +67,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
 | `cfm/work/mlag.rsc` | MLAG-Paare: zwei Switches, Peer-Ports, doppelt angebundene Geräte (D75) |
+| `cfm/work/dns.rsc` | optional: DNS der Router – Upstream, Adlisten, Ausnahmen, Weiterleitung je Domain, Abfrage-Log (D101) |
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
@@ -97,7 +98,7 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Trennschwelle je Band, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus; feste Interfaces, die übrigen SSIDs senden beim Schalten weiter) |
-| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, NTP-Server, WireGuard-Fernzugang (optional) |
+| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, optional Upstream/Adlisten/Ausnahmen/Weiterleitungen/Abfrage-Log aus `dns.rsc` (D101), NTP-Server, WireGuard-Fernzugang (optional) |
 | `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only; Geräte ziehen erst nach `$cfmPromoteManager` von hier (SFTP-User bis dahin gesperrt) |
 
@@ -111,7 +112,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
    `bootstrap-manager.rsc`. Die Beispieldaten sind ein
    fiktives Netz (VLAN 10/20/30/40, 101–119, SSIDs Demo, Demo-Gast, Demo-Event, Demo-IoT). Anpassen:
    `global.rsc` (Manager-IPs, MGMT-VLAN, User, Domain – Standard `internal`), `vlans.rsc`, `wifi.rsc`,
-   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc`, `mlag.rsc` und `authorized_keys.<user>`.
+   `hosts/`, `meta/inventory.rsc`, optional `wireguard.rsc`, `leases.rsc`, `mlag.rsc`, `dns.rsc` und `authorized_keys.<user>`.
 2. **Primary-Manager:** `tools/upload-seed.sh admin@<cm1> --overlay site --seed-inventory --bootstrap`
    (das Inventar nur beim ersten Mal; `--bootstrap` nimmt `site/bootstrap-manager.rsc` mit ins
    Wurzelverzeichnis), dann auf dem Gerät `/import bootstrap-manager.rsc`.
@@ -135,6 +136,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Feste Adresse + DNS-Name für ein Gerät | `leases.rsc` → `$cfmRelease` (wirkt auf Routern) |
 | Uplink aus zwei Kabeln (LACP), redundant über zwei Switches (MLAG) | Hostfile `bonds` bzw. `mlag.rsc` → `$cfmRelease … all=yes` |
 | Zeit für IoT-Geräte mit fest eingebautem NTP-Server | `"ntp"="redirect"` am VLAN → `$cfmRelease` (D93) |
+| Werbung/Tracker blocken, Ausnahmen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → `$cfmRelease` (D101) |
 | Bandbreite eines Netzes begrenzen (z.B. Gast-WLAN) | `"limit"="50M/10M"`, optional `"limitClient"` je Client, am VLAN → `$cfmRelease` (D97) |
 | IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |

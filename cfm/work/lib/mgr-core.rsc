@@ -205,6 +205,9 @@
   # mlag.rsc (D75) ebenso optional
   :global cfmMlag; :set cfmMlag ({})
   :onerror e in={ /import file-name=($d . "/mlag.rsc") verbose=no } do={}
+  # dns.rsc (D101) ebenso optional
+  :global cfmDns; :set cfmDns ({})
+  :onerror e in={ /import file-name=($d . "/dns.rsc") verbose=no } do={}
   :if ($hold != "yes") do={ :set cfmMgrData 0 }
   :return $v
 }

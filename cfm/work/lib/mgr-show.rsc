@@ -122,6 +122,16 @@
     :local nd 0
     :foreach hn,hd in=[$cfmInvLoad] do={ :if ([$cfmEnrolled $hd] and [:len [:tostr ($hd->"ip")]] > 0) do={ :set nd ($nd + 1) } }
     :put ("DNS-Namen unter ." . [:tostr ($cfmG->"domain")] . ": " . $nd . " Geräte, " . $nl . " Leases")
+    # dns.rsc (D101)
+    :global cfmDns
+    :if ([:len $cfmDns] > 0) do={
+      :local t ("DNS (dns.rsc): Upstream " . [:tostr ($cfmDns->"servers")] . ", " . [:len ($cfmDns->"adlists")] . " Adlisten, " . [:len ($cfmDns->"allow")] . " Ausnahmen")
+      :foreach fd,fs in=($cfmDns->"forward") do={ :set t ($t . ", " . $fd . " -> " . [:tostr $fs]) }
+      :local lm [:tonum ($cfmDns->"log"->"memory")]
+      :if ([:typeof $lm] = "num" and $lm > 0) do={ :set t ($t . ", Log im RAM " . $lm . " Zeilen") }
+      :if ([:tostr ($cfmDns->"log"->"syslog")] = "yes") do={ :set t ($t . ", Log an Syslog") }
+      :put $t
+    }
   }
   # --- WLAN ---
   :if ($rl ~ ",ap," or $rl ~ ",capsman,") do={
@@ -268,7 +278,7 @@
   :if ([:len $ch] = 0) do={ :put "keine Unterschiede"; :return false }
   :foreach rel,t in=$ch do={ :put ("  " . $t . ": " . $rel) }
   # betroffene Geräte - wie die Manifeste die Dateien zuordnen
-  :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"mlag.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
+  :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"mlag.rsc"=1;"dns.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
   :local all false
   # authorized_keys.<user> (D65): jedes Gerät mit diesem User
   :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing" or $rel ~ "^authorized_keys\\.") do={ :set all true } }

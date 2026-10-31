@@ -14,7 +14,7 @@
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
   :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp; :global cfmMgrData; :global cfmLimit
-  :global cfmMlag; :global cfmMlagOf
+  :global cfmMlag; :global cfmMlagOf; :global cfmDns; :global cfmKib
   :local b [$cfmMB]
   # dir=<verzeichnis>: statt work/ prüfen ($cfmPlan from=)
   :local w ($b . "/work")
@@ -36,6 +36,9 @@
   # mlag.rsc (D75) selbst laden: $cfmLoadData des installierten Managers kennt sie vor D75 nicht
   :set cfmMlag ({})
   :if ([$fex ($w . "/mlag.rsc")]) do={ :onerror e in={ /import file-name=($w . "/mlag.rsc") verbose=no } do={ :set ($err->[:len $err]) ("mlag.rsc: " . $e) } }
+  # dns.rsc (D101) ebenso
+  :set cfmDns ({})
+  :if ([$fex ($w . "/dns.rsc")]) do={ :onerror e in={ /import file-name=($w . "/dns.rsc") verbose=no } do={ :set ($err->[:len $err]) ("dns.rsc: " . $e) } }
   # Profil gültig? -> "" oder Fehlertext (Hostfile-Ports, Bonds, MLAG-Bonds)
   :local profOk do={
     :global cfmProfiles; :global cfmVlans
@@ -229,6 +232,33 @@
     :if ([:len $nt] > 0 and $nt != "redirect") do={ :set ($err->[:len $err]) ("vlans.rsc: VLAN " . $vid . ": ntp " . $nt . " (nur redirect)") }
     :if ($nt = "redirect" and [:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": ntp redirect ohne Router (l3=no) wirkt nicht") }
   }
+  # DNS der Router (D101): Adressen gültig, Größe lesbar, Adlisten per https, Domains ohne Leerzeichen,
+  # Log-Schalter; unbekannte Schlüssel (Tippfehler) als Warnung
+  :local dn "dns.rsc: "
+  :local dnOk do={ :return ([:tostr $1] ~ "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+\\.?\$") }
+  :foreach k,v in=$cfmDns do={
+    :if (!($k ~ "^(servers|cache|adlists|allow|forward|log)\$")) do={ :set ($warn->[:len $warn]) ($dn . "unbekannter Schlüssel " . $k . " (servers, cache, adlists, allow, forward, log)") }
+  }
+  :foreach a in=($cfmDns->"servers") do={ :if ([:typeof [:toip $a]] != "ip") do={ :set ($err->[:len $err]) ($dn . "servers: " . $a . " ist keine IPv4-Adresse") } }
+  :local dc [:tostr ($cfmDns->"cache")]
+  :if ([:len $dc] > 0 and [:typeof [$cfmKib $dc]] != "num") do={ :set ($err->[:len $err]) ($dn . "cache " . $dc . " (z.B. 64M, Einheiten k/M/G oder KiB als Zahl)") }
+  :if ([:len ($cfmDns->"adlists")] > 0 and [:len $dc] = 0) do={ :set ($warn->[:len $warn]) ($dn . "adlists ohne cache - die Listen liegen im DNS-Cache (RouterOS-Standard 2M), je 100 000 Namen gut 7 MB") }
+  :foreach u in=($cfmDns->"adlists") do={
+    :local us [:tostr $u]
+    :if ([:pick $us 0 8] != "https://") do={
+      :if ([:pick $us 0 7] = "http://") do={ :set ($warn->[:len $warn]) ($dn . "adlists: " . $us . " ohne https (keine Zertifikatsprüfung)") } else={ :set ($err->[:len $err]) ($dn . "adlists: " . $us . " ist keine http(s)-URL") }
+    }
+  }
+  :foreach a in=($cfmDns->"allow") do={ :if (![$dnOk $a]) do={ :set ($err->[:len $err]) ($dn . "allow: " . $a . " ist kein Domainname") } }
+  :foreach fd,fs in=($cfmDns->"forward") do={
+    :if (![$dnOk $fd]) do={ :set ($err->[:len $err]) ($dn . "forward: " . $fd . " ist kein Domainname") }
+    :foreach a in=[:toarray $fs] do={ :if ([:typeof [:toip $a]] != "ip") do={ :set ($err->[:len $err]) ($dn . "forward " . $fd . ": " . $a . " ist keine IPv4-Adresse") } }
+  }
+  :local dlm ($cfmDns->"log"->"memory")
+  :if ([:len [:tostr $dlm]] > 0 and !([:tostr $dlm] ~ "^[0-9]+\$")) do={ :set ($err->[:len $err]) ($dn . "log memory " . $dlm . " (Zeilen als Zahl, 0 = aus)") }
+  :local dls [:tostr ($cfmDns->"log"->"syslog")]
+  :if ([:len $dls] > 0 and $dls != "yes" and $dls != "no") do={ :set ($err->[:len $err]) ($dn . "log syslog " . $dls . " (yes oder no)") }
+  :if ($dls = "yes" and [:len [:tostr ($cfmG->"syslog")]] = 0) do={ :set ($warn->[:len $warn]) ($dn . "log syslog=yes wirkt nur mit syslog in global.rsc") }
   # Asymmetrisches Routing (D100): nur "internet". Der Verkehr ins Internet läuft ohne conntrack - mit NAT
   # der Zone setzen die Router kein notrack (Warnung, Hostfiles können die policy überschreiben), NTP-Umleitung
   # und Limit greifen dafür nicht bzw. nur im Upload

@@ -101,6 +101,7 @@
       :if ([:len [:tostr ($vv->"dhcp")]] > 0) do={ :set t ($t . " DHCP " . ($vv->"dhcp")) }
       :if ([:len [:tostr ($vv->"dhcpGw")]] > 0) do={ :set t ($t . ", Gateway der Clients ." . ($vv->"dhcpGw")) }
       :if ([:tostr ($vv->"ntp")] = "redirect") do={ :set t ($t . ", NTP zum Router (D93)") }
+      :if ([:tostr ($vv->"asymRouting")] = "internet") do={ :set t ($t . ", Internet asymmetrisch (D100)") }
       :if ([:len [:tostr ($vv->"limit")]] > 0) do={ :set t ($t . ", Limit " . ($vv->"limit")) }
       :if ([:len [:tostr ($vv->"limitClient")]] > 0) do={ :set t ($t . ", je Client " . ($vv->"limitClient")) }
     }

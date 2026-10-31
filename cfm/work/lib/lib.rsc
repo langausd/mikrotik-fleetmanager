@@ -48,7 +48,7 @@
   "/interface/vrrp";"/interface/list";"/interface/list/member";
   "/ip/address";"/routing/table";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";
   "/ip/dhcp-server/lease";"/ip/dhcp-client";
-  "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ipv6/firewall/filter";"/ip/dns/static";
+  "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ip/firewall/raw";"/ipv6/firewall/filter";"/ip/dns/static";
   "/queue/type";"/queue/simple";
   "/interface/wifi/channel";"/interface/wifi/security";"/interface/wifi/security/multi-passphrase";
   "/interface/wifi/datapath";

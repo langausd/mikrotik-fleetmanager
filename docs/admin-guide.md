@@ -259,6 +259,7 @@ Schlüssel ist die VLAN-ID als String.
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
 | `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, D82). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt. Ist das VLAN zugleich das WAN der Router (Internet-Router im LAN), nehmen sie DNS, DHCP und NTP aus diesem Netz trotzdem an (D86) |
 | `ntp` | `"redirect"`: NTP (`udp/123`) aus dem VLAN an jedes Ziel außer dem Router landet beim NTP-Server der Router – für Geräte mit fest eingebautem NTP-Server, z.B. OpenBeken (D93). Ein anderer NTP-Server im Haus ist aus dem VLAN dann nicht erreichbar |
+| `asymRouting` | `"internet"`: nur am WAN-VLAN, wenn der Internet-Router im selben Netz steht. Hosts, die die VIP (`gw`) als Gateway nehmen, kommen damit ins Internet – Hinweg über die Router ohne Verbindungsverfolgung, Antwort direkt vom Internet-Router. Übergangslösung bis zu einem Transfernetz, Standard aus (8.13, D100) |
 | `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (D97) |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
@@ -521,7 +522,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
 | `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Provisioning mit festen Interfaces (D90); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS; NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS; NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (D100); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
 | `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, D67) |
 
@@ -1455,6 +1456,65 @@ Authentication“ bzw. `snmp.v3`, neuere Versionen: Secrets und `snmp.default_cr
 Fällt `snmp` weg, entfernt der nächste Apply die Community; SNMP selbst bleibt eingeschaltet,
 antwortet aber niemandem mehr (`public` bleibt aus). Syslog: `syslog` auf die MGMT-Adresse des Servers,
 `syslogFormat` `syslog` (Standard).
+
+### 8.13 Internet-Router im LAN: VIP als Gateway mit `asymRouting` (D100)
+
+**Ausgangslage.** Steht der Internet-Router (z.B. ein DSL- oder Kabel-Router) im selben Netz wie die Clients und ist
+dieses Netz zugleich das WAN der cfm-Router (D86), behalten die Clients ihn als Gateway (`dhcpGw`, D82). Der
+Internet-Router reicht Verkehr in die übrigen VLANs über statische Routen an die VIP weiter. Fällt er aus,
+sind auch die Wege zu den internen Netzen weg – er ist ein Single Point of Failure für das ganze Haus.
+
+**Warum die VIP als Gateway ohne Schalter nicht geht.** Ein Host mit Gateway VIP schickt Verkehr ins Internet
+an den Router, der ihn ins selbe Netz zum Internet-Router weiterreicht. Die Antwort kommt vom Internet-Router
+direkt zum Host (gleiches Netz). Der Router sieht nur die eine Richtung; bei TCP ist das zweite Paket für ihn
+`invalid`, die Firewall verwirft es (`drop invalid`). Ping geht, TCP nicht.
+
+```
+hin:    Host → VIP (cfm-Router, ohne conntrack) → Internet-Router → Internet
+zurück: Internet → Internet-Router → Host            (direkt, am Router vorbei)
+```
+
+**Was `"asymRouting"="internet"` macht.** Am WAN-VLAN in `vlans.rsc` gesetzt, legt die Rolle `router` eine
+Regel in `/ip/firewall/raw` an: `prerouting`, herein über die Liste `WAN`, Quelle = Netz des VLANs, Ziel
+außerhalb von `cfm-private` → `notrack`. Ungetrackter Verkehr hat keinen Zustand und ist nie `invalid`; der
+forward-Block nimmt ihn mit `established,related,untracked` an. Verkehr zwischen den VLANs bleibt
+verfolgt, die Zonen-Policy gilt dort unverändert.
+
+```
+:global cfmVlans {
+  "177"={"name"="LAN";"zone"="lan";"gw"=2;"dhcp"="20-150";"dhcpGw"=1;"lease"="10d";"asymRouting"="internet"};
+  ...
+}
+```
+
+**Folgen**
+* Hosts mit Gateway VIP erreichen die internen Netze immer über die Router – auch ohne Internet-Router. Für
+  welche Hosts das gilt, entscheidest Du über deren Gateway: feste Adresse von Hand oder für alle
+  DHCP-Clients `dhcpGw` entfernen (dann bekommen sie `gw`). Hosts mit dem Internet-Router als Gateway merken
+  vom Schalter nichts.
+* Der Internet-Router sieht weiter die echten Absenderadressen (kein NAT): Kindersicherung, Zähler und
+  Portfreigaben je Gerät bleiben. Eine Portfreigabe auf einen Host mit Gateway VIP sollte auch gehen: Die
+  Anfrage kommt direkt, die Antwort über den Router ohne conntrack (nicht getestet).
+* Fällt der VRRP-Master aus, laufen bestehende Verbindungen weiter – es gibt keinen Zustand, der verloren geht.
+* Nur der Upload läuft durch die CPU des VRRP-Masters, Downloads kommen direkt vom Internet-Router.
+* Die Router schicken solchen Hosts ICMP-Redirects („nimm direkt den Internet-Router“), weil Pakete im selben
+  Netz zurückgehen. Folgt ein Host, geht sein Verkehr zu diesem Ziel direkt – das stört nicht, beide Wege
+  funktionieren.
+* Die Firewall der Router prüft diesen Verkehr nicht. Die Policy muss die Zone ohnehin ins Internet lassen
+  (`lan` → `wan`); eingehender Verkehr aus dem Internet läuft weiter nur über den Internet-Router.
+* Nicht kombinierbar mit NAT der Zone ins Internet (`*wan`, `wan@…`, NAT auf Freigabelisten): ungetrackter
+  Verkehr wird nicht übersetzt. Hat die Zone NAT, setzen die Router die Regel nicht und warnen im Log;
+  `$cfmCheck` warnt ebenso. Eine NTP-Umleitung (`ntp`) des VLANs greift für Ziele im Internet nicht, ein
+  `limit` bremst ins Internet nur den Upload (`$cfmCheck` warnt).
+
+**Prüfen.** `/ip/firewall/raw/print stats where comment~"cfm:raw"` – der Zähler steigt mit dem Upload der Hosts
+mit Gateway VIP; `/ip/firewall/filter/print stats where connection-state~"invalid"` steigt bei deren Verkehr
+nicht mehr. `$cfmShow` nennt den Schalter am VLAN („Internet asymmetrisch“).
+
+**Rückweg.** Schlüssel entfernen und releasen: Die Regel verschwindet, Hosts mit Gateway VIP kommen nicht mehr
+ins Internet (vorher auf den Internet-Router zurückstellen). Der saubere Endzustand ist ein eigenes
+Transfernetz für den Internet-Router (dann ist die VIP für alle das Gateway, auch für einen zweiten
+Internet-Anschluss); dort entfällt der Schalter.
 
 ---
 

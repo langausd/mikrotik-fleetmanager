@@ -229,6 +229,24 @@
     :if ([:len $nt] > 0 and $nt != "redirect") do={ :set ($err->[:len $err]) ("vlans.rsc: VLAN " . $vid . ": ntp " . $nt . " (nur redirect)") }
     :if ($nt = "redirect" and [:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": ntp redirect ohne Router (l3=no) wirkt nicht") }
   }
+  # Asymmetrisches Routing (D100): nur "internet". Der Verkehr ins Internet läuft ohne conntrack - mit NAT
+  # der Zone setzen die Router kein notrack (Warnung, Hostfiles können die policy überschreiben), NTP-Umleitung
+  # und Limit greifen dafür nicht bzw. nur im Upload
+  :foreach vid,v in=$cfmVlans do={
+    :local ar [:tostr ($v->"asymRouting")]
+    :if ([:len $ar] > 0) do={
+      :local vw ("vlans.rsc: VLAN " . $vid . ": asymRouting ")
+      :if ($ar != "internet") do={ :set ($err->[:len $err]) ($vw . $ar . " (nur internet)") }
+      :if ([:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ($vw . "ohne Router (l3=no) wirkt nicht") }
+      :if ([:tostr ($v->"ntp")] = "redirect") do={ :set ($warn->[:len $warn]) ($vw . "+ ntp redirect: NTP an Server im Internet wird nicht umgeleitet") }
+      :if ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . "+ limit: bremst ins Internet nur den Upload (Antworten laufen am Router vorbei)") }
+      :local z [:tostr ($v->"zone")]
+      :foreach t0 in=[:toarray ($cfmG->"policy"->$z)] do={
+        :local pt [$cfmTarget $t0]
+        :if ([:len [:tostr ($pt->"nat")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . "wirkt nicht, solange die Zone " . $z . " NAT hat (" . $t0 . ") - die Router setzen dann kein notrack") }
+      }
+    }
+  }
   # Bandbreitenlimit (D97): "Download/Upload" mit k/M/G, wirkt nur mit Router-Interface und Subnetz
   :foreach vid,v in=$cfmVlans do={
     :local any false

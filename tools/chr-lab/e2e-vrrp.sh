@@ -11,7 +11,7 @@
 #   vm5 = sw1   Switch ohne Rolle router an cm1/ether5, eigener Ausgang über den Internet-Router (gw)
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
 # Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), DHCP und DNS der
-# Router im LAN, das zugleich ihr WAN ist (D86), WireGuard über die
+# Router im LAN, das zugleich ihr WAN ist (D86), TCP ins Internet über die VIP mit asymRouting (D100), WireGuard über die
 # VIP mit gemeinsamem Schlüssel (D84, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (D85), Neustart des
 # Masters, Ausfall von zwei Routern.
@@ -56,6 +56,9 @@ wgep() { r 4 ':put ("E=" . [/interface/wireguard/peers/get [find interface=wgc] 
 lanc() { r 4 ':local d [/ip/dhcp-client/get [find interface=mv20]]; :put ("C=" . ($d->"status") . " " . ($d->"address") . " " . ($d->"gateway") . " " . ($d->"primary-dns") . " " . ($d->"dhcp-server"))' | grep -o 'C=.*' | cut -d= -f2-; }
 lanlease() { local i; r 4 '/ip/dhcp-client/release [find interface=mv20]' >/dev/null; for i in $(seq 1 15); do [ "$(lanc)" = "bound 192.168.20.42/24 192.168.20.1 192.168.20.2 192.168.20.$1" ] && return 0; sleep 2; done; return 1; }
 dnsq() { r 4 ':onerror e in={ :put ("R=" . [:resolve domain-name="'"$1"'" server=192.168.20.2]) } do={ :put "R=-" }' | grep -o 'R=.*' | cut -d= -f2; }
+# Asymmetrisches Routing (D100): sw1 (.20.240) holt per TCP eine Seite vom "Internet" 198.51.100.1 über die
+# VIP .20.2 (Route lab-asym); die Antwort kommt vom Internet-Router direkt. asymtcp -> ok|err
+asymtcp() { r 5 ':onerror e in={ /tool/fetch url="http://198.51.100.1/" output=none idle-timeout=5s; :put "F=ok" } do={ :put "F=err" }' | grep -o 'F=[a-z]*' | cut -d= -f2; }
 # Lage aus Sicht der Clients: VIPs, Policy, NAT. Erwartet: $1 = Name des Masters
 policy() {
   local m=$1 n0 n1
@@ -74,6 +77,9 @@ policy() {
   local s; case $m in r1) s=251;; r2) s=252;; cm1) s=253;; esac
   lanlease $s && ok "$m: LAN-Client bekommt seine feste Lease .20.42 (Gateway .1, DNS VIP .2)" || bad "$m: LAN-DHCP: $(lanc)"
   [ "$(dnsq labpc.internal)" = "192.168.20.42" ] && ok "$m: DNS an der VIP aus dem LAN (Name der festen Lease)" || bad "$m: DNS an der VIP aus dem LAN: $(dnsq labpc.internal)"
+  if [ "${ASYM:-0}" = 1 ]; then
+    [ "$(asymtcp)" = ok ] && ok "$m: Client mit Gateway VIP erreicht das Internet per TCP (asymRouting, D100)" || bad "$m: TCP über die VIP ins Internet geht nicht (asymRouting)"
+  fi
 }
 state() { # state <master-vm> <name> [abgetrennte VMs]: genau dieser Router ist Master in allen VLANs und
   # vergibt DHCP; abgetrennte Router (Uplink aus) hören niemanden und zählen nicht mit
@@ -197,6 +203,26 @@ for _ in $(seq 1 60); do [ "$(stat r2 t)" != "$t0" ] && break; sleep 4; done
 mgr '$cfmSecretPush host=r2' >/dev/null; sleep 2
 [ "$(wgpub 3)" = "$k0" ] && ok "r2 hat nach dem Secret-Push wieder den gemeinsamen Schlüssel" || bad "r2 Schlüssel $(wgpub 3)"
 
+step "5c. Asymmetrisches Routing ins Internet (D100)"
+# Ausgangslage ohne Schalter: Hinweg über die VIP, Antwort direkt vom Internet-Router -> r1 sieht nur
+# eine Richtung und verwirft die Folgepakete als invalid (Befund am Standort 2026-10-31)
+r 5 '/ip/route/add dst-address=198.51.100.1/32 gateway=192.168.20.2 comment=lab-asym' >/dev/null
+i0=$(invdrop 2); a=$(asymtcp); i1=$(invdrop 2)
+[ "$a" = err ] && [ "${i1:-0}" -gt "${i0:-0}" ] && ok "Ohne asymRouting: TCP über die VIP ins Internet als invalid verworfen" || bad "Ausgangslage: fetch $a, invalid $i0 -> $i1"
+expect 2 '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "r1: ohne Schalter keine raw-Regel von cfm"
+mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"internet\"\n")' >/dev/null
+mgr '$cfmRelease all=yes' >/dev/null
+for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 3 $n || bad "$n: v3 nicht angewendet"; done
+for i in 2 3 1; do
+  expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:raw:" and action=notrack and src-address="192.168.20.0/24" and dst-address-list="!cfm-private" and in-interface-list="WAN"]] = 1' "vm$i: notrack-Regel für LAN -> Internet"
+done
+expect 5 '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "sw1 (ohne Rolle router): keine raw-Regel"
+i0=$(invdrop 2)
+[ "$(asymtcp)" = ok ] && ok "Mit asymRouting: TCP über die VIP ins Internet" || bad "Mit asymRouting: TCP über die VIP geht nicht"
+[ "$(invdrop 2)" = "$i0" ] && ok "Mit asymRouting: kein invalid-Drop am Master" || bad "invalid-Drop am Master: $i0 -> $(invdrop 2)"
+[ "$(pings 4 '192.168.30.77 src-address=192.168.20.1')" -ge 4 ] && [ "$(pings 4 '198.51.100.1 vrf=guest')" -ge 4 ] && ok "Mit asymRouting: LAN -> IoT und Gast -> Internet (NAT) unverändert" || bad "asymRouting stört LAN -> IoT oder Gast-NAT"
+ASYM=1
+
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"
 # DHCP/WG schaltet on-master erst nach 5 s ein (D85)
 r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 10
@@ -246,5 +272,12 @@ for n in r1 r2 cm1 sw1; do
   for _ in $(seq 1 60); do [ "$(stat $n t)" != "$t0" ] && break; sleep 4; done
   stat $n stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "$n: zweiter Apply ohne Änderungen" || bad "$n idempotent: $(stat $n stats)"
 done
+
+step "11. asymRouting wieder aus (D100): raw-Regel verschwindet"
+mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"\"\n")' >/dev/null
+mgr '$cfmRelease all=yes' >/dev/null
+for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 4 $n || bad "$n: v4 nicht angewendet"; done
+for i in 2 3 1; do expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "vm$i: notrack-Regel entfernt"; done
+[ "$(asymtcp)" = err ] && ok "Ohne asymRouting wieder: TCP über die VIP ins Internet verworfen (bisheriges Verhalten)" || bad "Nach dem Abschalten geht TCP über die VIP noch"
 
 echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]

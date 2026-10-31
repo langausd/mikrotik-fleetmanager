@@ -10,7 +10,7 @@
 #     oder {"if"="ether1";"dhcp"="yes"}  [optional "addr"="x.x.x.x/nn", "ntp"=Server (Text oder Liste)]
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
-:global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog
+:global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog; :global cfmWarn
 :global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey; :global cfmLimit; :global cfmRateFmt
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
@@ -174,6 +174,8 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 :local wan ($cfmHost->"wan")
 :local wdns ""
 :local wanNet ""
+:local asym ""
+:local asymZ ""
 :if ([:typeof $wan] = "array") do={
   $cfmEnsure m="/interface/list/member" k="ilm:wan" n=({"list"="WAN";"interface"=($wan->"if")}) p=({"list"="WAN";"interface"=($wan->"if")})
   # WAN in einem cfm-VLAN (Internet-Router im LAN): dessen Netz merken (Firewall, D86); bei VRRP zählt
@@ -183,6 +185,8 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
     :local wvid [:pick $wif 4 [:len $wif]]
     :if ([:typeof ($cfmVlans->$wvid)] = "array" and [:tostr ($cfmVlans->$wvid->"l3")] != "no") do={
       :set wanNet [:tostr ([$cfmNet $wvid]->"net")]
+      :set asym [:tostr ($cfmVlans->$wvid->"asymRouting")]
+      :set asymZ [:tostr ($cfmVlans->$wvid->"zone")]
       :if ($vr) do={
         $cfmEnsure m="/interface/list/member" k="ilm:wan-vrrp" n=({"list"="WAN";"interface"=("vrrp" . $wvid)}) p=({"list"="WAN";"interface"=("vrrp" . $wvid)})
       }
@@ -466,3 +470,18 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
   :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="dst-nat";"protocol"="udp";"dst-address"=[:tostr ($wn->"gw")];"dst-port"=[:tostr ($cfmWg->"listenPort")];"to-addresses"=[:tostr (($wn->"addr") + 250 + $rid)]})
 }
 $cfmBlock m="/ip/firewall/nat" k="nat" l=$natR
+
+# --- Asymmetrisches Routing ins Internet (D100, "asymRouting"="internet" am WAN-VLAN) ---
+# Clients im WAN-VLAN mit Gateway VIP: Hinweg über den Router zum Internet-Router im selben Netz, die
+# Antwort kommt von dort direkt. Ohne conntrack ist der Hinweg nicht "invalid"; "accept untracked" im
+# forward-Block lässt ihn durch. Ohne Schalter bleibt der Block leer (räumt eine alte Regel weg). NATet
+# die Zone ins Internet (policy dieses Routers), ginge das NAT verloren - dann keine Regel, nur Warnung
+:local rw ({})
+:if ($asym = "internet" and [:len $wanNet] > 0) do={
+  :if (($natZ->$asymZ) = 1) do={
+    $cfmWarn ("asymRouting: Zone " . $asymZ . " hat NAT ins Internet (policy) - notrack nicht gesetzt (D100)")
+  } else={
+    :set ($rw->0) ({"chain"="prerouting";"action"="notrack";"in-interface-list"="WAN";"src-address"=$wanNet;"dst-address-list"="!cfm-private"})
+  }
+}
+$cfmBlock m="/ip/firewall/raw" k="raw" l=$rw

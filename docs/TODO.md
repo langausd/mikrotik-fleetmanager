@@ -75,6 +75,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Apply für die eigenen Radios) – und 54 (D99, SNMPv3 für LibreNMS, Syslog im RFC-Format); leeres `syslog` räumt Aktion und Einträge weg (beide Standorte schickten an ihren Manager, der keinen Syslog annimmt). Labor 7.25: `e2e.sh` 373 grün.
   Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push, Syslog an LibreNMS (siehe unten); SNMP
   gegen LibreNMS bestanden 2026-10-30.
+* **Umgesetzt am 2026-10-31:** 67 (D100) – `"asymRouting"="internet"` am WAN-VLAN: VIP als Gateway, obwohl der
+  Internet-Router im selben Netz steht (`notrack` für Verkehr ins Internet). Labor 7.25: `e2e-vrrp.sh` 137,
+  `e2e.sh` 374, grün. Offen auf Hardware (TODO 67).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -1174,3 +1177,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
       bleiben im Fasttrack.
     * **Doku:** DECISIONS (neue D-Nummer), Admin-Guide (`vlans.rsc`-Tabelle, Aufgabenliste „Gast-WLAN
       begrenzen“), danach am Standort im VLAN des Gast-WLANs einschalten (Site-Daten, Release).
+67. **VIP als Gateway, obwohl der Internet-Router im selben Netz steht** (Befund an einem Standort und Wunsch des
+    Nutzers, 2026-10-31) – *umgesetzt 2026-10-31 (D100):* `vlans.rsc` → `"asymRouting"="internet"` am WAN-VLAN
+    (Standard aus): `raw`-Regel `notrack` für Verkehr aus dem Netz ins Internet, Hinweg über die Router, Antwort
+    direkt vom Internet-Router; Admin-Guide 8.13. **Offen:** Hardware-Test (Server mit Gateway VIP: TCP ins
+    Internet, Ausfall des Internet-Routers – interne Wege bleiben, VRRP-Wechsel), Portfreigabe auf einen Host mit
+    Gateway VIP. **Ziel danach:** Transfernetz für den Internet-Router (dann VIP für alle, zweiter Anschluss als
+    Backup möglich), der Schalter entfällt.

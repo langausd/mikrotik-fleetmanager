@@ -73,15 +73,20 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
 * **Erledigt am 2026-10-29:** die drei „Bekannten Fehler“ vom 2026-10-28 – Dateien beim Abholen überschreiben statt
   löschen, `force` löscht `bad`, neue Master-SSID: Nachfassen nach dem Push (D98, Secret-Push sofort, erzwungener
   Apply für die eigenen Radios) – und 54 (D99, SNMPv3 für LibreNMS, Syslog im RFC-Format); leeres `syslog` räumt Aktion und Einträge weg (beide Standorte schickten an ihren Manager, der keinen Syslog annimmt). Labor 7.25: `e2e.sh` 373 grün.
-  Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push, Syslog an LibreNMS (siehe unten); SNMP
-  gegen LibreNMS bestanden 2026-10-30.
+  Offen auf Hardware: eigene Radios nach dem Einschalten per Secret-Push; ~~Syslog an LibreNMS~~ (über Graylog
+  bestanden 2026-11-01); SNMP gegen LibreNMS bestanden 2026-10-30.
 * **Umgesetzt am 2026-10-31:** 67 (D100) – `"asymRouting"="internet"` am WAN-VLAN: VIP als Gateway, obwohl der
   Internet-Router im selben Netz steht (`notrack` für Verkehr ins Internet). Labor 7.25: `e2e-vrrp.sh` 137,
   `e2e.sh` 374, grün. Offen auf Hardware (TODO 67).
+* **Erledigt am 2026-11-01 (Hardware, ein Standort):** Syslog aller Geräte an Graylog 7.0, LibreNMS liest
+  ihn über die Graylog-API je Gerät, DNS-Abfrage-Log (68) in eigenem Stream mit einer Woche Aufbewahrung –
+  Admin-Guide 8.15, kein Code. Damit erledigt: offener Syslog-Punkt von 54/D99 (Schwere richtig: warning 4,
+  info 6, error 3) und der Syslog-Weg von 68; 22 (Disk-Logging) bleibt unnötig – der Grund eines
+  fehlgeschlagenen Applys stand vor dem Rollback-Neustart in Graylog. Neu: 70 (Umlaute im Syslog).
 * **Umgesetzt am 2026-10-31:** 68 (D101) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
   Weiterleitung, Abfrage-Log) und 69 (D102) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
   402, `e2e-vrrp.sh` 137, grün. Hardware an einem Standort (vier Router, VRRP): D101 v90, D102 v91 – Freischaltung
-  aus dem Client-VLAN binnen 3 s, dauerhaft machen und löschen als Admin ok. Offen: Syslog-Weg des Abfrage-Logs (68).
+  aus dem Client-VLAN binnen 3 s, dauerhaft machen und löschen als Admin ok. ~~Offen: Syslog-Weg des Abfrage-Logs (68).~~ Erledigt 2026-11-01 (Graylog, 8.15).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   D54), 39 (Steering je Band + Mindestsignal, D55).
@@ -101,7 +106,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   den Kosten von `$cfmWifiScan`, Kanalvorschlag für neue Zigbee-/Thread-Netze, Kanalsatz 1/5/9; offen
   bleibt nur, Energie-Messungen der Koordinatoren einzubeziehen.
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
-  – ein externer Syslog-Server ist geplant).
+  – ein externer Syslog-Server ist geplant; *seit 2026-11-01 an einem Standort in Betrieb, Graylog 8.15*).
 * **Erledigt am 2026-10-13 nachmittags:** RAM-Log ohne `system,info` (D79): Nach einem Framework-Update
   bestand der Puffer des Managers zur Hälfte aus Skript-Quelltext (RouterOS loggt Konfig-Änderungen samt
   Wert); Schlüssel `logMemory` in `global.rsc`.
@@ -267,8 +272,10 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
   Master-SSID: Ausfall nur für die Dauer des Applys plus höchstens 30 s, Log `meldet nach dem Push Secrets v0`.
 * **SNMPv3 (D99)** gegen LibreNMS – *SNMP bestanden 2026-10-30* (10 Geräte, RouterOS 7.25, LibreNMS 26.6.1: authPriv
-  SHA256/AES über die MGMT-Adresse, sysLocation aus Hostfile mit Umlauten, danach Probelauf 0/0/0). Offen: Syslog im
-  RFC-Format (Schwere richtig einsortiert?).
+  SHA256/AES über die MGMT-Adresse, sysLocation aus Hostfile mit Umlauten, danach Probelauf 0/0/0). ~~Offen: Syslog im
+  RFC-Format (Schwere richtig einsortiert?)~~ – *bestanden 2026-11-01* über Graylog 7.0: Facility `daemon`, Schwere
+  aus dem Topic (warning 4, info 6, error 3), Zeit Ortszeit ohne Zone (Input-Zeitzone setzen), `source` = Identity;
+  LibreNMS ordnet über den sysName zu. Befund: Nicht-ASCII-Bytes kommen als `?` an (70).
 * **Bandbreitenlimit (D97)** – *Grundtest bestanden 2026-10-28/29* (CRS418, ein Client: 19,8 Mbit/s bei
   `limitClient` 20M, Queue bremst in beiden Richtungen, keine Gast-Verbindung im Fasttrack). Offen: zwei Clients
   gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der MikroTik-Doku – Ausnahme kurz
@@ -515,7 +522,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Release braucht dann `force=yes` (Henne-Ei; künftig Prüfer aus dem neuen Archiv laden).
 22. **Fehlgeschlagener Apply löst über den Watchdog einen Reboot aus (Design-Falle, kein Bug)** –
     *Disk-Logging zurückgestellt (2026-10-01): Ein externer Syslog-Server ist geplant; den Grund eines
-    Rollbacks meldet der Agent schon vor dem Neustart (`res` in `$cfmStatus`).* –
+    Rollbacks meldet der Agent schon vor dem Neustart (`res` in `$cfmStatus`).* *Bestätigt 2026-11-01:* Bei einem
+    gescheiterten Apply (Objekt von Hand angelegt, `entry already exists`) stand „Apply vN fehlgeschlagen …“ als
+    Fehler im Syslog (Graylog), bevor der Rollback das Gerät neu startete. –
     Hardware-Befund, 2026-09-22: ein ungültiges RouterOS-Property (`local-forwarding` im
     WLAN-Datapath – ein Feld des alten CAPsMAN `/caps-man`, das es im wifi-Paket nicht gibt; RouterOS
     lehnt es als "bad parameter" ab) ließ `$cfmImportAll` auf
@@ -957,7 +966,7 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     2026-10-30* (Befunde: hAP be³ meldet nur CPU-Temperatur und -Takt, keine Spannung/Leistung – die liefert der
     PoE-Switch je Port als Sensor; der CAPsMAN (wifi-Paket, 7.25) zeigt unter `…14988.1.1.1` nur drei Zähler des alten
     `wireless`-Pakets mit 0, keine Clients – Signal/SSID bleiben bei `$cfmFind`/cfm-Monitor; direkt am CAP noch
-    ungeprüft). **Offen:** Syslog; Geräte per LibreNMS-API aus dem Inventar anlegen (Nutzer: später; von Hand geht
+    ungeprüft). ~~**Offen:** Syslog~~ (*2026-11-01 über Graylog, LibreNMS liest mit, 8.15*); **Offen:** Geräte per LibreNMS-API aus dem Inventar anlegen (Nutzer: später; von Hand geht
     `lnms device:add --v3` mit den v3-Daten aus den Einstellungen, Admin-Guide 8.12). – LibreNMS übernimmt Verlauf und
     Messwerte (FDB/ARP mit Suche, LLDP-Karte, Port-Graphen, Alerts) und wird der geplante externe
     Syslog-Server (22). Rolle `base`: SNMPv3 authPriv nur von der LibreNMS-Adresse, Freigabe UDP 161 im
@@ -1189,8 +1198,10 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Gateway VIP. **Ziel danach:** Transfernetz für den Internet-Router (dann VIP für alle, zweiter Anschluss als
     Backup möglich), der Schalter entfällt.
 68. **DNS der Router: Upstream, Adblock, Ausnahmen, Weiterleitung je Domain, Abfrage-Log** (Wunsch des Nutzers,
-    2026-10-31) – *umgesetzt 2026-10-31 (D101):* optionale `dns.rsc` (Admin-Guide Kapitel 4). **Offen:**
-    Abfrage-Log über Syslog (Hardware: Adlisten laden und RAM auf vier Routern ok, 2026-10-31), danach die
+    2026-10-31) – *umgesetzt 2026-10-31 (D101):* optionale `dns.rsc` (Admin-Guide Kapitel 4). ~~**Offen:**
+    Abfrage-Log über Syslog~~ – *erledigt 2026-11-01:* `log.syslog=yes` an Graylog, eigener Stream per Regex auf
+    `query from`/`done query:`/`local query:`/`[adlist]`, Index-Set eine Woche (Admin-Guide 8.15; ein Router mit vielen
+    Clients ~4,6 Zeilen/s, ~270 MB Index am Tag). Hardware: Adlisten laden und RAM auf vier Routern ok, 2026-10-31. **Offen:** die
     Resolver-Container eines Standorts nach Parallelbetrieb abbauen; Selbstbedienung für Clients siehe 69;
     Namensschema der Standorte für `forward` (später, mit einem Standort-VPN der Router); DoH als Option.
 69. **DNS-Selbstbedienung für Clients: eigene Abfragen sehen, gesperrte Domain freischalten** (Wunsch des Nutzers,
@@ -1200,3 +1211,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Log-Zeilen in 2,3 s gelesen). Befund: Nach `$cfmSecret` verteilt erst der nächste Tick das Passwort – sofort
     mit `$cfmSecretPush host=` (Admin-Guide 8.14). **Offen:** `www-ssl` für die Anmeldung; befristete Freischaltung auch auf den anderen Routern (VRRP-Wechsel);
     `mgr-check.rsc` nähert sich der 60-KB-Grenze (55 KB) – beim nächsten Prüfblock aufteilen.
+70. **Umlaute im Syslog** (Befund 2026-11-01) – RouterOS 7.25 ersetzt beim Remote-Logging jedes Nicht-ASCII-Byte
+    durch `?` („Pr??fung ??? Ende“, Mitschnitt; DECISIONS, Hardware-Eigenheiten). cfm-Meldungen enthalten Umlaute und
+    Gedankenstriche („Apply vN fehlgeschlagen“ ist lesbar, „übersprungen“ nicht). Idee: Log-Texte des Agenten und
+    der Rollen auf ASCII umstellen (ue/ae/oe, `-`), zumindest die Meldungen ab Schwere warning. Offen, Entscheidung
+    des Nutzers.

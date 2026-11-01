@@ -138,6 +138,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Uplink aus zwei Kabeln (LACP), redundant über zwei Switches (MLAG) | Hostfile `bonds` bzw. `mlag.rsc` → `$cfmRelease … all=yes` |
 | Zeit für IoT-Geräte mit fest eingebautem NTP-Server | `"ntp"="redirect"` am VLAN → `$cfmRelease` (D93) |
 | Werbung/Tracker blocken, Ausnahmen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → `$cfmRelease` (D101) |
+| Syslog zentral (Graylog), DNS-Log mit kurzer Aufbewahrung, Meldungen je Gerät in LibreNMS | `global.rsc` `syslog`, `dns.rsc` `log.syslog` → `$cfmRelease`; Graylog/LibreNMS einrichten (Admin-Guide 8.15) |
 | Clients schalten gesperrte Domains selbst befristet frei | `dns.rsc` `self` → `$cfmRelease`, `$cfmSecret key=user.dns`; Lesezeichen „cfm“ → cfm-DNS (Admin-Guide 8.14, D102) |
 | Bandbreite eines Netzes begrenzen (z.B. Gast-WLAN) | `"limit"="50M/10M"`, optional `"limitClient"` je Client, am VLAN → `$cfmRelease` (D97) |
 | IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |

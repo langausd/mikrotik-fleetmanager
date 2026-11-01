@@ -70,7 +70,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
   mit SSID und Signal bei WLAN-Clients (8.11).
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
-und die Meldungen bei Zustandswechseln; Messwerte und Verlauf liefert LibreNMS über SNMPv3, 8.12), keine eigene grafische Oberfläche (Terminal-Befehle am
+und die Meldungen bei Zustandswechseln; Messwerte und Verlauf liefert LibreNMS über SNMPv3, 8.12; Syslog sammelt z.B. Graylog, 8.15), keine eigene grafische Oberfläche (Terminal-Befehle am
 Manager, dazu cfm-Editor, cfm-Monitor und cfm-DNS in WebFig über das Lesezeichen „cfm“, 8.1, 8.10, 8.14), keine RouterOS-Updates ohne deinen
 Befehl, und es konfiguriert nur, was die mitgelieferten Rollen abdecken. Alles andere bleibt
 unangetastet oder kommt über eigene Templates dazu.
@@ -230,8 +230,8 @@ irgendetwas ausgerollt wird.
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
 | `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, D62). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
 | `tz`, `ntp`, `dns` | Zeitzone, NTP/DNS für Nicht-Router (Router: `wan` im Hostfile) | |
-| `syslog` | Adresse eines Syslog-Servers, z.B. LibreNMS (8.12); leer = aus. RouterOS selbst nimmt keinen Syslog entgegen, auch der Manager nicht. Wird es geleert, entfernt der nächste Apply die Aktion `cfmremote` und ihre Einträge | leer (`new-site.py`) |
-| `syslogFormat` | Format an den Syslog-Server: `syslog` = RFC-Kopf mit Facility `daemon` und Schwere aus dem Topic (LibreNMS sortiert danach), `default` = RouterOS-eigenes Format (TODO 54). Ältere RouterOS-Versionen ohne `remote-log-format` bleiben beim eigenen | `syslog` |
+| `syslog` | Adresse eines Syslog-Servers, z.B. LibreNMS (8.12) oder Graylog (8.15); leer = aus. RouterOS selbst nimmt keinen Syslog entgegen, auch der Manager nicht. Wird es geleert, entfernt der nächste Apply die Aktion `cfmremote` und ihre Einträge | leer (`new-site.py`) |
+| `syslogFormat` | Format an den Syslog-Server: `syslog` = RFC-Kopf mit Facility `daemon` und Schwere aus dem Topic (LibreNMS sortiert danach), `default` = RouterOS-eigenes Format (TODO 54). Zeit ohne Zeitzone (`bsd-syslog`), das Topic selbst steht nicht in der Meldung. Ältere RouterOS-Versionen ohne `remote-log-format` bleiben beim eigenen | `syslog` |
 | `snmp` | SNMPv3 nur lesend für LibreNMS (8.12): `{"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"=…;"location"=…}`. Ohne `from` bleibt `/snmp` unangetastet | `{}` |
 | `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (D79). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
@@ -481,8 +481,9 @@ Die Router fragen `wan.dns` aus dem Hostfile und beantworten selbst nur die Name
 * `log`: Abfrage-Log je Client über das Topic `dns` (ohne `packet`): `query from <Client>: #<n> <Name> <Typ>`
   und `done query: #<n> <Name> <Antwort>` (gesperrt: nur der Name, bei PTR steht dort dafür die Antwort). `memory` = Zeilen im RAM-Puffer
   `cfmdns` (0 = aus, nichts auf Platte; ansehen mit `/log/print where buffer=cfmdns`), `syslog="yes"`
-  schickt dieselben Zeilen zusätzlich an den Syslog-Server aus `global.rsc` (dort z.B. eigener Stream mit
-  kurzer Aufbewahrung). Mit `packet` würde das Log etwa zehnmal so lang, deshalb nicht.
+  schickt dieselben Zeilen zusätzlich an den Syslog-Server aus `global.rsc` (Graylog: eigener Stream mit
+  kurzer Aufbewahrung, 8.15). Daneben stehen dort `local query: #<n> <Name> <Typ>` (Abfragen des Routers
+  selbst, z.B. Adlisten-Download, Update-Prüfung) und `[adlist] …` (Laden der Adlisten). Mit `packet` würde das Log etwa zehnmal so lang, deshalb nicht.
 * Mehrere Router mit VRRP bekommen dieselbe Einstellung, jeder lädt die Adlisten selbst.
 * `$cfmCheck` prüft Adressen, Größe, URLs, Domainnamen und die Log-Schalter und warnt bei unbekannten
   Schlüsseln. `$cfmShow host=<router>` zeigt eine Zusammenfassung. Fehlen die Einträge, räumt der nächste
@@ -1092,6 +1093,7 @@ wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `
 | Server oder Switch redundant an zwei Switches | Paar in `mlag.rsc`, Ports aus den Hostfiles nehmen, Gegenstelle mit LACP-Bond → Release mit `all=yes` im Wartungsfenster (D75) |
 | Werbung/Tracker blocken, Ausnahme eintragen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → Release (D101) |
 | Clients sollen gesperrte Domains selbst sehen und freischalten | `dns.rsc` `self` (Zonen, `deny`), `$cfmSecret key=user.dns`, Release, Secret-Push; Lesezeichen `cfm` → cfm-DNS (D102) |
+| Syslog aller Geräte zentral sammeln, DNS-Log eine Woche aufheben, in LibreNMS je Gerät ansehen | Graylog einrichten (8.15), `global.rsc` `syslog`, ggf. `dns.rsc` `log.syslog=yes` → Release |
 | IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
 | Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
 | IoT-Gerät soll selbst einen Dienst im LAN erreichen (z.B. MQTT-Broker) | Liste in `allow` mit Adresse und Port, z.B. `"broker"={"192.168.20.30:tcp/1883"}`, `policy` `"iot"="allow:broker"` ohne NAT-Kennzeichen → Release. Abfragen aus dem LAN ins IoT-Netz brauchen keine Freigabe (`lan` → `iot`) |
@@ -1535,7 +1537,7 @@ Authentication“ bzw. `snmp.v3`, neuere Versionen: Secrets und `snmp.default_cr
 `lnms device:add --v3 -d '{{ $sysName_fallback }}' <adresse>` die Geräte ohne Passwort auf der Kommandozeile an.
 Fällt `snmp` weg, entfernt der nächste Apply die Community; SNMP selbst bleibt eingeschaltet,
 antwortet aber niemandem mehr (`public` bleibt aus). Syslog: `syslog` auf die MGMT-Adresse des Servers,
-`syslogFormat` `syslog` (Standard).
+`syslogFormat` `syslog` (Standard). Mit Graylog als Syslog-Server zeigt LibreNMS dessen Meldungen je Gerät (8.15).
 
 ### 8.13 Internet-Router im LAN: VIP als Gateway mit `asymRouting` (D100)
 
@@ -1636,6 +1638,65 @@ Freischaltung nach 3 s wirksam, dauerhaft machen und löschen ok.
 **Wichtig:** Eine Freischaltung gilt für alle Clients dieses Routers und nur auf ihm; fällt die VIP auf
 einen anderen Router, ist eine befristete dort nicht da. Clients mit „DNS über HTTPS“ im Browser gehen am
 Router vorbei – ihre Abfragen sieht er nicht, sperrt sie aber auch nicht. Sicherheit: 10.
+
+### 8.15 Graylog: zentraler Syslog, LibreNMS liest mit (TODO 68)
+
+Graylog sammelt den Syslog aller Geräte, durchsucht ihn und hält ihn je Stream unterschiedlich lange –
+etwa das DNS-Abfrage-Log (4. Datenmodell, `dns.rsc` `log`) nur eine Woche. LibreNMS zeigt die Meldungen je
+Gerät (Gerät → Logs → Graylog). Getestet mit Graylog 7.0 (Data Node, MongoDB im selben Container) und LibreNMS.
+Wie bei LibreNMS bekommt der Server eine **zweite Schnittstelle im MGMT-VLAN** (feste Adresse, ohne Gateway);
+nur darüber kommt der Syslog an.
+
+```
+# global.rsc, dann releasen
+"syslog"="192.168.10.32";
+# dns.rsc, wenn das Abfrage-Log mit soll
+"log"={"memory"=20000;"syslog"="yes"};
+```
+
+**Graylog, einmalig in der Oberfläche (Port 9000):**
+
+1. *Input:* System → Inputs → „Syslog UDP“ → „Launch new input“. Bind address = MGMT-Adresse des Servers,
+   Port `514` (die systemd-Unit des Pakets hat `CAP_NET_BIND_SERVICE`), „Store full message“ an, Time Zone
+   wie `tz` in `global.rsc` – RouterOS schickt Ortszeit ohne Zone. Graylog 7 legt den Input im
+   Einrichtungsmodus an: „Setup Input“ → Default Stream → „Start Input“, danach muss er „Running“ zeigen.
+2. *Lese-User für LibreNMS:* System → Users and Teams → „Create user“, z.B. `librenms`, Haken
+   **Service Account** (keine Anmeldung an der Oberfläche; Basic Auth an der API geht weiter), Rolle `Reader`
+   (bekommt jeder User automatisch). `Reader` darf in Graylog 7 nicht suchen (403) – die Rolle dafür gibt es
+   nur über die API, auf dem Server (fragt nach dem Admin-Passwort):
+   ```
+   curl -u admin -H 'Content-Type: application/json' -H 'X-Requested-By: cli' \
+     -X POST http://127.0.0.1:9000/api/roles \
+     -d '{"name":"LibreNMS-Read","description":"Suche für LibreNMS","permissions":["searches:relative","searches:absolute","searches:keyword"],"read_only":false}'
+   ```
+   Dann dem User die Rolle `LibreNMS-Read` geben und den Default Stream mit ihm teilen (Streams → „Share“,
+   Viewer).
+3. *DNS-Log (optional):* System → Indices → „Create index set“ (Präfix z.B. `dns`, Data Tiering max. 7 Tage),
+   dann Streams → „Create stream“ mit diesem Index-Set und „Remove matches from Default Stream“. Regel
+   (Streams → More → Manage Rules → „1: Intake“ → „Create Rule“): Feld `message`, „match regular expression“,
+   `^\S+ (query from |done query: |local query: |\[adlist\])`. Diesen Stream **nicht** mit `librenms`
+   teilen, sonst füllen die DNS-Zeilen die Log-Seiten der Router. Menge: ein Router mit vielen Clients
+   schreibt einige Zeilen pro Sekunde (gemessen ~4,6/s, ~270 MB Index am Tag).
+
+**LibreNMS** (auf dem Server, als User `librenms`):
+
+```
+lnms config:set graylog.server http://<Graylog-Adresse>
+lnms config:set graylog.port 9000
+lnms config:set graylog.username librenms
+lnms config:set graylog.version 2.1        # Auswahl 2.0/2.1/other; 2.1 = „2.1 oder neuer“
+lnms config:set graylog.timezone Europe/Berlin
+lnms config:set graylog.match-any-address true
+```
+
+Das Passwort trägt man in der Oberfläche ein (Global Settings → External → Graylog), nicht auf der
+Kommandozeile.
+
+**Was ankommt:** `source` ist die Identity des Geräts, `level` die Schwere aus dem Topic (warning = 4,
+info = 6), Facility `daemon`; die Meldung beginnt mit der Identity. Das Topic selbst überträgt RouterOS
+nicht – Streams unterscheiden deshalb am Text. Umlaute und andere Nicht-ASCII-Zeichen ersetzt RouterOS beim
+Versand durch `?` (TODO 70). LibreNMS ordnet die Meldungen über den sysName zu (Groß-/Kleinschreibung egal). **Probe:** auf einem Gerät `:log warning "Test Graylog"`, nach wenigen Sekunden
+steht die Zeile in LibreNMS beim Gerät (Logs → Graylog) und in Graylog unter Search.
 
 ---
 
@@ -1947,6 +2008,9 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | Log `cfm: authorized_keys.<user>: Key N nicht angelegt …`, danach „vorhandene Keys bleiben stehen“ | Zeile ist kein Key, den RouterOS annimmt (nur rsa, ed25519, ed25519-sk) | Zeile korrigieren, releasen; bis dahin entfernt cfm für diesen User keine Keys |
 | Warnung „Paket wifi-qcom-ac“ (Log des AP bzw. `$cfmCheck`) | AP mit altem Treiber übernimmt das VLAN einer SSID nicht vom CAPsMAN (TODO 23) | Gerät nicht als `ap` unter cfm betreiben |
 | Secret-Push: „Identitätsprüfung fehlgeschlagen“ | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
+| Graylog: Input „Not running“, auf UDP 514 lauscht nichts (`ss -ulnp`) | Graylog 7 legt Inputs im Einrichtungsmodus an | Inputs → „Setup Input“ durchklicken, „Start Input“ (8.15) |
+| LibreNMS → Graylog: „HTTP 403 Not authorized“ bei der Suche | Rolle `Reader` darf in Graylog 7 nicht suchen | Rolle mit `searches:*` per API anlegen und zuweisen, Stream als Viewer teilen (8.15) |
+| Release: ein Gerät `bad vN failed …: entry already exists`, danach Neustart | Objekt von Hand angelegt (z.B. Test), das der Release nun per `$cfmEnsure` anlegt; der Agent rollt mit `pre.backup` zurück, das startet das Gerät neu | Handobjekt löschen, `$cfmPush host=<name> force=yes`. Künftig Handobjekte vor dem Release entfernen |
 | cfm-DNS: Anmeldung als `dns` scheitert | User noch aus (Passwort nicht verteilt), Client nicht in `self.zones`, oder `http://` des Gateways nicht erreichbar | `$cfmSecretPush host=<router>` (sonst erst im nächsten Tick); `/user/print where name=dns`; `/ip/service/print` (`www`, `available-from`) |
 | Freischaltung im Lesezeichen ok, Seite bleibt gesperrt | Browser nutzt „DNS über HTTPS“ oder einen anderen DNS-Server; Cache des Clients; anderer Router hält die VIP | DoH im Browser aus; `ipconfig /flushdns` bzw. Browser neu; `/ip/dns/static/print where comment~"dnsui"` auf dem Master |
 | Jeder Apply warnt „dauerhafte Freischaltungen … nach dns.rsc allow übernehmen“ | `dnsui:perm`-Einträge aus dem Lesezeichen | Domain in `dns.rsc` `allow`, releasen, Eintrag im Lesezeichen löschen – oder nur löschen |

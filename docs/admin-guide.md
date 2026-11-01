@@ -1757,6 +1757,8 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   **Dateiinhalte nicht:** `/file/add`/`/file/set` mit `contents=` landen vollständig im Log. cfm überträgt
   deshalb keine Schlüssel als Dateiinhalt (der Rekey eines Managers exportiert den Host-Key neu) und kopiert
   das Release-Archiv per `/file/copy`. Eigene `.post.rsc` und Templates: keine Geheimnisse per `/file/add`.
+  Ändert ein Release Skripte (Agent, Manager-Bibliothek, SSID-Schalter), steht auch `/system script set`
+  mit dem ganzen Quelltext im Log; cfm-Skripte enthalten keine Geheimnisse, eigene Skripte sollten es auch nicht.
 * **Nachbarsuche:** LLDP/MNDP/CDP läuft auch an Access-Ports; Endgeräte sehen Modell, Version und
   Identität des Switches (bewusste Entscheidung für den Netzplan).
 * **PPSK:** Passphrasen liegen nur im Vault und kommen per Secret-Push. Wer eine Passphrase kennt,

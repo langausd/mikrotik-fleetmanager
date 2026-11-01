@@ -84,7 +84,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   info 6, error 3) und der Syslog-Weg von 68; 22 (Disk-Logging) bleibt unnötig – der Grund eines
   fehlgeschlagenen Applys stand vor dem Rollback-Neustart in Graylog. Neu: 70 (Umlaute im Syslog), 71
   (Dateiinhalte im Syslog) – *beide am selben Tag umgesetzt (D103):* Release-Archiv per `/file/copy`, Manager-Rekey
-  ohne privaten Schlüssel als Dateiinhalt, Log-Meldungen in ASCII mit `rsc-check`-Regel `log-ascii`. Labor 7.25: `e2e.sh` 405, grün.
+  ohne privaten Schlüssel als Dateiinhalt, Log-Meldungen in ASCII mit `rsc-check`-Regel `log-ascii`. Labor 7.25: `e2e.sh` 405, grün. Hardware
+  2026-11-02 (v95/v96): Release-Syslog des Managers ~1250 → ~100 Zeilen.
 * **Umgesetzt am 2026-10-31:** 68 (D101) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
   Weiterleitung, Abfrage-Log) und 69 (D102) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
   402, `e2e-vrrp.sh` 137, grün. Hardware an einem Standort (vier Router, VRRP): D101 v90, D102 v91 – Freischaltung

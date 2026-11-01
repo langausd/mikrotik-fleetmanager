@@ -181,7 +181,7 @@
   :if ([:typeof $p] = "nil") do={ :error "Manifest ohne MAC - verworfen" }
   :local body [:pick $raw 0 $p]
   :local mac [:pick $raw ($p + 7) ($p + 135)]
-  :if ([:convert ($key . [:convert $body transform=sha512 to=hex]) transform=sha512 to=hex] != $mac) do={ :error "Manifest-MAC ungültig - verworfen" }
+  :if ([:convert ($key . [:convert $body transform=sha512 to=hex]) transform=sha512 to=hex] != $mac) do={ :error "Manifest-MAC ungueltig - verworfen" }
   :return [:deserialize from=json $body]
 }
 
@@ -274,7 +274,7 @@
               }
             }
           }
-          $cfmLog ("(" . $cur . " im Probelauf übersprungen, " . $n . " Objekte daraus beibehalten)")
+          $cfmLog ("(" . $cur . " im Probelauf uebersprungen, " . $n . " Objekte daraus beibehalten)")
         } else={
           :local pre ({})
           :if ($cur ~ "\\.post\\.rsc\$") do={
@@ -318,7 +318,7 @@
 # Sitzung (Scheduler, Push per SSH) der Lauf kam. Ein übersprungener Lauf, z.B. ein Push
 # während eines Applys, wird nach 30 s nachgeholt; ein erzwungener bleibt dabei erzwungen.
 :if ([:len [/system/script/job/find where script="cfm-agent"]] > 1 and $arg != "wd") do={
-  :log info "cfm: Agent läuft bereits – neuer Versuch in 30 s"
+  :log info "cfm: Agent laeuft bereits - neuer Versuch in 30 s"
   :put "cfm: Agent läuft bereits - bitte später erneut"
   :if ([:len [/system/scheduler/find where name="cfm-agent-retry"]] = 0) do={
     :local ev "/system/scheduler/remove [find where name=cfm-agent-retry]; /system script run cfm-agent"
@@ -348,7 +348,7 @@
     :local kid [/ppp/secret/find where name="cfm:key"]
     :set key [/ppp/secret/get $kid password]
     :set sv [/ppp/secret/get $kid comment]
-  } do={ :error "kein Geräteschlüssel cfm:key – Gerät ist nicht enrolled (\$cfmEnroll am Manager)" }
+  } do={ :error "kein Geraeteschluessel cfm:key - Geraet ist nicht enrolled (\$cfmEnroll am Manager)" }
   :local st ({})
   :onerror e in={ :set st [:deserialize from=json [/file/get ($dir . "/state.json") contents]] } do={}
 
@@ -409,7 +409,7 @@
     } do={}
     :if ([:len $ow] > 0) do={
       # :put für das Terminal, aus dem der Agent gestartet wurde; der Fehler selbst landet im Log
-      :local m ("kein Manager erreichbar - der Agent läuft als " . $ow . ", der SFTP-Schlüssel gehört cfm: am Manager \$cfmPush host=" . [/system/identity/get name] . " verwenden")
+      :local m ("kein Manager erreichbar - der Agent laeuft als " . $ow . ", der SFTP-Schluessel gehoert cfm: am Manager \$cfmPush host=" . [/system/identity/get name] . " verwenden")
       :put $m
       :error $m
     }
@@ -448,11 +448,11 @@
     /system/scheduler/remove [find where name="cfm-watchdog"]
     :if ([:len [:tostr ($st->"pending")]] > 0) do={
       :if ($mgr != "") do={
-        :log info ("cfm: Watchdog – Manager erreichbar, v" . ($st->"pending") . " bestätigt")
+        :log info ("cfm: Watchdog - Manager erreichbar, v" . ($st->"pending") . " bestaetigt")
         :set ($st->"pending")
         $cfmWrite ($dir . "/state.json") [:serialize to=json $st]
       } else={
-        :log error ("cfm: Watchdog – kein Manager erreichbar nach Apply v" . ($st->"pending") . " -> Rollback")
+        :log error ("cfm: Watchdog - kein Manager erreichbar nach Apply v" . ($st->"pending") . " -> Rollback")
         :set ($st->"bad") ($st->"pending")
         :set ($st->"pending")
         :set ($st->"res") "rollback-watchdog"
@@ -483,7 +483,7 @@
   :if ($arg = "force") do={ :set need true }
   :if ($need and ($st->"bad") = $v and $arg != "force") do={
     :set need false
-    :log warning ("cfm: v" . $v . " ist als fehlerhaft markiert – übersprungen (force am Manager: \$cfmPush host=" . ($mf->"name") . " force=yes)")
+    :log warning ("cfm: v" . $v . " ist als fehlerhaft markiert - uebersprungen (force am Manager: \$cfmPush host=" . ($mf->"name") . " force=yes)")
   }
 
   :local applied false
@@ -598,14 +598,14 @@
          :set ($st->"upa") $tag
          :set ($st->"upf") ({})
          :set ($st->"upg") ("Platz fehlt: " . ($free / 1024) . " KB frei, " . ($req / 1024) . " KB nötig")
-         :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($req / 1024) . " KB nötig) - nichts geladen")
+         :log error ("cfm: RouterOS " . $tv . ": zu wenig Platz (" . ($free / 1024) . " KB frei, " . ($req / 1024) . " KB noetig) - nichts geladen")
         } else={
          # Pakete in die Wurzel laden: dort installiert RouterOS sie beim nächsten Start
          :foreach pf in=($ro->"files") do={
            :local fn ($pf->0)
            :if ([$cfmFetch r=(($ro->"path") . "/" . $fn) l=$fn prefer=$mgr abs="yes"] = "") do={ :error ("Paket-Download fehlgeschlagen: " . $fn) }
            :delay 1s
-           :if ([/file/get [find where name=$fn] size] != [:tonum ($pf->1)]) do={ :error ("Paketgröße stimmt nicht: " . $fn) }
+           :if ([/file/get [find where name=$fn] size] != [:tonum ($pf->1)]) do={ :error ("Paketgroesse stimmt nicht: " . $fn) }
            :set ($fl->[:len $fl]) $fn
          }
          :set ($st->"upf") $fl
@@ -632,7 +632,7 @@
           } else={
             /system/scheduler/add name=cfm-upgrade start-date=[:pick $at 0 10] start-time=([:pick $at 11 16] . ":00") interval=0 comment=$tag on-event=("/system/scheduler/remove [find where name=cfm-upgrade]; " . $act)
             :set ($st->"upg") ("geplant " . $tv . " am " . $at)
-            :log warning ("cfm: RouterOS " . $tv . " geplant für " . $at)
+            :log warning ("cfm: RouterOS " . $tv . " geplant fuer " . $at)
           }
         } else={
           :set ($st->"upg") ("Neustart für " . $tv)
@@ -708,7 +708,7 @@
   $cfmWrite ($dir . "/state.json") [:serialize to=json $st]
   $cfmReport st=$st serial=$serial target=$v sv=$sv now=$now exp=$exp
   :if ([:len $boot] > 0) do={
-    :log warning ("cfm: Neustart für RouterOS-Update (" . $boot . ")")
+    :log warning ("cfm: Neustart fuer RouterOS-Update (" . $boot . ")")
     :delay 2s
     :execute $boot
   }

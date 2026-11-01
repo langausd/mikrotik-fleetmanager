@@ -257,7 +257,7 @@
         :local ok [:pick $oc 4 $os]
         :if ($ok != $k and ($cfmIdx->$m->$ok) = $cid) do={ :set ($cfmIdx->$m->$ok) }
       }
-      $cfmLog ("übernommen: " . $m . " " . $k)
+      $cfmLog ("uebernommen: " . $m . " " . $k)
     }
   }
   :if ([:typeof $id] = "nothing") do={
@@ -279,7 +279,7 @@
     :set ($cfmStat->"set") (($cfmStat->"set") + 1)
     :local s ""
     :foreach kk,vv in=$ch do={ :set s ($s . " " . $kk); :if ($cfmDry = true) do={ :set s ($s . "=" . [$cfmShort $vv]) } }
-    $cfmLog ("geändert: " . $m . " " . $k . ":" . $s)
+    $cfmLog ("geaendert: " . $m . " " . $k . ":" . $s)
   }
   :set ($cfmIdx->$m->$k) $id
   :return $id
@@ -371,7 +371,7 @@
   }
   :set ($cfmStat->"add") (($cfmStat->"add") + [:len $l])
   :set ($cfmStat->"rem") (($cfmStat->"rem") + [:len $old])
-  $cfmLog ("Regelblock " . $m . " " . $k . " neu aufgebaut (" . [:len $l] . " Einträge)")
+  $cfmLog ("Regelblock " . $m . " " . $k . " neu aufgebaut (" . [:len $l] . " Eintraege)")
   :return true
 }
 

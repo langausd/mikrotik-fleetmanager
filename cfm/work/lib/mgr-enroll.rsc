@@ -107,7 +107,9 @@
 #     User cfm ALLER aufgenommenen Geräte (er ist dort der Trust-Key, D35); fehlt auch nur eines,
 #     Abbruch: $cfmTrust stellt den alten Stand her, der alte Schlüssel gilt weiter.
 #  3. Gerät: neuen privaten Schlüssel importieren (cfm; bei Managern jeder User mit privatem Schlüssel,
-#     das sind alles Kopien des Host-Keys), die alten entfernen.
+#     das sind alles Kopien des Host-Keys), die alten entfernen. Ein Manager exportiert dafür seinen
+#     Host-Key je User neu (der Import verbraucht die Datei) - nie /file/add mit dem Schlüssel: RouterOS
+#     protokolliert Dateiinhalte vollständig (system,info), mit Syslog ginge er übers Netz (TODO 71).
 #  4. meta/keys/<name>.pem, cfmd-<name> nur noch mit dem neuen Schlüssel; Manager: $cfmTrust (alter
 #     Schlüssel überall weg), Bootstrap-Datei neu. Der Backup-Manager zieht mit seinem nächsten Spiegel nach.
 :global cfmRekeySsh do={
@@ -154,7 +156,7 @@
   # 3) Gerät stellt um
   :local sc ""
   :if ($mgr) do={
-    :set sc (":local us ({}); :foreach i in=[/user/ssh-keys/private/find] do={ :set (\$us->[/user/ssh-keys/private/get \$i user]) 1 }; :local ok true; :foreach u,x in=\$us do={ :local old [/user/ssh-keys/private/find where user=\$u]; /file/add name=cfm-rk_ed25519.pem contents=\"" . [$cfmPemEsc $prv] . "\"; :delay 300ms; :onerror e in={ /user/ssh-keys/private/import user=\$u private-key-file=cfm-rk_ed25519.pem; :foreach i in=\$old do={ /user/ssh-keys/private/remove \$i } } do={ :set ok false }; :onerror e in={ /file/remove [find where name~\"^cfm-rk\"] } do={} }; :if (\$ok) do={ :put rk-ok } else={ :put rk-fail }")
+    :set sc (":local us ({}); :foreach i in=[/user/ssh-keys/private/find] do={ :set (\$us->[/user/ssh-keys/private/get \$i user]) 1 }; :local ok true; :foreach u,x in=\$us do={ :local old [/user/ssh-keys/private/find where user=\$u]; :onerror e in={ /file/remove [find where name~\"^cfm-rk\"] } do={}; /ip/ssh/export-host-key key-file-prefix=cfm-rk; :delay 1s; :onerror e in={ /user/ssh-keys/private/import user=\$u private-key-file=cfm-rk_ed25519.pem; :foreach i in=\$old do={ /user/ssh-keys/private/remove \$i } } do={ :set ok false }; :onerror e in={ /file/remove [find where name~\"^cfm-rk\"] } do={} }; :if (\$ok) do={ :put rk-ok } else={ :put rk-fail }")
   } else={
     :set sc (":local old [/user/ssh-keys/private/find where user=cfm]; :onerror e in={ /user/ssh-keys/private/import user=cfm private-key-file=cfm-rk_ed25519.pem; :foreach i in=\$old do={ /user/ssh-keys/private/remove \$i }; :put rk-ok } do={ :put (\"rk-fail \" . \$e) }; :onerror e in={ /file/remove [find where name~\"^cfm-rk\"] } do={}")
   }
@@ -177,7 +179,7 @@
     :if ([:len [:tostr ($cfmG->"hook"->"host")]] > 0) do={ :put ("Hinweis: Git-Host " . ($cfmG->"hook"->"host") . " kennt noch den alten Manager-Schlüssel - neuen aus meta/keys/" . $host . ".pem eintragen (ssh-keygen -i -m PKCS8 -f <datei>)") }
   }
   :put ("Rekey SFTP " . $host . ": neuer SFTP-/Host-Schlüssel aktiv")
-  :log info ("cfm: SFTP-/Host-Schlüssel " . $host . " erneuert")
+  :log info ("cfm: SFTP-/Host-Schluessel " . $host . " erneuert")
   :return true
 }
 

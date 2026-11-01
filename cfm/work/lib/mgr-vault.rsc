@@ -63,13 +63,13 @@
         :local o [:tostr ([$cfmExec ip=($d->"ip") cmd=$wc]->"output")]
         :if ([:len $o] >= 44 and [:pick $o 43 44] = "=") do={
           :set priv [:pick $o 0 44]
-          :log info ("cfm: WireGuard-Schlüssel der Router von " . $n . " übernommen (D84)")
+          :log info ("cfm: WireGuard-Schluessel der Router von " . $n . " uebernommen (D84)")
         }
       }
     }
   }
   :local kp [$cfmWgKeyPair $priv]
-  :if ([:len $priv] = 0) do={ :log info "cfm: WireGuard-Schlüssel der Router neu erzeugt (D84)" }
+  :if ([:len $priv] = 0) do={ :log info "cfm: WireGuard-Schluessel der Router neu erzeugt (D84)" }
   :if ($neu) do={
     $cfmVaultSet "wg.admin" ($kp->"priv")
     :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
@@ -94,7 +94,7 @@
    :if (([:len $host] = 0 or $host = $name) and [$cfmEnrolled $d]) do={
     # Identitätsprüfung: Secrets nur an ein Gerät, das seinen Geräteschlüssel kennt
     :if (![$cfmChallenge ip=($d->"ip") serial=($d->"serial")]) do={
-      :log warning ("cfm: Secret-Push " . $name . ": Identitätsprüfung fehlgeschlagen (Geräteschlüssel falsch oder Gerät nicht erreichbar) - übersprungen")
+      :log warning ("cfm: Secret-Push " . $name . ": Identitaetspruefung fehlgeschlagen (Geraeteschluessel falsch oder Geraet nicht erreichbar) - uebersprungen")
     } else={
       :local c ":local ok true;"
       :local upw false
@@ -195,7 +195,7 @@
       :set c ($c . ":if (\$ra) do={ :execute \":global cfmArg \\\"force\\\"; /system script run cfm-agent\"; :log info \"cfm: CAPsMAN per Secret-Push eingeschaltet - Apply fuer die eigenen Radios\" }; :put \$ok")
       :local r [$cfmExec ip=($d->"ip") cmd=$c]
       :if (($r->"output") ~ "true") do={ :set done ($done + 1); :log info ("cfm: Secrets v" . $vv . " -> " . $name) } else={
-        :log warning ("cfm: Secret-Push " . $name . " unvollständig/fehlgeschlagen: " . [:pick ($r->"output") 0 120]) }
+        :log warning ("cfm: Secret-Push " . $name . " unvollstaendig/fehlgeschlagen: " . [:pick ($r->"output") 0 120]) }
     }
    }
   }
@@ -263,7 +263,7 @@
           $cfmVaultSet ("mac." . ($d->"serial")) $k
           :set n ($n + 1)
           :put ("Rekey " . $name . ": neuer Geräteschlüssel aktiv")
-          :log info ("cfm: Geräteschlüssel " . $name . " erneuert")
+          :log info ("cfm: Geraeteschluessel " . $name . " erneuert")
         } else={ :put ("Rekey " . $name . ": gerade nicht möglich (Apply läuft oder nicht erreichbar), später erneut: " . [:pick ($r->"output") 0 80]) }
       }
     }

@@ -108,7 +108,7 @@
       :foreach x in=[/file/find where name~("^" . $vd . "/")] do={ /file/remove $x }
       :onerror e in={ /file/remove [find where name=$vd] } do={}
       :set n ($n + 1)
-      :log info ("cfm: Paketversion " . $ver . " gelöscht (nicht mehr im Einsatz)")
+      :log info ("cfm: Paketversion " . $ver . " geloescht (nicht mehr im Einsatz)")
     }
   }
   :return $n
@@ -224,7 +224,7 @@
       :put ("Auftrag " . $name . ": upgrade auf " . $ver . " über " . $vt . " (" . $w . ")")
       $cfmPush host=$name
     }
-    :log info ("cfm: RouterOS-Auftrag " . $ver . " über " . $vt . " für " . [:len $ok] . " Geräte")
+    :log info ("cfm: RouterOS-Auftrag " . $ver . " ueber " . $vt . " fuer " . [:len $ok] . " Geraete")
     :return ""
   }
 
@@ -293,7 +293,7 @@
     :put ("Auftrag " . $name . ": " . ($pl->"how") . " auf " . $ver . " (" . $w . ")")
     $cfmPush host=$name
   }
-  :log info ("cfm: RouterOS-Auftrag " . $ver . " für " . [:len $plan] . " Geräte")
+  :log info ("cfm: RouterOS-Auftrag " . $ver . " fuer " . [:len $plan] . " Geraete")
   :return ""
 }
 

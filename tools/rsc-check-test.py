@@ -195,5 +195,23 @@ class Dateien(unittest.TestCase):
                 self.assertEqual(list(rc.files_from_git(d, staged)), [("cfm/work/lib/a.rsc", b":put 1\n", True)])
 
 
+class LogAscii(unittest.TestCase):
+    def test_fund(self):
+        self.assertEqual(lines(':log info "cfm: läuft"\n', "cfm/work/lib/a.rsc"), [(1, "log-ascii")])
+        self.assertEqual(rules('$cfmLog ("geändert: " . $k)\n', "cfm/work/lib/a.rsc"), ["log-ascii"])
+        self.assertEqual(rules(':log warning ("cfm: a – b")\n', "cfm/work/roles/r.rsc"), ["log-ascii"])
+        # außerhalb von cfm/work/ (Overlay, Bootstrap) nur Hinweis
+        f = rc.check_file("site/hosts/sw1.post.rsc", '$cfmWarn "Prüfung"\n'.encode())
+        self.assertEqual([(x.rule, x.level) for x in f], [("log-ascii", rc.HINWEIS)])
+
+    def test_kein_fund(self):
+        p = "cfm/work/lib/a.rsc"
+        self.assertEqual(rules(':log info "cfm: laeuft"\n', p), [])
+        self.assertEqual(rules(':put "läuft"\n', p), [])                 # Terminal, nicht Log
+        self.assertEqual(rules('# :log info "läuft"\n', p), [])          # Kommentar
+        self.assertEqual(rules(':log info "x"; # läuft\n', p), [])       # Umlaut nur im Kommentar
+        self.assertEqual(rules('# rsc-check: erlaubt log-ascii\n:log info "ä"\n', p), [])
+
+
 if __name__ == "__main__":
     unittest.main()

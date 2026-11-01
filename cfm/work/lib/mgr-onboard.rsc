@@ -192,7 +192,7 @@
   }
   $cfmWrite $f "{}"
   :log info ("cfm: Onboarding " . [$cfmOnbWhere $s] . " beendet: " . [:tostr $msg])
-  :if ($man) do={ :log warning "cfm: Onboarding (manuell): Port jetzt von Hand zurück auf sein Profil stellen" }
+  :if ($man) do={ :log warning "cfm: Onboarding (manuell): Port jetzt von Hand zurueck auf sein Profil stellen" }
   :return true
 }
 

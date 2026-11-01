@@ -149,7 +149,7 @@
         :local fx ([$cfmJson ($b . "/mirror-index.dat")]->"files")
         :local okAll ([:len $fx] > 0)
         :foreach rel,h in=$fx do={ :if (![$get s=$src u=$u r=($ip . $rel) l=($b . "/" . $ip . $rel)]) do={ :set okAll false } }
-        :if ($okAll) do={ $get s=$src u=$u r=($ip . "index.dat") l=($b . "/" . $ip . "index.dat") } else={ :log warning ("cfm: Spiegel v" . $v . " unvollständig, neuer Versuch beim nächsten Lauf") }
+        :if ($okAll) do={ $get s=$src u=$u r=($ip . "index.dat") l=($b . "/" . $ip . "index.dat") } else={ :log warning ("cfm: Spiegel v" . $v . " unvollstaendig, neuer Versuch beim naechsten Lauf") }
       }
     }
   }

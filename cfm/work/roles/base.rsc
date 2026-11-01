@@ -528,7 +528,7 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
       }
       :local na 0
       :foreach c,x in=$want do={ :if ([:typeof ($have->$c)] = "nothing") do={ :set na ($na + 1) } }
-      :if (($na + $nr) > 0) do={ $cfmLog ("Admin-SSH-Keys " . $u . ": " . $na . " neu, " . $nr . " entfernt (Abgleich im Probelauf über den Kommentar)") }
+      :if (($na + $nr) > 0) do={ $cfmLog ("Admin-SSH-Keys " . $u . ": " . $na . " neu, " . $nr . " entfernt (Abgleich im Probelauf ueber den Kommentar)") }
     } else={
       # vorhandene Keys nach Fingerprint; doppelte gleich entfernen
       :local have ({})

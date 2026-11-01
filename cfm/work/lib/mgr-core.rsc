@@ -321,7 +321,7 @@
     }
     :global cfmMfWant
     :if ([:len $how] = 0 or [:typeof $cfmMfWant] = "nothing") do={
-      :log warning ("cfm: keine Manifest-Regeln für " . $src . " (lib/mgr-mf.rsc) - deren Manifeste bleiben unverändert")
+      :log warning ("cfm: keine Manifest-Regeln fuer " . $src . " (lib/mgr-mf.rsc) - deren Manifeste bleiben unveraendert")
     } else={
      :local fx ([$cfmJson ($b . "/" . $src . "/index.dat")]->"files")
      :foreach name,vr in=$dv do={
@@ -413,11 +413,15 @@
   :local rg [$cfmRings]
   :local v (($rg->"latest") + 1)
   :local idx ({})
+  # Archiv per /file/copy (TODO 71): /file/add|set contents= protokolliert RouterOS samt Inhalt (system,info,
+  # mit Syslog ~750 KB je Release übers Netz), /file/copy gar nicht. Ohne /file/copy wie bisher
   :foreach f in=$files do={
     :local n [/file/get $f name]
     :local rel [:pick $n ([:len $b] + 6) [:len $n]]
     :local c [/file/get $f contents]
-    $cfmWrite ($b . "/archive/v" . $v . "/" . $rel) $c
+    :local t ($b . "/archive/v" . $v . "/" . $rel)
+    :onerror e in={ /file/remove [find where name=$t] } do={}
+    :onerror e in={ /file/copy $f name=$t } do={ $cfmWrite $t $c }
     :set ($idx->$rel) [:convert $c transform=sha512 to=hex]
   }
   # rsc-check: erlaubt json-typ (date nur für Menschen, cfm liest es nicht zurück)
@@ -469,7 +473,7 @@
   :foreach f in=[/file/find where name~("^" . $b . "/archive/v" . $ver . "/") and type!="directory"] do={
     :local n [/file/get $f name]
     :local rel [:pick $n ([:len ($b . "/archive/v" . $ver)] + 1) [:len $n]]
-    :if ($rel != "index.dat") do={ $cfmWrite ($b . "/work/" . $rel) [/file/get $f contents] }
+    :if ($rel != "index.dat") do={ :onerror e in={ /file/copy $f name=($b . "/work/" . $rel) } do={ $cfmWrite ($b . "/work/" . $rel) [/file/get $f contents] } }
   }
   # force: ein alter, bewährter Stand soll nicht an neueren Prüfregeln scheitern
   :local v [$cfmRelease msg=(" Rollback auf v" . $ver) all=$all force="yes"]
@@ -639,6 +643,6 @@
       :set n ($n + 1)
     }
   }
-  :if ($n > 0) do={ :log info ("cfm: Archiv: " . $n . " alte Versionen gelöscht (behalten: " . $k . " + genutzte)") }
+  :if ($n > 0) do={ :log info ("cfm: Archiv: " . $n . " alte Versionen geloescht (behalten: " . $k . " + genutzte)") }
   :return $n
 }

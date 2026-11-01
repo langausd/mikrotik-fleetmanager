@@ -88,7 +88,8 @@ tools/new-site.py site --name cm1 --uplink ether1 --user <dein-user> --mgmt-extr
 
 Findet bekannte RouterOS-Fallen in Skripten, ohne Gerät: `[` am Zeilenanfang, Escapes in
 Funktionsargumenten, `:return` in `:onerror`, leere Arrays nach `:global`, Werte, die
-`:deserialize` umdeutet, Dateien über 60 KB und mehr.
+`:deserialize` umdeutet, Dateien über 60 KB, Log-Meldungen mit Umlauten (kommen im Syslog als `?` an)
+und mehr.
 
 ```bash
 tools/rsc-check.py              # alle .rsc-Dateien im Repo

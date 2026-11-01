@@ -390,7 +390,7 @@
     :foreach i in=[$ff] do={
       :if ([/interface/wifi/get $i disabled] != ($st = "off")) do={
         :local nm [/interface/wifi/get $i name]
-        :if ($cfmDry = true) do={ $cfmLog ("SSID " . ($s->"ssid") . " " . $st . ": Interface " . $nm . " würde geschaltet") } else={
+        :if ($cfmDry = true) do={ $cfmLog ("SSID " . ($s->"ssid") . " " . $st . ": Interface " . $nm . " wuerde geschaltet") } else={
           /interface/wifi/set $i disabled=$dis
           $cfmLog ("SSID " . ($s->"ssid") . " " . $st . ": Interface " . $nm . " geschaltet")
         }
@@ -467,7 +467,7 @@
         }
       }
     }
-  } do={ $cfmWarn ("Prüfung der CAP-Interfaces fehlgeschlagen: " . $e) }
+  } do={ $cfmWarn ("Pruefung der CAP-Interfaces fehlgeschlagen: " . $e) }
   :local al ""
   :foreach a,x in=$stale do={
     :if ([:len $al] > 0) do={ :set al ($al . ";") }
@@ -497,7 +497,7 @@
     :if ($lr and $en != "yes") do={ :set h $old }
     :if ($h != $old) do={
       :if ($cfmDry = true) do={
-        :if ($lr) do={ $cfmLog ("eigene Radios (" . $nr . ") würden über den eigenen CAPsMAN provisioniert") } else={ $cfmLog ("eigene Radios (" . $nr . ") würden zurückgesetzt (capsmanRadios aus)") }
+        :if ($lr) do={ $cfmLog ("eigene Radios (" . $nr . ") wuerden ueber den eigenen CAPsMAN provisioniert") } else={ $cfmLog ("eigene Radios (" . $nr . ") wuerden zurueckgesetzt (capsmanRadios aus)") }
       } else={
         :if ($lr) do={
           # Wi-Fi 7 (hAP be³): ab Werk hängen die Radios am statischen, abgeschalteten MLD - ohne MLO
@@ -509,7 +509,7 @@
           }
           /interface/wifi/radio/provision [find where local]
           :if ([:len $old] = 0) do={ /file/add name=$sf contents=$h } else={ /file/set $sf contents=$h }
-          $cfmLog ("eigene Radios (" . $nr . ") über den eigenen CAPsMAN provisioniert")
+          $cfmLog ("eigene Radios (" . $nr . ") ueber den eigenen CAPsMAN provisioniert")
           # Schaltbare SSIDs (D90): Die eigenen Radios haben jetzt neue feste Interfaces, alle eingeschaltet -
           # den Schaltzustand gleich durchsetzen, nicht erst mit dem nächsten cfm-ssid-check (bis zu 10 min)
           :if ([:len $cfmSsidSw] > 0) do={ :delay 3s; :onerror e in={ /system/script/run [find name="cfm-ssid-check"] } do={} }
@@ -521,7 +521,7 @@
           :delay 1s
           /interface/wifi/provisioning/enable $on
           /file/remove $sf
-          $cfmLog ("eigene Radios (" . $nr . ") zurückgesetzt (capsmanRadios aus)")
+          $cfmLog ("eigene Radios (" . $nr . ") zurueckgesetzt (capsmanRadios aus)")
         }
       }
     }

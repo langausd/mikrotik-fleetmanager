@@ -51,6 +51,9 @@ REGELN = {
                 ":deserialize deutet den Text beim Lesen um (\"7.25.1\" -> IP 7.25.0.1, \"7.25\" -> "
                 "7.0.0.25, \"2026-10-11\" -> Zeitwert). Präfix davor (\"v\" . $x) oder Text mit "
                 "Leerzeichen dahinter.",
+    "log-ascii": "Log-Meldung mit Umlaut oder anderem Nicht-ASCII-Zeichen: RouterOS schickt jedes solche "
+                 "Byte als '?' an den Syslog (TODO 70). ae/oe/ue/ss und '-' schreiben. Fehler unter "
+                 "cfm/work/, sonst Hinweis.",
 }
 
 # Menüs, die es nur auf bestimmten Geräten oder mit Zusatzpaketen gibt
@@ -64,6 +67,9 @@ JSON_VAR = re.compile(r":(?:local|set)\s+(\w+)\s+" + JSON_QUELLE)
 JSON_FN = re.compile(r':(?:local|set)\s+(\w+)\s+\[\s*:parse\s+"[^"]*?' + JSON_QUELLE.replace(r"\[", r"\[", 1))
 # Wert eines Array-Felds: :set ($a->"k") <Wert> bzw. "k"=<Wert> in einem Array-Literal
 JSON_FELD = re.compile(r':set\s+\(\$\w+->"[^"]*"\)\s+|(?<!\\)"[\w.-]+"=')
+# Log-Aufrufe (TODO 70): :log <topic>, $cfmLog, $cfmWarn - deren Texte gehen an den Syslog
+LOGRUF = re.compile(r":log\s+(?:info|warning|error|debug)\b|\$cfm(?:Log|Warn)\b")
+STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 GROESSE_MAX = 60000        # wie cfmParseWork in cfm/work/lib/mgr-core.rsc
 GROESSE_HINWEIS = 50000
 ERLAUBT = re.compile(r"rsc-check:\s*erlaubt\s+([\w,-]+)")
@@ -264,6 +270,13 @@ def check_rsc(path, text):
                     wert = wert[1:].lstrip() if wert.startswith("(") else wert
                     if quelle.match(wert) or (var and var.match(wert)):
                         add(no + 1, "json-typ")
+
+    stufe = FEHLER if "/cfm/work/" in "/" + path.replace(os.sep, "/") else HINWEIS
+    for no, zeile in enumerate(text.split("\n"), 1):
+        if zeile.lstrip().startswith("#") or not LOGRUF.search(zeile):
+            continue
+        if any(re.search(r"[^\x00-\x7f]", t) for t in STRING.findall(zeile)):
+            add(no, "log-ascii", stufe)
 
     erlaubt = {}
     for line, txt in comments:

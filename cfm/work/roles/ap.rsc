@@ -59,7 +59,7 @@ $cfmEnsure m="/interface/wifi/datapath" k="wdp-cap" n=({"name"=$dp}) p=({"name"=
   :local foreign ([:len $cur] > 0 and [:typeof [:find $cmN $cur]] = "nil")
   :local moved ([:len $oldCm] > 0 and $oldCm != $cmS)
   :if (($foreign or $moved) and [:len [/certificate/find where trust-store=capsman]] > 0) do={
-    :if ($cfmDry = true) do={ $cfmLog ("CAPsMAN-Zertifikate würden erneuert (verbunden: " . $cur . ", bisher: " . $oldCm . ", jetzt: " . $cmS . ")") } else={
+    :if ($cfmDry = true) do={ $cfmLog ("CAPsMAN-Zertifikate wuerden erneuert (verbunden: " . $cur . ", bisher: " . $oldCm . ", jetzt: " . $cmS . ")") } else={
       /interface/wifi/cap/set certificate=none
       /certificate/remove [find where trust-store=capsman]
       /interface/wifi/cap/set certificate=request

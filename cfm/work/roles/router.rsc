@@ -346,7 +346,7 @@ $cfmSet m="/ip/dns" p=$dp
   $cfmEnsure m="/system/scheduler" k="sys:dnsreq" n=({"name"="cfm-dnsreq"}) p=({"name"="cfm-dnsreq";"interval"="1m";"start-time"="startup";"on-event"="/system/script/run cfm-dnsreq";"policy"="read,write,test"})
   :local pm ""
   :foreach i in=[/ip/dns/static/find where comment~"^dnsui:perm"] do={ :set pm ($pm . " " . [/ip/dns/static/get $i name]) }
-  :if ([:len $pm] > 0) do={ $cfmWarn ("dauerhafte Freischaltungen aus der DNS-Selbstbedienung (dnsui:perm) nach dns.rsc allow übernehmen:" . $pm) }
+  :if ([:len $pm] > 0) do={ $cfmWarn ("dauerhafte Freischaltungen aus der DNS-Selbstbedienung (dnsui:perm) nach dns.rsc allow uebernehmen:" . $pm) }
 } else={
   # ohne Selbstbedienung: User, Gruppe, Skript und Scheduler räumt die GC weg; befristete Freischaltungen
   # liefen sonst nie ab
@@ -405,7 +405,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
     :onerror e in={ :set cur [:tostr [/interface/wireguard/get [find where name=$wgIf] public-key]] } do={}
     :if ($cur != $wpub) do={
       :if ($cfmDry != true) do={ :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={} }
-      $cfmLog "WireGuard: Schlüssel weicht vom gemeinsamen der Router ab - Secret-Push angefordert (D84)"
+      $cfmLog "WireGuard: Schluessel weicht vom gemeinsamen der Router ab - Secret-Push angefordert (D84)"
     }
   }
   # Backups: Antworten ins WG-Netz über die MGMT-VIP zum Master, der den Tunnel hält

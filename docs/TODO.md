@@ -83,7 +83,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Admin-Guide 8.15, kein Code. Damit erledigt: offener Syslog-Punkt von 54/D99 (Schwere richtig: warning 4,
   info 6, error 3) und der Syslog-Weg von 68; 22 (Disk-Logging) bleibt unnötig – der Grund eines
   fehlgeschlagenen Applys stand vor dem Rollback-Neustart in Graylog. Neu: 70 (Umlaute im Syslog), 71
-  (Skript-Quelltext im Syslog).
+  (Dateiinhalte im Syslog) – *beide am selben Tag umgesetzt (D103):* Release-Archiv per `/file/copy`, Manager-Rekey
+  ohne privaten Schlüssel als Dateiinhalt, Log-Meldungen in ASCII mit `rsc-check`-Regel `log-ascii`. Labor 7.25: `e2e.sh` 405, grün.
 * **Umgesetzt am 2026-10-31:** 68 (D101) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
   Weiterleitung, Abfrage-Log) und 69 (D102) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
   402, `e2e-vrrp.sh` 137, grün. Hardware an einem Standort (vier Router, VRRP): D101 v90, D102 v91 – Freischaltung
@@ -1216,14 +1217,17 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Log-Zeilen in 2,3 s gelesen). Befund: Nach `$cfmSecret` verteilt erst der nächste Tick das Passwort – sofort
     mit `$cfmSecretPush host=` (Admin-Guide 8.14). **Offen:** `www-ssl` für die Anmeldung; befristete Freischaltung auch auf den anderen Routern (VRRP-Wechsel);
     `mgr-check.rsc` nähert sich der 60-KB-Grenze (55 KB) – beim nächsten Prüfblock aufteilen.
-70. **Umlaute im Syslog** (Befund 2026-11-01) – RouterOS 7.25 ersetzt beim Remote-Logging jedes Nicht-ASCII-Byte
+70. ~~**Umlaute im Syslog**~~ – *umgesetzt 2026-11-01 (D103):* Log-Meldungen (`:log`, `$cfmLog`, `$cfmWarn`,
+    `:error` des Agenten, Bootstrap) in ASCII, `rsc-check` Regel `log-ascii`; Labor-Greps angepasst; `e2e.sh` 405 grün. –
+    Befund 2026-11-01 – RouterOS 7.25 ersetzt beim Remote-Logging jedes Nicht-ASCII-Byte
     durch `?` („Pr??fung ??? Ende“, Mitschnitt; DECISIONS, Hardware-Eigenheiten). cfm-Meldungen enthalten Umlaute und
     Gedankenstriche („Apply vN fehlgeschlagen“ ist lesbar, „übersprungen“ nicht). Idee: Log-Texte des Agenten und
-    der Rollen auf ASCII umstellen (ue/ae/oe, `-`), zumindest die Meldungen ab Schwere warning. Offen, Entscheidung
-    des Nutzers.
-71. **Skript-Quelltext im Syslog** (Befund 2026-11-01) – Wie im RAM-Log vor D79 schickt RouterOS bei jeder
-    Skript-Änderung den ganzen Quelltext als `system,info` – an den Syslog geht er, weil `syslog` alle `info`
-    bekommt (Admin-Guide 4, `logMemory`). Ein Release erzeugte auf dem Manager je ~1070 Zeilen/~750 KB in einer
-    Minute (Graylog). Idee: für `cfmremote` ein eigener Topic-Filter wie `logMemory` (z.B. `syslogTopics`,
-    Standard `info,!system` plus `system,!info`? – Anmeldungen laufen ebenfalls unter `system,info`), oder im
-    Syslog-Server verwerfen. Offen, Entscheidung des Nutzers.
+    der Rollen auf ASCII umstellen (ue/ae/oe, `-`), zumindest die Meldungen ab Schwere warning. Entschieden: ASCII für alle
+    Log-Meldungen.
+71. ~~**Dateiinhalte im Syslog**~~ – *umgesetzt 2026-11-01 (D103):* `$cfmRelease`/`$cfmRollback` kopieren per
+    `/file/copy` (wird nicht protokolliert), `$cfmRekey` eines Managers exportiert den Host-Key je User neu statt ihn
+    per `/file/add` zu schreiben; `e2e.sh` 14g/14h prüft beides im RAM-Log von cm1/cm2; `e2e.sh` 405 grün. – Befund
+    2026-11-01: Nicht Skript-Quelltext, sondern `/file/add contents=` des Release-Archivs (64 Dateien) – ein Release
+    erzeugte auf dem Manager ~1070 Zeilen/~750 KB in einer Minute (Graylog). Geheime Felder schwärzt RouterOS
+    (Test: User, PPP-Secret, SNMP-Community, WLAN-Security, WireGuard), Dateiinhalte nicht – beim Manager-Rekey
+    wäre der private SSH-Schlüssel im Syslog gelandet (an diesem Standort lief seit dem Syslog keiner).

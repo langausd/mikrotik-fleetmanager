@@ -89,7 +89,7 @@
   /user/ssh-keys/private/remove [find where user=cfm]
   /user/remove [find where name=cfm]
   /file/add name=$m2 contents="cfm: Bootstrap Stufe 2 nach dem Reset"
-  :log warning "cfm: Bootstrap - Reset auf leere Config, danach läuft der Bootstrap automatisch weiter"
+  :log warning "cfm: Bootstrap - Reset auf leere Config, danach laeuft der Bootstrap automatisch weiter"
   :put "Reset auf leere Config: das Gerät startet neu und setzt den Bootstrap danach selbst fort."
   :put ("Danach per SSH über " . $ip . " am Uplink " . $uplink . "; Fortschritt im Log (cfm: ...).")
   :delay 2s
@@ -113,7 +113,7 @@
     /user/add name=cfm group=full comment="cfm-sys:user" password=$pw
     /file/add name=$mu contents=$pw
     /system/scheduler/add name=cfm-bootstrap-2 interval=15s on-event=("/import " . $me)
-    :log info "cfm: Bootstrap - Übergabe an cfm folgt nach dem Hochfahren"
+    :log info "cfm: Bootstrap - Uebergabe an cfm folgt nach dem Hochfahren"
   } do={ :log error ("cfm: Bootstrap Stufe 2 fehlgeschlagen: " . $e) }
 }
 
@@ -127,8 +127,8 @@
     :if ([:len [/system/scheduler/find where name="cfm-bootstrap-3"]] = 0) do={ :error "Scheduler cfm-bootstrap-3 fehlt" }
     /file/remove [find where name=$mu]
     /system/scheduler/remove [find where name="cfm-bootstrap-2"]
-    :log info "cfm: Bootstrap - Übergabe an cfm erfolgt"
-  } do={ :log info ("cfm: Bootstrap - Übergabe an cfm noch nicht möglich: " . $e) }
+    :log info "cfm: Bootstrap - Uebergabe an cfm erfolgt"
+  } do={ :log info ("cfm: Bootstrap - Uebergabe an cfm noch nicht moeglich: " . $e) }
   /file/remove [find where name~"^cfm-uebergabe"]
 }
 

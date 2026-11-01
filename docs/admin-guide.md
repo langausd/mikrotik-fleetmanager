@@ -797,7 +797,7 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
   provisioniert wird nichts. `dont-require-permissions` ist gesetzt: Der API-User aus 6.7 (Gruppe
   `read,api,test`) darf sie starten, ohne selbst schreiben zu dürfen;
 * den Zustand in `<cfm>/ssid-<key>.txt` (`on <Ablauf>` bzw. `off`). Jeder Apply übernimmt ihn und setzt
-  ihn an den Interfaces durch (der Probelauf meldet `SSID …: Interface … würde geschaltet`), ein Release
+  ihn an den Interfaces durch (der Probelauf meldet `SSID …: Interface … wuerde geschaltet`), ein Release
   schaltet die SSID also nicht zurück; ohne Datei gilt der Grundzustand aus `switch`. Die Regeln ändern
   sich beim Schalten nicht, der nächste Apply sieht darin keine Änderung;
 * das Skript `cfm-ssid-check` (Scheduler alle 10 min): Es schaltet nach `autoOff` ab, setzt den Zustand
@@ -901,7 +901,7 @@ $cfmOnboard manual=yes name=ap3 sw=core port=ether7     # sw/port nur als Notiz
    Onboarding-VLANs (die Meldung nennt sie), `frame-types=admit-all`.
 2. Gerät einstecken; Fortschritt mit `$cfmOnboardStatus` („Sitzung manuell …“).
 3. Nach dem Ende (Erfolg, Fehler, Timeout oder `$cfmOnboardAbort`) steht im Log des Managers
-   „Port jetzt von Hand zurück auf sein Profil stellen“ – cfm fasst den Port nie an, es gibt
+   „Port jetzt von Hand zurueck auf sein Profil stellen“ – cfm fasst den Port nie an, es gibt
    auch keinen Fail-safe-Timer.
 
 ### 7.2 Manuell: Bootstrap-Datei
@@ -1031,7 +1031,7 @@ anzuwenden: je Änderung eine Zeile (`neu: …`, `geändert: … feld=wert`, `en
 `Regelblock … neu aufgebaut`), am Ende die Summe. Fehler der inhaltlichen Prüfung erscheinen
 vorab. Der Probelauf überspringt `hosts/*.post.rsc`, weil dort beliebige Befehle stehen dürfen.
 Die cfm-Objekte, die diese Datei beim letzten echten Apply angelegt hat, behält er trotzdem
-(`… im Probelauf übersprungen, N Objekte daraus beibehalten`); Änderungen an der `.post.rsc`
+(`… im Probelauf uebersprungen, N Objekte daraus beibehalten`); Änderungen an der `.post.rsc`
 selbst zeigt er nicht.
 
 Einen Umbau probt `$cfmPlan host=<n> from=<verzeichnis> role=<rollen>`: Er nimmt den Stand aus
@@ -1695,7 +1695,8 @@ Kommandozeile.
 **Was ankommt:** `source` ist die Identity des Geräts, `level` die Schwere aus dem Topic (warning = 4,
 info = 6), Facility `daemon`; die Meldung beginnt mit der Identity. Das Topic selbst überträgt RouterOS
 nicht – Streams unterscheiden deshalb am Text. Umlaute und andere Nicht-ASCII-Zeichen ersetzt RouterOS beim
-Versand durch `?` (TODO 70). LibreNMS ordnet die Meldungen über den sysName zu (Groß-/Kleinschreibung egal). **Probe:** auf einem Gerät `:log warning "Test Graylog"`, nach wenigen Sekunden
+Versand durch `?`; cfm schreibt seine Log-Meldungen deshalb in ASCII (D103). Konfig-Änderungen stehen mit
+Benutzer und Befehl im Syslog, Passwörter und Schlüssel darin schwärzt RouterOS (10). LibreNMS ordnet die Meldungen über den sysName zu (Groß-/Kleinschreibung egal). **Probe:** auf einem Gerät `:log warning "Test Graylog"`, nach wenigen Sekunden
 steht die Zeile in LibreNMS beim Gerät (Logs → Graylog) und in Graylog unter Search.
 
 ---
@@ -1751,6 +1752,11 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   wird still verworfen (D78), der Rest begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
   Geräten: nur Antworten, ICMPv6 und Link-Local aus dem MGMT-VLAN. Router behalten ihre
   Zonen-Firewall.
+* **Syslog (D103):** Er geht per UDP im Klartext übers MGMT-VLAN (8.15). Konfig-Änderungen stehen darin mit
+  Benutzer und Befehl; Passwörter, Passphrasen, SNMP-Passwörter und WireGuard-Schlüssel schwärzt RouterOS.
+  **Dateiinhalte nicht:** `/file/add`/`/file/set` mit `contents=` landen vollständig im Log. cfm überträgt
+  deshalb keine Schlüssel als Dateiinhalt (der Rekey eines Managers exportiert den Host-Key neu) und kopiert
+  das Release-Archiv per `/file/copy`. Eigene `.post.rsc` und Templates: keine Geheimnisse per `/file/add`.
 * **Nachbarsuche:** LLDP/MNDP/CDP läuft auch an Access-Ports; Endgeräte sehen Modell, Version und
   Identität des Switches (bewusste Entscheidung für den Netzplan).
 * **PPSK:** Passphrasen liegen nur im Vault und kommen per Secret-Push. Wer eine Passphrase kennt,
@@ -2002,24 +2008,24 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | Symptom | Ursache | Abhilfe |
 |---|---|---|
 | Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen. Der Agent hat da schon 2 min lang wiederholt (8/16/32/64 s, Log „Manifest nicht abrufbar – neuer Versuch“, D58); kurze Aussetzer, etwa während ein Backup-Manager spiegelt, fängt das ab |
-| „Manifest-MAC ungültig“ | Geräteschlüssel passt nicht mehr (Reset, Restore); direkt nach `$cfmRekey` kurzzeitig normal | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
+| „Manifest-MAC ungueltig“ | Geräteschlüssel passt nicht mehr (Reset, Restore); direkt nach `$cfmRekey` kurzzeitig normal | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
 | „Release abgebrochen (Prüfung)“ | inhaltlicher Fehler in `work/` | Meldung lesen und beheben; bewusst: `force=yes` |
 | Prüfung: „authorized_keys: die gemeinsame Datei gilt nicht mehr (D65)“ | alte Key-Datei für alle User in `work/` | Keys je Person nach `authorized_keys.<user>`, hochladen, `/file/remove cfm/work/authorized_keys` |
 | Log `cfm: authorized_keys.<user>: Key N nicht angelegt …`, danach „vorhandene Keys bleiben stehen“ | Zeile ist kein Key, den RouterOS annimmt (nur rsa, ed25519, ed25519-sk) | Zeile korrigieren, releasen; bis dahin entfernt cfm für diesen User keine Keys |
 | Warnung „Paket wifi-qcom-ac“ (Log des AP bzw. `$cfmCheck`) | AP mit altem Treiber übernimmt das VLAN einer SSID nicht vom CAPsMAN (TODO 23) | Gerät nicht als `ap` unter cfm betreiben |
-| Secret-Push: „Identitätsprüfung fehlgeschlagen“ | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
+| Secret-Push: „Identitätsprüfung fehlgeschlagen“ (Log: „Identitaetspruefung …“) | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
 | Graylog: Input „Not running“, auf UDP 514 lauscht nichts (`ss -ulnp`) | Graylog 7 legt Inputs im Einrichtungsmodus an | Inputs → „Setup Input“ durchklicken, „Start Input“ (8.15) |
 | LibreNMS → Graylog: „HTTP 403 Not authorized“ bei der Suche | Rolle `Reader` darf in Graylog 7 nicht suchen | Rolle mit `searches:*` per API anlegen und zuweisen, Stream als Viewer teilen (8.15) |
 | Release: ein Gerät `bad vN failed …: entry already exists`, danach Neustart | Objekt von Hand angelegt (z.B. Test), das der Release nun per `$cfmEnsure` anlegt; der Agent rollt mit `pre.backup` zurück, das startet das Gerät neu | Handobjekt löschen, `$cfmPush host=<name> force=yes`. Künftig Handobjekte vor dem Release entfernen |
 | cfm-DNS: Anmeldung als `dns` scheitert | User noch aus (Passwort nicht verteilt), Client nicht in `self.zones`, oder `http://` des Gateways nicht erreichbar | `$cfmSecretPush host=<router>` (sonst erst im nächsten Tick); `/user/print where name=dns`; `/ip/service/print` (`www`, `available-from`) |
 | Freischaltung im Lesezeichen ok, Seite bleibt gesperrt | Browser nutzt „DNS über HTTPS“ oder einen anderen DNS-Server; Cache des Clients; anderer Router hält die VIP | DoH im Browser aus; `ipconfig /flushdns` bzw. Browser neu; `/ip/dns/static/print where comment~"dnsui"` auf dem Master |
-| Jeder Apply warnt „dauerhafte Freischaltungen … nach dns.rsc allow übernehmen“ | `dnsui:perm`-Einträge aus dem Lesezeichen | Domain in `dns.rsc` `allow`, releasen, Eintrag im Lesezeichen löschen – oder nur löschen |
+| Jeder Apply warnt „dauerhafte Freischaltungen … nach dns.rsc allow uebernehmen“ | `dnsui:perm`-Einträge aus dem Lesezeichen | Domain in `dns.rsc` `allow`, releasen, Eintrag im Lesezeichen löschen – oder nur löschen |
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
 | Log voller `cfm-drop input: in:vlan<VID> … 0.0.0.0:5678->255.255.255.255:5678` | MNDP über einen Bridge-Port ohne Adresse hinter einem Access-Port, z.B. die Karten einer VM (D40); das Gerät hat den Framework-Stand vor D78 | Framework-Update mit Release: der input-Block verwirft es dann still (D78) |
 | Log voller `cfm-drop input: in:vlan<VID>` mit Broadcasts aus einem Client-VLAN | das Gerät hat dort eine eigene Adresse (z.B. Ausgang eines NAT-Käfigs per `post.rsc`) und bekommt jeden Broadcast zugestellt | in der `post.rsc` `{"chain"="local-input";"action"="drop";"in-interface"="vlan<VID>"}` (still, nach den Freigaben, D78) |
-| Agent meldet „kein Manager erreichbar - der Agent läuft als …“ (bzw. nur „kein Manager erreichbar“ und SFTP „authentication failure“) nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
+| Agent meldet „kein Manager erreichbar - der Agent laeuft als …“ (bzw. nur „kein Manager erreichbar“ und SFTP „authentication failure“) nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
 | Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |
 | `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
 | Log `cfm: Netz: fehlt …` | Kabel gezogen, umgesteckt oder Gerät aus | Verkabelung prüfen; gewollte Änderung: `$cfmLinks accept=yes` |

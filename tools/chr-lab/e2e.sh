@@ -102,7 +102,7 @@ mgr ':put ("SP=" . [$cfmSecretPush])' >/dev/null
 expect 1 '[:len [/log/find where message~"Secret-Push ph1"]] = 0' "Secret-Push ohne Warnung zum Platzhalter"
 # Agent von Hand aus einer Admin-Sitzung (TODO 35): klare Meldung statt nur "kein Manager erreichbar"
 for _ in 1 2 3; do out=$(r 2 '/system script run cfm-agent'); echo "$out" | grep -q "läuft bereits" || break; sleep 35; done
-echo "$out" | grep -q "der Agent läuft als admin" && ok "Agent aus einer Admin-Sitzung: klare Meldung" || { bad "Agent als admin: $(echo "$out" | tail -1)"; }
+echo "$out" | grep -q "der Agent laeuft als admin" && ok "Agent aus einer Admin-Sitzung: klare Meldung" || { bad "Agent als admin: $(echo "$out" | tail -1)"; }
 
 step "4. VLAN entfernen -> Reconciler räumt auf"
 mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=[:pick [/file/get $f contents] 0 [:find [/file/get $f contents] ":for i from=101"]]; :global cfmRelease; $cfmRelease msg=" ohne 101-119"' >/dev/null
@@ -196,7 +196,7 @@ step "9. Rolle router auf sw1 (über den echten Agent-Pfad)"
 # .251 (routerId 1) - die Rolle übernimmt es über Bridge + VLAN-ID und benennt es um, statt ein zweites anzulegen
 r 2 '/interface/vlan/add name=GAST interface=bridge vlan-id=40; /ip/address/add address=192.168.40.251/24 interface=GAST' >/dev/null
 out=$(mgr '$cfmPlan host=sw1 role=switch,router')
-echo "$out" | grep -q "übernommen: /interface/vlan vlan:40" && ! echo "$out" | grep -q "neu: /interface/vlan vlan:40" && ok "Probelauf: vorhandenes VLAN-Interface GAST (VID 40) wird übernommen" || { bad "Probelauf ohne Übernahme von GAST"; echo "$out" | grep "vlan:40" | head -3; }
+echo "$out" | grep -q "uebernommen: /interface/vlan vlan:40" && ! echo "$out" | grep -q "neu: /interface/vlan vlan:40" && ok "Probelauf: vorhandenes VLAN-Interface GAST (VID 40) wird übernommen" || { bad "Probelauf ohne Übernahme von GAST"; echo "$out" | grep "vlan:40" | head -3; }
 # gezielt sw1 (der Platzhalter ph1 aus Schritt 3 steht alphabetisch davor und hat auch "switch")
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"sw1"->"role") "switch,router"; $cfmInvSave $i; :global cfmManifests; $cfmManifests' >/dev/null
 mgr '$cfmPush host=sw1' >/dev/null
@@ -251,7 +251,7 @@ stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Leases, DNS-Namen und
 # Limit abbauen (D97), im Probelauf: ohne limitClient fallen die PCQ-Typen weg, ohne limit auch Queue und Ausnahme
 mgr ':global e2eV4 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV4 . ":set (\$cfmVlans->\"40\"->\"limitClient\")\n")' >/dev/null
 out=$(mgr '$cfmPlan host=sw1')
-echo "$out" | grep -q "entfernt: /queue/type cfm-pcq40-down" && echo "$out" | grep -q "entfernt: /queue/type cfm-pcq40-up" && echo "$out" | grep -q "geändert: /queue/simple q:40: queue=pcq-upload-default/pcq-download-default" && ok "Probelauf ohne limitClient: Standard-PCQ, eigene Typen entfernt" || { bad "Probelauf ohne limitClient"; echo "$out" | grep -E "queue|Plan sw1"; }
+echo "$out" | grep -q "entfernt: /queue/type cfm-pcq40-down" && echo "$out" | grep -q "entfernt: /queue/type cfm-pcq40-up" && echo "$out" | grep -q "geaendert: /queue/simple q:40: queue=pcq-upload-default/pcq-download-default" && ok "Probelauf ohne limitClient: Standard-PCQ, eigene Typen entfernt" || { bad "Probelauf ohne limitClient"; echo "$out" | grep -E "queue|Plan sw1"; }
 mgr ':global e2eV4; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV4 . ":set (\$cfmVlans->\"40\"->\"limitClient\")\n:set (\$cfmVlans->\"40\"->\"limit\")\n")' >/dev/null
 out=$(mgr '$cfmPlan host=sw1')
 echo "$out" | grep -q "entfernt: /queue/simple q:40" && echo "$out" | grep -q "Regelblock /ip/firewall/filter fw neu aufgebaut" && ok "Probelauf ohne limit: Queue entfernt, Firewall-Block ohne Ausnahme" || { bad "Probelauf ohne limit"; echo "$out" | grep -E "queue|fw|Plan sw1"; }
@@ -260,7 +260,7 @@ mgr ':global e2eV4; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e
 # entfernt werden - es ist dasselbe Objekt (Befund 2026-10-18: Lease fehlte bis zum zweiten Apply)
 mgr ':global e2eL3 [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL3 . ":set (\$cfmLeases->\"30\") {\"drucker-neu\"={\"mac\"=\"02:00:00:00:00:aa\";\"ip\"=20}}\n")' >/dev/null
 out=$(mgr '$cfmPlan host=sw1')
-echo "$out" | grep -q "übernommen: /ip/dhcp-server/lease lease:30:drucker-neu" && ! echo "$out" | grep -q "entfernt: /ip/dhcp-server/lease lease:30:drucker" && ok "Lease umbenannt: übernommen, nicht zugleich entfernt" || { bad "Lease umbenennen"; echo "$out" | grep -E "lease:30|Plan sw1"; }
+echo "$out" | grep -q "uebernommen: /ip/dhcp-server/lease lease:30:drucker-neu" && ! echo "$out" | grep -q "entfernt: /ip/dhcp-server/lease lease:30:drucker" && ok "Lease umbenannt: übernommen, nicht zugleich entfernt" || { bad "Lease umbenennen"; echo "$out" | grep -E "lease:30|Plan sw1"; }
 mgr ':global e2eL3; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$e2eL3' >/dev/null
 # Dauer als Text (transition-time der Steering-Profile liefert 1m30s für 90s)
 mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"] . "/" . [$cfmSame "1m30s" "80s"] . "/" . [$cfmSame "10d" "1w3d"])' | grep -q "S=true/false/true" && ok "\$cfmSame: Dauer als Text (1m30s = 90s)" || bad "\$cfmSame Dauer: $(mgr ':global cfmSame; :put ("S=" . [$cfmSame "1m30s" "90s"])' | tail -1)"
@@ -873,6 +873,10 @@ mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"
 # Backup-Manager cm2: zweiphasig. Läuft auf cm2 gerade der Agent (oder steht cfm-watchdog), lehnt der Rekey
 # bewusst ab (busy) - vorher warten, bei busy einmal nach Pause wiederholen (vereinzelter Fehlschlag, TODO)
 idle3() { for _ in $(seq 1 60); do [ "$(r 3 ':put ([:len [/system/scheduler/find where name="cfm-watchdog"]] + [:len [/system/script/job/find where script="cfm-agent"]])' | tail -1 | tr -dc 0-9)" = 0 ] && return 0; sleep 5; done; return 1; }
+# TODO 71: RouterOS protokolliert /file/add|set contents= samt Inhalt (system,info, mit Syslog übers Netz) -
+# privater Schlüssel (Rekey) und Release-Archiv dürfen dort nie stehen. system,info bis nach dem Release
+# unten zusätzlich ins RAM-Log von cm1/cm2 (ohne comment - Eigenheit von logging/add -, erkennbar am prefix)
+for v in 1 3; do r $v '/system/logging/add topics=system,info action=memory prefix=e2e71' >/dev/null; done
 c0=$(fp 1 cfmd-cm2)
 idle3
 out=$(mgr '$cfmRekey host=cm2 sftp=yes')
@@ -913,6 +917,11 @@ echo "D70" > "$LAB/e2e-mark.txt"
 printf 'put %s cfm/work/lib/mgr-mf.rsc\nput %s cfm/work/e2e-mark.txt\n' "$LAB/mgr-mf-e2e.rsc" "$LAB/e2e-mark.txt" | put 1
 rv=$(mgr '$cfmRelease msg=" e2e D70"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 [ -n "$rv" ] && ok "Release v$rv mit einer Regel nur in dieser Version" || bad "Release mit neuer Regel"
+for v in 1 3; do
+  h=cm1; [ $v = 3 ] && h=cm2
+  expect $v '[:len [/log/find where message~"PRIVATE KEY"]] = 0 and [:len [/log/find where message~"Reconciler-Bibliothek"]] = 0 and [:len [/log/find where message~"^e2e71"]] > 0' "$h: weder privater Schlüssel (Rekey) noch Archivinhalt (Release) im Log, system,info mitgeschrieben (TODO 71)"
+  r $v '/system/logging/remove [find where prefix="e2e71"]' >/dev/null
+done
 a=$(mfhas sw1 e2e-mark); [ "$a" = true ] && ok "sw1 (Ring 0): Manifest nach den Regeln von v$rv" || bad "sw1 (Ring 0): Regel der neuen Version fehlt ($a)"
 a=$(mfhas cm1 e2e-mark); [ "$a" = false ] && ok "cm1 (Ring 2): Manifest nach den Regeln seiner Version" || bad "cm1 (Ring 2): Regel vor dem Aufstieg ($a)"
 expect 1 '[:typeof [:find [/system/script/get cfm-mgr-mf source] "e2e-mark"]] = "nil"' "cm1: installierte Regeln noch ohne die neue"

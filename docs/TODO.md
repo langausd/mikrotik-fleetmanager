@@ -82,7 +82,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   ihn über die Graylog-API je Gerät, DNS-Abfrage-Log (68) in eigenem Stream mit einer Woche Aufbewahrung –
   Admin-Guide 8.15, kein Code. Damit erledigt: offener Syslog-Punkt von 54/D99 (Schwere richtig: warning 4,
   info 6, error 3) und der Syslog-Weg von 68; 22 (Disk-Logging) bleibt unnötig – der Grund eines
-  fehlgeschlagenen Applys stand vor dem Rollback-Neustart in Graylog. Neu: 70 (Umlaute im Syslog).
+  fehlgeschlagenen Applys stand vor dem Rollback-Neustart in Graylog. Neu: 70 (Umlaute im Syslog), 71
+  (Skript-Quelltext im Syslog).
 * **Umgesetzt am 2026-10-31:** 68 (D101) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
   Weiterleitung, Abfrage-Log) und 69 (D102) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
   402, `e2e-vrrp.sh` 137, grün. Hardware an einem Standort (vier Router, VRRP): D101 v90, D102 v91 – Freischaltung
@@ -230,6 +231,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
 * Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
   sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
   mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
+  *Ein Datenpunkt 2026-11-01:* Rollback mit Neustart auf einem hAP be³ (VRRP-Master, CAPsMAN, 7.25) – keine
+  solche Meldung (Log und Syslog), CAPs und Clients nach ~1 min wieder da.
 * PPSK-VLANs, VRRP mit mehreren Routern (im Labor mit drei Routern geprobt, `e2e-vrrp.sh` 79/79,
   2026-10-01: Failover, Rückkehr mit Preemption, Neustart, Ausfall zweier Router, DHCP nur auf dem
   Master, Zonen-Policy, feste NAT-Adresse; dabei die Rolle `router` korrigiert, siehe DECISIONS
@@ -245,6 +248,8 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   brechen ab, conntrack wird nicht abgeglichen)?
 * Feste Leases und DNS-Namen (D62) auf einem Hardware-Router, bei VRRP auf allen Routern; dabei
   prüfen, ob eine schon dynamisch vergebene Lease derselben MAC das Anlegen der festen stört.
+  *Namen bestanden* (ein Standort, drei VRRP-Router, seit 2026-10-28; neue Leases 2026-11-01 auf allen drei
+  sofort auflösbar). Offen nur die Frage mit der dynamischen Lease (dort vorher von Hand gelöscht).
 * ~~Eingebautes Update über cfm (D63) auf einem Gerät mit 16 MB Flash~~ – gelaufen 2026-10-03: hEX
   RB750Gr3 von 7.23.1 auf 7.24.5 über `via=mirror` (Apache als Spiegel, `--export`), 2,4 MB frei, vier
   Pakete, gut 4 min samt Neustart. Befund: `mode` blieb danach auf `http` – der Agent prüft den
@@ -1216,3 +1221,9 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     Gedankenstriche („Apply vN fehlgeschlagen“ ist lesbar, „übersprungen“ nicht). Idee: Log-Texte des Agenten und
     der Rollen auf ASCII umstellen (ue/ae/oe, `-`), zumindest die Meldungen ab Schwere warning. Offen, Entscheidung
     des Nutzers.
+71. **Skript-Quelltext im Syslog** (Befund 2026-11-01) – Wie im RAM-Log vor D79 schickt RouterOS bei jeder
+    Skript-Änderung den ganzen Quelltext als `system,info` – an den Syslog geht er, weil `syslog` alle `info`
+    bekommt (Admin-Guide 4, `logMemory`). Ein Release erzeugte auf dem Manager je ~1070 Zeilen/~750 KB in einer
+    Minute (Graylog). Idee: für `cfmremote` ein eigener Topic-Filter wie `logMemory` (z.B. `syslogTopics`,
+    Standard `info,!system` plus `system,!info`? – Anmeldungen laufen ebenfalls unter `system,info`), oder im
+    Syslog-Server verwerfen. Offen, Entscheidung des Nutzers.

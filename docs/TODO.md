@@ -86,9 +86,11 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (Dateiinhalte im Syslog) – *beide am selben Tag umgesetzt (D103):* Release-Archiv per `/file/copy`, Manager-Rekey
   ohne privaten Schlüssel als Dateiinhalt, Log-Meldungen in ASCII mit `rsc-check`-Regel `log-ascii`. Labor 7.25: `e2e.sh` 405, grün. Hardware
   2026-11-02 (v95/v96): Release-Syslog des Managers ~1250 → ~100 Zeilen.
-* **Umgesetzt am 2026-11-02, im Labor noch offen:** 73 (D104) – Feature-Module: Code einzelner Features (DNS,
+* **Umgesetzt am 2026-11-02:** 73 (D104) – Feature-Module: Code einzelner Features (DNS,
   WireGuard, Bandbreitenlimit, Bonds/MLAG, isolierte VLANs, SNMP, Admin-SSH-Keys) und die Skripte des CAPsMAN in
-  eigenen Dateien, nur bei Nutzung geladen; `upload-seed.sh` lädt nur, was die Site nutzt.
+  eigenen Dateien, nur bei Nutzung geladen; `upload-seed.sh` lädt nur, was die Site nutzt. Labor 7.25 grün
+  (`e2e.sh` 410, vrrp 137, mlag 72, onboard 14); Hardware an einem Standort ohne DNS-Selbstbedienung ok, offen nur
+  noch `cfm-dnsreq` auf einem Router mit `dns.rsc`.
 * **Neu am 2026-11-02 (Abgleich mit den Plänen beider Standorte):** Backup-Manager unter „Noch nicht mit echter
   Hardware getestet“ (Test an einem Standort geplant 2026-11-07/08), 72 (Band je AP abschalten, Antennengewinn –
   nur bei Außenantenne).
@@ -1250,7 +1252,7 @@ fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Router
     `radios` → `{"<ap>"={"5"="off"}}` (keine Provisionierung dieses Bands, Radio aus) und `antennaGain` je AP und
     Band (Parameter in der RouterOS-wifi-Doku prüfen; hält er beim Provisionieren durch den CAPsMAN?). Alternative
     ohne Framework: eigener Außen-AP (dieselbe 5-GHz-Regel). Offen, Entscheidung des Nutzers.
-73. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, im Labor ungetestet:*
+73. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, Labor grün, Hardware teils:*
     `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung: `router.dns` (+ Skript-Rumpf
     `router.dnsreq`), `router.wg`, `router.limit`, `base.sshkeys`, `base.snmp`, `base.iso`, `base.bond`; Skript-Rümpfe
     des CAPsMAN `capsman.ssid`, `capsman.ssidcheck`, `capsman.reprov` (`$cfmBody`).
@@ -1259,14 +1261,17 @@ fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Router
     `$cfmCheck` stoppt ein Release, dem ein genutztes Modul fehlt. Grün: `rsc-check` (Regel `feature-modul`),
     `feature-module-test.py`, `upload-seed-test.py` (nachgebauter SFTP-Server). Das CHR-Labor lief in der
     Cloud-Sitzung nicht (kein KVM, `download.mikrotik.com` gesperrt).
+    * *Labor 7.25 (2026-11-02, erledigt):* `e2e.sh` 410, `e2e-vrrp.sh` 137, `e2e-mlag.sh` 72, `e2e-onboard.sh` 14 –
+      alle ohne Fehler (Labor-Skripte mit `--all-features`). Übergangsprobe alter Stand (vor D98) → D104 ohne
+      `--all-features` (Modulauswahl aus den Seed-Daten): Release ringweise und zweites Release ok.
+    * *Hardware, Standort ohne DNS-Selbstbedienung (2026-11-02, erledigt):* `upload-seed.sh` ließ genau die sieben
+      ungenutzten Module weg (bond, iso, snmp, ssid, ssidcheck, dns, dnsreq), `$cfmCheck` ohne Fehler, Release
+      ringweise inkl. Router ohne Rollback, zweites Release mit neuem Manager-Code ok; kein `cfm-dnsreq`, WireGuard,
+      Queues, SSH-Schlüssel und `cfm-reprov` unverändert.
     **Offen:**
-    * Labor: `e2e.sh` (14e Keys, 14k SNMP und die neue Sperre in `$cfmCheck`, 14l DNS inkl. Abbau ohne
-      `dns.rsc`, Bandbreitenlimit; neue Prüfungen der Module in `dl/`), `e2e-vrrp.sh` (WireGuard über die
-      VIP), `e2e-mlag.sh` (Bonds, MLAG, Abbau eines Bonds, isolierte VLANs). Die Labor-Skripte laden mit
-      `--all-features`.
-    * Hardware: erstes Release ringweise; danach auf einem Router `/system/script/get cfm-dnsreq source` prüfen
+    * Hardware an einem Router mit `dns.rsc`: `/system/script/get cfm-dnsreq source` prüfen
       (Kopf `:local dur …`/`:local deny …` für cfm-DNS, Rumpf als Funktion `$dnsreq`), cfm-DNS-Freischaltung einmal
-      durchspielen. `upload-seed.sh` an einem Standort: Liste „nicht hochgeladen“ und „entfernt“ plausibel?
+      durchspielen; dort auch die Listen „nicht hochgeladen“/„entfernt“ von `upload-seed.sh`.
     * Nachtrag: Die WLAN-Skripte des CAPsMAN kommen ebenfalls aus Rümpfen (`capsman.ssid`, `capsman.ssidcheck`,
       `capsman.reprov`, `$cfmBody`); Labor `e2e.sh` Schritt 14 (schaltbare SSID, Auto-Aus, `cfm-reprov`) prüft sie.
     * Weitere Kandidaten: `mgr-check.rsc` (57 KB) aufteilen, bevor die

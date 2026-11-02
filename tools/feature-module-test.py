@@ -17,7 +17,7 @@ class Bedarf(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
         # Vorlage: kein Feature genutzt
-        for f in ("global.rsc", "vlans.rsc", "wireguard.rsc", "dns.rsc", "mlag.rsc"):
+        for f in ("global.rsc", "vlans.rsc", "wifi.rsc", "wireguard.rsc", "dns.rsc", "mlag.rsc"):
             shutil.copy(ROOT / "cfm/work" / f, self.d)
         os.makedirs(os.path.join(self.d, "hosts"))
         shutil.copy(ROOT / "cfm/work/hosts/sw1.rsc", os.path.join(self.d, "hosts"))
@@ -33,11 +33,12 @@ class Bedarf(unittest.TestCase):
         with open(os.path.join(self.d, name), "a", encoding="utf-8") as fh:
             fh.write(text)
 
-    def genutzt(self):
-        return sorted(m for m, (ja, _) in fm.bedarf(self.d).items() if ja)
+    def genutzt(self, alle=False):
+        return sorted(m for m, (ja, _) in fm.bedarf(self.d).items() if ja and (alle or m != "capsman.reprov"))
 
     def test_vorlage_nutzt_nichts(self):
-        self.assertEqual(self.genutzt(), [])
+        # nur cfm-reprov, das jeder CAPsMAN bekommt
+        self.assertEqual(self.genutzt(alle=True), ["capsman.reprov"])
         # jede Regel gehört zu einem Modul der Vorlage, jedes Modul der Vorlage hat eine Regel
         self.assertEqual(sorted(fm.bedarf(self.d)), fm.module(ROOT / "cfm/work/lib"))
 
@@ -79,6 +80,12 @@ class Bedarf(unittest.TestCase):
         os.remove(os.path.join(self.d, "hosts/srv1.rsc"))
         self.schreiben("mlag.rsc", ':global cfmMlag {"p1"={"nodes"={"sw1";"sw2"}}}\n')
         self.assertEqual(self.genutzt(), ["base.bond"])
+
+    def test_schaltbare_ssid(self):
+        self.anhaengen("wifi.rsc", ':set ($cfmWifi->"ssids"->"guest"->"switch") "off"\n')
+        self.assertEqual(self.genutzt(), ["capsman.ssid", "capsman.ssidcheck"])
+        self.schreiben("wifi.rsc", ':global cfmWifi {"ssids"={"guest"={"ssid"="Gast";"switch"=""}}}\n')
+        self.assertEqual(self.genutzt(), [])
 
     def test_ausgabe(self):
         lib = tempfile.mkdtemp()

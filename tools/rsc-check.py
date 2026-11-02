@@ -54,7 +54,7 @@ REGELN = {
     "log-ascii": "Log-Meldung mit Umlaut oder anderem Nicht-ASCII-Zeichen: RouterOS schickt jedes solche "
                  "Byte als '?' an den Syslog (TODO 70). ae/oe/ue/ss und '-' schreiben. Fehler unter "
                  "cfm/work/, sonst Hinweis.",
-    "feature-modul": "$cfmFeat \"<Rolle>.<Feature>\" (D104): Der Name passt nicht zu lib/<Rolle>.<Feature>.rsc "
+    "feature-modul": "$cfmFeat/$cfmBody \"<Rolle>.<Feature>\" (D104): Der Name passt nicht zu lib/<Rolle>.<Feature>.rsc "
                      "(a-z, 0-9, '-'), die Rolle ist weder base noch die eigene (das Manifest liefert das Modul "
                      "dann nicht jedem Gerät, das es lädt) oder die Datei fehlt unter cfm/work/lib/.",
 }
@@ -73,8 +73,9 @@ JSON_FELD = re.compile(r':set\s+\(\$\w+->"[^"]*"\)\s+|(?<!\\)"[\w.-]+"=')
 # Log-Aufrufe (TODO 70): :log <topic>, $cfmLog, $cfmWarn - deren Texte gehen an den Syslog
 LOGRUF = re.compile(r":log\s+(?:info|warning|error|debug)\b|\$cfm(?:Log|Warn)\b")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
-# Feature-Module (D104): $cfmFeat "<Rolle>.<Feature>" lädt cfm/work/lib/<Rolle>.<Feature>.rsc
-FEATRUF = re.compile(r'\$cfmFeat\s+"([^"]*)"')
+# Feature-Module (D104): $cfmFeat "<Rolle>.<Feature>" lädt cfm/work/lib/<Rolle>.<Feature>.rsc, $cfmBody liest
+# einen Skript-Rumpf derselben Form
+FEATRUF = re.compile(r'\$cfmFeat\s+"([^"]*)"|\[\s*\$cfmBody\s+"([^"]*)"')
 FEATNAME = re.compile(r"[a-z-]+\.[a-z0-9-]+")
 GROESSE_MAX = 60000        # wie cfmParseWork in cfm/work/lib/mgr-core.rsc
 GROESSE_HINWEIS = 50000
@@ -295,7 +296,7 @@ def check_rsc(path, text):
         if zeile.lstrip().startswith("#"):
             continue
         for fm in FEATRUF.finditer(zeile):
-            name = fm.group(1)
+            name = fm.group(1) if fm.group(1) is not None else fm.group(2)
             ok = FEATNAME.fullmatch(name) is not None
             if ok and eigen is not None:
                 ok = name.split(".")[0] in ("base", eigen)

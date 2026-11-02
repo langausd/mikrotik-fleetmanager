@@ -112,7 +112,7 @@ class UploadSeed(unittest.TestCase):
     def test_vorlage_ohne_features(self):
         out = self.upload("--site")
         self.assertIn("Feature-Module nicht hochgeladen", out)
-        self.assertEqual(self.lib(), [])
+        self.assertEqual(self.lib(), ["capsman.reprov.rsc"])
         # Framework-Code kommt trotzdem
         self.assertTrue(os.path.isfile(os.path.join(self.mgr, "cfm/work/lib/lib.rsc")))
         self.assertTrue(os.path.isfile(os.path.join(self.mgr, "cfm/work/roles/router.rsc")))
@@ -124,7 +124,7 @@ class UploadSeed(unittest.TestCase):
         self.site("global.rsc", ':global cfmG {"users"={"netadmin"="full"};"snmp"={"from"={"192.168.10.5"}}}\n')
         self.site("dns.rsc", ':global cfmDns {"self"={"zones"={"lan"}}}\n')
         out = self.upload()
-        self.assertEqual(self.lib(), ["base.snmp.rsc", "router.dns.rsc", "router.dnsreq.rsc"])
+        self.assertEqual(self.lib(), ["base.snmp.rsc", "capsman.reprov.rsc", "router.dns.rsc", "router.dnsreq.rsc"])
         self.assertIn("Feature-Module auf dem Manager entfernt:", out)
         self.assertIn(" base.bond", out)
         # die Site-Daten selbst bleiben ohne --site unangetastet
@@ -140,10 +140,10 @@ class UploadSeed(unittest.TestCase):
         with open(os.path.join(ov, "authorized_keys.netadmin"), "w") as fh:
             fh.write("ssh-ed25519 AAAA x\n")
         self.upload("--overlay", ov, "--site")
-        self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc"])
+        self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
         # später ohne --site: zählen die Daten des Managers (dort liegen sie jetzt)
         self.upload("--overlay", ov)
-        self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc"])
+        self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
 
     def test_all_features(self):
         self.upload("--site")

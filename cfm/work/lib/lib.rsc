@@ -413,6 +413,15 @@
   /import file-name=$f verbose=no
   :return true
 }
+# Rumpf eines Skripts, das eine Rolle als /system/script anlegt (D104): lib/<Rolle>.<Name>.rsc, kommt wie ein
+# Feature-Modul per Manifest, wird aber als Text gelesen (die Rolle setzt Locals davor, den Aufruf dahinter)
+:global cfmBody do={
+  :global cfmDl
+  :local t ""
+  :onerror e in={ :set t [/file/get ($cfmDl . "/lib/" . $1 . ".rsc") contents] } do={}
+  :if ([:len $t] = 0) do={ :error ("lib/" . $1 . ".rsc fehlt im Manifest (D104)") }
+  :return $t
+}
 
 # ---------- Daten-Helfer für Rollen ----------
 

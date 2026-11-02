@@ -303,7 +303,10 @@
         :if ($rel ~ "^lib/mgr-" and $rl ~ ",manager") do={ :set hit true }
         :if ($rel = "lib/lib-wifi.rsc" and $rl ~ ",(ap|capsman|manager),") do={ :set hit true }
         # Feature-Module einer Rolle (D104): lib/<Rolle>.<Feature>.rsc
-        :if ($rel ~ "^lib/[a-z-]+\\.[a-z0-9-]+\\.rsc\$") do={ :if ($rl ~ ("," . [:pick $rel 4 [:find $rel "." 4]] . ",")) do={ :set hit true } }
+        :if ($rel ~ "^lib/[a-z-]+\\.[a-z0-9-]+\\.rsc\$") do={
+          :local fr [:pick $rel 4 [:find $rel "." 4]]
+          :if ($rl ~ ("," . $fr . ",") or ($fr = "capsman" and $rl ~ ",manager,")) do={ :set hit true }
+        }
         :if (($rel = "web/cfm-editor.js" and $rl ~ ",manager") or ($rel = "web/cfm-monitor.js" and $rl ~ ",(capsman|manager)") or ($rel = "web/cfm-dns.js" and $rl ~ ",router,")) do={ :set hit true }
       }
       :if ($hit) do={ :set aff ($aff . " " . $name) }

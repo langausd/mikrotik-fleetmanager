@@ -4,8 +4,8 @@
 # den Forwarder cfm-upstream und den Abbau ohne dns.rsc erledigt die Rolle selbst.
 # Von der Rolle: cfmCtx->"dup" = Upstreams (dns.rsc servers, sonst wan.dns)
 # ============================================================
-:global cfmG; :global cfmDns; :global cfmDl; :global cfmCtx; :global cfmDry
-:global cfmEnsure; :global cfmWarn
+:global cfmG; :global cfmDns; :global cfmCtx; :global cfmDry
+:global cfmEnsure; :global cfmWarn; :global cfmBody
 :local dup ($cfmCtx->"dup")
 
 # Adlisten (hosts-Format, Aktualisierung alle 4 h durch RouterOS); Zertifikat gegen den eingebauten Speicher.
@@ -73,9 +73,7 @@
   :foreach x in=($dself->"deny") do={ :if ([:len $dl] > 0) do={ :set dl ($dl . ";") }; :set dl ($dl . "\"" . [$san [:tostr $x]] . "\"") }
   :local site [:tostr ($cfmG->"notify"->"site")]
   :if ([:len $site] = 0) do={ :set site [:tostr ($cfmG->"domain")] }
-  :local body ""
-  :onerror e in={ :set body [/file/get ($cfmDl . "/lib/router.dnsreq.rsc") contents] } do={}
-  :if ([:len $body] = 0) do={ :error "lib/router.dnsreq.rsc fehlt im Manifest (D104)" }
+  :local body [$cfmBody "router.dnsreq"]
   :local src "# cfm (Rolle router, D102): DNS-Selbstbedienung - Anfragen aus dem Log freischalten, Ablauf aufraeumen. Jeder Apply schreibt es neu\n"
   :set src ($src . ":local dur " . ($sh * 3600) . "\n:local deny ({" . $dl . "})\n")
   :set src ($src . ":local nu \"" . [$san [:tostr ($cfmG->"notify"->"url")]] . "\"\n:local site \"" . [$san $site] . "\"\n")

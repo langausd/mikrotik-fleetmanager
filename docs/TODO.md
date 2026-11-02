@@ -1234,7 +1234,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     wäre der private SSH-Schlüssel im Syslog gelandet (an diesem Standort lief seit dem Syslog keiner).
 72. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, im Labor ungetestet:*
     `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung: `router.dns` (+ Skript-Rumpf
-    `router.dnsreq`), `router.wg`, `router.limit`, `base.sshkeys`, `base.snmp`, `base.iso`, `base.bond`.
+    `router.dnsreq`), `router.wg`, `router.limit`, `base.sshkeys`, `base.snmp`, `base.iso`, `base.bond`; Skript-Rümpfe
+    des CAPsMAN `capsman.ssid`, `capsman.ssidcheck`, `capsman.reprov` (`$cfmBody`).
     `roles/router.rsc` 41,6 → 27,3 KB, `roles/base.rsc` 38,8 → 27,6 KB. `tools/upload-seed.sh` lädt nur die
     Module hoch, die die Site nutzt (`tools/feature-module.py`), und entfernt die übrigen auf dem Manager;
     `$cfmCheck` stoppt ein Release, dem ein genutztes Modul fehlt. Grün: `rsc-check` (Regel `feature-modul`),
@@ -1248,7 +1249,8 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     * Hardware: erstes Release ringweise; danach auf einem Router `/system/script/get cfm-dnsreq source` prüfen
       (Kopf `:local dur …`/`:local deny …` für cfm-DNS, Rumpf als Funktion `$dnsreq`), cfm-DNS-Freischaltung einmal
       durchspielen. `upload-seed.sh` an einem Standort: Liste „nicht hochgeladen“ und „entfernt“ plausibel?
-    * Weitere Kandidaten: die Skripte `cfm-ssid-<key>-on/-off` und `cfm-reprov` in `lib-wifi.rsc` als
-      Rumpf-Dateien wie `router.dnsreq` (weniger Escape); `mgr-check.rsc` (57 KB) aufteilen, bevor die
+    * Nachtrag: Die WLAN-Skripte des CAPsMAN kommen ebenfalls aus Rümpfen (`capsman.ssid`, `capsman.ssidcheck`,
+      `capsman.reprov`, `$cfmBody`); Labor `e2e.sh` Schritt 14 (schaltbare SSID, Auto-Aus, `cfm-reprov`) prüft sie.
+    * Weitere Kandidaten: `mgr-check.rsc` (57 KB) aufteilen, bevor die
       60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht empfohlen:
       RouterOS-Update/Firmware aus dem Agent (D68: heikelster Pfad).

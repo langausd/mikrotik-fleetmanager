@@ -2,8 +2,9 @@
 """feature-module – welche Feature-Module (lib/<Rolle>.<Feature>.rsc, D104) braucht eine Site?
 
 tools/upload-seed.sh lädt nur die Module hoch, deren Feature die Site-Daten nutzen, und entfernt die übrigen
-auf dem Manager. Dieses Skript liest dazu die Site-Daten (global.rsc, vlans.rsc, wireguard.rsc, dns.rsc, mlag.rsc,
-hosts/*.rsc, authorized_keys.<user>) und nennt die Module, die die Site nicht braucht.
+auf dem Manager. Dieses Skript liest dazu die Site-Daten (global.rsc, vlans.rsc, wifi.rsc, wireguard.rsc, dns.rsc,
+mlag.rsc, hosts/*.rsc, authorized_keys.<user>) und nennt die Module, die die Site nicht braucht. Dazu zählen
+auch die Skript-Rümpfe (lib/<Rolle>.<Name>.rsc, $cfmBody), z.B. der Schalt-Skripte schaltbarer SSIDs.
 
 Aufruf:
   tools/feature-module.py <site-verzeichnis> <lib-verzeichnis>         nicht gebrauchte Module, eins je Zeile
@@ -156,6 +157,13 @@ def bedarf(site):
         if f.endswith(".rsc") and genutzt_wenn_nicht_leer(tokens(lesen(hd, f) or ""), "bonds"):
             grund.append("hosts/" + f + " bonds")
     r["base.bond"] = (bool(grund), ", ".join(grund) if grund else "keine bonds, mlag.rsc leer")
+
+    # schaltbare SSIDs (D64): Rümpfe von cfm-ssid-<key>-on/-off und cfm-ssid-check; cfm-reprov immer (CAPsMAN)
+    wi = tokens(lesen(site, "wifi.rsc") or "")
+    sw = any(p is None or wert(wi, p) != "" for p in nennungen(wi, "switch"))
+    for m in ("capsman.ssid", "capsman.ssidcheck"):
+        r[m] = (sw, "wifi.rsc switch" + ("" if sw else " an keiner SSID"))
+    r["capsman.reprov"] = (True, "CAPsMAN immer (cfm-reprov)")
     return r
 
 

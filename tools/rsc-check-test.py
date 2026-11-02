@@ -218,6 +218,7 @@ class FeatureModul(unittest.TestCase):
         self.assertEqual(rules('$cfmFeat "Base.SNMP"\n'), ["feature-modul"])                  # Name
         self.assertEqual(rules('$cfmFeat "snmp"\n'), ["feature-modul"])                       # ohne Rolle
         self.assertEqual(rules('$cfmFeat "router.dns"\n', "site/roles/base.rsc"), ["feature-modul"])  # fremde Rolle
+        self.assertEqual(rules(':local b [$cfmBody "Router.DnsReq"]\n'), ["feature-modul"])             # Skript-Rumpf
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "cfm/work/lib"))
             self.assertEqual(rules('$cfmFeat "base.fehlt"\n', os.path.join(d, "cfm/work/roles/base.rsc")),
@@ -228,6 +229,7 @@ class FeatureModul(unittest.TestCase):
         self.assertEqual(rules('$cfmFeat "router.dns"\n', "site/roles/router.rsc"), [])
         self.assertEqual(rules('$cfmFeat "router.dns-self"\n', "site/lib/router.dns.rsc"), [])
         self.assertEqual(rules('$cfmFeat $n\n'), [])                                           # Variable
+        self.assertEqual(rules(':local b [$cfmBody "capsman.ssid"]\n', "site/lib/lib-wifi.rsc"), [])
         self.assertEqual(rules('# $cfmFeat "x"\n'), [])                                        # Kommentar
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "cfm/work/lib"))

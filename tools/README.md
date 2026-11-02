@@ -51,7 +51,8 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
   `bootstrap-manager.rsc` aus dem Overlay). Weitere Optionen: `--port`, `--base flash/cfm`.
 * Feature-Module (`lib/<rolle>.<feature>.rsc`, D104) gehen nur hinüber, wenn die Site das Feature nutzt
   (SNMP, isolierte VLANs, Admin-SSH-Keys, Bonds/MLAG, DNS aus `dns.rsc`, DNS-Selbstbedienung,
-  Bandbreitenlimit, WireGuard); nicht gebrauchte entfernt das Skript auf dem Manager und nennt sie.
+  Bandbreitenlimit, WireGuard, schaltbare SSIDs); nicht gebrauchte entfernt das Skript auf dem Manager und
+  nennt sie.
   Maßgeblich sind die Site-Daten auf dem Manager, mit `--site` die hochgeladenen. Schaltest du ein
   Feature später ein (z.B. im cfm-Editor), stoppt `$cfmCheck` das Release mit „lib/… fehlt“ – dann
   das Skript erneut aufrufen. `--all-features` lädt alle hoch (Testlabor).
@@ -64,7 +65,7 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
 ## `feature-module.py`
 
 Sagt, welche Feature-Module (`cfm/work/lib/<rolle>.<feature>.rsc`, D104) eine Site braucht, aus ihren
-Site-Daten (`global.rsc`, `vlans.rsc`, `wireguard.rsc`, `dns.rsc`, `mlag.rsc`, `hosts/`,
+Site-Daten (`global.rsc`, `vlans.rsc`, `wifi.rsc`, `wireguard.rsc`, `dns.rsc`, `mlag.rsc`, `hosts/`,
 `authorized_keys.<user>`). `upload-seed.sh` ruft es auf; von Hand zum Nachsehen:
 
 ```bash

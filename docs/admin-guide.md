@@ -612,6 +612,20 @@ Drop.
 
 ## 6. Inbetriebnahme
 
+**Auf deinem Admin-Rechner** (Linux oder macOS; die Werkzeuge in `tools/` laufen dort, nicht auf
+den Geräten) brauchst du:
+
+| Software | wofür |
+|---|---|
+| bash | `upload-seed.sh`, `pull-site.sh` |
+| OpenSSH (`ssh`, `sftp`) und ein SSH-Key am Manager | Upload und Pull per Batch-SFTP, das kein Passwort abfragen kann (6.2) |
+| Python 3, nur Standardbibliothek | `new-site.py` (6.1), `rsc-check.py`; `upload-seed.sh` wählt damit die Feature-Module, die die Site braucht (`feature-module.py`, D104) – ohne Python lädt es alle hoch |
+| Git | Repo holen und aktualisieren |
+
+Python-Pakete außerhalb der Standardbibliothek braucht kein Werkzeug. Eigene Voraussetzungen haben nur
+optionale Werkzeuge: `wg-client-setup.sh` braucht NetworkManager (`nmcli`, 8.8), das Testlabor QEMU (12). Auf
+den Geräten und dem Manager läuft nur RouterOS. Einzelheiten zu jedem Werkzeug: [tools/README.md](../tools/README.md).
+
 ### 6.1 Vorlage anpassen
 
 Lege deine Standortdaten als privates Overlay an; Git ignoriert die Verzeichnisse `site/` und
@@ -1831,6 +1845,12 @@ Rolle nicht: Werte über `:global cfmCtx` übergeben. Beispiel aus `roles/base.r
 :local snmp ($cfmG->"snmp")
 :if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ $cfmFeat "base.snmp" } }
 ```
+
+Erzeugt eine Rolle ein Skript (`/system/script`), gehört dessen Code ebenso in eine Datei
+`lib/<rolle>.<name>.rsc` statt in Strings mit Escapes: als Funktion (`:local f do={ … }`, damit die Datei
+allein `:parse` besteht), gelesen per `[$cfmBody "<rolle>.<name>"]`; die Rolle setzt die Werte als Locals davor
+und den Aufruf dahinter (Beispiele: `router.dnsreq`, `capsman.ssid`). Für die Auslieferung gilt dasselbe wie
+für Module; `capsman.*` bekommt auch die Rolle `manager` (ohne Gerät mit Rolle `capsman` ist sie CAPsMAN).
 
 Objekte, die nur das Modul anlegt, räumt der Abgleich weg, sobald es nicht mehr geladen wird. Was der
 Abgleich nicht kennt (Objekte ohne `cfm:`-Kommentar, z.B. Log-Regeln), baut die Rolle selbst ab, nicht das

@@ -404,6 +404,13 @@
   :foreach u,g in=($cfmG->"users") do={ :if ([$fex ($w . "/authorized_keys." . $u)]) do={ :set ($fneed->"base.sshkeys") ("authorized_keys." . $u) } }
   :foreach vid,v in=$cfmVlans do={ :if ($rtr and ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0)) do={ :set ($fneed->"router.limit") ("vlans.rsc limit, VLAN " . $vid) } }
   :if ([:len $cfmMlag] > 0) do={ :set ($fneed->"base.bond") "mlag.rsc" }
+  # schaltbare SSIDs (D64): Rümpfe der Skripte auf dem CAPsMAN; cfm-reprov braucht er immer
+  :foreach k,s in=($cfmWifi->"ssids") do={
+    :if ($k != [:tostr ($cfmWifi->"master")] and [:len [:tostr ($s->"switch")]] > 0) do={
+      :set ($fneed->"capsman.ssid") ("wifi.rsc switch, SSID " . $k); :set ($fneed->"capsman.ssidcheck") ("wifi.rsc switch, SSID " . $k)
+    }
+  }
+  :set ($fneed->"capsman.reprov") "CAPsMAN"
   # bonds im Hostfile: unten beim Import der Hostfiles, geprüft am Ende
   :foreach n,d in=$inv do={
     :local ip [:tostr ($d->"ip")]

@@ -7,7 +7,7 @@
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
 :global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
 :global cfmIds; :global cfmRun; :global cfmIndex; :global cfmIdx; :global cfmVids; :global cfmMlagOf
-:global cfmLeases; :global cfmMacUp; :global cfmVlanKey
+:global cfmLeases; :global cfmMacUp; :global cfmVlanKey; :global cfmFeat; :global cfmCtx
 
 :local br "bridge"
 :local mv [:tostr ($cfmG->"mgmtVlan")]
@@ -188,48 +188,11 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
   }
 }
 
-# Filter der isolierten VLANs (D76), nur wo Client-Ports sein können (Access-Ports, WLAN)
-:local fl ({})
+# Filter der isolierten VLANs (D76): Feature-Modul lib/base.iso.rsc (D104), nur wo Client-Ports sein können
+# (Access-Ports, WLAN); sonst leerer Block (räumt alte Regeln weg)
 :if ([:len $iso] > 0 and ($nIso > 0 or [$cfmHas "ap"] or [$cfmHas "capsman"] or [$cfmHas "manager"])) do={
-  :local am ({})
-  :local ipr ({})
-  :foreach vid,x in=$iso do={
-    :local nn [$cfmNet $vid]
-    :local net [:tostr ($nn->"net")]
-    :if ([:len $net] > 0) do={
-      # Router im VLAN: VIP bzw. Gateway .gw und die realen Adressen .250+routerId (D15)
-      :local rips ({})
-      :set ($rips->[:tostr ($nn->"gw")]) 1
-      :for r from=1 to=4 do={ :set ($rips->[:tostr (($nn->"addr") + 250 + $r)]) 1 }
-      :set ($ipr->[:len $ipr]) ({"chain"="forward";"in-interface-list"="cfm-iso";"mac-protocol"="ip";"src-address"=$net;"dst-address"=("!" . $net);"action"="accept"})
-      :foreach ip,y in=$rips do={
-        :set ($ipr->[:len $ipr]) ({"chain"="forward";"in-interface-list"="cfm-iso";"mac-protocol"="ip";"src-address"=$net;"dst-address"=($ip . "/32");"action"="accept"})
-        :set ($ipr->[:len $ipr]) ({"chain"="forward";"in-interface-list"="cfm-iso";"mac-protocol"="arp";"arp-src-address"=$net;"arp-dst-address"=($ip . "/32");"action"="accept"})
-      }
-    }
-    :foreach a in=[:toarray ($cfmVlans->$vid->"isolateAllow")] do={
-      :local mac [:tostr $a]
-      :if (!([:len $mac] = 17 and $mac ~ "^[0-9A-Fa-f][0-9A-Fa-f](:[0-9A-Fa-f][0-9A-Fa-f])+\$")) do={ :set mac [:tostr ($cfmLeases->$vid->$a->"mac")] }
-      :if ([:len $mac] > 0) do={ :set ($am->[$cfmMacUp $mac]) 1 } else={ $cfmLog ("isolateAllow " . $a . " (VLAN " . $vid . "): keine MAC in leases.rsc") }
-    }
-  }
-  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"="FF:FF:FF:FF:FF:FF/FF:FF:FF:FF:FF:FF";"action"="accept"})
-  :foreach mac,y in=$am do={
-    :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"=($mac . "/FF:FF:FF:FF:FF:FF");"action"="accept"})
-    :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"src-mac-address"=($mac . "/FF:FF:FF:FF:FF:FF");"action"="accept"})
-  }
-  # Multicast vor den IP-Regeln: eine Multicast-Adresse liegt außerhalb des eigenen Netzes
-  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"="01:00:00:00:00:00/01:00:00:00:00:00";"action"="drop"})
-  # Gateway: VRRP-MAC und die MACs der Router aus dem Manifest. Je nach Gerät sieht der Bridge-Filter
-  # einen ungetaggt angekommenen Frame als ip oder als vlan (Labor: virtio ip, e1000 vlan) - IP-Matcher
-  # greifen dann nicht, MAC-Matcher immer. Die IP-Regeln danach ergänzen nur.
-  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"="00:00:5E:00:01:00/FF:FF:FF:FF:FF:00";"action"="accept"})
-  :foreach mac in=($cfmMf->"rmac") do={ :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"dst-mac-address"=([$cfmMacUp $mac] . "/FF:FF:FF:FF:FF:FF");"action"="accept"}) }
-  :if ([:len ($cfmMf->"rmac")] = 0) do={ $cfmLog "isolierte VLANs: keine Router-MACs im Manifest - Clients erreichen das Gateway nur, wenn der Filter IP-Adressen sieht" }
-  :foreach r in=$ipr do={ :set ($fl->[:len $fl]) $r }
-  :set ($fl->[:len $fl]) ({"chain"="forward";"in-interface-list"="cfm-iso";"action"="drop"})
-}
-$cfmBlock m="/interface/bridge/filter" k="iso" l=$fl
+  :set cfmCtx ({"iso"=$iso}); $cfmFeat "base.iso"
+} else={ $cfmBlock m="/interface/bridge/filter" k="iso" l=({}) }
 
 # --- Bridge-VLAN-Tabelle: aus Profilen abgeleitet ---
 #     Hostfile cpuVlans={177;...}: die Bridge (CPU) bleibt in diesen VLANs getaggt, obwohl das Gerät
@@ -421,37 +384,10 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
     /system/logging/remove [find where action="cfmremote"]
   }
 }
-# --- SNMPv3 nur lesend für LibreNMS (TODO 54): authPriv, nur von snmp.from (die MGMT-Adresse des Servers;
-#     der input-Block lässt das MGMT-Netz ohnehin durch). Passwörter NUR im Vault (snmp.auth, snmp.priv),
-#     per Secret-Push; bis dahin Zufallswerte. Die Standard-Community public (v1/v2c ohne Passwort, von
-#     überall) lässt sich nicht löschen, sie wird abgeschaltet. Ohne snmp bleibt /snmp unangetastet. ---
+# --- SNMPv3 nur lesend für LibreNMS (TODO 54, D99): Feature-Modul lib/base.snmp.rsc (D104), nur mit snmp.from.
+#     Ohne snmp räumt die GC die Community weg, /snmp selbst bleibt unangetastet ---
 :local snmp ($cfmG->"snmp")
-:local snOn false
-:if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ :set snOn true } }
-:if ($snOn) do={
-  :local su [:tostr ($snmp->"user")]
-  :if ([:len $su] = 0) do={ :set su "librenms" }
-  :local sa [:tostr ($snmp->"auth")]
-  :if ([:len $sa] = 0) do={ :set sa "SHA256" }
-  # RouterOS liest Hostadressen als x.x.x.x/32 zurück
-  :local sf ({})
-  :foreach a in=($snmp->"from") do={
-    :local x [:tostr $a]
-    :if ([:typeof [:find $x "/"]] = "nil") do={ :set x ($x . "/32") }
-    :set ($sf->[:len $sf]) $x
-  }
-  :local loc [:tostr ($cfmHost->"location")]
-  :if ([:len $loc] = 0) do={ :set loc [:tostr ($snmp->"location")] }
-  :local rc "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-  # Neu angelegt (erster Rollout, anderer user) trägt sie Zufallspasswörter: Secret-Push anfordern (SV 0)
-  :if ([:len [/snmp/community/find where name=$su]] = 0 and $cfmDry != true) do={
-    :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={}
-    $cfmLog ("SNMP-Community " . $su . " neu - Secret-Push angefordert")
-  }
-  $cfmEnsure m="/snmp/community" k=("snmp:" . $su) n=({"name"=$su}) p=({"name"=$su;"addresses"=$sf;"security"="private";"authentication-protocol"=$sa;"encryption-protocol"="AES";"read-access"="yes";"write-access"="no"}) a=({"authentication-password"=[:rndstr length=32 from=$rc];"encryption-password"=[:rndstr length=32 from=$rc]})
-  $cfmSet m="/snmp/community" n=({"default"=true}) p=({"disabled"="yes"})
-  $cfmSet m="/snmp" p=({"enabled"="yes";"contact"=[:tostr ($snmp->"contact")];"location"=$loc})
-}
+:if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ $cfmFeat "base.snmp" } }
 
 # RAM-Log ohne system,info (D79): RouterOS loggt jede Konfig-Änderung (bei Skripten samt Quelltext) und
 # jede Anmeldung als system,info - ein Framework-Update verdrängte so die Hälfte der 1000 Zeilen des
@@ -473,108 +409,12 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
   $cfmEnsure m="/user" k=("user:" . $u) n=({"name"=$u}) p=({"name"=$u;"group"=$grp}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
 }
 
-# --- Persönliche Admin-SSH-Keys je User (TODO 19, D65): work/authorized_keys.<user> im OpenSSH-Format,
-#     eine Zeile je Key "<typ> <base64> [kommentar]" (ssh-ed25519, ssh-rsa, sk-ssh-ed25519@openssh.com;
-#     keine OpenSSH-Optionen wie command=... davor; "#"-Zeilen und Leerzeilen zählen nicht).
-#     Gibt es die Datei für einen User aus global.rsc users, ist sie SEIN vollständiger Sollzustand:
-#     fehlende Keys legt base an, alle übrigen Keys dieses Users entfernt es (auch von Hand
-#     hinzugefügte). Entzug = Zeile löschen + $cfmRelease; alle Keys einer Person entziehen = Datei
-#     leeren (nur Kommentare) - eine gelöschte Datei lässt die Keys dagegen stehen: Ohne Datei bleiben
-#     die Keys eines Users unangetastet. Abgleich über den Fingerprint: Jeder Key wird angelegt
-#     (add key=, liefert fingerprint) und gleich wieder entfernt, wenn der User ihn schon hat - so gibt
-#     es nie einen Moment ohne Key. Scheitert ein Key, entfernt base für diesen User nichts (ein
-#     halber Sollzustand sperrt niemanden aus). Im Probelauf ist kein add möglich - Abgleich dort
-#     näherungsweise über den Kommentar (info). Das Passwort (Secret-Push) bleibt gesetzt, gilt mit Key
-#     aber nur noch für Winbox/WebFig: RouterOS lehnt SSH per Passwort ab, sobald der User einen Key
-#     hat (always-allow-password-login=no, TODO 29). Kein Ersatz für die ssh-keys der Rolle manager
-#     (cfm/cfmd-<name>) - die sind Maschinen-Identität, hier geht es um Menschen. ---
-:global cfmWarn; :global cfmShowAll; :global cfmShowObj
-:foreach u,grp in=($cfmG->"users") do={
-  :local akf ($cfmDl . "/authorized_keys." . $u)
-  # per Name statt /file/find (D59, auf dem Manager Hunderte Dateien); eine gelöschte Datei liefert
-  # /file/get u.U. weiter als Eintrag ohne Namen
-  :local akx false
-  :onerror e in={ :set akx ([:len [/file/get $akf name]] > 0) } do={}
-  :if ($akx and [:len [/user/find where name=$u]] > 0) do={
-    :local lines ({})
-    :local t ([/file/get $akf contents] . "\n")
-    :while ([:len $t] > 0) do={
-      :local p [:find $t "\n"]
-      :local l [:pick $t 0 $p]
-      :set t [:pick $t ($p + 1) [:len $t]]
-      :if ([:len $l] > 0 and [:pick $l ([:len $l] - 1) [:len $l]] = "\r") do={ :set l [:pick $l 0 ([:len $l] - 1)] }
-      :if ([:len $l] > 0 and [:pick $l 0 1] != "#") do={ :set ($lines->[:len $lines]) $l }
-    }
-    :if ($cfmShowAll = true) do={ $cfmShowObj m="/user/ssh-keys" k=("ak:" . $u) p=({"user"=$u;"keys"=[:len $lines]}) }
-    :if ($cfmDry = true) do={
-      # Kommentar = alles nach dem zweiten Feld; RouterOS legt ihn als info ab
-      :local want ({})
-      :foreach ln in=$lines do={
-        :local c ""
-        :local p1 [:find $ln " "]
-        :if ([:typeof $p1] = "num") do={
-          :local r [:pick $ln ($p1 + 1) [:len $ln]]
-          :local p2 [:find $r " "]
-          :if ([:typeof $p2] = "num") do={ :set c [:pick $r ($p2 + 1) [:len $r]] }
-        }
-        :set ($want->("i" . $c)) 1
-      }
-      :local have ({})
-      :local nr 0
-      :foreach id in=[/user/ssh-keys/find where user=$u] do={
-        :local c ("i" . [:tostr [/user/ssh-keys/get $id info]])
-        :set ($have->$c) 1
-        :if ([:typeof ($want->$c)] = "nothing") do={ :set nr ($nr + 1) }
-      }
-      :local na 0
-      :foreach c,x in=$want do={ :if ([:typeof ($have->$c)] = "nothing") do={ :set na ($na + 1) } }
-      :if (($na + $nr) > 0) do={ $cfmLog ("Admin-SSH-Keys " . $u . ": " . $na . " neu, " . $nr . " entfernt (Abgleich im Probelauf ueber den Kommentar)") }
-    } else={
-      # vorhandene Keys nach Fingerprint; doppelte gleich entfernen
-      :local have ({})
-      :foreach id in=[/user/ssh-keys/find where user=$u] do={
-        :local fp ("f" . [:tostr [/user/ssh-keys/get $id fingerprint]])
-        :if ([:typeof ($have->$fp)] = "nothing") do={ :set ($have->$fp) $id } else={
-          /user/ssh-keys/remove $id
-          :set ($cfmStat->"rem") (($cfmStat->"rem") + 1)
-          $cfmLog ("entfernt: /user/ssh-keys " . $u . " (doppelt)")
-        }
-      }
-      :local keep ({})
-      :local fail 0
-      :local i 0
-      :foreach ln in=$lines do={
-        :set i ($i + 1)
-        :onerror e in={
-          :local nid [/user/ssh-keys/add user=$u key=$ln]
-          :local fp ("f" . [:tostr [/user/ssh-keys/get $nid fingerprint]])
-          :if ([:typeof ($have->$fp)] != "nothing" or [:typeof ($keep->$fp)] != "nothing") do={
-            /user/ssh-keys/remove $nid
-          } else={
-            :set ($cfmStat->"add") (($cfmStat->"add") + 1)
-            $cfmLog ("neu: /user/ssh-keys " . $u . " " . [:tostr [/user/ssh-keys/get $nid info]])
-          }
-          :set ($keep->$fp) 1
-        } do={
-          :set fail ($fail + 1)
-          $cfmWarn ("authorized_keys." . $u . ": Key " . $i . " nicht angelegt: " . $e)
-        }
-      }
-      :if ($fail > 0) do={
-        $cfmWarn ("authorized_keys." . $u . ": " . $fail . " Key(s) fehlgeschlagen - vorhandene Keys bleiben stehen")
-      } else={
-        :foreach fp,id in=$have do={
-          :if ([:typeof ($keep->$fp)] = "nothing") do={
-            :local inf [:tostr [/user/ssh-keys/get $id info]]
-            /user/ssh-keys/remove $id
-            :set ($cfmStat->"rem") (($cfmStat->"rem") + 1)
-            $cfmLog ("entfernt: /user/ssh-keys " . $u . " " . $inf)
-          }
-        }
-      }
-    }
-  }
-}
+# --- Persönliche Admin-SSH-Keys je User (TODO 19, D65): work/authorized_keys.<user> im OpenSSH-Format ist der
+#     vollständige Sollzustand der Keys dieses Users. Feature-Modul lib/base.sshkeys.rsc (D104), nur wenn es
+#     die Datei für einen User aus users gibt - ohne Datei bleiben die Keys eines Users unangetastet ---
+:local akn 0
+:foreach u,grp in=($cfmG->"users") do={ :onerror e in={ :if ([:len [/file/get ($cfmDl . "/authorized_keys." . $u) name]] > 0) do={ :set akn ($akn + 1) } } do={} }
+:if ($akn > 0) do={ $cfmFeat "base.sshkeys" }
 
 # --- cfm-Agent, Konfiguration und Scheduler aktuell halten ---
 :local ms ""

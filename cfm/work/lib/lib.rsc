@@ -2,7 +2,9 @@
 # cfm lib/lib.rsc – Reconciler-Bibliothek (Geräteseite)
 # Wird vom Agent bei jedem Apply als erstes importiert und definiert
 # globale Funktionen für die Rollen-Templates. Der WLAN-Teil (CAPsMAN, lokale WLAN-Profile der
-# APs) steht in lib/lib-wifi.rsc und kommt nur zu den Rollen ap, capsman und manager (D68).
+# APs) steht in lib/lib-wifi.rsc und kommt nur zu den Rollen ap, capsman und manager (D68). Code, den nur
+# Sites mit einem bestimmten Feature brauchen, steht in Feature-Modulen lib/<Rolle>.<Feature>.rsc; die
+# Rolle lädt sie per $cfmFeat nur bei Nutzung (D104).
 #
 # Kommentar-Konvention an RouterOS-Objekten:
 #   "cfm:<key> [text]"  verwaltet: wird angelegt/angeglichen, verwaist -> entfernt
@@ -396,6 +398,22 @@
   :return true
 }
 
+# Feature-Modul laden (D104): Code, den nur manche Sites brauchen, steht in lib/<Rolle>.<Feature>.rsc. Das
+# Manifest liefert die Module einer Rolle jedem Gerät mit dieser Rolle, ohne Import ($cfmMfWant); die Rolle
+# importiert eins per $cfmFeat "<Rolle>.<Feature>" nur, wenn das Gerät das Feature nutzt oder Reste davon
+# aufzuräumen sind. Locals der Rolle sieht ein Import nicht - Werte gehen über :global cfmCtx hinein. Fehlt
+# das Modul, bricht der Apply ab (Rollback), statt dass der Abgleich die Objekte des Features als verwaist
+# entfernt (wie D68)
+:global cfmFeat do={
+  :global cfmDl
+  :local f ($cfmDl . "/lib/" . $1 . ".rsc")
+  :local ok false
+  :onerror e in={ :set ok ([:len [/file/get $f name]] > 0) } do={}
+  :if (!$ok) do={ :error ("lib/" . $1 . ".rsc fehlt im Manifest (D104)") }
+  /import file-name=$f verbose=no
+  :return true
+}
+
 # ---------- Daten-Helfer für Rollen ----------
 
 # Adressdaten eines VLANs: {"net";"addr";"pfx";"gw"} (leer, wenn kein Subnetz)
@@ -414,10 +432,8 @@
   :return {"net"=$net;"addr"=$a;"pfx"=[:pick $net ($s + 1) [:len $net]];"gw"=($a + [:tonum $g])}
 }
 
-# Bandbreite "Download/Upload" ($1, z.B. "50M/10M", Einheiten k/M/G ohne Komma, D97) -> {"d";"u"} in bit/s,
-# "" wenn ungültig oder leer
+# Größe in KiB (D101, DNS-Cache): "64M", "1G", "512k" oder eine Zahl (KiB); ungültig -> ""
 :global cfmKib do={
-  # Größe in KiB (D101, DNS-Cache): "64M", "1G", "512k" oder eine Zahl (KiB); ungültig -> ""
   :local t [:tostr $1]
   :local m 1
   :local e [:pick $t ([:len $t] - 1)]
@@ -428,6 +444,8 @@
   :return ([:tonum $t] * $m)
 }
 
+# Bandbreite "Download/Upload" ($1, z.B. "50M/10M", Einheiten k/M/G ohne Komma, D97) -> {"d";"u"} in bit/s,
+# "" wenn ungültig oder leer
 :global cfmLimit do={
   :local s [:tostr $1]
   :local p [:find $s "/"]

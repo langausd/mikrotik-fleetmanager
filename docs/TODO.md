@@ -1232,3 +1232,19 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     erzeugte auf dem Manager ~1070 Zeilen/~750 KB in einer Minute (Graylog). Geheime Felder schwärzt RouterOS
     (Test: User, PPP-Secret, SNMP-Community, WLAN-Security, WireGuard), Dateiinhalte nicht – beim Manager-Rekey
     wäre der private SSH-Schlüssel im Syslog gelandet (an diesem Standort lief seit dem Syslog keiner).
+72. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, ungetestet:*
+    `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung; erste Module `router.dns` (+ Skript-Rumpf
+    `router.dnsreq`), `router.wg`, `base.sshkeys`, `base.snmp`, `base.iso`. `roles/router.rsc` 41,6 → 27,5 KB,
+    `roles/base.rsc` 38,8 → 29,5 KB. `rsc-check` (Regel `feature-modul`) grün, im CHR-Labor **noch nicht gelaufen**.
+    **Offen:**
+    * Labor: `e2e.sh` (14e Keys, 14k SNMP, 14l DNS inkl. Abbau ohne `dns.rsc`; neue Prüfungen der Module in `dl/`),
+      `e2e-vrrp.sh` (WireGuard über die VIP), `e2e-mlag.sh` (isolierte VLANs).
+    * Hardware: erstes Release ringweise; danach auf einem Router `/system/script/get cfm-dnsreq source` prüfen
+      (Kopf `:local dur …`/`:local deny …` für cfm-DNS, Rumpf als Funktion `$dnsreq`), cfm-DNS-Freischaltung einmal
+      durchspielen.
+    * Weitere Kandidaten, nach Größe: Bonds/MLAG aus `base` (~4,5 KB; Abbau alter Bonds braucht das Modul,
+      solange cfm-Bonds oder ein `mlag-peer-port` existieren); Bandbreitenlimit aus `router` (~1,5 KB, liefert
+      `limNets` an den Firewall-Block zurück); die Skripte `cfm-ssid-<key>-on/-off` und `cfm-reprov` in
+      `lib-wifi.rsc` als Rumpf-Dateien wie `router.dnsreq` (weniger Escape); `mgr-check.rsc` (55 KB) aufteilen,
+      bevor die 60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht
+      empfohlen: RouterOS-Update/Firmware aus dem Agent (D68: heikelster Pfad).

@@ -1064,8 +1064,9 @@ $cfmDiff ver=40 to=41          # zwischen zwei Releases (to=work ist der Standar
 
 Ausgabe: geänderte, neue und entfernte Dateien, die betroffenen Geräte (bei gemeinsamen Dateien
 wie `global.rsc` oder `lib/lib.rsc` alle, bei `lib/lib-wifi.rsc` die mit Rolle `ap`, `capsman` oder
-`manager`), für Datendateien (`global`, `vlans`, `profiles`,
-`wifi`, `wireguard`, `leases`, `mlag`, `hosts/*`, `authorized_keys.*`) die geänderten Zeilen
+`manager`, bei Feature-Modulen `lib/<rolle>.<feature>.rsc` die mit dieser Rolle, bei `base.*` alle), für
+Datendateien (`global`, `vlans`, `profiles`, `wifi`, `wireguard`, `leases`, `mlag`, `dns`, `hosts/*`,
+`authorized_keys.*`) die geänderten Zeilen
 (`@@ Zeile <alt> / <neu>`, `-` alt, `+` neu). `lib/` und `roles/` erscheinen nur als Datei.
 
 ### 8.4 Rezepte
@@ -1818,6 +1819,21 @@ Menü kein `comment` (z.B. `/queue/type`), kommt es zusätzlich in `cfmByName`: 
 mit `cfm-` beginnen muss (D97).
 Der WLAN-Teil (`$cfmWifiRender`, `$cfmCapsmanOn` …) steht in `lib/lib-wifi.rsc` und ist nur auf
 Geräten mit Rolle `ap`, `capsman` oder `manager` geladen (D68).
+
+**Feature-Module (D104):** Code, den nur Sites mit einem bestimmten Feature brauchen, gehört in eine
+eigene Datei `lib/<rolle>.<feature>.rsc` (Name nur aus `a-z`, `0-9`, `-`). Das Manifest liefert sie
+jedem Gerät mit dieser Rolle (`base.*` allen), ohne sie zu importieren; die Rolle lädt sie per
+`$cfmFeat "<rolle>.<feature>"` nur, wenn das Gerät das Feature nutzt – oder solange Reste aufzuräumen
+sind, die der Abgleich nicht kennt (Objekte ohne `cfm:`-Kommentar). Ein Import sieht die Locals der
+Rolle nicht: Werte über `:global cfmCtx` übergeben. Beispiel aus `roles/base.rsc`:
+
+```
+:local snmp ($cfmG->"snmp")
+:if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ $cfmFeat "base.snmp" } }
+```
+
+Objekte, die nur das Modul anlegt, räumt der Abgleich weg, sobald es nicht mehr geladen wird.
+`tools/rsc-check.py` prüft Namen, Rolle und Datei (Regel `feature-modul`).
 
 **Probelauf beachten:** `$cfmPlan` führt die Rollen mit `cfmDry=true` aus. `$cfmEnsure`,
 `$cfmSet` und `$cfmBlock` ändern dann nichts, direkte Befehle dagegen schon. Schreibe sie deshalb

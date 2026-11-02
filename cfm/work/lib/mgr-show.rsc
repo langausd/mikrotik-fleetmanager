@@ -287,8 +287,8 @@
   # betroffene Geräte - wie die Manifeste die Dateien zuordnen
   :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"mlag.rsc"=1;"dns.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
   :local all false
-  # authorized_keys.<user> (D65): jedes Gerät mit diesem User
-  :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing" or $rel ~ "^authorized_keys\\.") do={ :set all true } }
+  # authorized_keys.<user> (D65): jedes Gerät mit diesem User; Feature-Module von base (D104) alle
+  :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing" or $rel ~ "^authorized_keys\\." or $rel ~ "^lib/base\\.") do={ :set all true } }
   :if ($all) do={ :put "betroffen: alle Geräte (gemeinsame Datei)" } else={
     :local aff ""
     :foreach name,d in=[$cfmInvLoad] do={
@@ -302,6 +302,8 @@
         }
         :if ($rel ~ "^lib/mgr-" and $rl ~ ",manager") do={ :set hit true }
         :if ($rel = "lib/lib-wifi.rsc" and $rl ~ ",(ap|capsman|manager),") do={ :set hit true }
+        # Feature-Module einer Rolle (D104): lib/<Rolle>.<Feature>.rsc
+        :if ($rel ~ "^lib/[a-z-]+\\.[a-z0-9-]+\\.rsc\$") do={ :if ($rl ~ ("," . [:pick $rel 4 [:find $rel "." 4]] . ",")) do={ :set hit true } }
         :if (($rel = "web/cfm-editor.js" and $rl ~ ",manager") or ($rel = "web/cfm-monitor.js" and $rl ~ ",(capsman|manager)") or ($rel = "web/cfm-dns.js" and $rl ~ ",router,")) do={ :set hit true }
       }
       :if ($hit) do={ :set aff ($aff . " " . $name) }
@@ -311,7 +313,7 @@
   }
   # geänderte Zeilen der Datendateien (lib/ und roles/ nur als Datei)
   :foreach rel,t in=$ch do={
-    :if ($rel ~ "^(global|vlans|profiles|wifi|wireguard|leases|mlag)\\.rsc\$" or $rel ~ "^hosts/" or $rel ~ "^authorized_keys\\.") do={
+    :if ($rel ~ "^(global|vlans|profiles|wifi|wireguard|leases|mlag|dns)\\.rsc\$" or $rel ~ "^hosts/" or $rel ~ "^authorized_keys\\.") do={
       :put ""
       :put ($rel . ":")
       :local ta ""

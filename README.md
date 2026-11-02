@@ -72,7 +72,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
-| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Agent, Manager-Funktionen (Module `mgr-*.rsc`, Manifest-Regeln je Version `mgr-mf.rsc`), Bootstrap-Rumpf, Onboarding-Stufen (`onboard-probe.rsc`, `onboard-go.rsc`) |
+| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Feature-Module `<rolle>.<feature>.rsc` (nur bei Nutzung geladen, D104), Agent, Manager-Funktionen (Module `mgr-*.rsc`, Manifest-Regeln je Version `mgr-mf.rsc`), Bootstrap-Rumpf, Onboarding-Stufen (`onboard-probe.rsc`, `onboard-go.rsc`) |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
 | `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
@@ -246,7 +246,8 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * RouterOS-Pakete brauchen ca. 20 MB pro Architektur und Version (`pkgPath` für USB/NVMe). Sie
   werden nicht auf den Backup-Manager gespiegelt; offene Aufträge brauchen den Primary.
 * **Eigene Templates schreiben:** Objekte mit `$cfmEnsure m=<menü> k=<key> p=({…})` anlegen
-  (verwaltet inkl. Aufräumen), Singletons/Built-ins mit `$cfmSet`. Funktionen als Anweisung **ohne**
+  (verwaltet inkl. Aufräumen), Singletons/Built-ins mit `$cfmSet`. Code, den nur manche Sites brauchen,
+  als Feature-Modul `lib/<rolle>.<feature>.rsc` und per `$cfmFeat` nur bei Nutzung laden (D104). Funktionen als Anweisung **ohne**
   eckige Klammern aufrufen: Eine Zeile, die mit `[` beginnt, liest RouterOS u.U. als Fortsetzung
   der vorigen Anweisung. Strings mit Escape (`\n`, `\"`) als Funktionsargument in runde Klammern setzen,
   ein leeres Array nach `:global`/`:local` als `({})` schreiben – sonst Syntaxfehler. `tools/rsc-check.py`

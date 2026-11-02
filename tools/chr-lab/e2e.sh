@@ -730,6 +730,7 @@ agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
 mgr "\$cfmDiff ver=$v0 to=$rv" | grep -q "betroffen: alle Geräte" && ok "\$cfmDiff: Key-Datei betrifft alle Geräte" || bad "\$cfmDiff ohne alle Geräte"
 expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 2 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@hand"]] = 0 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@zwei"]] = 1' "sw1: netadmin hat genau die zwei Keys der Datei, Hand-Key entfernt"
 expect 2 '[:len [/user/ssh-keys/find where user!=netadmin and info~"e2e@"]] = 0' "sw1: andere User ohne Datei unangetastet"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 1' "sw1: Feature-Modul base.sshkeys im Manifest, solange es eine authorized_keys.<user> gibt (D104)"
 out=$(ssh -p $((LABPORT+20)) "${O[@]}" -o BatchMode=yes -i "$LAB/e2e_k2" netadmin@127.0.0.1 ':put keyok' 2>&1 | tr -d '\r')
 echo "$out" | grep -q keyok && ok "sw1: Login als netadmin mit dem zweiten Key" || bad "Key-Login netadmin: $(echo "$out" | tail -1)"
 lm0=$(r 2 ':put [/file/get cfm/dl/roles/base.rsc last-modified]' | tail -1)
@@ -764,6 +765,7 @@ rv=$(mgr '$cfmRelease msg=" notify" all=yes' | grep -o 'Release v[0-9]*' | tr -d
 agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
 # 14e hat authorized_keys.netadmin aus work/ gelöscht: Die Datei darf nicht in dl/ liegen bleiben (D69)
 expect 2 '[:len [/file/find where name="cfm/dl/authorized_keys.netadmin"]] = 0 and [:len [/file/find where name="cfm/dl/roles/base.rsc"]] = 1' "sw1: gelöschte authorized_keys.netadmin auch aus dl/ entfernt (D65, D69)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 0' "sw1: ohne authorized_keys.<user> auch kein Feature-Modul base.sshkeys (D104)"
 out=$(mgr '$cfmNotify test=yes; $cfmNotify ev="e2e" host="sw1" st="once" msg=("Pr\C3\BCfung \C3\A4\C3\B6\C3\BC \"x\"")')
 echo "$out" | grep -q "zugestellt an http://10.0.2.2:$NP/hook" && nwait '"ev": "test"' && ok "Probemeldung zugestellt" || { bad "Probemeldung"; echo "$out" | tail -2; }
 nwait '"ev": "e2e"' && grep '"ev": "e2e"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "e2e", "state": "once", "msg": "Prüfung äöü \\"x\\"", "text": "Labor: sw1 - Prüfung äöü \\"x\\""' && grep '"ev": "e2e"' "$NL" | grep -q '"_ct": "application/json"' && ok "JSON mit Umlauten und Anführungszeichen, Content-Type application/json" || { bad "JSON der Meldung"; tail -1 "$NL"; }
@@ -974,6 +976,7 @@ rv=$(mgr '$cfmRelease msg=" SNMP" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 
 agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 && ok "sw1 und cm1 haben v$rv (SNMP) angewendet" || bad "Apply v$rv (SNMP): sw1 $(stat sw1 res), cm1 $(stat cm1 res)"
 expect 2 '[/snmp/get enabled] and [/snmp/get location] = "Rack 1" and [/snmp/get contact] = "lab@example.org" and [/snmp/community/get [find default] disabled]' "sw1: SNMP an, Ort aus dem Hostfile, public abgeschaltet"
 expect 1 '[/snmp/get location] = "Labor"' "cm1: Ort aus global.rsc"
+expect 1 '[:len [/file/find where name="cfm/dl/lib/base.snmp.rsc"]] = 1 and [:len [/file/find where name~"^cfm/dl/lib/router[.]"]] = 0' "cm1 (ohne router): Feature-Module nur von base (D104)"
 expect 2 '[:len [/snmp/community/find where name="librenms" and comment~"^cfm:snmp:librenms" and security="private" and authentication-protocol="SHA512" and encryption-protocol="AES" and read-access and !write-access]] = 1 and [:tostr [/snmp/community/get [find name="librenms"] addresses]] = "127.0.0.1/32;10.0.2.2/32"' "sw1: Community librenms (authPriv SHA512/AES, nur lesend, nur from)"
 expect 2 '[/system/logging/action/get [find name="cfmremote"] remote-log-format] = "syslog"' "sw1: Syslog im RFC-Format (syslogFormat)"
 mgr ':put ("SP=" . [$cfmSecretPush host=sw1])' | grep -q "SP=1" && ok "Secret-Push mit den SNMP-Passwörtern" || bad "Secret-Push SNMP"
@@ -995,6 +998,7 @@ n=0; for m in "ERR dns.rsc: servers: x ist keine" "ERR dns.rsc: cache 64X" "ERR 
 mgr ':global e2eD14l; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14l . ":set cfmDns {\"servers\"={\"10.0.2.3\"};\"cache\"=\"16M\";\"adlists\"={\"http://10.0.2.2:'$((LABPORT + 91))'/lab-hosts.txt\"};\"allow\"={\"wikipedia.org\"};\"forward\"={\"debian.org\"=\"10.0.2.3\";\"tot.example\"={\"192.0.2.1\";\"192.0.2.2\"}};\"log\"={\"memory\"=500;\"syslog\"=\"yes\"}}\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" DNS" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (dns.rsc) angewendet" || bad "Apply v$rv (dns.rsc): sw1 $(stat sw1 res)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/router.dns.rsc"]] = 1 and [:len [/file/find where name="cfm/dl/lib/router.dnsreq.rsc"]] = 1' "sw1 (router): Feature-Module router.dns und router.dnsreq im Manifest (D104)"
 mgr '$cfmShow host=sw1' | grep -q "DNS (dns.rsc): Upstream 10.0.2.3, 1 Adlisten, 1 Ausnahmen, debian.org -> 10.0.2.3" && ok "\$cfmShow nennt die DNS-Einstellungen" || bad "\$cfmShow ohne DNS-Zeile"
 expect 2 '[:tostr [/ip/dns/get servers]] = "10.0.2.3" and [/ip/dns/get cache-size] = 16384' "sw1: Upstream und Cache aus dns.rsc"
 expect 2 '[:len [/ip/dns/adlist/find where comment~"^cfm:dnsal:" and url~"lab-hosts.txt"]] = 1 and [:len [/ip/dns/forwarders/find where name="cfm-upstream" and comment~"^cfm:dnsfw:"]] = 1' "sw1: Adliste und Forwarder cfm-upstream"

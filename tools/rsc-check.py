@@ -54,6 +54,9 @@ REGELN = {
     "log-ascii": "Log-Meldung mit Umlaut oder anderem Nicht-ASCII-Zeichen: RouterOS schickt jedes solche "
                  "Byte als '?' an den Syslog (TODO 70). ae/oe/ue/ss und '-' schreiben. Fehler unter "
                  "cfm/work/, sonst Hinweis.",
+    "feature-modul": "$cfmFeat \"<Rolle>.<Feature>\" (D104): Der Name passt nicht zu lib/<Rolle>.<Feature>.rsc "
+                     "(a-z, 0-9, '-'), die Rolle ist weder base noch die eigene (das Manifest liefert das Modul "
+                     "dann nicht jedem Gerät, das es lädt) oder die Datei fehlt unter cfm/work/lib/.",
 }
 
 # Menüs, die es nur auf bestimmten Geräten oder mit Zusatzpaketen gibt
@@ -70,6 +73,9 @@ JSON_FELD = re.compile(r':set\s+\(\$\w+->"[^"]*"\)\s+|(?<!\\)"[\w.-]+"=')
 # Log-Aufrufe (TODO 70): :log <topic>, $cfmLog, $cfmWarn - deren Texte gehen an den Syslog
 LOGRUF = re.compile(r":log\s+(?:info|warning|error|debug)\b|\$cfm(?:Log|Warn)\b")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
+# Feature-Module (D104): $cfmFeat "<Rolle>.<Feature>" lädt cfm/work/lib/<Rolle>.<Feature>.rsc
+FEATRUF = re.compile(r'\$cfmFeat\s+"([^"]*)"')
+FEATNAME = re.compile(r"[a-z-]+\.[a-z0-9-]+")
 GROESSE_MAX = 60000        # wie cfmParseWork in cfm/work/lib/mgr-core.rsc
 GROESSE_HINWEIS = 50000
 ERLAUBT = re.compile(r"rsc-check:\s*erlaubt\s+([\w,-]+)")
@@ -277,6 +283,26 @@ def check_rsc(path, text):
             continue
         if any(re.search(r"[^\x00-\x7f]", t) for t in STRING.findall(zeile)):
             add(no, "log-ascii", stufe)
+
+    # Feature-Module (D104): Name wie in $cfmMfWant, Rolle base oder die der Datei (roles/<r>.rsc,
+    # lib/<r>.<f>.rsc), Datei vorhanden (nur prüfbar, wenn cfm/work/ erreichbar ist)
+    q = path.replace(os.sep, "/")
+    m = re.search(r"(?:^|/)(?:roles/([a-z-]+)|lib/([a-z-]+)\.[a-z0-9-]+)\.rsc$", q)
+    eigen = (m.group(1) or m.group(2)) if m else None
+    i = ("/" + q).find("/cfm/work/")
+    work = q[:i] + "cfm/work" if i >= 0 else None
+    for no, zeile in enumerate(text.split("\n"), 1):
+        if zeile.lstrip().startswith("#"):
+            continue
+        for fm in FEATRUF.finditer(zeile):
+            name = fm.group(1)
+            ok = FEATNAME.fullmatch(name) is not None
+            if ok and eigen is not None:
+                ok = name.split(".")[0] in ("base", eigen)
+            if ok and work is not None and os.path.isdir(os.path.join(work, "lib")):
+                ok = os.path.isfile(os.path.join(work, "lib", name + ".rsc"))
+            if not ok:
+                add(no, "feature-modul")
 
     erlaubt = {}
     for line, txt in comments:

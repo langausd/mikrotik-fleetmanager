@@ -12,7 +12,7 @@
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog; :global cfmWarn
 :global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey; :global cfmLimit; :global cfmRateFmt
-:global cfmDns; :global cfmKib
+:global cfmDns; :global cfmKib; :global cfmFeat; :global cfmCtx
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -203,155 +203,19 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   }
   :set wdns [:tostr ($wan->"dns")]
 }
-# --- DNS der Router (D101, dns.rsc optional): Upstreams, Cache, Adlisten, Ausnahmen, Weiterleitung je Domain,
-#     Abfrage-Log. Ohne dns.rsc fragen die Router wan.dns wie bisher ---
+# --- DNS der Router (D101, dns.rsc optional): Upstreams und Cache. Ohne dns.rsc fragen die Router wan.dns wie
+#     bisher ---
 :local dp ({"allow-remote-requests"="yes";"servers"=$wdns})
 :local dup $wdns
 :if ([:len ($cfmDns->"servers")] > 0) do={ :set dup ($cfmDns->"servers"); :set ($dp->"servers") $dup }
 :if ([:len [:tostr ($cfmDns->"cache")]] > 0) do={ :set ($dp->"cache-size") [:tostr [$cfmKib ($cfmDns->"cache")]] }
 $cfmSet m="/ip/dns" p=$dp
-# Adlisten (hosts-Format, Aktualisierung alle 4 h durch RouterOS); Zertifikat gegen den eingebauten Speicher.
-# ssl-verify bleibt beim Standard yes: RouterOS meldet es nur als no zurück, gesetzt wäre es bei jedem Lauf neu
-:foreach u in=($cfmDns->"adlists") do={
-  $cfmEnsure m="/ip/dns/adlist" k=("dnsal:" . $u) n=({"url"=$u}) p=({"url"=$u})
-}
-# Ausnahmen und Weiterleitungen sind FWD-Einträge mit match-subdomain (die Domain samt Subdomains). Ausnahmen
-# gehen an den Forwarder cfm-upstream mit allen Upstreams - so trägt ein Ausfall des ersten sie nicht mit. Er
-# bleibt auch, solange Freischaltungen der Selbstbedienung (dnsui:, D102) auf ihn zeigen
-:if (([:len ($cfmDns->"allow")] > 0 or [:len ($cfmDns->"self"->"zones")] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0) and [:len $dup] > 0) do={
-  $cfmEnsure m="/ip/dns/forwarders" k="dnsfw:upstream" n=({"name"="cfm-upstream"}) p=({"name"="cfm-upstream";"dns-servers"=$dup})
-  :foreach a in=($cfmDns->"allow") do={
-    $cfmEnsure m="/ip/dns/static" k=("dnsallow:" . $a) n=({"name"=$a;"type"="FWD"}) p=({"name"=$a;"type"="FWD";"forward-to"="cfm-upstream";"match-subdomain"="yes"})
-  }
-}
-:foreach fd,fs in=($cfmDns->"forward") do={
-  # Ziel: eine Adresse oder eine Liste (RouterOS: durch Komma getrennt)
-  :local ft ""
-  :foreach s in=[:toarray $fs] do={ :if ([:len $ft] > 0) do={ :set ft ($ft . ",") }; :set ft ($ft . [:tostr $s]) }
-  $cfmEnsure m="/ip/dns/static" k=("dnsfwd:" . $fd) n=({"name"=$fd;"type"="FWD"}) p=({"name"=$fd;"type"="FWD";"forward-to"=$ft;"match-subdomain"="yes"})
-}
-# Abfrage-Log je Client: Topic dns ohne packet ("query from <Client>: #n <Name>" / "done query: #n … <Antwort>").
-# log.memory = Zeilen im RAM-Puffer cfmdns (0/leer = aus), log.syslog = "yes" zusätzlich an den Syslog-Server
-# (cfmremote aus base). Regeln ohne comment wie in base; topics kommen als Liste zurück
-:local dlr do={
-  :local r ({})
-  :foreach i in=[/system/logging/find where action=$1] do={ :if ([:tostr [/system/logging/get $i topics]] = "dns;!packet") do={ :set ($r->[:len $r]) $i } }
-  :return $r
-}
-:local dlm [:tonum ($cfmDns->"log"->"memory")]
-:if ([:typeof $dlm] = "num" and $dlm > 0) do={
-  $cfmEnsure m="/system/logging/action" k="log:dns" n=({"name"="cfmdns"}) p=({"name"="cfmdns";"target"="memory";"memory-lines"=[:tostr $dlm]})
-  :if ([:len [$dlr "cfmdns"]] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmdns" topics="dns,!packet" }
-} else={
-  # Regel vor der Aktion entfernen (die Aktion räumt die GC weg, eine Regel ohne Aktion bliebe ungültig stehen)
-  :if ([:len [/system/logging/action/find where name="cfmdns"]] > 0 and $cfmDry != true) do={ /system/logging/remove [find where action="cfmdns"] }
-}
-:if ([:len [/system/logging/action/find where name="cfmremote"]] > 0) do={
-  :local drs [$dlr "cfmremote"]
-  :if ([:tostr ($cfmDns->"log"->"syslog")] = "yes") do={
-    :if ([:len $drs] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmremote" topics="dns,!packet" }
-  } else={
-    :if ([:len $drs] > 0 and $cfmDry != true) do={ :foreach i in=$drs do={ /system/logging/remove $i } }
-  }
-}
-# DNS-Selbstbedienung (D102, dns.rsc self): Clients aus self.zones sehen im Lesezeichen cfm-DNS (WebFig des
-# Gateways, User self.user der Gruppe cfm-dns: read,api,rest-api - ohne password) ihre Abfragen und schalten eine
-# gesperrte Domain für self.hours frei. Anfrage = Log-Eintrag "cfm-dnsreq: <Domain> <IP>" per /execute, danach
-# /system/script/run cfm-dnsreq (dont-require-permissions: der User selbst darf nichts schreiben; ein :global aus
-# /execute käme im Skript nicht an). Das Skript legt FWD an cfm-upstream mit Kommentar dnsui:tmp:<Ablauf> <IP> an
-# (die GC fasst nur cfm: an), außer die Domain steht in self.deny, und meldet ev=dnsreq an notify.url (D66).
-# Erledigte Anfragen erkennt es an seiner eigenen Log-Zeile (req=<id>) - Variablen gelten je User. Der
-# Scheduler (1 min) räumt abgelaufene Einträge weg und holt verpasste Anfragen nach. dnsui:perm (vom Admin im
-# Lesezeichen) bleibt stehen, bis es in allow steht.
-:local dself ($cfmDns->"self")
-:if ([:typeof $dself] = "array" and [:len ($dself->"zones")] > 0 and [:len $dup] > 0) do={
-  :local su [:tostr ($dself->"user")]
-  :if ([:len $su] = 0) do={ :set su "dns" }
-  :local sh [:tonum ($dself->"hours")]
-  :if ([:typeof $sh] != "num" or $sh < 1) do={ :set sh 2 }
-  # Werte landen im Skripttext: Anführungszeichen, Backslash und $ fallen weg ($cfmCheck prüft die Namen)
-  :local san do={ :local o ""; :for i from=0 to=([:len $1] - 1) do={ :local ch [:pick $1 $i]; :if ($ch != "\"" and $ch != "\\" and $ch != "\$") do={ :set o ($o . $ch) } }; :return $o }
-  :local dl ""
-  :foreach x in=($dself->"deny") do={ :if ([:len $dl] > 0) do={ :set dl ($dl . ";") }; :set dl ($dl . "\"" . [$san [:tostr $x]] . "\"") }
-  :local site [:tostr ($cfmG->"notify"->"site")]
-  :if ([:len $site] = 0) do={ :set site [:tostr ($cfmG->"domain")] }
-  :local src "# cfm (Rolle router, D102): DNS-Selbstbedienung - Anfragen aus dem Log freischalten, Ablauf aufräumen. Jeder Apply schreibt es neu\n"
-  :set src ($src . ":local dur " . ($sh * 3600) . "\n:local deny ({" . $dl . "})\n")
-  :set src ($src . ":local nu \"" . [$san [:tostr ($cfmG->"notify"->"url")]] . "\"\n:local site \"" . [$san $site] . "\"\n")
-  :set src ($src . ":if ([:len [/system/script/job/find where script=\"cfm-dnsreq\"]] < 2) do={\n")
-  :set src ($src . ":local now ([:tonsec [:timestamp]] / 1000000000)\n")
-  :set src ($src . ":local ident [/system/identity/get name]\n")
-  :set src ($src . ":foreach i in=[/ip/dns/static/find where comment~\"^dnsui:tmp:\"] do={\n")
-  :set src ($src . ":local c [:tostr [/ip/dns/static/get \$i comment]]\n")
-  :set src ($src . ":local p [:find \$c \" \" 10]\n")
-  :set src ($src . ":if ([:typeof \$p] != \"num\") do={ :set p [:len \$c] }\n")
-  :set src ($src . ":if ([:tonum [:pick \$c 10 \$p]] <= \$now) do={\n")
-  :set src ($src . ":log info (\"cfm: DNS-Freischaltung abgelaufen: \" . [/ip/dns/static/get \$i name])\n")
-  :set src ($src . "/ip/dns/static/remove \$i\n")
-  :set src ($src . "}\n")
-  :set src ($src . "}\n")
-  :set src ($src . ":foreach i in=[/log/find where buffer=memory and message~\"^cfm-dnsreq: \"] do={\n")
-  :set src ($src . ":local id [:tostr \$i]\n")
-  :set src ($src . ":set id [:pick \$id 1 [:len \$id]]\n")
-  :set src ($src . ":if ([:len [/log/find where buffer=memory and message~(\"cfm: DNS-Freischaltung .* req=\" . \$id . \"\\\$\")]] = 0) do={\n")
-  :set src ($src . ":local m [:tostr [/log/get \$i message]]\n")
-  :set src ($src . ":local r [:pick \$m 12 [:len \$m]]\n")
-  :set src ($src . ":local d \$r\n")
-  :set src ($src . ":local ip \"\"\n")
-  :set src ($src . ":local sp [:find \$r \" \"]\n")
-  :set src ($src . ":if ([:typeof \$sp] = \"num\") do={ :set d [:pick \$r 0 \$sp]; :set ip [:pick \$r (\$sp + 1) [:len \$r]] }\n")
-  :set src ($src . ":if ([:typeof [:toip \$ip]] != \"ip\") do={ :set ip \"\" }\n")
-  :set src ($src . ":if ([:pick \$d ([:len \$d] - 1)] = \".\") do={ :set d [:pick \$d 0 ([:len \$d] - 1)] }\n")
-  :set src ($src . ":local res \"allowed\"\n")
-  :set src ($src . ":if ([:len \$d] > 253 or !(\$d ~ \"^[a-z0-9_]([a-z0-9_-]*[a-z0-9])?(\\\\.[a-z0-9_]([a-z0-9_-]*[a-z0-9])?)+\\\$\")) do={ :set res \"invalid\"; :set d \"?\" }\n")
-  :set src ($src . ":if (\$res = \"allowed\") do={\n")
-  :set src ($src . ":foreach x in=\$deny do={\n")
-  :set src ($src . ":local lx [:len \$x]\n")
-  :set src ($src . ":if (\$d = \$x or ([:len \$d] > \$lx and [:pick \$d ([:len \$d] - \$lx - 1) [:len \$d]] = (\".\" . \$x))) do={ :set res \"denied\" }\n")
-  :set src ($src . "}\n")
-  :set src ($src . "}\n")
-  :set src ($src . ":local until 0\n")
-  :set src ($src . ":if (\$res = \"allowed\") do={\n")
-  :set src ($src . ":set until (\$now + \$dur)\n")
-  :set src ($src . ":local ex [/ip/dns/static/find where name=\$d and type=\"FWD\"]\n")
-  :set src ($src . ":if ([:len \$ex] > 0) do={\n")
-  :set src ($src . ":local c [:tostr [/ip/dns/static/get [:pick \$ex 0] comment]]\n")
-  :set src ($src . ":if (\$c ~ \"^dnsui:tmp:\") do={\n")
-  :set src ($src . "/ip/dns/static/set [:pick \$ex 0] comment=(\"dnsui:tmp:\" . \$until . \" \" . \$ip)\n")
-  :set src ($src . ":set res \"extended\"\n")
-  :set src ($src . "} else={ :set res \"exists\"; :set until 0 }\n")
-  :set src ($src . "} else={\n")
-  :set src ($src . "/ip/dns/static/add name=\$d type=FWD forward-to=cfm-upstream match-subdomain=yes comment=(\"dnsui:tmp:\" . \$until . \" \" . \$ip)\n")
-  :set src ($src . "}\n")
-  :set src ($src . "}\n")
-  :set src ($src . ":local msg (\"DNS-Freischaltung \" . \$d)\n")
-  :set src ($src . ":if (\$res = \"allowed\" or \$res = \"extended\") do={ :set msg (\$msg . \" für \" . (\$dur / 3600) . \" h\") }\n")
-  :set src ($src . ":if (\$res = \"exists\") do={ :set msg (\$msg . \": schon frei\") }\n")
-  :set src ($src . ":if (\$res = \"denied\") do={ :set msg (\$msg . \" abgelehnt (self.deny)\") }\n")
-  :set src ($src . ":if (\$res = \"invalid\") do={ :set msg (\$msg . \" abgelehnt (kein gültiger Name)\") }\n")
-  :set src ($src . ":if ([:len \$ip] > 0) do={ :set msg (\$msg . \", Client \" . \$ip) }\n")
-  :set src ($src . ":log info (\"cfm: \" . \$msg . \" req=\" . \$id)\n")
-  :set src ($src . ":if ([:len \$nu] > 0 and \$res != \"invalid\") do={\n")
-  :set src ($src . ":local t (\$site . \": \" . \$ident . \" - \" . \$msg)\n")
-  :set src ($src . ":local j (\"{\\\"site\\\":\\\"\" . \$site . \"\\\",\\\"host\\\":\\\"\" . \$ident . \"\\\",\\\"ev\\\":\\\"dnsreq\\\",\\\"state\\\":\\\"once\\\",\\\"msg\\\":\\\"\" . \$msg . \"\\\",\\\"text\\\":\\\"\" . \$t . \"\\\",\\\"time\\\":\\\"\" . [/system/clock/get date] . \" \" . [/system/clock/get time] . \"\\\",\\\"level\\\":\\\"action\\\",\\\"device\\\":\\\"\" . \$ident . \"\\\",\\\"message\\\":\\\"\" . \$t . \"\\\",\\\"key\\\":\\\"dnsreq:\" . \$d . \"\\\",\\\"domain\\\":\\\"\" . \$d . \"\\\",\\\"client\\\":\\\"\" . \$ip . \"\\\",\\\"result\\\":\\\"\" . \$res . \"\\\",\\\"until\\\":\" . \$until . \"}\")\n")
-  :set src ($src . ":onerror e in={ /tool/fetch url=\$nu http-method=post http-header-field=\"Content-Type: application/json\" http-data=\$j output=none } do={ :log warning (\"cfm: DNS-Freischaltung: Meldung nicht zugestellt: \" . \$e) }\n")
-  :set src ($src . "}\n")
-  :set src ($src . "}\n")
-  :set src ($src . "}\n")
-  :set src ($src . "}\n")
-  $cfmEnsure m="/user/group" k="grp:dns" n=({"name"="cfm-dns"}) p=({"name"="cfm-dns";"policy"="read,api,rest-api"})
-  # Passwort per Secret-Push aus dem Vault (user.<self.user>), bis dahin abgeschaltet
-  $cfmEnsure m="/user" k=("user:" . $su) n=({"name"=$su}) p=({"name"=$su;"group"="cfm-dns"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
-  $cfmEnsure m="/system/script" k="sys:dnsreq" n=({"name"="cfm-dnsreq"}) p=({"name"="cfm-dnsreq";"source"=$src;"policy"="read,write,test";"dont-require-permissions"="yes"})
-  $cfmEnsure m="/system/scheduler" k="sys:dnsreq" n=({"name"="cfm-dnsreq"}) p=({"name"="cfm-dnsreq";"interval"="1m";"start-time"="startup";"on-event"="/system/script/run cfm-dnsreq";"policy"="read,write,test"})
-  :local pm ""
-  :foreach i in=[/ip/dns/static/find where comment~"^dnsui:perm"] do={ :set pm ($pm . " " . [/ip/dns/static/get $i name]) }
-  :if ([:len $pm] > 0) do={ $cfmWarn ("dauerhafte Freischaltungen aus der DNS-Selbstbedienung (dnsui:perm) nach dns.rsc allow uebernehmen:" . $pm) }
-} else={
-  # ohne Selbstbedienung: User, Gruppe, Skript und Scheduler räumt die GC weg; befristete Freischaltungen
-  # liefen sonst nie ab
-  :if ($cfmDry != true) do={ /ip/dns/static/remove [find where comment~"^dnsui:tmp:"] }
-}
+# Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log und Selbstbedienung (D101, D102) stehen im Feature-Modul
+# lib/router.dns.rsc (D104): nur mit dns.rsc oder solange Reste aufzuräumen sind, die die GC nicht kennt -
+# die Aktion cfmdns, Log-Regeln dns,!packet (ohne comment) und Einträge dnsui: der Selbstbedienung
+:local dnsF ([:len $cfmDns] > 0 or [:len [/system/logging/action/find where name="cfmdns"]] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0)
+:foreach i in=[/system/logging/find] do={ :if ([:tostr [/system/logging/get $i topics]] = "dns;!packet") do={ :set dnsF true } }
+:if ($dnsF) do={ :set cfmCtx ({"dup"=$dup}); $cfmFeat "router.dns" }
 # DNS-Namen (D62): feste Leases und alle aufgenommenen Geräte (MGMT-Adresse, Liste im Manifest) als
 # <name>.<domain>; bei gleichem Namen gilt die Lease ($cfmCheck meldet das als Fehler)
 :local dom [:tostr ($cfmG->"domain")]
@@ -375,59 +239,12 @@ $cfmSet m="/ip/dns" p=$dp
 $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntpSrv})
 $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 
-# --- WireGuard-Fernzugang (D36): eigenes, nicht überlappendes Subnetz (wireguard.rsc "net") -
-#     RouterOS legt sonst keine Route für "allowed-address" an, wenn sie in einem bereits
-#     verbundenen Subnetz (z.B. MGMT) liegt, und ohne eigenes Subnetz bräuchte es zusätzlich
-#     Proxy-ARP (frühere Version, siehe docs/TODO.md "Bekannte Fehler" zur Vorgeschichte). Peers
-#     zählen trotzdem als Zone mgmt (volle mgmt-Rechte) über die Interface-Liste, unabhängig vom
-#     Subnetz. Privater Schlüssel: alle Router denselben aus dem Vault (D84, Secret-Push); beim Anlegen
-#     erzeugt RouterOS erst einen eigenen, weicht er vom Manifest ab ("wgpub"), fordert die Rolle den
-#     Secret-Push an. Öffentlichen Schlüssel abrufen: /interface/wireguard/print. Leere peers-Liste =
-#     Interface bleibt aus. ---
+# --- WireGuard-Fernzugang (D36, D84): Feature-Modul lib/router.wg.rsc (D104), nur mit Peers in wireguard.rsc.
+#     Interface wg-admin zählt als Zone mgmt; Firewall und NAT unten kennen es über wgIf ---
 :local wgIf ""
 :if ($wgOn) do={
   :set wgIf "wg-admin"
-  :local wnet [:tostr ($cfmWg->"net")]
-  :local wslash [:find $wnet "/"]
-  :local wbase [:toip [:pick $wnet 0 $wslash]]
-  :local wpfx [:pick $wnet ($wslash + 1) [:len $wnet]]
-  # bei VRRP nur auf dem Master des WAN-VLANs an (wie DHCP; danach schalten on-master/on-backup um)
-  :local wgDis "no"
-  :if ([:len $wgV] > 0) do={
-    :set wgDis "yes"
-    :local vi [/interface/vrrp/find where name=("vrrp" . $wgV)]
-    :if ([:len $vi] > 0) do={ :if ([:tostr [/interface/vrrp/get [:pick $vi 0] running]] = "true") do={ :set wgDis "no" } }
-  }
-  $cfmEnsure m="/interface/wireguard" k="wg:admin" n=({"name"=$wgIf}) p=({"name"=$wgIf;"listen-port"=[:tonum ($cfmWg->"listenPort")];"disabled"=$wgDis})
-  :local wpub [:tostr ($cfmMf->"wgpub")]
-  :if ([:len $wpub] > 0) do={
-    :local cur ""
-    :onerror e in={ :set cur [:tostr [/interface/wireguard/get [find where name=$wgIf] public-key]] } do={}
-    :if ($cur != $wpub) do={
-      :if ($cfmDry != true) do={ :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={} }
-      $cfmLog "WireGuard: Schluessel weicht vom gemeinsamen der Router ab - Secret-Push angefordert (D84)"
-    }
-  }
-  # Backups: Antworten ins WG-Netz über die MGMT-VIP zum Master, der den Tunnel hält
-  :if ([:len $wgV] > 0) do={
-    :local wrd "no"
-    :if ($wgDis = "no") do={ :set wrd "yes" }
-    $cfmEnsure m="/ip/route" k="rt:wg" p=({"dst-address"=$wnet;"gateway"=[:tostr ([$cfmNet $mv]->"gw")];"disabled"=$wrd})
-  }
-  $cfmEnsure m="/interface/list/member" k="ilm:wg-mgmt" n=({"list"="Z-mgmt";"interface"=$wgIf}) p=({"list"="Z-mgmt";"interface"=$wgIf})
-  # Eigene Adresse auf wg-admin: die verbundene Route fürs ganze WG-Subnetz entsteht daraus von
-  # selbst (kein Proxy-ARP, keine Route je Peer nötig - anders als im MGMT-Subnetz zuvor).
-  $cfmEnsure m="/ip/address" k="ip:wg" n=({"interface"=$wgIf}) p=({"address"=([:tostr ($wbase + 1)] . "/" . $wpfx);"interface"=$wgIf})
-  # WG-Subnetz zu cfm-mgmt: sonst erreichen Peers zwar andere Geräte (per Zone), aber nicht cm1s
-  # eigene Dienste (SSH/Winbox) - die richten sich nach cfm-mgmt, nicht nach der Zonen-Liste.
-  $cfmEnsure m="/ip/firewall/address-list" k="al:mgmt:wg" p=({"list"="cfm-mgmt";"address"=$wnet})
-  :foreach pname,pd in=($cfmWg->"peers") do={
-    :local pk [:tostr ($pd->"pubkey")]
-    :if ([:len $pk] > 0) do={
-      :local paddr ([:tostr ($wbase + [:tonum ($pd->"addr")])] . "/32")
-      $cfmEnsure m="/interface/wireguard/peers" k=("wgp:" . $pname) n=({"interface"=$wgIf;"public-key"=$pk}) p=({"interface"=$wgIf;"public-key"=$pk;"allowed-address"=$paddr})
-    }
-  }
+  :set cfmCtx ({"wgV"=$wgV;"mv"=$mv}); $cfmFeat "router.wg"
 }
 
 # --- Adresslisten ---

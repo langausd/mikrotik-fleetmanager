@@ -1015,6 +1015,11 @@ Das lokale Overlay (`site-…/`) ist Sicherung und Referenz: `tools/pull-site.sh
 Framework-Code (`lib/`, `roles/`) hoch; `--site` ersetzt die Site-Daten auf dem Manager und nennt
 vorher, welche Dateien dort anders sind.
 
+**Geänderte Manager-Bibliothek (`lib/mgr-*.rsc`):** `/system script run cfm-mgr` lädt die Skripte `cfm-mgr-*`, die
+der Manager zuletzt selbst angewendet hat – nicht `work/`. Das erste Release nach einem Framework-Update läuft
+also noch mit dem alten Manager-Code; ein Fix darin (z.B. am Release selbst) wirkt erst ab dem nächsten. Soll er
+schon beim ersten wirken: direkt vor `$cfmRelease` in derselben Sitzung `/import cfm/work/lib/<modul>.rsc verbose=no`.
+
 ### 8.2 Release und Rollout
 
 ```

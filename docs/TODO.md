@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-01)
+## Übersicht offener Punkte (Stand 2026-11-02)
 
 Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob nach Nutzen:
 
@@ -86,6 +86,12 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (Dateiinhalte im Syslog) – *beide am selben Tag umgesetzt (D103):* Release-Archiv per `/file/copy`, Manager-Rekey
   ohne privaten Schlüssel als Dateiinhalt, Log-Meldungen in ASCII mit `rsc-check`-Regel `log-ascii`. Labor 7.25: `e2e.sh` 405, grün. Hardware
   2026-11-02 (v95/v96): Release-Syslog des Managers ~1250 → ~100 Zeilen.
+* **Umgesetzt am 2026-11-02, im Labor noch offen:** 73 (D104) – Feature-Module: Code einzelner Features (DNS,
+  WireGuard, Bandbreitenlimit, Bonds/MLAG, isolierte VLANs, SNMP, Admin-SSH-Keys) und die Skripte des CAPsMAN in
+  eigenen Dateien, nur bei Nutzung geladen; `upload-seed.sh` lädt nur, was die Site nutzt.
+* **Neu am 2026-11-02 (Abgleich mit den Plänen beider Standorte):** Backup-Manager unter „Noch nicht mit echter
+  Hardware getestet“ (Test an einem Standort geplant 2026-11-07/08), 72 (Band je AP abschalten, Antennengewinn –
+  nur bei Außenantenne).
 * **Umgesetzt am 2026-10-31:** 68 (D101) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
   Weiterleitung, Abfrage-Log) und 69 (D102) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
   402, `e2e-vrrp.sh` 137, grün. Hardware an einem Standort (vier Router, VRRP): D101 v90, D102 v91 – Freischaltung
@@ -242,6 +248,11 @@ und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Feh
   einer CHR auf einen hAP be³ gelaufen, vier APs folgten samt Zertifikatswechsel. Zwei APs
   (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (D41), WPA2/WPA3 + FT und Clients
   mit `ft-wpa3-psk` laufen seit 2026-09-24, Roaming zwischen den beiden APs klappt (2026-09-25)
+* **Backup-Manager (`manager-backup`, D7/D58/D67)** – bisher nur im Labor (`e2e.sh`: cm2, auch als
+  `manager-backup,ap`). Auf Hardware offen: Spiegel-Abruf und Platz, gesperrte Geräte-User, Meldung `primary` an den
+  Webhook bei ausgeschaltetem Primary, Geräte ziehen bis zur Beförderung nicht vom Backup, zweiphasiger Rekey mit
+  zwei echten Managern; `$cfmPromoteManager` nur im Ernstfall. *Geplant an einem Standort (hAP be³ als
+  `switch,ap,manager-backup`, 2026-11-07/08).*
 * Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
 * Rolle `router` auf einem CRS mit L3-Hardware-Offloading (D37): schaltet sie `l3-hw-offloading` ab,
   läuft VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
@@ -427,7 +438,7 @@ Reihenfolge: 0 → 1 → 2, 3, 4 → 6, 7 → Rest nach Bedarf.
 die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem neuen Feature.
 *Begonnen 2026-09-17* mit CRS418 (Router + Manager) und hAP ax² (AP), seit 2026-09-26 ein
 zweiter Standort mit Switches, eigenem CAPsMAN und Manager in einer VM (siehe oben). Auf Hardware
-fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
+fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Routern läuft seit 2026-10-17 an einem Standort.
 
 ### Kurzfristig (großer Nutzen, wenig Aufwand)
 
@@ -1232,7 +1243,14 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     erzeugte auf dem Manager ~1070 Zeilen/~750 KB in einer Minute (Graylog). Geheime Felder schwärzt RouterOS
     (Test: User, PPP-Secret, SNMP-Community, WLAN-Security, WireGuard), Dateiinhalte nicht – beim Manager-Rekey
     wäre der private SSH-Schlüssel im Syslog gelandet (an diesem Standort lief seit dem Syslog keiner).
-72. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, im Labor ungetestet:*
+72. **Band je AP abschalten, Antennengewinn je AP** (Idee eines Standorts, 2026-10-26; nur nötig, wenn dort eine
+    Außenantenne kommt) – Anlass: Ein AP soll eine seiner beiden Antennen (je Kette beide Bänder) nach außen führen.
+    In der EU ist 5150–5350 MHz nur in Innenräumen erlaubt; `wifi.rsc` kennt je AP heute nur das Pinning `radios`
+    (fester Kanal je Band) – weder ein Band je AP abschalten noch `antenna-gain` (EIRP) noch Sendeleistung. Idee:
+    `radios` → `{"<ap>"={"5"="off"}}` (keine Provisionierung dieses Bands, Radio aus) und `antennaGain` je AP und
+    Band (Parameter in der RouterOS-wifi-Doku prüfen; hält er beim Provisionieren durch den CAPsMAN?). Alternative
+    ohne Framework: eigener Außen-AP (dieselbe 5-GHz-Regel). Offen, Entscheidung des Nutzers.
+73. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, im Labor ungetestet:*
     `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung: `router.dns` (+ Skript-Rumpf
     `router.dnsreq`), `router.wg`, `router.limit`, `base.sshkeys`, `base.snmp`, `base.iso`, `base.bond`; Skript-Rümpfe
     des CAPsMAN `capsman.ssid`, `capsman.ssidcheck`, `capsman.reprov` (`$cfmBody`).

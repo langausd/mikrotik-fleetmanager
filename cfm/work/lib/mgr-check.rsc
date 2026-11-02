@@ -390,6 +390,28 @@
   # Inventar + Hostfiles
   :local ips ({})
   :local inv [$cfmInvLoad]
+  # Feature-Module (D104): tools/upload-seed.sh lädt nur die hoch, die die Site-Daten nutzen. Schaltet eine Site ein
+  # Feature danach ein (cfm-Editor, /file edit), fehlt sein Modul in work/ - die Geräte bekämen es nicht, ihr Apply
+  # bräche ab (Rollback). Bedingungen wie in den Rollen (vor den Hostfiles: die ändern cfmG u.U.)
+  :local fneed ({})
+  :local rtr false
+  :foreach n,d in=$inv do={ :if (("," . [:tostr ($d->"role")] . ",") ~ ",router,") do={ :set rtr true } }
+  :if ($rtr and [:len $cfmDns] > 0) do={ :set ($fneed->"router.dns") "dns.rsc" }
+  :if ($rtr and [:len ($cfmDns->"self"->"zones")] > 0) do={ :set ($fneed->"router.dnsreq") "dns.rsc self" }
+  :if ($rtr and [:len ($cfmWg->"peers")] > 0) do={ :set ($fneed->"router.wg") "wireguard.rsc peers" }
+  :if ([:typeof ($cfmG->"snmp")] = "array") do={ :if ([:len ($cfmG->"snmp"->"from")] > 0) do={ :set ($fneed->"base.snmp") "global.rsc snmp" } }
+  :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($fneed->"base.iso") ("vlans.rsc isolate, VLAN " . $vid) } }
+  :foreach u,g in=($cfmG->"users") do={ :if ([$fex ($w . "/authorized_keys." . $u)]) do={ :set ($fneed->"base.sshkeys") ("authorized_keys." . $u) } }
+  :foreach vid,v in=$cfmVlans do={ :if ($rtr and ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0)) do={ :set ($fneed->"router.limit") ("vlans.rsc limit, VLAN " . $vid) } }
+  :if ([:len $cfmMlag] > 0) do={ :set ($fneed->"base.bond") "mlag.rsc" }
+  # schaltbare SSIDs (D64): Rümpfe der Skripte auf dem CAPsMAN; cfm-reprov braucht er immer
+  :foreach k,s in=($cfmWifi->"ssids") do={
+    :if ($k != [:tostr ($cfmWifi->"master")] and [:len [:tostr ($s->"switch")]] > 0) do={
+      :set ($fneed->"capsman.ssid") ("wifi.rsc switch, SSID " . $k); :set ($fneed->"capsman.ssidcheck") ("wifi.rsc switch, SSID " . $k)
+    }
+  }
+  :set ($fneed->"capsman.reprov") "CAPsMAN"
+  # bonds im Hostfile: unten beim Import der Hostfiles, geprüft am Ende
   :foreach n,d in=$inv do={
     :local ip [:tostr ($d->"ip")]
     :if ([:len $ip] > 0) do={
@@ -412,6 +434,7 @@
       :local he ""
       :onerror e in={ /import file-name=$hf verbose=no } do={ :set he $e }
       :if ([:len $he] > 0) do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . $he) } else={
+        :if ([:len ($cfmHost->"bonds")] > 0) do={ :set ($fneed->"base.bond") ("hosts/" . $n . ".rsc bonds") }
         # stp="none" (Bridge ohne RSTP, D40): Dann faengt niemand eine Schleife ab. Zwei Ports im
         # selben VLAN oder mehrere Trunks sind dort ein Fehler - auf einem normalen Switch dagegen
         # ueblich, deshalb nur bei stp="none" pruefen.
@@ -708,6 +731,10 @@
         :if (!$ok) do={ :set ($err->[:len $err]) ($rel . ": Zeile " . $ln . ": kein gültiger OpenSSH-Public-Key (\"<typ> <base64> [kommentar]\", Typ ssh-ed25519, ssh-rsa oder sk-ssh-ed25519@openssh.com, keine Optionen wie command=... davor)") }
       }
     }
+  }
+
+  :foreach m,why in=$fneed do={
+    :if (![$fex ($w . "/lib/" . $m . ".rsc")]) do={ :set ($err->[:len $err]) ("lib/" . $m . ".rsc fehlt, " . $why . " nutzt das Feature (D104) - Framework hochladen: tools/upload-seed.sh") }
   }
 
   # Hostfiles setzen u.U. Overrides in cfmG -> Daten neu laden

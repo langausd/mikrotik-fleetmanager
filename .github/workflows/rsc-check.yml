@@ -15,5 +15,9 @@ jobs:
         run: python3 tools/rsc-check-test.py -v
       - name: RouterOS-Fallen in allen .rsc-Dateien
         run: python3 tools/rsc-check.py
+      - name: Feature-Module je Site (D104)
+        run: python3 tools/feature-module-test.py -v
+      - name: upload-seed.sh gegen einen nachgebauten SFTP-Server
+        run: python3 tools/upload-seed-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site
         run: python3 tools/new-site.py "$RUNNER_TEMP/site-ci" --name cm-ci --uplink ether2 --user ci --mgmt-extra 10.0.0.0/8

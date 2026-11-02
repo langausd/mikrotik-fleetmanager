@@ -213,5 +213,29 @@ class LogAscii(unittest.TestCase):
         self.assertEqual(rules('# rsc-check: erlaubt log-ascii\n:log info "ä"\n', p), [])
 
 
+class FeatureModul(unittest.TestCase):
+    def test_fund(self):
+        self.assertEqual(rules('$cfmFeat "Base.SNMP"\n'), ["feature-modul"])                  # Name
+        self.assertEqual(rules('$cfmFeat "snmp"\n'), ["feature-modul"])                       # ohne Rolle
+        self.assertEqual(rules('$cfmFeat "router.dns"\n', "site/roles/base.rsc"), ["feature-modul"])  # fremde Rolle
+        self.assertEqual(rules(':local b [$cfmBody "Router.DnsReq"]\n'), ["feature-modul"])             # Skript-Rumpf
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "cfm/work/lib"))
+            self.assertEqual(rules('$cfmFeat "base.fehlt"\n', os.path.join(d, "cfm/work/roles/base.rsc")),
+                             ["feature-modul"])
+
+    def test_kein_fund(self):
+        self.assertEqual(rules('$cfmFeat "base.snmp"\n', "site/roles/router.rsc"), [])
+        self.assertEqual(rules('$cfmFeat "router.dns"\n', "site/roles/router.rsc"), [])
+        self.assertEqual(rules('$cfmFeat "router.dns-self"\n', "site/lib/router.dns.rsc"), [])
+        self.assertEqual(rules('$cfmFeat $n\n'), [])                                           # Variable
+        self.assertEqual(rules(':local b [$cfmBody "capsman.ssid"]\n', "site/lib/lib-wifi.rsc"), [])
+        self.assertEqual(rules('# $cfmFeat "x"\n'), [])                                        # Kommentar
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "cfm/work/lib"))
+            open(os.path.join(d, "cfm/work/lib/base.snmp.rsc"), "w").close()
+            self.assertEqual(rules('$cfmFeat "base.snmp"\n', os.path.join(d, "cfm/work/roles/base.rsc")), [])
+
+
 if __name__ == "__main__":
     unittest.main()

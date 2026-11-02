@@ -14,6 +14,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`pull-site.sh`](#pull-sitesh) | Site-Daten vom Manager als Sicherung ins lokale Overlay holen |
 | [`new-site.py`](#new-sitepy) | eine neue Site (Overlay) aus den Beispieldaten anlegen |
 | [`rsc-check.py`](#rsc-checkpy) | RouterOS-Fallen in `.rsc`-Dateien finden, ohne Gerät |
+| [`feature-module.py`](#feature-modulepy) | welche Feature-Module eine Site braucht (nutzt `upload-seed.sh`) |
 | [`git-hooks/pre-commit`](#git-hookspre-commit) | `rsc-check.py` vor jedem Commit |
 | [`editor/`](#editor) | cfm-Editor, cfm-Monitor und cfm-DNS als Lesezeichen für WebFig |
 | [`upgrade-mirror.py`](#upgrade-mirrorpy) | RouterOS-Update für Geräte ohne Internet |
@@ -48,11 +49,32 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
   bricht ab, sobald auf dem Manager echte Seriennummern stehen (`--force` überschreibt trotzdem).
 * `--bootstrap [datei]` legt die Bootstrap-Datei ins Wurzelverzeichnis des Geräts (ohne Angabe:
   `bootstrap-manager.rsc` aus dem Overlay). Weitere Optionen: `--port`, `--base flash/cfm`.
+* Feature-Module (`lib/<rolle>.<feature>.rsc`, D104) gehen nur hinüber, wenn die Site das Feature nutzt
+  (SNMP, isolierte VLANs, Admin-SSH-Keys, Bonds/MLAG, DNS aus `dns.rsc`, DNS-Selbstbedienung,
+  Bandbreitenlimit, WireGuard, schaltbare SSIDs); nicht gebrauchte entfernt das Skript auf dem Manager und
+  nennt sie.
+  Maßgeblich sind die Site-Daten auf dem Manager, mit `--site` die hochgeladenen. Schaltest du ein
+  Feature später ein (z.B. im cfm-Editor), stoppt `$cfmCheck` das Release mit „lib/… fehlt“ – dann
+  das Skript erneut aufrufen. `--all-features` lädt alle hoch (Testlabor).
 * Notizen (`STAND.md`, `BEFUNDE.md`, CSV-Listen) bleiben lokal. Jede Datei geht einzeln mit bis zu
   drei Versuchen hinüber. Am Ende steht `Seed hochgeladen nach … (N Dateien)`.
 * Danach auf dem Manager: `/system script run cfm-mgr`, dann `$cfmDiff` (was ist neu?) und
   `$cfmRelease msg="…"`. Läuft auf dem Manager noch Code von vor D70 (vor 2026-10-11), gilt bis
   zu seinem eigenen Update der Handgriff aus [TODO 47](../docs/TODO.md).
+
+## `feature-module.py`
+
+Sagt, welche Feature-Module (`cfm/work/lib/<rolle>.<feature>.rsc`, D104) eine Site braucht, aus ihren
+Site-Daten (`global.rsc`, `vlans.rsc`, `wifi.rsc`, `wireguard.rsc`, `dns.rsc`, `mlag.rsc`, `hosts/`,
+`authorized_keys.<user>`). `upload-seed.sh` ruft es auf; von Hand zum Nachsehen:
+
+```bash
+tools/feature-module.py site cfm/work/lib --alle    # je Modul ja/nein und der Grund
+```
+
+Die Daten werden nicht ausgeführt, nur nach den Schlüsseln durchsucht. Im Zweifel (Wert per `:set`
+gesetzt, unbekanntes Modul) gilt ein Modul als gebraucht. Tests: `tools/feature-module-test.py`,
+`tools/upload-seed-test.py` (gegen einen nachgebauten SFTP-Server, beide in der GitHub Action).
 
 ## `pull-site.sh`
 

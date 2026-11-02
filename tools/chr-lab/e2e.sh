@@ -42,7 +42,7 @@ for i in 1 2 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed" --seed-inventory --all-features >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
 # clean="yes" (Standard): Reset auf leere Config, danach läuft der Bootstrap selbst weiter.
 # post sichert den Host-Zugang über ether1 per DHCP-Client (CHR legt ihn nach dem Reset meist
 # selbst wieder an, deshalb nur, wenn er fehlt).
@@ -546,8 +546,8 @@ agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Gast schaltbar) angewendet" || { bad 
 r 1 "$cnt" | grep -q "G=0" && bad "Gast-SSID fehlt in den Regeln: $(r 1 "$cnt" | tail -1)" || ok "Gast-SSID steht auch im Grundzustand aus fest in den Regeln ($(r 1 "$cnt" | tail -1))"
 expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] > 0 and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and action!="create-enabled"]] = 0' "Provisioning mit festen Interfaces (create-enabled, D90)"
 expect 1 '[/system/script/get [find name="cfm-ssid-guest-on"] dont-require-permissions] = true and [:len [/system/script/find where name~"^cfm-ssid-(guest|event)-(on|off)\$"]] = 4 and [:len [/system/scheduler/find where name="cfm-ssid-check" and interval=10m]] = 1' "cm1: Schalt-Skripte (dont-require-permissions) und Prüfung alle 10 min"
-expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "configuration=\"cfm-guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "provisioning/set"]] = "nil"' "Schalt-Skript schaltet die Interfaces der Gast-SSID, nicht die Regeln"
-expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-check"] source]] "configuration=\"cfm-guest\""]] = "num"' "cfm-ssid-check setzt den Zustand auch an den Interfaces durch"
+expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] ":local k \"guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "configuration=(\"cfm-\" . \$k)"]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "provisioning/set"]] = "nil"' "Schalt-Skript (Rumpf capsman.ssid, D104) schaltet die Interfaces der Gast-SSID, nicht die Regeln"
+expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-check"] source]] "\"k\"=\"guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-check"] source]] "\$ssidcheck ssids="]] = "num"' "cfm-ssid-check (Rumpf capsman.ssidcheck) setzt den Zustand auch an den Interfaces durch"
 # Veraltete CAP-Interfaces (Hardware 2026-10-26): Das CHR hat keine CAP-Radios, cfm-reprov steht mit leerer Liste da
 expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-reprov"] source]] ":local aps ({})"]] = "num"' "cm1: cfm-reprov ohne veraltete CAPs"
 r 1 '/system/script/run cfm-reprov' >/dev/null
@@ -730,6 +730,7 @@ agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
 mgr "\$cfmDiff ver=$v0 to=$rv" | grep -q "betroffen: alle Geräte" && ok "\$cfmDiff: Key-Datei betrifft alle Geräte" || bad "\$cfmDiff ohne alle Geräte"
 expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 2 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@hand"]] = 0 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@zwei"]] = 1' "sw1: netadmin hat genau die zwei Keys der Datei, Hand-Key entfernt"
 expect 2 '[:len [/user/ssh-keys/find where user!=netadmin and info~"e2e@"]] = 0' "sw1: andere User ohne Datei unangetastet"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 1' "sw1: Feature-Modul base.sshkeys im Manifest, solange es eine authorized_keys.<user> gibt (D104)"
 out=$(ssh -p $((LABPORT+20)) "${O[@]}" -o BatchMode=yes -i "$LAB/e2e_k2" netadmin@127.0.0.1 ':put keyok' 2>&1 | tr -d '\r')
 echo "$out" | grep -q keyok && ok "sw1: Login als netadmin mit dem zweiten Key" || bad "Key-Login netadmin: $(echo "$out" | tail -1)"
 lm0=$(r 2 ':put [/file/get cfm/dl/roles/base.rsc last-modified]' | tail -1)
@@ -764,6 +765,7 @@ rv=$(mgr '$cfmRelease msg=" notify" all=yes' | grep -o 'Release v[0-9]*' | tr -d
 agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
 # 14e hat authorized_keys.netadmin aus work/ gelöscht: Die Datei darf nicht in dl/ liegen bleiben (D69)
 expect 2 '[:len [/file/find where name="cfm/dl/authorized_keys.netadmin"]] = 0 and [:len [/file/find where name="cfm/dl/roles/base.rsc"]] = 1' "sw1: gelöschte authorized_keys.netadmin auch aus dl/ entfernt (D65, D69)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 0' "sw1: ohne authorized_keys.<user> auch kein Feature-Modul base.sshkeys (D104)"
 out=$(mgr '$cfmNotify test=yes; $cfmNotify ev="e2e" host="sw1" st="once" msg=("Pr\C3\BCfung \C3\A4\C3\B6\C3\BC \"x\"")')
 echo "$out" | grep -q "zugestellt an http://10.0.2.2:$NP/hook" && nwait '"ev": "test"' && ok "Probemeldung zugestellt" || { bad "Probemeldung"; echo "$out" | tail -2; }
 nwait '"ev": "e2e"' && grep '"ev": "e2e"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "e2e", "state": "once", "msg": "Prüfung äöü \\"x\\"", "text": "Labor: sw1 - Prüfung äöü \\"x\\""' && grep '"ev": "e2e"' "$NL" | grep -q '"_ct": "application/json"' && ok "JSON mit Umlauten und Anführungszeichen, Content-Type application/json" || { bad "JSON der Meldung"; tail -1 "$NL"; }
@@ -974,6 +976,11 @@ rv=$(mgr '$cfmRelease msg=" SNMP" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 
 agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 && ok "sw1 und cm1 haben v$rv (SNMP) angewendet" || bad "Apply v$rv (SNMP): sw1 $(stat sw1 res), cm1 $(stat cm1 res)"
 expect 2 '[/snmp/get enabled] and [/snmp/get location] = "Rack 1" and [/snmp/get contact] = "lab@example.org" and [/snmp/community/get [find default] disabled]' "sw1: SNMP an, Ort aus dem Hostfile, public abgeschaltet"
 expect 1 '[/snmp/get location] = "Labor"' "cm1: Ort aus global.rsc"
+expect 1 '[:len [/file/find where name="cfm/dl/lib/base.snmp.rsc"]] = 1 and [:len [/file/find where name~"^cfm/dl/lib/router[.]"]] = 0' "cm1 (manager, kein router): keine Feature-Module der Rolle router (D104)"
+# upload-seed.sh lädt nur gebrauchte Module hoch: Fehlt eins, dessen Feature die Daten nutzen, stoppt $cfmCheck das Release
+out=$(mgr '/file/remove [find name="cfm/work/lib/base.snmp.rsc"]; :delay 200ms; :global cfmCheck; :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }')
+echo "$out" | grep -q "ERR lib/base.snmp.rsc fehlt, global.rsc snmp nutzt das Feature" && ok "\$cfmCheck: fehlendes Feature-Modul base.snmp gemeldet (D104)" || { bad "\$cfmCheck ohne Meldung zu base.snmp"; echo "$out" | grep ERR | head -3; }
+echo "put $ROOT/cfm/work/lib/base.snmp.rsc cfm/work/lib/base.snmp.rsc" | put 1
 expect 2 '[:len [/snmp/community/find where name="librenms" and comment~"^cfm:snmp:librenms" and security="private" and authentication-protocol="SHA512" and encryption-protocol="AES" and read-access and !write-access]] = 1 and [:tostr [/snmp/community/get [find name="librenms"] addresses]] = "127.0.0.1/32;10.0.2.2/32"' "sw1: Community librenms (authPriv SHA512/AES, nur lesend, nur from)"
 expect 2 '[/system/logging/action/get [find name="cfmremote"] remote-log-format] = "syslog"' "sw1: Syslog im RFC-Format (syslogFormat)"
 mgr ':put ("SP=" . [$cfmSecretPush host=sw1])' | grep -q "SP=1" && ok "Secret-Push mit den SNMP-Passwörtern" || bad "Secret-Push SNMP"
@@ -995,6 +1002,7 @@ n=0; for m in "ERR dns.rsc: servers: x ist keine" "ERR dns.rsc: cache 64X" "ERR 
 mgr ':global e2eD14l; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14l . ":set cfmDns {\"servers\"={\"10.0.2.3\"};\"cache\"=\"16M\";\"adlists\"={\"http://10.0.2.2:'$((LABPORT + 91))'/lab-hosts.txt\"};\"allow\"={\"wikipedia.org\"};\"forward\"={\"debian.org\"=\"10.0.2.3\";\"tot.example\"={\"192.0.2.1\";\"192.0.2.2\"}};\"log\"={\"memory\"=500;\"syslog\"=\"yes\"}}\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" DNS" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (dns.rsc) angewendet" || bad "Apply v$rv (dns.rsc): sw1 $(stat sw1 res)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/router.dns.rsc"]] = 1 and [:len [/file/find where name="cfm/dl/lib/router.dnsreq.rsc"]] = 1' "sw1 (router): Feature-Module router.dns und router.dnsreq im Manifest (D104)"
 mgr '$cfmShow host=sw1' | grep -q "DNS (dns.rsc): Upstream 10.0.2.3, 1 Adlisten, 1 Ausnahmen, debian.org -> 10.0.2.3" && ok "\$cfmShow nennt die DNS-Einstellungen" || bad "\$cfmShow ohne DNS-Zeile"
 expect 2 '[:tostr [/ip/dns/get servers]] = "10.0.2.3" and [/ip/dns/get cache-size] = 16384' "sw1: Upstream und Cache aus dns.rsc"
 expect 2 '[:len [/ip/dns/adlist/find where comment~"^cfm:dnsal:" and url~"lab-hosts.txt"]] = 1 and [:len [/ip/dns/forwarders/find where name="cfm-upstream" and comment~"^cfm:dnsfw:"]] = 1' "sw1: Adliste und Forwarder cfm-upstream"

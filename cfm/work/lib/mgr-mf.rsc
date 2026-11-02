@@ -6,6 +6,7 @@
 # Regeln abwärtskompatibel halten: Dateien, die ältere Versionen nicht haben, sind optional.
 #   $cfmMfWant name=<Host> role=<Rollen, kommagetrennt> fx=<Dateiindex der Version>
 #   -> Liste {Pfad; Import 1/0; Pflicht 1/0} in Importreihenfolge
+# Feature-Module lib/<Rolle>.<Feature>.rsc (D104) gehen ohne eigene Regel an alle Geräte mit dieser Rolle.
 # ============================================================
 
 :global cfmMfWant do={
@@ -36,6 +37,21 @@
   :if ($rl ~ ",(capsman|manager)") do={ :set ($want->[:len $want]) ({"web/cfm-monitor.js";0;0}) }
   # DNS-Selbstbedienung (D102) auf den Routern
   :if ($rl ~ ",router,") do={ :set ($want->[:len $want]) ({"web/cfm-dns.js";0;0}) }
+  # Feature-Module (D104): lib/<Rolle>.<Feature>.rsc für jede Rolle des Geräts und base, ohne Import - die
+  # Rolle lädt ein Modul per $cfmFeat nur, wenn das Gerät das Feature nutzt (bzw. liest einen Skript-Rumpf per
+  # $cfmBody). Optional (ältere Versionen haben keine). capsman.* auch an die Rolle manager: Ohne Gerät mit
+  # Rolle capsman ist der Primary-Manager CAPsMAN (D45, wie lib-wifi.rsc). Die Admin-SSH-Keys nur, wenn die
+  # Version eine authorized_keys.<user> enthält
+  :local rs (",base" . $rl)
+  :if ($rl ~ ",manager,") do={ :set rs ($rs . "capsman,") }
+  :local ak false
+  :foreach p,h in=$fx do={ :if ($p ~ "^authorized_keys\\.") do={ :set ak true } }
+  :foreach p,h in=$fx do={
+    :if ($p ~ "^lib/[a-z-]+\\.[a-z0-9-]+\\.rsc\$") do={
+      :local r [:pick $p 4 [:find $p "." 4]]
+      :if ($rs ~ ("," . $r . ",") and ($p != "lib/base.sshkeys.rsc" or $ak)) do={ :set ($want->[:len $want]) ({$p;0;0}) }
+    }
+  }
   :set ($want->[:len $want]) ({("hosts/" . $name . ".rsc");1;0})
   :set ($want->[:len $want]) ({"roles/base.rsc";1;1})
   :if ($rl ~ ",manager-backup,") do={ :set ($want->[:len $want]) ({"roles/manager.rsc";0;1}) }

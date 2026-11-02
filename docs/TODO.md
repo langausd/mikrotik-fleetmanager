@@ -86,6 +86,9 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   (Dateiinhalte im Syslog) – *beide am selben Tag umgesetzt (D103):* Release-Archiv per `/file/copy`, Manager-Rekey
   ohne privaten Schlüssel als Dateiinhalt, Log-Meldungen in ASCII mit `rsc-check`-Regel `log-ascii`. Labor 7.25: `e2e.sh` 405, grün. Hardware
   2026-11-02 (v95/v96): Release-Syslog des Managers ~1250 → ~100 Zeilen.
+* **Umgesetzt am 2026-11-02, im Labor noch offen:** 73 (D104) – Feature-Module: Code einzelner Features (DNS,
+  WireGuard, Bandbreitenlimit, Bonds/MLAG, isolierte VLANs, SNMP, Admin-SSH-Keys) und die Skripte des CAPsMAN in
+  eigenen Dateien, nur bei Nutzung geladen; `upload-seed.sh` lädt nur, was die Site nutzt.
 * **Neu am 2026-11-02 (Abgleich mit den Plänen beider Standorte):** Backup-Manager unter „Noch nicht mit echter
   Hardware getestet“ (Test an einem Standort geplant 2026-11-07/08), 72 (Band je AP abschalten, Antennengewinn –
   nur bei Außenantenne).
@@ -1247,3 +1250,25 @@ fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Router
     `radios` → `{"<ap>"={"5"="off"}}` (keine Provisionierung dieses Bands, Radio aus) und `antennaGain` je AP und
     Band (Parameter in der RouterOS-wifi-Doku prüfen; hält er beim Provisionieren durch den CAPsMAN?). Alternative
     ohne Framework: eigener Außen-AP (dieselbe 5-GHz-Regel). Offen, Entscheidung des Nutzers.
+73. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, im Labor ungetestet:*
+    `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung: `router.dns` (+ Skript-Rumpf
+    `router.dnsreq`), `router.wg`, `router.limit`, `base.sshkeys`, `base.snmp`, `base.iso`, `base.bond`; Skript-Rümpfe
+    des CAPsMAN `capsman.ssid`, `capsman.ssidcheck`, `capsman.reprov` (`$cfmBody`).
+    `roles/router.rsc` 41,6 → 27,3 KB, `roles/base.rsc` 38,8 → 27,6 KB. `tools/upload-seed.sh` lädt nur die
+    Module hoch, die die Site nutzt (`tools/feature-module.py`), und entfernt die übrigen auf dem Manager;
+    `$cfmCheck` stoppt ein Release, dem ein genutztes Modul fehlt. Grün: `rsc-check` (Regel `feature-modul`),
+    `feature-module-test.py`, `upload-seed-test.py` (nachgebauter SFTP-Server). Das CHR-Labor lief in der
+    Cloud-Sitzung nicht (kein KVM, `download.mikrotik.com` gesperrt).
+    **Offen:**
+    * Labor: `e2e.sh` (14e Keys, 14k SNMP und die neue Sperre in `$cfmCheck`, 14l DNS inkl. Abbau ohne
+      `dns.rsc`, Bandbreitenlimit; neue Prüfungen der Module in `dl/`), `e2e-vrrp.sh` (WireGuard über die
+      VIP), `e2e-mlag.sh` (Bonds, MLAG, Abbau eines Bonds, isolierte VLANs). Die Labor-Skripte laden mit
+      `--all-features`.
+    * Hardware: erstes Release ringweise; danach auf einem Router `/system/script/get cfm-dnsreq source` prüfen
+      (Kopf `:local dur …`/`:local deny …` für cfm-DNS, Rumpf als Funktion `$dnsreq`), cfm-DNS-Freischaltung einmal
+      durchspielen. `upload-seed.sh` an einem Standort: Liste „nicht hochgeladen“ und „entfernt“ plausibel?
+    * Nachtrag: Die WLAN-Skripte des CAPsMAN kommen ebenfalls aus Rümpfen (`capsman.ssid`, `capsman.ssidcheck`,
+      `capsman.reprov`, `$cfmBody`); Labor `e2e.sh` Schritt 14 (schaltbare SSID, Auto-Aus, `cfm-reprov`) prüft sie.
+    * Weitere Kandidaten: `mgr-check.rsc` (57 KB) aufteilen, bevor die
+      60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht empfohlen:
+      RouterOS-Update/Firmware aus dem Agent (D68: heikelster Pfad).

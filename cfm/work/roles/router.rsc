@@ -11,7 +11,7 @@
 # ============================================================
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog; :global cfmWarn
-:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey; :global cfmLimit; :global cfmRateFmt
+:global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey
 :global cfmDns; :global cfmKib; :global cfmFeat; :global cfmCtx
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
@@ -144,31 +144,14 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   }
 }
 
-# --- Bandbreitenlimit je VLAN (D97): "limit" für das ganze Netz, "limitClient" je Client (Download/Upload aus
-#     Sicht der Clients). Eine Simple Queue je VLAN mit dem Netz als target (aller Verkehr des Netzes); PCQ
-#     teilt unter den Clients gleich auf, mit limitClient über eigene Queue-Typen mit pcq-rate (ohne comment,
-#     Schlüssel = Name). max-limit liest RouterOS als Upload/Download und in eigener Schreibweise zurück.
-#     Fasttrack umgeht die Queues - der Firewall-Block nimmt diese Netze davon aus ---
+# --- Bandbreitenlimit je VLAN (D97): Feature-Modul lib/router.limit.rsc (D104), nur wenn ein VLAN limit oder
+#     limitClient trägt. Es liefert die Netze mit Limit zurück, der Firewall-Block nimmt sie vom Fasttrack aus ---
 :local limNets ({})
-:foreach vid,v in=$cfmVlans do={
-  :local lt [$cfmLimit ($v->"limit")]
-  :local lc [$cfmLimit ($v->"limitClient")]
-  :local nn [$cfmNet $vid]
-  :if ([:tostr ($v->"l3")] != "no" and [:len ($nn->"net")] > 0 and ([:typeof $lt] = "array" or [:typeof $lc] = "array")) do={
-    :local qd "pcq-download-default"
-    :local qu "pcq-upload-default"
-    :if ([:typeof $lc] = "array") do={
-      :set qd ("cfm-pcq" . $vid . "-down")
-      :set qu ("cfm-pcq" . $vid . "-up")
-      $cfmEnsure m="/queue/type" k=$qd p=({"name"=$qd;"kind"="pcq";"pcq-classifier"="dst-address";"pcq-rate"=($lc->"d")})
-      $cfmEnsure m="/queue/type" k=$qu p=({"name"=$qu;"kind"="pcq";"pcq-classifier"="src-address";"pcq-rate"=($lc->"u")})
-    }
-    :local ml "0/0"
-    :if ([:typeof $lt] = "array") do={ :set ml ([$cfmRateFmt ($lt->"u")] . "/" . [$cfmRateFmt ($lt->"d")]) }
-    :local qn ("vlan" . $vid)
-    $cfmEnsure m="/queue/simple" k=("q:" . $vid) n=({"name"=$qn}) p=({"name"=$qn;"target"=($nn->"net");"max-limit"=$ml;"queue"=($qu . "/" . $qd)}) x=($v->"name")
-    :set ($limNets->[:len $limNets]) ($nn->"net")
-  }
+:local limF false
+:foreach vid,v in=$cfmVlans do={ :if ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0) do={ :set limF true } }
+:if ($limF) do={
+  :set cfmCtx ({"limNets"=({})}); $cfmFeat "router.limit"
+  :set limNets ($cfmCtx->"limNets")
 }
 
 # --- WAN / Uplink ---
@@ -210,12 +193,25 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 :if ([:len ($cfmDns->"servers")] > 0) do={ :set dup ($cfmDns->"servers"); :set ($dp->"servers") $dup }
 :if ([:len [:tostr ($cfmDns->"cache")]] > 0) do={ :set ($dp->"cache-size") [:tostr [$cfmKib ($cfmDns->"cache")]] }
 $cfmSet m="/ip/dns" p=$dp
-# Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log und Selbstbedienung (D101, D102) stehen im Feature-Modul
-# lib/router.dns.rsc (D104): nur mit dns.rsc oder solange Reste aufzuräumen sind, die die GC nicht kennt -
-# die Aktion cfmdns, Log-Regeln dns,!packet (ohne comment) und Einträge dnsui: der Selbstbedienung
-:local dnsF ([:len $cfmDns] > 0 or [:len [/system/logging/action/find where name="cfmdns"]] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0)
-:foreach i in=[/system/logging/find] do={ :if ([:tostr [/system/logging/get $i topics]] = "dns;!packet") do={ :set dnsF true } }
-:if ($dnsF) do={ :set cfmCtx ({"dup"=$dup}); $cfmFeat "router.dns" }
+# Forwarder cfm-upstream mit allen Upstreams für Ausnahmen (allow) und die Selbstbedienung (D102); er bleibt, solange
+# Freischaltungen der Selbstbedienung (dnsui:) auf ihn zeigen - auch ohne dns.rsc
+:if (([:len ($cfmDns->"allow")] > 0 or [:len ($cfmDns->"self"->"zones")] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0) and [:len $dup] > 0) do={
+  $cfmEnsure m="/ip/dns/forwarders" k="dnsfw:upstream" n=({"name"="cfm-upstream"}) p=({"name"="cfm-upstream";"dns-servers"=$dup})
+}
+# Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log und Selbstbedienung (D101, D102): Feature-Modul lib/router.dns.rsc
+# (D104), nur mit dns.rsc. Ohne baut die Rolle selbst ab, was die GC nicht kennt - so muss das Modul dafür nicht auf
+# dem Manager liegen (tools/upload-seed.sh lädt es nur für Sites mit dns.rsc hoch): Log-Regeln (ohne comment) der
+# Aktion cfmdns und dns,!packet an cfmremote, solange es die Aktion noch gibt (sonst blieben sie ungültig stehen,
+# und find action= träfe die Standardregeln), dazu befristete Freischaltungen (liefen sonst nie ab)
+:if ([:len $cfmDns] > 0) do={ :set cfmCtx ({"dup"=$dup}); $cfmFeat "router.dns" } else={
+  :if ($cfmDry != true) do={
+    :if ([:len [/system/logging/action/find where name="cfmdns"]] > 0) do={ /system/logging/remove [find where action="cfmdns"] }
+    :if ([:len [/system/logging/action/find where name="cfmremote"]] > 0) do={
+      :foreach i in=[/system/logging/find where action="cfmremote"] do={ :if ([:tostr [/system/logging/get $i topics]] = "dns;!packet") do={ /system/logging/remove $i } }
+    }
+    /ip/dns/static/remove [find where comment~"^dnsui:tmp:"]
+  }
+}
 # DNS-Namen (D62): feste Leases und alle aufgenommenen Geräte (MGMT-Adresse, Liste im Manifest) als
 # <name>.<domain>; bei gleichem Namen gilt die Lease ($cfmCheck meldet das als Fehler)
 :local dom [:tostr ($cfmG->"domain")]

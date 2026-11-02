@@ -463,15 +463,6 @@
   }
   :return $r
 }
-# bit/s in der Schreibweise, die RouterOS zurückliest (größte Einheit, die glatt teilt: 1500000 = "1500k")
-:global cfmRateFmt do={
-  :local n [:tonum $1]
-  :if ($n = 0) do={ :return "0" }
-  :foreach de in={{1000000000000;"T"};{1000000000;"G"};{1000000;"M"};{1000;"k"}} do={
-    :if ($n % ($de->0) = 0) do={ :return ([:tostr ($n / ($de->0))] . ($de->1)) }
-  }
-  :return [:tostr $n]
-}
 
 # Natürlicher Schlüssel des VLAN-Interface vlan<VID> ($1 = VID, TODO 56): das Interface dieses Namens, sonst
 # eines auf der Bridge mit dieser VLAN-ID (z.B. "GAST" aus einer Konfiguration von Hand). $cfmEnsure übernimmt

@@ -5,7 +5,7 @@
 # (z.B. im WebFig-Terminal per /file/edit); ein normaler Upload bringt nur den Framework-Code
 # (lib/, roles/), tools/pull-site.sh holt die Site-Daten als Sicherung ins Overlay (D72).
 #   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm] [--site]
-#                        [--seed-inventory [--force]] [--bootstrap DATEI]
+#                        [--seed-inventory [--force]] [--bootstrap DATEI] [--all-features]
 # --site:   auch die Site-Daten hochladen und damit die auf dem Manager ersetzen (vorher werden die
 #           Dateien genannt, die dort anders sind). Ohne --site bleiben sie auf dem Manager unberührt.
 # --overlay: Dateien aus DIR (gleiche Struktur wie cfm/work, plus meta/) überschreiben
@@ -24,14 +24,21 @@
 #            eigenem Kopfkommentar "nicht versioniert, wirkt sofort" ist und von $cfmRegister/
 #            $cfmEnroll live gepflegt wird – ein erneuter Upload würde echte Seriennummern/
 #            Ringe wieder auf die lokale Vorlage zurücksetzen.
+# Feature-Module (D104, lib/<rolle>.<feature>.rsc): nur die hochladen, deren Feature die Site-Daten nutzen
+#            (tools/feature-module.py); nicht gebrauchte entfernt das Skript auch auf dem Manager, sonst gingen sie
+#            mit jedem Release an die Geräte. Maßgeblich sind die Site-Daten, die nach dem Upload dort gelten: die
+#            des Managers, mit --site darüber die hochgeladenen. Schaltet die Site ein Feature später ein (z.B. im
+#            cfm-Editor), lehnt $cfmCheck das Release ab, bis das Modul hochgeladen ist.
+# --all-features: alle Feature-Module hochladen (Testlabor: es schaltet Features auf dem Manager ein).
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
-port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""; site=""
+port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""; site=""; all_features=""
 while [ $# -gt 0 ]; do case $1 in
   --port) port=$2; shift 2;; --overlay) overlay=$2; shift 2;; --base) base=$2; shift 2;;
   --seed-inventory) seed_inventory=1; site=1; shift;;
   --site) site=1; shift;;
   --force) force=1; shift;;
+  --all-features) all_features=1; shift;;
   # --bootstrap ohne Pfad: Datei aus dem Overlay nehmen (erst nach dem Parsen auflösbar)
   --bootstrap) if [ $# -ge 2 ] && [ -f "$2" ]; then bootstrap=$2; shift 2; else bootstrap="-"; shift; fi;;
   *) echo "unbekannt: $1"; exit 1;; esac; done
@@ -112,6 +119,39 @@ elif [ -z "$seed_inventory" ]; then
   if [ -n "$anders" ]; then echo "--site ersetzt auf dem Manager (dort anders):$anders"; fi
   if [ -n "$neu" ]; then echo "--site legt auf dem Manager neu an:$neu"; fi
 fi
+# Feature-Module (D104): Site-Daten des Managers holen (wie tools/pull-site.sh), mit --site die hochgeladenen
+# darüberlegen, dann entscheidet tools/feature-module.py. Im Zweifel (keine Site-Daten, kein python3) alle.
+feat_unused=""; feat_weg=""
+if [ -z "$all_features" ]; then
+  sd=$(mktemp -d); trap 'rm -rf "$stage" "$sd"' EXIT
+  sf() { sftp -q -b - -P "$port" ${SFTP_OPTS:-} "$dest"; }
+  mkdir -p "$sd/work/hosts"
+  # "-ls": ein fehlendes Verzeichnis bricht den Batch nicht ab; RouterOS nennt den Pfad samt Verzeichnis
+  printf -- '-ls -1 %s/work\n-ls -1 %s/work/hosts\n-ls -1 %s/work/lib\n' "$base" "$base" "$base" | sf > "$sd/ls" 2>/dev/null || true
+  tr -d '\r' < "$sd/ls" | grep -v '^sftp>' | sed "s|^/*$base/work/||" > "$sd/alle" || true
+  grep -E '^lib/[a-z-]+\.[a-z0-9-]+\.rsc$' "$sd/alle" | sort > "$sd/lib-remote" || true
+  grep -vE '^(hosts|lib|roles|web)$|^lib/|(^|/)\.' "$sd/alle" | grep -vE '/$' | sort > "$sd/liste" || true
+  if [ -s "$sd/liste" ]; then sed "s|.*|-get $base/work/& $sd/work/&|" "$sd/liste" | sf >/dev/null 2>&1 || true; fi
+  if [ -n "$site" ]; then
+    find "$stage/work" -maxdepth 1 -type f -exec cp {} "$sd/work/" \;
+    if [ -d "$stage/work/hosts" ]; then cp -r "$stage/work/hosts/." "$sd/work/hosts/"; fi
+  fi
+  if [ ! -f "$sd/work/global.rsc" ]; then
+    echo "Feature-Module: keine Site-Daten auf dem Manager (und kein --site) - alle hochgeladen"
+  elif ! command -v python3 >/dev/null; then
+    echo "Feature-Module: python3 fehlt - alle hochgeladen" >&2
+  elif ! feat_unused=$(python3 "$root/tools/feature-module.py" "$sd/work" "$stage/work/lib" 2>&1); then
+    echo "Feature-Module: Prüfung fehlgeschlagen ($feat_unused) - alle hochgeladen" >&2; feat_unused=""
+  fi
+  for m in $feat_unused; do
+    rm -f "$stage/work/$m"
+    if grep -qxF "$m" "$sd/lib-remote"; then feat_weg="$feat_weg $m"; fi
+  done
+  if [ -n "$feat_unused" ]; then
+    echo "Feature-Module nicht hochgeladen (die Site nutzt sie nicht):$(for m in $feat_unused; do m=${m#lib/}; printf ' %s' "${m%.rsc}"; done)"
+  fi
+  rm -rf "$sd"; trap 'rm -rf "$stage"' EXIT
+fi
 if [ -z "$seed_inventory" ] && [ -f "$stage/meta/inventory.rsc" ]; then
   rm -f "$stage/meta/inventory.rsc"
   echo "meta/inventory.rsc nicht hochgeladen (lebt auf dem Gerät, siehe --seed-inventory)"
@@ -152,6 +192,14 @@ if [ -n "$failed" ]; then
   exit 1
 fi
 echo "Seed hochgeladen nach $dest:$base/ ($total Dateien)"
+# nicht gebrauchte Feature-Module auch auf dem Manager entfernen (erst nach einem vollständigen Upload)
+if [ -n "$feat_weg" ]; then
+  if for m in $feat_weg; do echo "rm $base/work/$m"; done | sftp -q -b - -P "$port" ${SFTP_OPTS:-} "$dest" >/dev/null 2>&1; then
+    echo "Feature-Module auf dem Manager entfernt:$(for m in $feat_weg; do m=${m#lib/}; printf ' %s' "${m%.rsc}"; done)"
+  else
+    echo "WARNUNG: nicht gebrauchte Feature-Module auf dem Manager nicht entfernt:$feat_weg" >&2
+  fi
+fi
 if [ -n "$bootstrap" ]; then
   bn=$(basename "$bootstrap")
   case $bn in

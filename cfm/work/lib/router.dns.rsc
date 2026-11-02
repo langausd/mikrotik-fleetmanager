@@ -1,7 +1,7 @@
 # ============================================================
 # cfm lib/router.dns.rsc – Feature-Modul der Rolle router (D104): DNS aus dns.rsc (D101) und
-# DNS-Selbstbedienung für Clients (D102). router.rsc lädt es per $cfmFeat nur mit dns.rsc oder solange
-# Reste aufzuräumen sind (Log-Regeln ohne comment, Einträge dnsui:). Upstreams und Cache setzt die Rolle.
+# DNS-Selbstbedienung für Clients (D102). router.rsc lädt es per $cfmFeat nur mit dns.rsc; Upstreams, Cache,
+# den Forwarder cfm-upstream und den Abbau ohne dns.rsc erledigt die Rolle selbst.
 # Von der Rolle: cfmCtx->"dup" = Upstreams (dns.rsc servers, sonst wan.dns)
 # ============================================================
 :global cfmG; :global cfmDns; :global cfmDl; :global cfmCtx; :global cfmDry
@@ -14,10 +14,9 @@
   $cfmEnsure m="/ip/dns/adlist" k=("dnsal:" . $u) n=({"url"=$u}) p=({"url"=$u})
 }
 # Ausnahmen und Weiterleitungen sind FWD-Einträge mit match-subdomain (die Domain samt Subdomains). Ausnahmen
-# gehen an den Forwarder cfm-upstream mit allen Upstreams - so trägt ein Ausfall des ersten sie nicht mit. Er
-# bleibt auch, solange Freischaltungen der Selbstbedienung (dnsui:, D102) auf ihn zeigen
-:if (([:len ($cfmDns->"allow")] > 0 or [:len ($cfmDns->"self"->"zones")] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0) and [:len $dup] > 0) do={
-  $cfmEnsure m="/ip/dns/forwarders" k="dnsfw:upstream" n=({"name"="cfm-upstream"}) p=({"name"="cfm-upstream";"dns-servers"=$dup})
+# gehen an den Forwarder cfm-upstream mit allen Upstreams (legt die Rolle an) - so trägt ein Ausfall des ersten
+# sie nicht mit
+:if ([:len $dup] > 0) do={
   :foreach a in=($cfmDns->"allow") do={
     $cfmEnsure m="/ip/dns/static" k=("dnsallow:" . $a) n=({"name"=$a;"type"="FWD"}) p=({"name"=$a;"type"="FWD";"forward-to"="cfm-upstream";"match-subdomain"="yes"})
   }

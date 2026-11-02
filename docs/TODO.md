@@ -1232,19 +1232,23 @@ fehlen noch der Backup-Manager und VRRP mit mehreren Routern.
     erzeugte auf dem Manager ~1070 Zeilen/~750 KB in einer Minute (Graylog). Geheime Felder schwärzt RouterOS
     (Test: User, PPP-Secret, SNMP-Community, WLAN-Security, WireGuard), Dateiinhalte nicht – beim Manager-Rekey
     wäre der private SSH-Schlüssel im Syslog gelandet (an diesem Standort lief seit dem Syslog keiner).
-72. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, ungetestet:*
-    `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung; erste Module `router.dns` (+ Skript-Rumpf
-    `router.dnsreq`), `router.wg`, `base.sshkeys`, `base.snmp`, `base.iso`. `roles/router.rsc` 41,6 → 27,5 KB,
-    `roles/base.rsc` 38,8 → 29,5 KB. `rsc-check` (Regel `feature-modul`) grün, im CHR-Labor **noch nicht gelaufen**.
+72. **Feature-Module (D104)** (Wunsch des Nutzers, 2026-11-02) – *umgesetzt am selben Tag, im Labor ungetestet:*
+    `lib/<Rolle>.<Feature>.rsc`, geladen per `$cfmFeat` nur bei Nutzung: `router.dns` (+ Skript-Rumpf
+    `router.dnsreq`), `router.wg`, `router.limit`, `base.sshkeys`, `base.snmp`, `base.iso`, `base.bond`.
+    `roles/router.rsc` 41,6 → 27,3 KB, `roles/base.rsc` 38,8 → 27,6 KB. `tools/upload-seed.sh` lädt nur die
+    Module hoch, die die Site nutzt (`tools/feature-module.py`), und entfernt die übrigen auf dem Manager;
+    `$cfmCheck` stoppt ein Release, dem ein genutztes Modul fehlt. Grün: `rsc-check` (Regel `feature-modul`),
+    `feature-module-test.py`, `upload-seed-test.py` (nachgebauter SFTP-Server). Das CHR-Labor lief in der
+    Cloud-Sitzung nicht (kein KVM, `download.mikrotik.com` gesperrt).
     **Offen:**
-    * Labor: `e2e.sh` (14e Keys, 14k SNMP, 14l DNS inkl. Abbau ohne `dns.rsc`; neue Prüfungen der Module in `dl/`),
-      `e2e-vrrp.sh` (WireGuard über die VIP), `e2e-mlag.sh` (isolierte VLANs).
+    * Labor: `e2e.sh` (14e Keys, 14k SNMP und die neue Sperre in `$cfmCheck`, 14l DNS inkl. Abbau ohne
+      `dns.rsc`, Bandbreitenlimit; neue Prüfungen der Module in `dl/`), `e2e-vrrp.sh` (WireGuard über die
+      VIP), `e2e-mlag.sh` (Bonds, MLAG, Abbau eines Bonds, isolierte VLANs). Die Labor-Skripte laden mit
+      `--all-features`.
     * Hardware: erstes Release ringweise; danach auf einem Router `/system/script/get cfm-dnsreq source` prüfen
       (Kopf `:local dur …`/`:local deny …` für cfm-DNS, Rumpf als Funktion `$dnsreq`), cfm-DNS-Freischaltung einmal
-      durchspielen.
-    * Weitere Kandidaten, nach Größe: Bonds/MLAG aus `base` (~4,5 KB; Abbau alter Bonds braucht das Modul,
-      solange cfm-Bonds oder ein `mlag-peer-port` existieren); Bandbreitenlimit aus `router` (~1,5 KB, liefert
-      `limNets` an den Firewall-Block zurück); die Skripte `cfm-ssid-<key>-on/-off` und `cfm-reprov` in
-      `lib-wifi.rsc` als Rumpf-Dateien wie `router.dnsreq` (weniger Escape); `mgr-check.rsc` (55 KB) aufteilen,
-      bevor die 60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht
-      empfohlen: RouterOS-Update/Firmware aus dem Agent (D68: heikelster Pfad).
+      durchspielen. `upload-seed.sh` an einem Standort: Liste „nicht hochgeladen“ und „entfernt“ plausibel?
+    * Weitere Kandidaten: die Skripte `cfm-ssid-<key>-on/-off` und `cfm-reprov` in `lib-wifi.rsc` als
+      Rumpf-Dateien wie `router.dnsreq` (weniger Escape); `mgr-check.rsc` (57 KB) aufteilen, bevor die
+      60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht empfohlen:
+      RouterOS-Update/Firmware aus dem Agent (D68: heikelster Pfad).

@@ -107,7 +107,7 @@ expect 4 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and routing-table=
 
 step "2. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed-vrrp" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed-vrrp" --seed-inventory --all-features >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
 sed -e 's/^:local uplink "ether1"/:local uplink "ether2"/' \
     -e 's|^:local post ""|:local post ":if ([:len [/ip/dhcp-client/find where interface=ether1]] = 0) do={ /ip/dhcp-client/add interface=ether1 disabled=no add-default-route=no }"|' \
     "$ROOT/bootstrap/bootstrap-manager.rsc" > "$LAB/bm-vrrp.rsc"

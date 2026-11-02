@@ -1832,7 +1832,11 @@ Rolle nicht: Werte über `:global cfmCtx` übergeben. Beispiel aus `roles/base.r
 :if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ $cfmFeat "base.snmp" } }
 ```
 
-Objekte, die nur das Modul anlegt, räumt der Abgleich weg, sobald es nicht mehr geladen wird.
+Objekte, die nur das Modul anlegt, räumt der Abgleich weg, sobald es nicht mehr geladen wird. Was der
+Abgleich nicht kennt (Objekte ohne `cfm:`-Kommentar, z.B. Log-Regeln), baut die Rolle selbst ab, nicht das
+Modul: `tools/upload-seed.sh` lädt ein Modul nur hoch, wenn die Site das Feature nutzt, und entfernt es
+sonst auf dem Manager. Die Regel dafür gehört nach `tools/feature-module.py` (ohne Regel wird das Modul
+immer hochgeladen), dieselbe Bedingung nach `$cfmCheck` (`lib/mgr-check.rsc`, Abschnitt Feature-Module).
 `tools/rsc-check.py` prüft Namen, Rolle und Datei (Regel `feature-modul`).
 
 **Probelauf beachten:** `$cfmPlan` führt die Rollen mit `cfmDry=true` aus. `$cfmEnsure`,
@@ -2070,6 +2074,7 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | `$cfmUpgrade`: „zu wenig Platz für die Pakete … kein Auftrag“, Agent: „Platz fehlt“ | Pakete + 1 MB Reserve passen nicht in den freien Speicher (16-MB-Geräte) | aufräumen (`/file`), dann neuer Auftrag; sonst das eingebaute Update mit Internet am Gerät (TODO 38) |
 | `$cfmUpgrade`: „Pakete fehlen oder sind ungültig“ | Manager ohne Internet oder Paket ohne NPK-Kennung (z.B. Fehlerseite) | die genannten Dateien von download.mikrotik.com nach `<pkgPath>/<ver>/` legen; vorab `check=yes` |
 | Onboarding `manual=yes` beendet, Gerät hängt weiter im Onboarding-VLAN | gewollt: cfm fasst den Port bei `manual=yes` nicht an | Port am Switch von Hand auf sein Profil zurückstellen (Log-Hinweis) |
+| `$cfmRelease`: „lib/<rolle>.<feature>.rsc fehlt, … nutzt das Feature (D104)“ | Feature erst nach dem letzten Framework-Upload eingeschaltet (z.B. im cfm-Editor); `upload-seed.sh` lädt nur Module hoch, die die Site nutzt | `tools/upload-seed.sh <user>@<manager> --overlay site` erneut aufrufen, dann releasen |
 | `upload-seed.sh`: „keine SFTP-Anmeldung per SSH-Key“ (früher nur „Connection closed“) | das Skript nutzt Batch-SFTP, das kein Passwort abfragt | Public Key für den User auf dem Gerät hinterlegen, `ssh-agent` laden oder `SFTP_OPTS="-i <key>"` setzen |
 | SSH-Anmeldung per Passwort wird abgelehnt, Winbox geht | der User hat einen SSH-Key (z.B. aus `authorized_keys.<user>`), RouterOS erlaubt dann per SSH nur noch den Key | mit dem Key anmelden; Key-Datei prüfen (Kapitel 4, `authorized_keys.<user>`) |
 | `upload-seed.sh`: „Seed unvollständig hochgeladen“ | einzelne Dateien auch nach drei Versuchen nicht übertragen | erneut aufrufen; Verbindung und freien Platz am Manager prüfen |

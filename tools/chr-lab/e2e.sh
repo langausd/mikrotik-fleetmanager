@@ -42,7 +42,7 @@ for i in 1 2 3; do waitssh $i || { echo "vm$i nicht erreichbar"; exit 1; }; done
 
 step "1. Seed auf cm1 + Manager-Bootstrap"
 SFTP_OPTS="-i $LAB/lab_key ${O[*]}" SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force \
-  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed" --seed-inventory >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
+  "$ROOT/tools/upload-seed.sh" admin@127.0.0.1 --port $((LABPORT+10)) --overlay "$PWD/seed" --seed-inventory --all-features >/dev/null && ok "Seed hochgeladen" || bad "Seed hochladen fehlgeschlagen"
 # clean="yes" (Standard): Reset auf leere Config, danach läuft der Bootstrap selbst weiter.
 # post sichert den Host-Zugang über ether1 per DHCP-Client (CHR legt ihn nach dem Reset meist
 # selbst wieder an, deshalb nur, wenn er fehlt).
@@ -977,6 +977,10 @@ agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 && ok "sw1 und cm1 haben v$rv (SN
 expect 2 '[/snmp/get enabled] and [/snmp/get location] = "Rack 1" and [/snmp/get contact] = "lab@example.org" and [/snmp/community/get [find default] disabled]' "sw1: SNMP an, Ort aus dem Hostfile, public abgeschaltet"
 expect 1 '[/snmp/get location] = "Labor"' "cm1: Ort aus global.rsc"
 expect 1 '[:len [/file/find where name="cfm/dl/lib/base.snmp.rsc"]] = 1 and [:len [/file/find where name~"^cfm/dl/lib/router[.]"]] = 0' "cm1 (ohne router): Feature-Module nur von base (D104)"
+# upload-seed.sh lädt nur gebrauchte Module hoch: Fehlt eins, dessen Feature die Daten nutzen, stoppt $cfmCheck das Release
+out=$(mgr '/file/remove [find name="cfm/work/lib/base.snmp.rsc"]; :delay 200ms; :global cfmCheck; :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }')
+echo "$out" | grep -q "ERR lib/base.snmp.rsc fehlt, global.rsc snmp nutzt das Feature" && ok "\$cfmCheck: fehlendes Feature-Modul base.snmp gemeldet (D104)" || { bad "\$cfmCheck ohne Meldung zu base.snmp"; echo "$out" | grep ERR | head -3; }
+echo "put $ROOT/cfm/work/lib/base.snmp.rsc cfm/work/lib/base.snmp.rsc" | put 1
 expect 2 '[:len [/snmp/community/find where name="librenms" and comment~"^cfm:snmp:librenms" and security="private" and authentication-protocol="SHA512" and encryption-protocol="AES" and read-access and !write-access]] = 1 and [:tostr [/snmp/community/get [find name="librenms"] addresses]] = "127.0.0.1/32;10.0.2.2/32"' "sw1: Community librenms (authPriv SHA512/AES, nur lesend, nur from)"
 expect 2 '[/system/logging/action/get [find name="cfmremote"] remote-log-format] = "syslog"' "sw1: Syslog im RFC-Format (syslogFormat)"
 mgr ':put ("SP=" . [$cfmSecretPush host=sw1])' | grep -q "SP=1" && ok "Secret-Push mit den SNMP-Passwörtern" || bad "Secret-Push SNMP"

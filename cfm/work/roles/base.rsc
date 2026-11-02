@@ -38,43 +38,27 @@ $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 :if ($proto = "none") do={ :set brp ({"name"=$br;"protocol-mode"=$proto}) }
 $cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=$brp a=({"vlan-filtering"="no"})
 
-# --- Bonds (D74) und MLAG (D75) ---
-#     Hostfile bonds={"bond1"={"slaves"="sfp1,sfp2";"mode"="802.3ad"|"active-backup";"hash"=…;"primary"=…}},
-#     das Profil steht wie bei jedem Port unter ports ("bond1"="trunk"). Ist das Gerät Knoten eines Paars
-#     in mlag.rsc, kommen der Peer-Bond peer-<Paar> (alle VLANs getaggt) und die MLAG-Bonds (mlag-id,
-#     Profil aus mlag.rsc) dazu. Bonds, die es nicht mehr geben soll, werden schon hier entfernt und
-#     die Slaves verlassen die Bridge: Unten bei den Ports wären sie sonst noch belegt.
+# --- Bonds (D74) und MLAG (D75): Feature-Modul lib/base.bond.rsc (D104), nur mit bonds im Hostfile oder als
+#     Knoten eines Paars in mlag.rsc. Bonds, die es nicht mehr geben soll, entfernt die Rolle selbst und schon
+#     hier, damit ihre Slaves unten bei den Ports wieder frei sind - auch ohne Modul (tools/upload-seed.sh lädt
+#     es nur für Sites mit Bonds oder MLAG hoch) ---
 :local brc ({})
 :onerror e in={ :set brc [/interface/bridge/get [find where name=$br and !dynamic]] } do={}
 :local hasMl ([:typeof ($brc->"mlag-peer-port")] != "nothing")
 :if ([:len $ml] > 0 and !$hasMl) do={ :error "MLAG (mlag.rsc) braucht RouterOS 7.22 oder neuer" }
 :if ($hasMl and [:len $ml] = 0 and [:tostr ($brc->"mlag-peer-port")] != "none") do={ $cfmSet m="/interface/bridge" n=({"name"=$br}) p=({"mlag-peer-port"="none"}) }
-:local bonds ({})
-:local bspec ({})
-:foreach bn,b in=($cfmHost->"bonds") do={
-  :local md [:tostr ($b->"mode")]
-  :if ([:len $md] = 0) do={ :set md "802.3ad" }
-  :local hs [:tostr ($b->"hash")]
-  :if ([:len $hs] = 0) do={ :set hs "layer-2-and-3" }
-  :local bp ({"name"=$bn;"slaves"=[:toarray ($b->"slaves")];"mode"=$md;"lacp-rate"="1sec";"transmit-hash-policy"=$hs})
-  :if ([:len [:tostr ($b->"primary")]] > 0) do={ :set ($bp->"primary") [:tostr ($b->"primary")] }
-  :set ($bonds->$bn) $bp
-}
+# gewollte Bonds: aus dem Hostfile, dazu Peer- und MLAG-Bonds des Paars
+:local bw ({})
+:foreach bn,b in=($cfmHost->"bonds") do={ :set ($bw->$bn) 1 }
 :if ([:len $ml] > 0) do={
-  :set ($bonds->($ml->"peer")) ({"name"=($ml->"peer");"slaves"=[:toarray ($ml->"peerSlaves")];"mode"="802.3ad";"lacp-rate"="1sec";"transmit-hash-policy"="layer-2-and-3"})
-  :set ($bspec->($ml->"peer")) "*mlag-peer"
-  :foreach bn,b in=($ml->"bonds") do={
-    :set ($bonds->$bn) ({"name"=$bn;"slaves"=[:toarray ($b->"slaves")];"mode"="802.3ad";"lacp-rate"="1sec";"transmit-hash-policy"="layer-2-and-3";"mlag-id"=($b->"id")})
-    :set ($bspec->$bn) ($b->"profile")
-  }
+  :set ($bw->($ml->"peer")) 1
+  :foreach bn,b in=($ml->"bonds") do={ :set ($bw->$bn) 1 }
 }
-:local slv ({})
-:foreach bn,b in=$bonds do={ :foreach x in=($b->"slaves") do={ :set ($slv->[:tostr $x]) $bn } }
 $cfmIndex "/interface/bonding"
 $cfmIndex "/interface/bridge/port"
 :foreach k,id in=($cfmIdx->"/interface/bonding") do={
   :local bn [:pick $k 5 [:len $k]]
-  :if ([:pick $k 0 5] = "bond:" and [:typeof ($bonds->$bn)] = "nothing") do={
+  :if ([:pick $k 0 5] = "bond:" and [:typeof ($bw->$bn)] = "nothing") do={
     :local bpid ($cfmIdx->"/interface/bridge/port"->("bp:" . $bn))
     :if ($cfmDry != true) do={
       :if ([:typeof $bpid] != "nothing") do={ /interface/bridge/port/remove $bpid }
@@ -85,23 +69,11 @@ $cfmIndex "/interface/bridge/port"
     $cfmLog ("Bond " . $bn . " entfernt, seine Ports bekommen wieder ihr eigenes Profil")
   }
 }
-:foreach x,bn in=$slv do={
-  :foreach pid in=[/interface/bridge/port/find where interface=$x and !dynamic] do={
-    :if ($cfmDry != true) do={ /interface/bridge/port/remove $pid }
-    $cfmLog ("Port " . $x . " aus der Bridge genommen (Slave von " . $bn . ")")
-  }
-  :set ($cfmIdx->"/interface/bridge/port"->("bp:" . $x))
-  :if ([:len [/interface/ethernet/find where name=$x]] > 0) do={ $cfmSet m="/interface/ethernet" n=({"name"=$x}) p=({"disabled"="no"}) }
-}
-:foreach bn,b in=$bonds do={ $cfmEnsure m="/interface/bonding" k=("bond:" . $bn) n=({"name"=$bn}) p=$b }
-# MLAG verträgt kein L3-Hardware-Offloading (MikroTik-Doku): wie bei der Rolle router (D37) aus
-:if ([:len $ml] > 0) do={
-  :local sws ({})
-  :onerror e in={ :set sws [$cfmIds "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }
-  :foreach sw in=$sws do={
-    :local sc [$cfmRun "/interface/ethernet/switch/get" I=$sw]
-    :if ([:typeof ($sc->"l3-hw-offloading")] != "nothing") do={ $cfmSet m="/interface/ethernet/switch" n=({"name"=($sc->"name")}) p=({"l3-hw-offloading"="no"}) }
-  }
+:local slv ({})
+:local bspec ({})
+:if ([:len $bw] > 0) do={
+  :set cfmCtx ({"ml"=$ml}); $cfmFeat "base.bond"
+  :set slv ($cfmCtx->"slv"); :set bspec ($cfmCtx->"bspec")
 }
 
 # --- Ports nach Profil (portDefault gilt für alle nicht genannten Ethernet-Ports, nicht für Slaves) ---

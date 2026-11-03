@@ -191,7 +191,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   des PoE-Kabels halten, bis die LED nach ~10 s dauerhaft leuchtet). Dann ist ether1 ohne Firewall
   per DHCP erreichbar, und das Onboarding läuft über den PoE-Port.
 * Auf Hardware gelaufen mit APs im CAPs-Modus (hAP ax³, hAP be³); Werks-Configs von Routern und
-  CRS-Switches sind noch offen, siehe [docs/TODO.md](docs/TODO.md).
+  CRS-Switches sind noch offen, siehe [docs/TESTSTAND.md](docs/TESTSTAND.md#offen-auf-hardware).
 
 ## Sicherheitsmodell (Kurzfassung)
 
@@ -235,7 +235,8 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2, 7.25 und 7.26beta1. Auf
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2, 7.25 und 7.26beta1
+  (Einzelheiten: [docs/TESTSTAND.md](docs/TESTSTAND.md)). Auf
   Hardware im Einsatz an zwei Standorten (seit 7.23.1, inzwischen alle Geräte auf 7.25): CRS418 als Router und Manager, Manager als
   CHR in einer VM, CRS328 als Core-Switch, CRS310, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX,
   L009; an einem Standort routen vier davon (hAP be³, CHR, CRS310, CRS328) per VRRP. Ab 7.24

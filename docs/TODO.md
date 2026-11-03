@@ -91,8 +91,8 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   eigenen Dateien, nur bei Nutzung geladen; `upload-seed.sh` lädt nur, was die Site nutzt. Labor 7.25 grün
   (`e2e.sh` 410, vrrp 137, mlag 72, onboard 14); Hardware an einem Standort ohne DNS-Selbstbedienung ok, offen nur
   noch `cfm-dnsreq` auf einem Router mit `dns.rsc`.
-* **Neu am 2026-11-02 (Abgleich mit den Plänen beider Standorte):** Backup-Manager unter „Noch nicht mit echter
-  Hardware getestet“ (Test an einem Standort geplant 2026-11-07/08), 72 (Band je AP abschalten, Antennengewinn –
+* **Neu am 2026-11-02 (Abgleich mit den Plänen beider Standorte):** Backup-Manager unter „Offen auf Hardware“
+  ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)) (Test an einem Standort geplant 2026-11-07/08), 72 (Band je AP abschalten, Antennengewinn –
   nur bei Außenantenne).
 * **Umgesetzt am 2026-10-31:** 68 (DN3.1) – DNS der Router aus `dns.rsc` (Upstream, Adlisten, Ausnahmen,
   Weiterleitung, Abfrage-Log) und 69 (DN3.2) – DNS-Selbstbedienung mit Lesezeichen cfm-DNS. Labor 7.25: `e2e.sh`
@@ -100,11 +100,12 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   aus dem Client-VLAN binnen 3 s, dauerhaft machen und löschen als Admin ok. ~~Offen: Syslog-Weg des Abfrage-Logs (68).~~ Erledigt 2026-11-01 (Graylog, 8.15).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
-  DW1.8), 39 (Steering je Band + Mindestsignal, DW2.4).
-* **Nur mit Hardware:** die Punkte unter „Noch nicht mit echter Hardware getestet“. Das eingebaute Update
+  DW1.8). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
+  ([TESTSTAND.md](TESTSTAND.md#bestanden)).
+* **Nur mit Hardware:** die Punkte unter „Offen auf Hardware“ in [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware). Das eingebaute Update
   (38, DV1.5) lief über den Spiegel (hEX) und per `via=internet` (CRS, 7.25).
 * **RouterOS 7.25:** Befunde und Folgearbeiten aus dem Labor mit 7.25rc1: 48.
-* **RouterOS 7.25:** stable seit 2026-10-22; Labortest aller Skripte am 2026-10-25 grün (48). Ein Standort
+* **RouterOS 7.25:** stable seit 2026-10-22; Labortest aller Skripte am 2026-10-25 grün ([TESTSTAND.md](TESTSTAND.md)). Ein Standort
   am 2026-10-25/26 komplett per `$cfmUpgrade` auf 7.25 (10 Geräte), Kabel-Ports des hAP be³ Media dort
   getestet (48); Lade-Lesezeichen unter 7.25 im echten Browser geprüft (52). Zweiter Standort am 2026-10-27/28
   ebenfalls auf 7.25 (3 Geräte). Offen: FT für MLD (DW2.3).
@@ -129,7 +130,7 @@ Erledigtes ist unten durchgestrichen und bleibt als Befund stehen. Offen, grob n
   Client-VLAN verwirft dort still (Site-Regel in der `post.rsc`).
 * **Erledigt am 2026-10-12 abends:** Lesezeichen „cfm-WLAN“ (DU2.2): Clients je AP live und Roaming als
   Zeitleiste, für Standorte ohne Home Assistant. Getestet gegen eine Attrappe der REST-API; offen ist
-  der Test mit echten Clients (siehe „Noch nicht mit echter Hardware getestet“).
+  der Test mit echten Clients (inzwischen bestanden, [TESTSTAND.md](TESTSTAND.md#bestanden)).
 * **Erledigt am 2026-10-12 (sechste Remote-Runde):** 10 (Bonds im Hostfile, DP2.1; MLAG-Paare in
   `mlag.rsc`, DP2.2), 20 bis auf den Proxy (isolierte VLANs über APs und Switches hinweg, Freigaben mit
   Ports je Eintrag, DP3.1). Review von DG2.5, DS1.5, DT2.2 und DT3.1 vor dem nächsten Framework-Update einer Site: Die Sperre `cfmApplyBusy` wirkte nur
@@ -219,86 +220,8 @@ Default-Config wieder her → Re-Onboarding ohne Aufkleber-Passwort und ohne Net
 
 ## Noch nicht mit echter Hardware getestet
 
-Erster Hardware-Pilot (2026-09-17): ein CRS418 als Router, Primary-Manager und CAPsMAN
-(`router,manager`) und ein hAP ax² als AP. Zweiter Einsatz (2026-09-20): Primary-Manager als CHR in
-einem PVE-Cluster, Karte je VLAN – dabei kamen DP1.2 (`stp="none"`, Profil `vport`), die
-Namensprüfung im Bootstrap, der Host-Key-Typ nach Reset und der Schutz des Inventars dazu.
-Rollout an einem zweiten Standort (ab 2026-09-26): neun Geräte – CRS328 als Core-Switch ohne Reset
-übernommen (routet noch selbst, DO2.1), hAP be³ als CAPsMAN (DW1.5) und AP (Wi-Fi 7, DW1.4/DW2.3), hAP ax³
-und cAP ax als APs, hEX und L009 als Switches; Onboarding im CAPs-Modus, CAPsMAN-Umzug, lokaler Fallback (DW1.6)
-und `$cfmUpgrade` mit Zusatzpaketen (arm, arm64) liefen dort. Die gefundenen Fehler sind behoben
-([ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). Offen bleiben:
-
-* Onboarding-Push gegen echte Werks-Configs: Router (ether1 = WAN mit Firewall), CRS-Switches,
-  Geräte mit `flash/`-Verzeichnis; Aufkleber-Passwort (beim einzigen Versuch, einem hAP ax³ mit
-  RouterOS 7.8, passte es nicht – das Gerät hatte ein leeres Passwort, der Fallback griff)
-* ~~Onboarding eines hAP per PoE an ether1 im CAPs-Modus~~ – am 2026-09-26 mit zwei APs gelaufen
-  (Neustart per `/interface/ethernet/poe/power-cycle` am verwalteten Switch, Lease im
-  Onboarding-VLAN, Probe, Bootstrap, Enroll); offen bleibt das LED-Verhalten je Modell
-* ~~Manager-Bootstrap mit Reset (`clean="yes"`)~~ – am 2026-09-20 auf einem CHR in PVE gelaufen
-  (Stufen 2 und 3 samt Übergabe per SFTP-`.auto.rsc`). Offen bleibt derselbe Weg auf einem Gerät
-  mit `flash/`-Verzeichnis
-* Bridge nach Neustart/Rollback: Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot
-  sporadisch keine getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte
-  mit Switch-Chip? Auf Hardware prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt.
-  *Ein Datenpunkt 2026-11-01:* Rollback mit Neustart auf einem hAP be³ (VRRP-Master, CAPsMAN, 7.25) – keine
-  solche Meldung (Log und Syslog), CAPs und Clients nach ~1 min wieder da.
-* PPSK-VLANs, VRRP mit mehreren Routern (im Labor mit drei Routern geprobt, `e2e-vrrp.sh` 79/79,
-  2026-10-01: Failover, Rückkehr mit Preemption, Neustart, Ausfall zweier Router, DHCP nur auf dem
-  Master, Zonen-Policy, feste NAT-Adresse; dabei die Rolle `router` korrigiert, siehe DR1.3). ~~Umzug der Rolle `capsman`~~ (DW1.5) am 2026-09-27 von
-  einer CHR auf einen hAP be³ gelaufen, vier APs folgten samt Zertifikatswechsel. Zwei APs
-  (hAP ax²) mit CAPsMAN, SSID-VLAN über den lokalen Datapath (DW1.3), WPA2/WPA3 + FT und Clients
-  mit `ft-wpa3-psk` laufen seit 2026-09-24, Roaming zwischen den beiden APs klappt (2026-09-25)
-* **Backup-Manager (`manager-backup`, DM3.1/DM3.2/DS2.5)** – bisher nur im Labor (`e2e.sh`: cm2, auch als
-  `manager-backup,ap`). Auf Hardware offen: Spiegel-Abruf und Platz, gesperrte Geräte-User, Meldung `primary` an den
-  Webhook bei ausgeschaltetem Primary, Geräte ziehen bis zur Beförderung nicht vom Backup, zweiphasiger Rekey mit
-  zwei echten Managern; `$cfmPromoteManager` nur im Ernstfall. *Geplant an einem Standort (hAP be³ als
-  `switch,ap,manager-backup`, 2026-11-07/08).*
-* Hook Manager → Git-Host per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet)
-* Rolle `router` auf einem CRS mit L3-Hardware-Offloading (DR1.2): schaltet sie `l3-hw-offloading` ab,
-  läuft VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
-* Feste NAT-Adresse (`wan@<Adresse>`, DR2.3) bei VRRP: Wandert die Adresse mit dem Master, und
-  übernimmt der neue Master den ausgehenden Verkehr ohne Hand-Eingriff (bestehende Verbindungen
-  brechen ab, conntrack wird nicht abgeglichen)?
-* Feste Leases und DNS-Namen (DN1.1) auf einem Hardware-Router, bei VRRP auf allen Routern; dabei
-  prüfen, ob eine schon dynamisch vergebene Lease derselben MAC das Anlegen der festen stört.
-  *Namen bestanden* (ein Standort, drei VRRP-Router, seit 2026-10-28; neue Leases 2026-11-01 auf allen drei
-  sofort auflösbar). Offen nur die Frage mit der dynamischen Lease (dort vorher von Hand gelöscht).
-* ~~Eingebautes Update über cfm (DV1.5) auf einem Gerät mit 16 MB Flash~~ – gelaufen 2026-10-03: hEX
-  RB750Gr3 von 7.23.1 auf 7.24.5 über `via=mirror` (Apache als Spiegel, `--export`), 2,4 MB frei, vier
-  Pakete, gut 4 min samt Neustart. Befund: `mode` blieb danach auf `http` – der Agent prüft den
-  Rückbau jetzt in einem späteren Lauf nach. `via=internet` noch nicht über cfm gelaufen.
-* Schaltbare SSID (DW4.1) auf Hardware mit Home Assistant: `command_line`-Schalter mit
-  `tools/home-assistant/cfm_ssid.py` ([home-assistant.md](home-assistant.md)), Auto-Aus. Im Labor
-  per API geprüft (2026-10-03): Starten mit `read,api,test` + `dont-require-permissions`, Zustand aus
-  den Regeln, Ablauf aus der Datei; `:global cfmSsid<key>` ist für HA nicht lesbar (DW4.1). Seit DW4.2
-  Zustand an den Interfaces, dazu die offenen Fragen aus 58.
-* **MLAG (DP2.2)** auf CRS3xx: Offload im Switch-Chip, Ausfall eines Knotens (Strom aus, nicht nur Link),
-  Umbau eines Uplinks, über den der Weg zum Manager läuft (Labor: ein 802.3ad-Port ohne Gegenstelle
-  leitet weiter), `mlag-lacp-fallback` ab 7.25.
-* **Isolierte VLANs (DP3.1)** an echten APs: Gibt der CAPsMAN `interface-list` des Datapath an die CAPs
-  weiter (sonst trägt die Rolle `ap` die Interfaces beim Apply ein – neu verbundene erst beim nächsten
-  Apply)? Sieht der Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000
-  `vlan`; die MAC-Regeln greifen in beiden Fällen)? Trennt Client-Isolation auch zwischen den Radios
-  eines AP? An Switches: `hw=no` an isolierten Access-Ports (Durchsatz über die CPU).
-* ~~**Lesezeichen cfm-WLAN (DU2.2)** mit echten Clients~~ – *erledigt 2026-10-14* (zwei Standorte mit vier bzw.
-  zwei APs): Zuordnung, Signal, Wechsel live und aus dem Log des CAPsMAN
-  (`<MAC>@<Interface>(<SSID>) roamed to <MAC>@<Interface>(<SSID>), signal strength …`), Uhrzeit stimmt
-  mit `cache: 'no-store'`. Wechsel erscheinen in den Ereignissen doppelt (live und „Log“).
-* ~~`$cfmShow objects=yes` auf einem Manager mit vielen Skripten~~ – auf Hardware gelaufen
-  (2026-10-03): CHR als Manager mit acht Modulen, 109 Soll-Objekte, 9,5 KB – weit unter der Kürzung.
-* **Neue Master-SSID mit eigenen Radios (DW1.11):** Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
-  erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
-  Master-SSID: Ausfall nur für die Dauer des Applys plus höchstens 30 s, Log `meldet nach dem Push Secrets v0`.
-* **SNMPv3 (DU4.3)** gegen LibreNMS – *SNMP bestanden 2026-10-30* (10 Geräte, RouterOS 7.25, LibreNMS 26.6.1: authPriv
-  SHA256/AES über die MGMT-Adresse, sysLocation aus Hostfile mit Umlauten, danach Probelauf 0/0/0). ~~Offen: Syslog im
-  RFC-Format (Schwere richtig einsortiert?)~~ – *bestanden 2026-11-01* über Graylog 7.0: Facility `daemon`, Schwere
-  aus dem Topic (warning 4, info 6, error 3), Zeit Ortszeit ohne Zone (Input-Zeitzone setzen), `source` = Identity;
-  LibreNMS ordnet über den sysName zu. Befund: Nicht-ASCII-Bytes kommen als `?` an (70).
-* **Bandbreitenlimit (DR2.7)** – *Grundtest bestanden 2026-10-28/29* (CRS418, ein Client: 19,8 Mbit/s bei
-  `limitClient` 20M, Queue bremst in beiden Richtungen, keine Gast-Verbindung im Fasttrack). Offen: zwei Clients
-  gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der MikroTik-Doku – Ausnahme kurz
-  abschalten, läuft der Gast dann ungebremst?; CPU-Last der CRS418 unter Volllast.
+Steht seit 2026-11-03 in [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware) („Offen auf Hardware“), zusammen mit dem,
+was auf Hardware und im Labor schon bestanden hat.
 
 ## Bekannte Fehler
 
@@ -514,7 +437,7 @@ fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Router
     mit Ausnahmen `isolateAllow`, Filter am Eingang der Client-Ports (Access-Ports mit `hw=no`,
     WLAN über die Liste `cfm-iso`), Freigaben mit Ports je Eintrag (`"ziel:tcp/443"`). Labor:
     `e2e-mlag.sh` Schritt 10, `e2e.sh` Schritt 9. Offen: Test an echten APs und Switches (siehe
-    „Noch nicht mit echter Hardware getestet“), Proxy als Ziel. – (nach DR2.3/DR2.4): gerätespezifische Freigaben über kleinere Zonen
+    [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)), Proxy als Ziel. – (nach DR2.3/DR2.4): gerätespezifische Freigaben über kleinere Zonen
     erproben (eigenes VLAN/PPSK-Gruppe je Gerätegruppe); Freigaben nur für bestimmte Ports;
     Proxy als Ziel (transparent, Filter nach Domain) für Geräte, deren Cloud-Adressen häufig
     wechseln. WLAN-Client-Isolation trennt laut MikroTik nur Clients am selben AP – für
@@ -823,41 +746,16 @@ fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Router
       seitdem an den Interfaces); `cfmSsid<key>`
       auf der Konsole stimmt ab 7.25 auch nach dem Schalten aus HA.
     * **WebFig** zeigt Dateiinhalte weiter nicht an (DT3.1, Lesezeichen-Editor).
-    * **Labor mit 7.25rc1 (2026-10-12):** alle Skripte grün – `e2e.sh` 292, Onboarding 14/15/18,
-      `e2e-vrrp.sh` 79. Mit 7.25 stable nur `e2e.sh` wiederholen, sofern der Changelog nichts Neues
-      zu SSH, fetch, Skripten oder `/file` nennt. Abends mit DP2.1, DP2.2 und DP3.1: `e2e.sh` 294, `e2e-mlag.sh` grün.
-    * **Labor mit 7.25rc2 (2026-10-13):** alle Skripte grün – `e2e.sh` 298 (mit DU3.2), Onboarding
-      14/15/18, `e2e-vrrp.sh` 79, `e2e-mlag.sh` 72; kein neuer Befund zu cfm.
-    * **Labor mit 7.25rc2 (2026-10-17, Stand DN1.2):** alle Skripte grün – `e2e.sh` 315, Onboarding 14/15/18,
-      `e2e-vrrp.sh` 79, `e2e-mlag.sh` 72. Eine Forumsmeldung aus der Beta-Zeit (Skripte über ~16 kB nach
-      einem Neustart ungültig) ließ sich nicht nachstellen: ein Skript mit 45 KB bleibt nach dem Neustart
-      gültig und läuft per Scheduler `startup`. Changelog-Durchsicht für einen Standort: nichts, was ein
-      Update vor einem Router-Umbau nötig macht; das PoE-Firmware-Update (kurze Unterbrechung aller
-      PoE-Ports) gehört in ein eigenes Wartungsfenster; unter rc1 meldete ein Nutzer hAP-ax³-CAPs mit
-      fehlenden SSIDs (zu rc2 noch keine Meldungen).
-    * **Labor mit 7.25 stable (2026-10-25, erschienen 2026-10-22, Stand `47646d9`):** alle Skripte grün –
-      `e2e.sh` 338 (ein ✘: MNDP-Prüfung in Schritt 14, der bekannte Timing-Fehler unter „Bekannte Fehler“,
-      zwei Labore parallel; von Hand nachgestellt: erstes Paket nach knapp 20 s, still verworfen),
-      `e2e-vrrp.sh` 120, `e2e-mlag.sh` 72, Onboarding 14/15/18. 7.25 meldet die Version jetzt als `7.25`
-      ohne Kanal-Zusatz („system - remove the channel label“); der Agent hängt den Kanal an, `$cfmUpgrade`
-      erkennt das Update (Schritt 13). Changelog-Punkte für die Hardware: „ethernet - fix occasional packet
-      loss on hAP be3 Media“ (Kabel-Ports an einem Standort aus, bis 7.25 läuft), „wifi - add more steering
-      debug logs“ (802.11v-Vorschläge bisher nicht im Log), „wifi-qcom - fix disconnects during fast
-      transition roaming“, FT für MLD (DW2.3), PoE-Firmware 802.3at/bt (siehe oben, Wartungsfenster).
-    * **Hardware mit 7.25 (2026-10-25/26, ein Standort, 10 Geräte: hAP ax², hAP ax³, hAP be³ Media, cAP ax, CRS,
-      hEX, CHR):** `$cfmUpgrade` je Gerät ohne Fehler (16-MB-hEX per `via=mirror`, ein CRS mit wenig Flash per
-      `via=internet`), Firmware-Angleich mit zweitem Neustart wie erwartet. Befunde: Die eigenen Radios des
-      CAPsMAN zeigen ohne eingebuchten Client `running=false`, ihr Bridge-Port `inactive` – Beacons gehen
-      trotzdem raus, ein Client bucht sofort ein (CAPs zeigen `running` auch ohne Client). PoE-APs laufen nach
-      dem Neustart des PoE-Gebers etwa 5 min mit alter Uhrzeit (NTP `waiting`), `$cfmStatus` zeigt solange
-      falsche „ZULETZT“-Werte. **Kabel-Ports des hAP be³ Media** (packet-loss-Fix): zwei Ports gegen einen
-      Switch (2,5 Gbit/s, je eine VRF mit DHCP-Client), Ping, Zähler, Link-Wechsel und Neustart bestanden,
-      Langzeit 6 h ohne Verlust, ohne FCS-Fehler und Link-Abbruch (ein FCS-Fehler nur im Neustartfenster des
-      Switches).
-    * **Hardware mit 7.25, zweiter Standort (2026-10-27/28, 3 Geräte: CRS418 als Router/Manager/CAPsMAN, 2× hAP
-      ax²):** `$cfmUpgrade` je Gerät, Firmware angeglichen. Die Neustarts brachten die CAP-Radios ohne `cfm-reprov`
-      auf feste Interfaces (DW4.2/DW4.3). Lade-Lesezeichen, Client- und FT-Test (auch FT-SAE in einer WPA3-SSID) bestanden.
-49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün (2026-10-12, 292).
+    * **Laborläufe mit 7.25rc1, 7.25rc2 und 7.25 sowie das Update der Standorte auf 7.25:** siehe
+      [TESTSTAND.md](TESTSTAND.md).
+    * **Changelog-Durchsicht:** 7.25rc2 (2026-10-17, für einen Standort) – nichts, was ein Update vor einem
+      Router-Umbau nötig macht; das PoE-Firmware-Update (kurze Unterbrechung aller PoE-Ports) gehört in ein eigenes
+      Wartungsfenster; unter rc1 meldete ein Nutzer hAP-ax³-CAPs mit fehlenden SSIDs (zu rc2 noch keine Meldungen).
+      7.25 stable – Punkte für die Hardware: „ethernet - fix occasional packet loss on hAP be3 Media“ (Kabel-Ports an
+      einem Standort aus, bis 7.25 läuft), „wifi - add more steering debug logs“ (802.11v-Vorschläge bisher nicht im
+      Log), „wifi-qcom - fix disconnects during fast transition roaming“, FT für MLD (DW2.3), PoE-Firmware 802.3at/bt
+      (siehe oben, Wartungsfenster).
+49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün ([TESTSTAND.md](TESTSTAND.md)).
     Punkte aus dem Changelog, die cfm berühren können:
     * „l3hw - add VRRP hardware offloading support“: DR1.2 schaltet für VRRP das Routing im Switch-Chip
       ab. Mit 7.26 prüfen, ob ein CRS als VRRP-Router im Chip routen kann (Zonen-Firewall bleibt aber in

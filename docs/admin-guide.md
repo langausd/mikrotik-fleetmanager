@@ -2,35 +2,13 @@
 
 Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7) mit cfm betreiben
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
-Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte in [TODO.md](TODO.md).
+Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), Eigenheiten von RouterOS in
+[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md), offene Punkte in [TODO.md](TODO.md).
 
-> **Teststand:** Im CHR-Labor mit RouterOS 7.25 (zuvor 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch
-> mit 7.26beta1) laufen der Gesamttest (373 Prüfungen, darunter Manager-Bootstrap mit Reset,
-> Probelauf, `$cfmShow`/`$cfmDiff`, Firewall, Schlüsselwechsel, Backup-Manager, Router-Rolle mit
-> festen Leases, DNS-Namen und Bandbreitenlimit, Netzplan, PPSK, CAPsMAN-Rolle, Admin-Keys je User,
-> Benachrichtigungen, SNMPv3, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
-> Spiegel), der Onboarding-Test (14 Prüfungen mit Werks-IP, 15 im CAPs-Modus per DHCP, 18 hinter
-> einem nicht verwalteten Switch), die Probe mit drei VRRP-Routern (120 Prüfungen) und der Test von
-> LACP, MLAG und isolierten VLANs (fünf VMs) fehlerfrei. Auf **Hardware** läuft cfm an zwei Standorten, alle
-> Geräte mit RouterOS 7.25: ein CRS418 als Router, Primary-Manager und CAPsMAN (mit eigenen Radios) mit zwei
-> hAP ax² (Roaming mit FT bestätigt, Haupt-, Legacy-, Gast- und Test-SSID, Gast-VLAN mit Bandbreitenlimit), und
-> ein zweiter Standort mit zehn Geräten – der
-> Manager als CHR in einer VM, ein CRS328 als Core-Switch (übernommen ohne Reset), ein CRS310 als
-> Switch der Server, ein hAP be³ als CAPsMAN mit eigenen Radios, APs (hAP be³, hAP ax³, cAP ax) mit
-> lokalem Fallback, hEX und L009 als Switches. Dort routen seit dem
-> 17.10. vier Geräte (hAP be³, CHR, CRS310, CRS328) alle VLANs per VRRP hinter einer Fritz!Box als
-> Internet-Gateway, mit DHCP, festen Leases und DNS-Namen und WireGuard-Zugang; die Ausfalltests per
-> Neustart liefen durch. Automatisches Onboarding im
-> CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64) bis 7.25, das eingebaute Update
-> vom Spiegel (hEX mit 16 MB Flash) und per `via=internet` (CRS), schaltbare SSIDs (seit DW4.2 mit festen
-> Interfaces), die Umstellung auf Admin-Keys je User, der Kanal-Scan über den CAPsMAN, Steering mit
-> Mindestsignal und die Trennschwelle je Band (DW2.5), die NTP-Umleitung je VLAN (DN2.2) und das Bandbreitenlimit
-> je VLAN (DR2.7) liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
-> Fehler“, siehe auch [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten).
-> **Noch nicht** mit echter Hardware erprobt sind der Backup-Manager,
-> das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, weitere SSIDs im
-> lokalen Fallback, LACP-Bonds, MLAG und isolierte VLANs
-> (DP2.1, DP2.2, DP3.1); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> **Teststand:** Im CHR-Labor laufen alle Tests mit RouterOS 7.25 fehlerfrei (Funkteile ausgenommen). Auf Hardware
+> läuft cfm an zwei Standorten mit 13 Geräten und RouterOS 7.25, an einem davon routen vier Geräte per VRRP. Was
+> im Einzelnen geprüft ist und was auf Hardware noch offen ist (u.a. Backup-Manager, Onboarding gegen Werks-Configs
+> von Routern, MLAG, isolierte VLANs), steht in [TESTSTAND.md](TESTSTAND.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -204,7 +182,7 @@ Bevor du etwas einspielst, kläre diese Punkte:
 
 **Hardware und Software:**
 * RouterOS ≥ `rosMin` (7.22); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2, 7.25 und
-  7.26beta1, auf Hardware seit 7.23.1, inzwischen 7.25 (siehe Teststand oben).
+  7.26beta1, auf Hardware seit 7.23.1, inzwischen 7.25 (siehe [TESTSTAND.md](TESTSTAND.md)).
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
   Internetzugang für die Paket-Downloads (ohne Internet: Pakete von Hand ablegen, 8.6).
@@ -1915,6 +1893,7 @@ aus. Auf GitHub prüft die Action `rsc-check` jeden Push. Das Skript ersetzt wed
 `tools/chr-lab/` betreibt RouterOS-CHR-VMs in QEMU/KVM (Stern-Topologie: vm1 ist Manager und
 „Switch“, vm2/vm3 hängen an dessen `ether2`/`ether3`). Schritt für Schritt für den Einstieg
 (Voraussetzungen, Image, Ergebnis lesen, Fehlersuche): [tools/chr-lab/README.md](../tools/chr-lab/README.md).
+Ergebnisse der Läufe je RouterOS-Version: [TESTSTAND.md](TESTSTAND.md#läufe-je-routeros-version).
 
 ```bash
 cd tools/chr-lab

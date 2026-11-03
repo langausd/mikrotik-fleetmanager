@@ -1112,7 +1112,7 @@ Die Rolle `ap` und `$cfmCheck` warnen bei CAPs mit `wifi-qcom-ac`: Das Paket üb
 
 **Verworfen:** nur access-list (`signal-range` + `allow-signal-out-of-range`)
 
-**Begründung:** Der Client bekommt erst Nachbarn vorgeschlagen und wird nur getrennt, wenn er bleibt – näher an „nur trennen, wenn ein besserer AP da ist“. Ob ein anderer AP den Client besser hört, prüft RouterOS nicht (die APs tauschen keine Client-Pegel aus). Eine Anmeldeschwelle je Band geht nicht: Die access-list kennt kein Band, nur Interfaces, und die der CAPs entstehen dynamisch. Für weitere SSIDs legt die Rolle bei Steering je Band eigene Konfigurationen `cfm-<SSID>-<Band>g` an (Security bleibt `cfm-<SSID>`, sofern das Band keine eigene hat).
+**Begründung:** Der Client bekommt erst Nachbarn vorgeschlagen und wird nur getrennt, wenn er bleibt – näher an „nur trennen, wenn ein besserer AP da ist“. Ob ein anderer AP den Client besser hört, prüft RouterOS nicht (die APs tauschen keine Client-Pegel aus). Eine Anmeldeschwelle je Band geht nicht: Die access-list kennt kein Band, nur Interfaces, und die der CAPs entstehen dynamisch. Für weitere SSIDs legt die Rolle bei Steering je Band eigene Konfigurationen `cfm-<SSID>-<Band>g` an (Security bleibt `cfm-<SSID>`, sofern das Band keine eigene hat). Auf Hardware seit 2026-10-17 an einem Standort (5 und 6 GHz, mit `kick`).
 
 #### <a id="dw2.5"></a>DW2.5 · Trennschwelle je Band, auch für Clients mit FT
 
@@ -1122,7 +1122,7 @@ Die Rolle `ap` und `$cfmCheck` warnen bei CAPs mit `wifi-qcom-ac`: Das Paket üb
 
 **Verworfen:** Schwellen als `minSignal` je Band · Regel je Interface, vom Apply und einem Skript am CAPsMAN nachgeführt · verschachtelte Listen (`include`) für isolierte VLANs · FT auf dem Band aus (dann wirkt der Kick) · Band ganz aus
 
-**Begründung:** Befunde an einem Standort (7.24.5, CAP auf 7.25beta5): Der Steering-Kick trennte einen Client mit `ft-wpa3-psk` nie (7 h 20 min unter −72, Vorschlag alle 5 s), einen ohne FT zuverlässig. Die access-list prüft laufend nur Verbindungen, die eine Regel **angenommen** hat, und trennt sie nach `allow-signal-out-of-range` – auch nach einem Wechsel per FT („disconnected, signal too weak“, danach 0–4 s ohne Verbindung); eine `reject`-Regel wies auch Wechselversuche per FT ab. Eine Anmeldung unterhalb der accept-Regel passt zu keiner Regel und wird nie geprüft (Handy 7 h an einem AP bei −87 im Mittel) – deshalb die reject-Regel davor. Mit gleicher Schwelle pendelte ein Client am Rand (getrennt, 3 s später wieder angemeldet); `join` über `drop` gibt Abstand. Ein Verweis der access-list auf ein Interface (auch eine Interface-Liste mit statischem Mitglied) zeigt nach dem Neu-Provisionieren ins Leere (`*90`); ein dynamisches Mitglied über `datapath interface-list` war danach sofort wieder da. Jede Änderung an der access-list prüft alle Verbindungen neu und kann auch Verbindungen trennen, die keine geänderte Regel angenommen hatte („access-list changed“, bis 31 s ohne WLAN) – neue Schwellen also gebündelt und nicht mitten am Tag ausrollen. Ein datapath trägt nur in eine Liste ein, isolierte VLANs brauchen schon `cfm-iso`. Labor: `e2e.sh` (Objekte, Reihenfolge, kein Probelauf-Unterschied, Entfernen, Prüfungen); das Trennen selbst nur an Hardware (von Hand nachgebaut 2026-10-22/23).
+**Begründung:** Befunde an einem Standort (7.24.5, CAP auf 7.25beta5): Der Steering-Kick trennte einen Client mit `ft-wpa3-psk` nie (7 h 20 min unter −72, Vorschlag alle 5 s), einen ohne FT zuverlässig. Die access-list prüft laufend nur Verbindungen, die eine Regel **angenommen** hat, und trennt sie nach `allow-signal-out-of-range` – auch nach einem Wechsel per FT („disconnected, signal too weak“, danach 0–4 s ohne Verbindung); eine `reject`-Regel wies auch Wechselversuche per FT ab. Eine Anmeldung unterhalb der accept-Regel passt zu keiner Regel und wird nie geprüft (Handy 7 h an einem AP bei −87 im Mittel) – deshalb die reject-Regel davor. Mit gleicher Schwelle pendelte ein Client am Rand (getrennt, 3 s später wieder angemeldet); `join` über `drop` gibt Abstand. Ein Verweis der access-list auf ein Interface (auch eine Interface-Liste mit statischem Mitglied) zeigt nach dem Neu-Provisionieren ins Leere (`*90`); ein dynamisches Mitglied über `datapath interface-list` war danach sofort wieder da. Jede Änderung an der access-list prüft alle Verbindungen neu und kann auch Verbindungen trennen, die keine geänderte Regel angenommen hatte („access-list changed“, bis 31 s ohne WLAN) – neue Schwellen also gebündelt und nicht mitten am Tag ausrollen. Ein datapath trägt nur in eine Liste ein, isolierte VLANs brauchen schon `cfm-iso`. Labor: `e2e.sh` (Objekte, Reihenfolge, kein Probelauf-Unterschied, Entfernen, Prüfungen); das Trennen selbst nur an Hardware: von Hand nachgebaut 2026-10-22/23, ab 2026-10-24 an einem Standort im Betrieb, ausgewertet 2026-10-25 (wirkt wie gedacht: Hysterese ohne Pendeln, je Trennung etwa 3 s ohne Verbindung).
 
 #### <a id="dw2.6"></a>DW2.6 · Fremdgerät per MAC in ein anderes VLAN
 
@@ -1745,13 +1745,13 @@ Anlass: Das RAM-Log von APs und CAPsMAN eines Standorts bestand zu über 80 % au
 
 Entscheidungen: DP1.3 (D87), DN2.1 (D88), DU1.5 (D89), DW4.2 (D90), DT3.2 (D91), DW2.5 (D92), DN2.2 (D93), DW4.3 (D94), DW2.6 (D95), DU4.2 (D96), DR2.7 (D97)
 
-Nach dem Code-Review (Befunde und Bereinigung: [TODO.md](TODO.md), Übersicht) vom Nutzer entschieden.
+Nach dem Code-Review (Befunde und Bereinigung: [ERLEDIGT.md](ERLEDIGT.md#verlauf), Code-Review am 2026-10-20) vom Nutzer entschieden.
 
 ### Befunde vom Hardware-Update und LibreNMS (2026-10-29)
 
 Entscheidungen: DW1.11 (D98), DU4.3 (D99), DG4.5, DG2.6
 
-Drei „Bekannte Fehler“ vom Update eines Standorts (2026-10-28, [TODO.md](TODO.md#bekannte-fehler)) und TODO 54, vom Nutzer entschieden. Technisch dazu: DG4.5, DG2.6.
+Drei „Bekannte Fehler“ vom Update eines Standorts (2026-10-28, [ERLEDIGT.md](ERLEDIGT.md#behobene-fehler)) und TODO 54, vom Nutzer entschieden. Technisch dazu: DG4.5, DG2.6.
 
 ### Internet-Router im LAN: VIP als Gateway (2026-10-31)
 

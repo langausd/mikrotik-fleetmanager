@@ -3,7 +3,8 @@
 Für Netzwerk-Admins, die eine MikroTik-Flotte (etwa 5–20 Geräte, RouterOS 7) mit cfm betreiben
 wollen: Konzept, Planung, Inbetriebnahme, tägliche Arbeit, Notfälle und eigene Templates.
 Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), Eigenheiten von RouterOS in
-[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md), offene Punkte in [TODO.md](TODO.md).
+[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md), offene Punkte in [TODO.md](TODO.md), erledigte in
+[ERLEDIGT.md](ERLEDIGT.md).
 
 > **Teststand:** Im CHR-Labor laufen alle Tests mit RouterOS 7.25 fehlerfrei (Funkteile ausgenommen). Auf Hardware
 > läuft cfm an zwei Standorten mit 13 Geräten und RouterOS 7.25, an einem davon routen vier Geräte per VRRP. Was
@@ -1506,7 +1507,7 @@ Treffer stehen in einer Tabelle, sortierbar per Klick auf die Spalte. Ein Klick 
 SSID, VLAN oder MAC sucht danach, z.B. „was hängt noch an diesem Port?“. Eigene Namen aus dem Reiter
 WLAN gelten auch hier.
 
-### 8.12 LibreNMS: SNMPv3 und Syslog (TODO 54)
+### 8.12 LibreNMS: SNMPv3 und Syslog (DU4.3)
 
 LibreNMS übernimmt Verlauf und Messwerte (Port-Graphen, FDB/ARP mit Suche, LLDP-Karte, Alerts) und
 sammelt den Syslog. Steht der Server in einem Client-VLAN, bekommt er eine **zweite Schnittstelle im
@@ -1637,7 +1638,7 @@ Freischaltung nach 3 s wirksam, dauerhaft machen und löschen ok.
 einen anderen Router, ist eine befristete dort nicht da. Clients mit „DNS über HTTPS“ im Browser gehen am
 Router vorbei – ihre Abfragen sieht er nicht, sperrt sie aber auch nicht. Sicherheit: 10.
 
-### 8.15 Graylog: zentraler Syslog, LibreNMS liest mit (TODO 68)
+### 8.15 Graylog: zentraler Syslog, LibreNMS liest mit (DU4.3, DU3.4)
 
 Graylog sammelt den Syslog aller Geräte, durchsucht ihn und hält ihn je Stream unterschiedlich lange –
 etwa das DNS-Abfrage-Log (4. Datenmodell, `dns.rsc` `log`) nur eine Woche. LibreNMS zeigt die Meldungen je

@@ -60,7 +60,7 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
   drei Versuchen hinüber. Am Ende steht `Seed hochgeladen nach … (N Dateien)`.
 * Danach auf dem Manager: `/system script run cfm-mgr`, dann `$cfmDiff` (was ist neu?) und
   `$cfmRelease msg="…"`. Läuft auf dem Manager noch Code von vor DG2.5 (vor 2026-10-11), gilt bis
-  zu seinem eigenen Update der Handgriff aus [TODO 47](../docs/TODO.md).
+  zu seinem eigenen Update der Handgriff aus [TODO 47](../docs/ERLEDIGT.md#erledigte-punkte).
 
 ## `feature-module.py`
 

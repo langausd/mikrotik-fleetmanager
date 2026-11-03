@@ -16,8 +16,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14); im CAPs-Modus (15) und hinter einem nicht
   verwalteten Switch (18) zuletzt am 2026-10-25. Funkteile lassen sich auf CHR nicht testen.
 * **Hardware:** cfm läuft an zwei Standorten mit 13 Geräten, alle mit RouterOS 7.25; an einem davon routen seit dem
-  17.10. vier Geräte alle VLANs per VRRP hinter einer Fritz!Box. Die gefundenen Fehler sind behoben oder stehen in
-  [TODO.md](TODO.md) unter „Bekannte Fehler“.
+  17.10. vier Geräte alle VLANs per VRRP hinter einer Fritz!Box. Die gefundenen Fehler sind behoben
+  ([ERLEDIGT.md](ERLEDIGT.md#behobene-fehler)) oder stehen in [TODO.md](TODO.md#bekannte-fehler) unter „Bekannte Fehler“.
 * **Noch nicht auf Hardware:** Backup-Manager (Test geplant 2026-11-07/08), Onboarding gegen Werks-Configs von Routern
   und CRS-Switches, PPSK-VLANs, weitere SSIDs im lokalen Fallback, LACP-Bonds, MLAG und isolierte VLANs (DP2.1,
   DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
@@ -54,7 +54,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   `e2e-mlag.sh` 72. Eine Forumsmeldung aus der Beta-Zeit (Skripte über ~16 kB nach einem Neustart ungültig) ließ
   sich nicht nachstellen: ein Skript mit 45 KB bleibt nach dem Neustart gültig und läuft per Scheduler `startup`.
 * **7.25 stable (2026-10-25, erschienen 2026-10-22, Stand `47646d9`):** alle Skripte grün – `e2e.sh` 338 (ein ✘:
-  MNDP-Prüfung in Schritt 14, der bekannte Timing-Fehler unter „Bekannte Fehler“, zwei Labore parallel; von Hand
+  MNDP-Prüfung in Schritt 14, ein bekannter Timing-Fehler, inzwischen behoben, zwei Labore parallel; von Hand
   nachgestellt: erstes Paket nach knapp 20 s, still verworfen), `e2e-vrrp.sh` 120, `e2e-mlag.sh` 72, Onboarding
   14/15/18. 7.25 meldet die Version als `7.25` ohne Kanal-Zusatz; der Agent hängt den Kanal an, `$cfmUpgrade`
   erkennt das Update (Schritt 13, DV1.6).
@@ -119,6 +119,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Lesezeichen cfm-WLAN** (DU2.2) mit echten Clients – 2026-10-14 (zwei Standorte mit vier bzw. zwei APs):
   Zuordnung, Signal, Wechsel live und aus dem Log des CAPsMAN, Uhrzeit stimmt mit `cache: 'no-store'`. Wechsel
   erscheinen in den Ereignissen doppelt (live und „Log“).
+* **Gerätesuche `$cfmFind`** (DU1.4) – 2026-10-16 an einem Standort: Suche nach SSID mit Band, Signal und Rate,
+  Suche an einem Port (Fritz!Box mit 3 MACs), 9 Geräte in 3 s; danach den Ort eigener Geräte per LLDP
+  korrigiert (sie standen an der MGMT-Karte des virtualisierten Managers).
 * **VRRP mit vier Routern** – seit 2026-10-17 an einem Standort (hAP be³, CHR, CRS310, CRS328) mit DHCP nur am Master,
   WireGuard mit gemeinsamem Schlüssel (DR4.2) und `mgmtExtra` bis ins MGMT-VLAN (DR2.6); Ausfalltests per Neustart
   2026-10-18 (dabei gefunden: DR1.5); LAN-DHCP der Router neben der Fritz!Box

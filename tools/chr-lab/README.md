@@ -4,7 +4,7 @@ Das Labor startet RouterOS als **CHR** (Cloud Hosted Router) in virtuellen Masch
 deinem Linux-Rechner und spielt damit ganze Abläufe von cfm durch: Aufnahme, Release, Probelauf,
 Rollback, Backup-Manager, Onboarding, VRRP, MLAG und mehr. Ein Lauf meldet jede Prüfung mit ✔ oder ✘.
 Funkteile gibt es auf CHR nicht. WLAN prüft das Labor nur auf Darstellung und Konfiguration.
-Hintergrund: D20 in [DECISIONS](../../docs/DECISIONS.md), Admin-Guide Abschnitt 12.
+Hintergrund: DT1.1 in [DECISIONS](../../docs/DECISIONS.md), Admin-Guide Abschnitt 12.
 
 ## 1. Voraussetzungen
 
@@ -109,7 +109,7 @@ Image darf es mit dem ersten teilen. `./lab.sh stop` und `status` brauchen diese
 | `LABNIC` | Netzwerkkarte der VM-Verbindungen (Standard `virtio-net-pci`; `e2e-mlag.sh` setzt `e1000`, weil LACP mit virtio nur einen Port bündelt) |
 | `LABLINKS` | eigene Verkabelung statt Stern, z.B. `"1-2 2-3 2-3"` (ein Paar VM-Nummern je Kabel, kleinere zuerst) |
 
-`notify-sink.py` ist ein kleiner Empfänger für Benachrichtigungen (D66), auch zum Ausprobieren:
+`notify-sink.py` ist ein kleiner Empfänger für Benachrichtigungen (DU4.1), auch zum Ausprobieren:
 `./notify-sink.py 8099 /tmp/meldungen.jsonl` schreibt jede Meldung als JSON-Zeile in die Datei. Die
 VMs erreichen deinen Rechner als `10.0.2.2`, also `notify.url` = `http://10.0.2.2:8099/`.
 

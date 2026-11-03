@@ -1,8 +1,8 @@
 # Gast-WLAN aus Home Assistant schalten, Meldungen von cfm empfangen
 
 Anleitung für die Einbindung in Home Assistant (HA): Abschnitte 1–6 schalten das Gast-WLAN,
-[Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (D66). Sie setzt kein Wissen über cfm oder RouterOS
-voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidungen D64 und D90), die
+[Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (DU4.1). Sie setzt kein Wissen über cfm oder RouterOS
+voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidungen DW4.1 und DW4.2), die
 konkreten Werte bekommst du von ihm.
 
 **Ergebnis:** ein Schalter `switch.gast_wlan` mit echtem Zustand und optional Sensoren, die zeigen,
@@ -38,7 +38,7 @@ Home Assistant ──RouterOS-API, TCP 8728──▶ CAPsMAN (zentraler WLAN-Con
   Gast-WLAN: aus).
 
 **Wichtig fürs Verhalten:** Beim Schalten geht nur die Gast-SSID an bzw. aus, die anderen SSIDs senden
-weiter (D90; vorher waren bei jedem Schalten alle APs etwa 3 Sekunden ganz ohne WLAN). Einmal, beim
+weiter (DW4.2; vorher waren bei jedem Schalten alle APs etwa 3 Sekunden ganz ohne WLAN). Einmal, beim
 ersten Schalten nach dieser Umstellung, provisioniert der CAPsMAN die APs noch neu: Dann sind sie etwa
 3 Sekunden ohne WLAN, verbundene Geräte melden sich von selbst wieder an. Ein neu aufgenommener AP
 kann die Gast-SSID bis zu 10 Minuten lang senden, auch wenn sie aus ist (der CAPsMAN prüft alle
@@ -101,7 +101,7 @@ python3 /config/cfm/cfm_ssid.py guest clients  # → {"clients": []} (aus bzw. n
 
 | Aufruf | Ausgabe (stdout) | Exit-Code |
 |---|---|---|
-| `<key> on` / `<key> off` | nichts; kehrt erst zurück, wenn der CAPsMAN fertig ist (~1–3 s, beim ersten Schalten nach der Umstellung auf D90 ~10 s) | 0, bei Fehler 1 |
+| `<key> on` / `<key> off` | nichts; kehrt erst zurück, wenn der CAPsMAN fertig ist (~1–3 s, beim ersten Schalten nach der Umstellung auf DW4.2 ~10 s) | 0, bei Fehler 1 |
 | `<key> state` | `on` oder `off` | 0, bei Fehler 1 |
 | `<key> until` | Zeitpunkt des Auto-Aus als ISO 8601 mit Zeitzone, leer wenn aus oder ohne Auto-Aus | 0, bei Fehler 1 |
 | `<key> clients` | eingebuchte Clients der SSID als JSON in einer Zeile: `{"clients": [{"mac", "host", "ip", "interface", "ssid", "band", "signal", "uptime"}, …]}`, Hostname und IP aus den DHCP-Leases des CAPsMAN (leer, wenn keine Lease, also auch, wenn ein anderes Gerät DHCP-Server des Gast-VLANs ist), `signal` in dBm; leere Liste, wenn aus | 0, bei Fehler 1 |
@@ -262,7 +262,7 @@ logger:
 | `Skript cfm-ssid-guest-on fehlt` | Der Host ist nicht (mehr) der CAPsMAN (Gerät gewechselt) oder die SSID ist nicht schaltbar | neuen Host vom Netz-Admin, in `cfm_ssid.json` eintragen |
 | `not enough permissions` | Skripte ohne `dont-require-permissions` (sollte cfm nie anlegen) | Netz-Admin |
 | `Zugangsdaten … nicht lesbar` | Pfad oder JSON-Syntax von `cfm_ssid.json` | Datei prüfen |
-| `state` meldet immer `on` | altes Hilfsskript (las den Zustand aus den Provisioning-Regeln, vor D90) | `cfm_ssid.py` aus dem Repo neu nach `/config/cfm/` kopieren |
+| `state` meldet immer `on` | altes Hilfsskript (las den Zustand aus den Provisioning-Regeln, vor DW4.2) | `cfm_ssid.py` aus dem Repo neu nach `/config/cfm/` kopieren |
 | `Timeout for command` (HA) | Antwort dauerte länger als `command_timeout` | Netzweg prüfen; `command_timeout` nicht unter 30 |
 
 Zieht der CAPsMAN auf ein anderes Gerät um, bleiben User und Freigaben bei cfm aktuell. In HA ist
@@ -270,7 +270,7 @@ dann nur `host` in `cfm_ssid.json` zu ändern (und in der Integration „Mikroti
 
 ## 6. Sicherheit
 
-* Die API ist **unverschlüsselt** (Port 8728, im LAN so gewollt, D47). Das Passwort des Lese-Users
+* Die API ist **unverschlüsselt** (Port 8728, im LAN so gewollt, DU2.1). Das Passwort des Lese-Users
   geht im Klartext über das Netz. Er kann Konfiguration und Clients lesen, aber nichts ändern außer
   über die beiden Schalt-Skripte.
 * Der Port ist am CAPsMAN nur für die Adressen aus `capsmanApi.from` offen.
@@ -316,7 +316,7 @@ z.B. aufs Handy weiter.
 |---|---|
 | `site` | Standort (z.B. `Haus`) |
 | `host` | betroffenes Gerät (leer bei der Probemeldung) |
-| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `dnsreq` (von einem Router: Client hat per DNS-Selbstbedienung eine Domain freigeschaltet, D102), `test` |
+| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `dnsreq` (von einem Router: Client hat per DNS-Selbstbedienung eine Domain freigeschaltet, DN3.2), `test` |
 | `state` | `on` = eingetreten, `off` = wieder in Ordnung bzw. erledigt (bei `ros`: alle Geräte haben die Version, oder sie ist überholt), `once` = einmalig (Onboarding, Probe, `dnsreq`) |
 | `msg` | Beschreibung ohne Standort und Gerät |
 | `text` | fertiger Text: `<site>: <host> - <msg>` |

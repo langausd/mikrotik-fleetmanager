@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests für tools/upload-seed.sh gegen einen nachgebauten SFTP-Server (ein lokales Verzeichnis als Manager):
-Feature-Module (D104) nur hochladen, wenn die Site-Daten sie nutzen, nicht gebrauchte auf dem Manager entfernen."""
+Feature-Module (DG4.6) nur hochladen, wenn die Site-Daten sie nutzen, nicht gebrauchte auf dem Manager entfernen."""
 import os
 import pathlib
 import shutil

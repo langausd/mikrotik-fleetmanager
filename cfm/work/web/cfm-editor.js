@@ -1,6 +1,6 @@
-// cfm-editor.js ed25af6fdd7f - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-editor.js 6b20ac77e861 - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = 'ed25af6fdd7f';
+const STAND = '6b20ac77e861';
 const alt = window.__cfmEd;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }

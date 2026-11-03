@@ -2,10 +2,10 @@
 """Baut aus cfm-editor.js, cfm-monitor.js und cfm-dns.js die Fassungen für die Geräte und die Seite install.html.
 
 Aufruf: tools/editor/build.py   -> cfm/work/web/*.js und tools/editor/install.html
-Das Lade-Lesezeichen „cfm“ (cfm-loader.js, D91) wird einmal in die Lesezeichen-Leiste gezogen und startet
+Das Lade-Lesezeichen „cfm“ (cfm-loader.js, DT3.2) wird einmal in die Lesezeichen-Leiste gezogen und startet
 die Fassung vom Gerät (cfm/work/web/, kommt mit tools/upload-seed.sh und dem Release). Nach einer Änderung
 an einer .js-Datei neu bauen, hochladen und releasen - am Lesezeichen ändert sich nichts. Die vollständigen
-Lesezeichen „cfm-Editor“ (D73) und „cfm-Monitor“ (D77, D81) bleiben als Rückfall (Gerät ohne web/).
+Lesezeichen „cfm-Editor“ (DT3.1) und „cfm-Monitor“ (DU2.2, DU1.4) bleiben als Rückfall (Gerät ohne web/).
 """
 import hashlib
 import html
@@ -17,7 +17,7 @@ WEB = HIER.parent.parent / "cfm" / "work" / "web"
 
 TEILE = [
     ("cfm-editor.js", "cfm-Editor", """
-<p>Site-Daten des Managers im Browser bearbeiten, prüfen, Probelauf, Release (D73).</p>
+<p>Site-Daten des Managers im Browser bearbeiten, prüfen, Probelauf, Release (DT3.1).</p>
 <ol>
 <li>WebFig des Managers öffnen und anmelden (z.B. <code>http://192.168.10.2/webfig/</code>).</li>
 <li>Lesezeichen „cfm-Editor“ anklicken, mit einem RouterOS-User der Gruppe full anmelden (REST-API).
@@ -26,7 +26,7 @@ Der Browser merkt sich die Anmeldung bis zum Schließen, auch für cfm-Monitor.<
 „Release (Ring 0)“; den Aufstieg der Ringe wie gewohnt per <code>$cfmPromote</code>.</li>
 </ol>"""),
     ("cfm-monitor.js", "cfm-Monitor", """
-<p>Zwei Reiter (D77, D81; früher „cfm-WLAN“): <b>WLAN</b> zeigt die Clients aller APs live und als
+<p>Zwei Reiter (DU2.2, DU1.4; früher „cfm-WLAN“): <b>WLAN</b> zeigt die Clients aller APs live und als
 Zeitleiste je Client – Roaming nachvollziehen. <b>Suche</b> findet Geräte nach MAC, IP, Name, Port, AP,
 SSID oder Signal (<code>$cfmFind</code>).</p>
 <ol>
@@ -38,7 +38,7 @@ anmelden. Klick auf Gerät, Port, AP, SSID oder VLAN in der Tabelle sucht danach
 24 h im Browser; Namen per Klick.</li>
 </ol>"""),
     ("cfm-dns.js", "cfm-DNS", """
-<p>DNS-Selbstbedienung (D102): gesperrte Namen der letzten Minuten, häufigste Abfragen, Freischaltungen; eine
+<p>DNS-Selbstbedienung (DN3.2): gesperrte Namen der letzten Minuten, häufigste Abfragen, Freischaltungen; eine
 gesperrte Domain für einige Stunden freischalten lassen. Nur auf Routern mit <code>self</code> in
 <code>dns.rsc</code>.</p>
 <ol>
@@ -81,7 +81,7 @@ def main():
         url = bookmarklet(src)
         if len(url) > GRENZE:
             raise SystemExit(f"{titel}: Lesezeichen mit {len(url)} Zeichen zu lang (Grenze {GRENZE}, Firefox 65 536)")
-        # Fassung fürs Gerät (D91): RouterOS liest per /file get nur ca. 60 KB ($cfmParseWork)
+        # Fassung fürs Gerät (DT3.2): RouterOS liest per /file get nur ca. 60 KB ($cfmParseWork)
         geraet = f"// {datei} {stand} - erzeugt von tools/editor/build.py, nicht von Hand ändern\n" + schrumpfen(src) + "\n"
         if len(geraet.encode()) > GRENZE:
             raise SystemExit(f"{titel}: web/{datei} mit {len(geraet.encode())} Bytes zu groß (Grenze {GRENZE})")
@@ -99,12 +99,12 @@ code{{background:#eef1ef;padding:1px 4px;border-radius:3px}}</style>
 <h1>cfm-Lesezeichen für WebFig</h1>
 <p>Den Knopf in die Lesezeichen-Leiste ziehen (oder per Rechtsklick als Lesezeichen speichern).</p>
 <h2>cfm</h2>
-<p>Ein Lesezeichen für beide, einmal anlegen (D91): WebFig des Geräts öffnen, „cfm“ anklicken, anmelden.
+<p>Ein Lesezeichen für beide, einmal anlegen (DT3.2): WebFig des Geräts öffnen, „cfm“ anklicken, anmelden.
 Es startet cfm-Editor oder cfm-Monitor in der Fassung, die auf dem Gerät liegt – neue Fassungen kommen mit
 dem Framework-Update (<code>upload-seed.sh</code>, Release), das Lesezeichen bleibt.</p>
 <p><a class="bm" href="{html.escape(lader, quote=True)}">cfm</a></p>
 <h2>Vollständige Lesezeichen (Rückfall)</h2>
-<p>Für ein Gerät mit einem Framework-Stand vor D91 (ohne <code>web/</code>). Der ganze Code steckt im
+<p>Für ein Gerät mit einem Framework-Stand vor DT3.2 (ohne <code>web/</code>). Der ganze Code steckt im
 Lesezeichen; nach einer neuen Fassung hier neu ziehen und das alte ersetzen.</p>
 {"".join(teile)}
 <p>Voraussetzung: Dienst <code>www</code> (später <code>www-ssl</code>) auf dem Gerät, siehe

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------
-# LACP-Bonds (D74) und MLAG (D75) im CHR-Labor, fünf VMs mit e1000-Karten (virtio meldet keine
-# Geschwindigkeit, LACP bündelt damit nur einen Port – DECISIONS, Labor-Eigenheiten):
+# LACP-Bonds (DP2.1) und MLAG (DP2.2) im CHR-Labor, fünf VMs mit e1000-Karten (virtio meldet keine
+# Geschwindigkeit, LACP bündelt damit nur einen Port – docs/ROUTEROS-EIGENHEITEN.md):
 #   vm1 = cm1   Primary-Manager           ether2 -> sw1
 #   vm2 = sw1   MLAG-Knoten (primary)     ether2 cm1, ether3/4 Peer zu sw2, ether5 srv1, ether6/7 Clients
 #   vm3 = sw2   MLAG-Knoten               ether2/3 Peer zu sw1, ether4 srv1, ether5 Client
@@ -9,7 +9,7 @@
 #   vm5 = cl    nicht verwaltet: Clients im IoT-VLAN (VRF a, b an sw1; c an sw2)
 # Geprüft: Aufnahme ohne Bonds, Prüfungen von $cfmCheck, Umbau auf MLAG per Release (alle Geräte
 # gleichzeitig), Zustand (MLAG verbunden, LACP auf allen Ports), Ausfall eines Links, Idempotenz,
-# Rückbau; danach isolierte VLANs (D76) mit cm1 als Router. Daten: seed-mlag/ (Overlay),
+# Rückbau; danach isolierte VLANs (DP3.1) mit cm1 als Router. Daten: seed-mlag/ (Overlay),
 # seed-mlag-phase/ (Umbau auf MLAG), seed-mlag-iso/ (Isolation).
 #   ./e2e-mlag.sh          (setzt die VMs immer neu auf)
 # ------------------------------------------------------------------
@@ -154,7 +154,7 @@ sleep 5
 [ "$(cping a 192.168.30.72)" -ge 3 ] && ok "ohne Isolation: a -> b (gleicher Switch)" || bad "a -> b ohne Isolation"
 [ "$(cping a 192.168.30.73)" -ge 3 ] && ok "ohne Isolation: a -> c (anderer Switch)" || bad "a -> c ohne Isolation"
 
-step "10. IoT-VLAN isoliert (D76), Ausnahme cl-c"
+step "10. IoT-VLAN isoliert (DP3.1), Ausnahme cl-c"
 echo "put $PWD/seed-mlag-iso/vlans.rsc cfm/work/vlans.rsc" | put 1
 out=$(ck); echo "$out" | grep -q '^ERR' && bad "Isolation: Prüfung meldet Fehler: $(echo "$out" | grep '^ERR' | head -2)" || ok "Isolation: Prüfung ohne Fehler"
 rv=$(mgr '$cfmRelease msg=" Isolation" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)

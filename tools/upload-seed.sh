@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Lädt die Vorlage (cfm/work + cfm/meta) auf den Primary-Manager.
-# Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz (D4). Die
+# Danach ist der Manager die Source of Truth – dieses Verzeichnis nur noch Referenz (DG1.2). Die
 # Site-Daten (global.rsc, vlans.rsc, … , hosts/, authorized_keys.<user>) pflegt der Manager selbst
 # (z.B. im WebFig-Terminal per /file/edit); ein normaler Upload bringt nur den Framework-Code
-# (lib/, roles/), tools/pull-site.sh holt die Site-Daten als Sicherung ins Overlay (D72).
+# (lib/, roles/), tools/pull-site.sh holt die Site-Daten als Sicherung ins Overlay (DT2.2).
 #   tools/upload-seed.sh admin@192.168.10.2 [--port 22] [--overlay DIR] [--base cfm] [--site]
 #                        [--seed-inventory [--force]] [--bootstrap DATEI] [--all-features]
 # --site:   auch die Site-Daten hochladen und damit die auf dem Manager ersetzen (vorher werden die
@@ -24,7 +24,7 @@
 #            eigenem Kopfkommentar "nicht versioniert, wirkt sofort" ist und von $cfmRegister/
 #            $cfmEnroll live gepflegt wird – ein erneuter Upload würde echte Seriennummern/
 #            Ringe wieder auf die lokale Vorlage zurücksetzen.
-# Feature-Module (D104, lib/<rolle>.<feature>.rsc): nur die hochladen, deren Feature die Site-Daten nutzen
+# Feature-Module (DG4.6, lib/<rolle>.<feature>.rsc): nur die hochladen, deren Feature die Site-Daten nutzen
 #            (tools/feature-module.py); nicht gebrauchte entfernt das Skript auch auf dem Manager, sonst gingen sie
 #            mit jedem Release an die Geräte. Maßgeblich sind die Site-Daten, die nach dem Upload dort gelten: die
 #            des Managers, mit --site darüber die hochgeladenen. Schaltet die Site ein Feature später ein (z.B. im
@@ -73,8 +73,8 @@ if [ -n "$overlay" ]; then
       bootstrap*.rsc) { [ -n "$bootstrap" ] && cmp -s "$d" "$bootstrap"; } || skipped="$skipped $n" ;;
       # Editor-Sicherungen (z.B. authorized_keys.alice~) nie hochladen
       *~|\#*\#) skipped="$skipped $n" ;;
-      # die gemeinsame authorized_keys gilt seit D65 nicht mehr ($cfmCheck lehnt sie ab)
-      authorized_keys) skipped="$skipped $n"; echo "authorized_keys nicht hochgeladen: Keys je Person in authorized_keys.<user> (D65)" >&2 ;;
+      # die gemeinsame authorized_keys gilt seit DS3.3 nicht mehr ($cfmCheck lehnt sie ab)
+      authorized_keys) skipped="$skipped $n"; echo "authorized_keys nicht hochgeladen: Keys je Person in authorized_keys.<user> (DS3.3)" >&2 ;;
       *.rsc|authorized_keys.*) [ -f "$d" ] && cp "$d" "$stage/work/" ;;
       *) skipped="$skipped $n" ;;
     esac
@@ -100,7 +100,7 @@ if [ -n "$seed_inventory" ] && [ -z "$force" ]; then
   fi
   rm -f "$remote"
 fi
-# Site-Daten (D72): Dateien direkt in work/ und hosts/. Ohne --site bleiben sie auf dem Manager, wie
+# Site-Daten (DT2.2): Dateien direkt in work/ und hosts/. Ohne --site bleiben sie auf dem Manager, wie
 # sie sind; mit --site nennen, welche dort anders sind und ersetzt werden.
 if [ -z "$site" ]; then
   find "$stage/work" -maxdepth 1 -type f -delete
@@ -119,7 +119,7 @@ elif [ -z "$seed_inventory" ]; then
   if [ -n "$anders" ]; then echo "--site ersetzt auf dem Manager (dort anders):$anders"; fi
   if [ -n "$neu" ]; then echo "--site legt auf dem Manager neu an:$neu"; fi
 fi
-# Feature-Module (D104): Site-Daten des Managers holen (wie tools/pull-site.sh), mit --site die hochgeladenen
+# Feature-Module (DG4.6): Site-Daten des Managers holen (wie tools/pull-site.sh), mit --site die hochgeladenen
 # darüberlegen, dann entscheidet tools/feature-module.py. Im Zweifel (keine Site-Daten, kein python3) alle.
 feat_unused=""; feat_weg=""
 if [ -z "$all_features" ]; then

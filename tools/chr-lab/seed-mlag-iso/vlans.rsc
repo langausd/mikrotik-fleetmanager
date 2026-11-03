@@ -1,5 +1,5 @@
 # ============================================================
-# LAB (e2e-mlag.sh, Isolation): IoT-VLAN isoliert (D76), Ausnahme cl-c aus leases.rsc
+# LAB (e2e-mlag.sh, Isolation): IoT-VLAN isoliert (DP3.1), Ausnahme cl-c aus leases.rsc
 # ============================================================
 :global cfmVlans {
   "10"={"name"="MGMT";"zone"="mgmt"};

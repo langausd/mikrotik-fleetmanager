@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Empfänger für cfm-Benachrichtigungen (D66) im Labor oder zum Ausprobieren.
+"""Empfänger für cfm-Benachrichtigungen (DU4.1) im Labor oder zum Ausprobieren.
 
     notify-sink.py <port> <datei> [--bind 127.0.0.1]
 

@@ -64,7 +64,7 @@
 
 # RouterOS 7.25: Der SSH-Client prüft Host-Keys, nach Reset und Neuinstallation standardmäßig an –
 # die Übergabe per SFTP an sich selbst und später jeder Pull scheiterten sonst ("host key not
-# trusted"). cfm sichert Manifeste selbst ab (D71); 7.24 kennt die Property nicht
+# trusted"). cfm sichert Manifeste selbst ab (DS1.5); 7.24 kennt die Property nicht
 :if ([:typeof ([/ip/ssh/get]->"known-hosts-validation")] != "nothing") do={ /ip/ssh/set known-hosts-validation=no }
 
 # MGMT erreichbar machen (wie bei jedem Gerät): in Stufe 2 und im Bootstrap
@@ -141,7 +141,7 @@
 
 :if ($stage = "0" or $stage = "3") do={
   :onerror err in={
-    # 0) RAM-Log ohne system,info wie später die Rolle base (D79): Release und Enroll schreiben gleich
+    # 0) RAM-Log ohne system,info wie später die Rolle base (DU3.2): Release und Enroll schreiben gleich
     #    Dutzende Dateien, RouterOS loggt jede samt Inhalt - die Meldungen des Bootstraps fielen sonst aus
     #    dem Puffer (Labor 2026-10-20). logMemory aus global.rsc setzt base beim ersten Apply
     :local tp "info,!system"

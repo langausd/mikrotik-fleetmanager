@@ -1,6 +1,6 @@
-// cfm-monitor.js f39b32ab96ef - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-monitor.js 8c80d3226046 - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = 'f39b32ab96ef';
+const STAND = '8c80d3226046';
 const alt = window.__cfmWl;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
@@ -476,7 +476,7 @@ const ls = txt.split('\n').filter((l) => l.trim() && l !== ENDE && !/^Script fil
 const jl = ls.find((l) => l.startsWith(JS));
 const jt = jl ? jl.slice(JS.length).trim() : '';
 F.hits = jt ? JSON.parse(jt) : null;
-if (jl && !jt) ls.push('Der Manager lieferte nichts: $cfmFind fehlt dort (Framework vor D81?).');
+if (jl && !jt) ls.push('Der Manager lieferte nichts: $cfmFind fehlt dort (Framework vor DU1.4?).');
 F.note = ls.filter((l) => !l.startsWith(JS)).join('\n') || (fertig ? '' : 'keine Rückmeldung nach 5 min');
 if (!Array.isArray(F.hits)) F.hits = [];
 } catch (e) {
@@ -514,7 +514,7 @@ m.replaceChildren(el('div', { class: 'hinweis' }, 'Die Suche läuft auf dem cfm-
 return;
 }
 if (!S.findOk) {
-m.replaceChildren(el('div', { class: 'note' }, 'Dieser Manager hat die Suche noch nicht: Seine Manager-Module sind älter als D81 ' +
+m.replaceChildren(el('div', { class: 'note' }, 'Dieser Manager hat die Suche noch nicht: Seine Manager-Module sind älter als DU1.4 ' +
 '(2026-10-16), dort ist $cfmFind noch ein interner Helfer. Sie kommt mit dem Framework-Update ' +
 '(upload-seed.sh, $cfmRelease), sobald der Manager die neue Version selbst angewendet hat (sein Ring).'));
 return;

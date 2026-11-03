@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/base.bond.rsc – Feature-Modul der Rolle base (D104): Bonds (D74) und MLAG (D75). base lädt es per
+# cfm lib/base.bond.rsc – Feature-Modul der Rolle base (DG4.6): Bonds (DP2.1) und MLAG (DP2.2). base lädt es per
 # $cfmFeat nur mit bonds im Hostfile oder als Knoten eines Paars in mlag.rsc. Bonds, die es nicht mehr geben
 # soll, entfernt base selbst vorher (auch ohne Modul); MLAG an der Bridge setzt base am Ende.
 #  Hostfile bonds={"bond1"={"slaves"="sfp1,sfp2";"mode"="802.3ad"|"active-backup";"hash"=…;"primary"=…}},
@@ -42,7 +42,7 @@
   :if ([:len [/interface/ethernet/find where name=$x]] > 0) do={ $cfmSet m="/interface/ethernet" n=({"name"=$x}) p=({"disabled"="no"}) }
 }
 :foreach bn,b in=$bonds do={ $cfmEnsure m="/interface/bonding" k=("bond:" . $bn) n=({"name"=$bn}) p=$b }
-# MLAG verträgt kein L3-Hardware-Offloading (MikroTik-Doku): wie bei der Rolle router (D37) aus
+# MLAG verträgt kein L3-Hardware-Offloading (MikroTik-Doku): wie bei der Rolle router (DR1.2) aus
 :if ([:len $ml] > 0) do={
   :local sws ({})
   :onerror e in={ :set sws [$cfmIds "/interface/ethernet/switch" N=({})] } do={ :set sws ({}) }

@@ -158,7 +158,7 @@
     :local sfn ""
     :for i from=0 to=([:len ($d->"serial")] - 1) do={ :local c [:pick ($d->"serial") $i]; :if ($c = "/") do={ :set c "_" }; :set sfn ($sfn . $c) }
     $get s=$src u=$u r=("live/m/" . $sfn . ".mf") l=($b . "/live/m/" . $sfn . ".mf")
-    # SFTP-User der Geräte (D67), gesperrt bis zur Beförderung: Der Spiegel kann älter sein als der
+    # SFTP-User der Geräte (DS2.5), gesperrt bis zur Beförderung: Der Spiegel kann älter sein als der
     # Primary, ein Gerät darf daraus nur nach $cfmPromoteManager ziehen. Nicht für dieses Gerät selbst -
     # sein Agent überspringt die eigenen Adressen, solange der User fehlt (TODO 44)
     :local own ([:len [/ip/address/find where address~("^" . [:tostr ($d->"ip")] . "/")]] > 0)
@@ -180,7 +180,7 @@
     :local rel [:pick $n ([:len ($b . "/archive/v" . $v)] + 1) [:len $n]]
     :if ($rel != "index.dat") do={ $cfmWrite ($b . "/work/" . $rel) [/file/get $f contents] }
   }
-  # Geräte-User freischalten, den eigenen anlegen (D67): ab hier ziehen die Geräte - und der eigene
+  # Geräte-User freischalten, den eigenen anlegen (DS2.5): ab hier ziehen die Geräte - und der eigene
   # Agent - bei diesem Manager
   :global cfmDevUsersOn
   :put ("SFTP-User freigeschaltet: " . [$cfmDevUsersOn])

@@ -1,7 +1,7 @@
 # ============================================================
-# cfm lib/router.limit.rsc – Feature-Modul der Rolle router (D104); router.rsc lädt es per $cfmFeat nur, wenn ein
+# cfm lib/router.limit.rsc – Feature-Modul der Rolle router (DG4.6); router.rsc lädt es per $cfmFeat nur, wenn ein
 # VLAN limit oder limitClient trägt. Ohne räumt die GC Queues und Queue-Typen weg.
-# Bandbreitenlimit je VLAN (D97): "limit" für das ganze Netz, "limitClient" je Client (Download/Upload aus
+# Bandbreitenlimit je VLAN (DR2.7): "limit" für das ganze Netz, "limitClient" je Client (Download/Upload aus
 # Sicht der Clients). Eine Simple Queue je VLAN mit dem Netz als target (aller Verkehr des Netzes); PCQ
 # teilt unter den Clients gleich auf, mit limitClient über eigene Queue-Typen mit pcq-rate (ohne comment,
 # Schlüssel = Name). max-limit liest RouterOS als Upload/Download und in eigener Schreibweise zurück.

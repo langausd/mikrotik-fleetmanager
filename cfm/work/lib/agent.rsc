@@ -87,7 +87,7 @@
   # rsc-check: erlaubt json-typ (Kanal dahinter, siehe oben)
   :set ($s->"ros") $ros
   :set ($s->"model") [/system/resource/get board-name]
-  # Bridge-MAC (D76): Daran erkennen die Filter isolierter VLANs die Router (der Manager schreibt die MACs
+  # Bridge-MAC (DP3.1): Daran erkennen die Filter isolierter VLANs die Router (der Manager schreibt die MACs
   # der Router ins Manifest). Bleibt bei :deserialize Text (Labor 2026-10-12)
   :onerror e in={ :set ($s->"mac") [:tostr [/interface/bridge/get [find where name="bridge"] mac-address]] } do={}
   :set ($s->"seen") $now
@@ -153,7 +153,7 @@
       }
     } do={}
     :set ($s->"radios") $rd
-    # Lokaler Fallback (D46): CAP eingeschaltet, aber mit keinem CAPsMAN verbunden -> die Radios senden
+    # Lokaler Fallback (DW1.6): CAP eingeschaltet, aber mit keinem CAPsMAN verbunden -> die Radios senden
     # mit der lokalen Kopie der Master-SSID, weitere SSIDs fehlen ($cfmStatus: "WLAN lokal", TODO 40d)
     :local fb false
     :if ($isAp) do={
@@ -186,7 +186,7 @@
 }
 
 # Dateien eines Manifests (mf=) nach d= laden und per SHA-512 prüfen (mgr= bevorzugt). Was dort vom
-# letzten Lauf schon mit dem richtigen Hash liegt, bleibt (D69): Jeder SFTP-Abruf dauert mindestens
+# letzten Lauf schon mit dem richtigen Hash liegt, bleibt (DG4.4): Jeder SFTP-Abruf dauert mindestens
 # 1 s, auch für kleine Dateien - ein Apply lud sonst jedes Mal alle Dateien neu. Dateien, die das
 # Manifest nicht nennt, kommen weg (base prüft z.B. nur, ob authorized_keys.<user> da ist).
 # Geänderte Dateien überschreibt /tool/fetch an Ort und Stelle: Gelöscht und gleich unter demselben
@@ -234,7 +234,7 @@
 # lib + Daten + Host + Rollen aus d= importieren (Reihenfolge laut Manifest mf=), danach
 # verwaiste Objekte entfernen. skip="post": *.post.rsc überspringen (Probelauf).
 # Die cfm-Objekte, die eine *.post.rsc anlegt, merkt sich der echte Lauf in <cfm>/post.json.
-# Der Probelauf behält genau diese, statt sie als verwaist zu melden (D29).
+# Der Probelauf behält genau diese, statt sie als verwaist zu melden (DG3.4).
 # Rückgabe: "" oder "<datei>: <fehler>"
 # cfmApplyBusy: Auf dem Manager teilen sich Apply und Manager-Funktionen die globalen Variablen
 # (cfmG, Bibliothek); $cfmLoadData wartet, solange sie gesetzt ist (Labor 2026-10-11: ein Import
@@ -251,7 +251,7 @@
   }
   :global cfmApplyBusy; :set cfmApplyBusy true
   :global cfmHost; :set cfmHost ({})
-  # optionale Datendatei (D62): ohne sie keine alten Werte aus einem früheren Lauf behalten
+  # optionale Datendatei (DN1.1): ohne sie keine alten Werte aus einem früheren Lauf behalten
   :global cfmLeases; :set cfmLeases ({})
   :global cfmMlag; :set cfmMlag ({})
   :global cfmDns; :set cfmDns ({})
@@ -308,7 +308,7 @@
 
 /system/script/run cfm-conf
 :local dir "cfm"
-# per Name statt /file/find: die Suche prüft jede Datei (auf dem Manager Hunderte, D59)
+# per Name statt /file/find: die Suche prüft jede Datei (auf dem Manager Hunderte, DG4.1)
 :onerror e in={ :if ([/file/get flash type] = "directory") do={ :set dir "flash/cfm" } } do={}
 :set cfmDir $dir
 :set cfmDl ($dir . "/dl")
@@ -373,7 +373,7 @@
       :set cfmDl $pd
       :set cfmMf $pm
       :global cfmPlanOut; :set cfmPlanOut ""
-      # show=yes ($cfmShow objects=yes, D61): alle Soll-Objekte statt nur der Änderungen
+      # show=yes ($cfmShow objects=yes, DU1.2): alle Soll-Objekte statt nur der Änderungen
       :global cfmShowAll; :global cfmShowOut; :set cfmShowOut ""
       :set cfmShowAll (($arg->"show") = "yes")
       :set cfmDry true
@@ -560,7 +560,7 @@
        :local fl ({})
        :local via [:tostr ($ro->"via")]
        :if ([:len $via] > 0) do={
-        # eingebautes Update (TODO 38, D63): Das Gerät lädt selbst - aus dem Internet oder von einem
+        # eingebautes Update (TODO 38, DV1.5): Das Gerät lädt selbst - aus dem Internet oder von einem
         # Spiegel (befristeter DNS-Eintrag + mode=http, nach dem Update zurück). Kommt auch mit wenig
         # Flash zurecht (lädt dann in den RAM), installiert aber nur die angebotene Version.
         :set ($st->"upa") $tag
@@ -648,7 +648,7 @@
     :set clean true
   }
   # Auftrag erledigt, gescheitert oder verworfen: geladene Pakete und den befristeten Spiegel des
-  # eingebauten Updates (D63) nicht stehen lassen
+  # eingebauten Updates (DV1.5) nicht stehen lassen
   :if ($clean) do={
     :foreach fn in=($st->"upf") do={ :onerror e in={ /file/remove [find where name=$fn] } do={} }
     :set ($st->"upf")
@@ -701,7 +701,7 @@
 
   # --- Bericht ---
   # Vault-Stand neu lesen: Eine Rolle kann beim Apply einen Secret-Push anfordern (sv=0, z.B. neue
-  # WLAN-Profile ohne Passphrase, D46) – so sieht der Manager das schon beim nächsten Collect
+  # WLAN-Profile ohne Passphrase, DW1.6) – so sieht der Manager das schon beim nächsten Collect
   :onerror e in={ :set sv [/ppp/secret/get [find where name="cfm:key"] comment] } do={}
   :local exp ($applied or ($now - [:tonum ($st->"et")]) > 86400)
   :if ($exp) do={ :set ($st->"et") $now }

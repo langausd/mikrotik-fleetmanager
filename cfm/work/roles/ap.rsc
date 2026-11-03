@@ -1,8 +1,8 @@
 # ============================================================
 # Rolle ap – WLAN-Access-Point als CAP des (wifi-)CAPsMAN
-#  SSIDs/Kanäle/Security rendert der CAPsMAN (Rolle capsman, D45). Welche Geräte das sind, steht im
+#  SSIDs/Kanäle/Security rendert der CAPsMAN (Rolle capsman, DW1.5). Welche Geräte das sind, steht im
 #  Manifest-Feld cm (Name + MGMT-IP) – daraus caps-man-addresses/-names.
-#  Lokaler Fallback (D46): Jedes Radio trägt zusätzlich eine lokale Kopie der Master-SSID
+#  Lokaler Fallback (DW1.6): Jedes Radio trägt zusätzlich eine lokale Kopie der Master-SSID
 #  (configuration.manager=capsman-or-local). Reißt die Verbindung zum CAPsMAN ab, sendet der AP nach
 #  ~10 s mit der lokalen Konfiguration weiter, statt die Radios abzuschalten; kommt der CAPsMAN
 #  zurück, übernimmt er wieder. Passphrasen per Secret-Push aus dem Vault (wie beim CAPsMAN).
@@ -11,7 +11,7 @@
 # ============================================================
 :global cfmG; :global cfmMf; :global cfmEnsure; :global cfmSet; :global cfmLog; :global cfmDry
 :global cfmWifi; :global cfmWifiRender
-:if ([:typeof $cfmWifiRender] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
+:if ([:typeof $cfmWifiRender] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (DG4.3)" }
 
 :local mv [:tostr ($cfmG->"mgmtVlan")]
 
@@ -22,7 +22,7 @@
 :onerror e in={ :set qac [:len [/system/package/find where name="wifi-qcom-ac" and !disabled and !available]] } do={ :set qac [:len [/system/package/find where name="wifi-qcom-ac" and !disabled]] }
 :if ($qac > 0) do={ $cfmWarn "Paket wifi-qcom-ac: SSIDs bekommen ihr VLAN nicht vom CAPsMAN (TODO 23) - Rolle ap hier nicht verwenden" }
 
-# CAPsMAN-Geräte aus dem Manifest (fehlt cm bei einem Manager vor D45: alle Manager, Namen offen lassen)
+# CAPsMAN-Geräte aus dem Manifest (fehlt cm bei einem Manager vor DW1.5: alle Manager, Namen offen lassen)
 :local cmA ({}); :local cmN ({})
 :foreach c in=($cfmMf->"cm") do={
   :set ($cmA->[:len $cmA]) [:tostr ($c->"ip")]
@@ -33,7 +33,7 @@
 :foreach n in=$cmN do={ :set cmS ($cmS . "," . $n) }
 :if ([:len $cmS] > 0) do={ :set cmS [:pick $cmS 1 [:len $cmS]] }
 
-# Lokaler Datapath (D41): Die Bridge ist beim wifi-CAPsMAN eine Einstellung des CAP. Der CAPsMAN
+# Lokaler Datapath (DW1.3): Die Bridge ist beim wifi-CAPsMAN eine Einstellung des CAP. Der CAPsMAN
 # schickt vlan-id und client-isolation, aber nie "bridge" (er kennt die Interfaces des CAP nicht).
 # Ohne diesen Datapath wird kein Radio Bridge-Port: Clients melden sich an, erreichen aber kein
 # VLAN. Virtuelle APs (slaves-datapath) zeigen darauf, vlan-id bleibt leer.
@@ -84,7 +84,7 @@ $cfmSet m="/interface/wifi/cap" p=$cp
 $cfmEnsure m="/interface/wifi/datapath" k="wdp-mld" n=({"name"=$mdp}) p=$mdpp
 :onerror e in={ $cfmSet m="/interface/wifi/cap" p=({"mld-datapath"=$mdp}) } do={ $cfmLog ("mld-datapath nicht gesetzt: " . $e) }
 
-# Lokaler Fallback (D46): Profile wie beim CAPsMAN, Master-Konfiguration cfm-l<Band> je Band
+# Lokaler Fallback (DW1.6): Profile wie beim CAPsMAN, Master-Konfiguration cfm-l<Band> je Band
 :local lcf [$cfmWifiRender ap=[:tostr ($cfmMf->"name")]]
 # Passphrasen fehlen (neue Profile): Secret-Push anfordern
 :global cfmPskMissing
@@ -133,7 +133,7 @@ $cfmPskMissing
   }
 }
 
-# Weitere SSIDs im lokalen Fallback (TODO 40a, D54): fallback="yes" an einer SSID in wifi.rsc schaltet
+# Weitere SSIDs im lokalen Fallback (TODO 40a, DW1.8): fallback="yes" an einer SSID in wifi.rsc schaltet
 # slaves-static ein - der CAP behält die virtuellen APs des CAPsMAN als statische Interfaces. cfm
 # hängt ihnen wie den Radios eine lokale Kopie ihrer SSID an (capsman-or-local, Datapath der SSID mit
 # Bridge + VLAN). Die SSID eines virtuellen AP liest es aus seiner Konfiguration bzw. dem Monitor.
@@ -186,7 +186,7 @@ $cfmPskMissing
   }
 }
 
-# Isolierte VLANs (D76): WLAN-Interfaces, deren Bridge-Port in einem isolierten VLAN liegt, in die Liste
+# Isolierte VLANs (DP3.1): WLAN-Interfaces, deren Bridge-Port in einem isolierten VLAN liegt, in die Liste
 # cfm-iso - sofern der Datapath sie nicht schon selbst einträgt (ob der CAPsMAN interface-list an die CAPs
 # weitergibt, zeigt erst der Test vor Ort). Gilt für Interfaces, die beim Apply bestehen.
 :global cfmVlans

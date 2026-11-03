@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/base.iso.rsc – Feature-Modul der Rolle base (D104): Filter der isolierten VLANs (D76, isolate="yes"
+# cfm lib/base.iso.rsc – Feature-Modul der Rolle base (DG4.6): Filter der isolierten VLANs (DP3.1, isolate="yes"
 # in vlans.rsc). base lädt es per $cfmFeat nur mit einem isolierten VLAN und nur, wo Client-Ports sein können
 # (reine Access-Ports eines solchen VLANs, Rollen ap, capsman, manager); ohne es bleibt der Block leer.
 # Clients erreichen nur das Gateway (Router im VLAN, alles außerhalb des eigenen Netzes), Broadcast und die
@@ -15,7 +15,7 @@
   :local nn [$cfmNet $vid]
   :local net [:tostr ($nn->"net")]
   :if ([:len $net] > 0) do={
-    # Router im VLAN: VIP bzw. Gateway .gw und die realen Adressen .250+routerId (D15)
+    # Router im VLAN: VIP bzw. Gateway .gw und die realen Adressen .250+routerId (DR1.1)
     :local rips ({})
     :set ($rips->[:tostr ($nn->"gw")]) 1
     :for r from=1 to=4 do={ :set ($rips->[:tostr (($nn->"addr") + 250 + $r)]) 1 }

@@ -1,6 +1,6 @@
 # ============================================================
-# cfm – DNS der Router (D101, optional, nur Rolle router). Leer = wie ohne Datei: Die Router fragen
-# wan.dns aus ihrem Hostfile und beantworten nur die eigenen Namen (<name>.<domain>, D62).
+# cfm – DNS der Router (DN3.1, optional, nur Rolle router). Leer = wie ohne Datei: Die Router fragen
+# wan.dns aus ihrem Hostfile und beantworten nur die eigenen Namen (<name>.<domain>, DN1.1).
 #  "servers"={"9.9.9.9";"149.112.112.112"}   Upstream statt wan.dns, Reihenfolge = Vorrang
 #  "cache"="64M"            DNS-Cache (k/M/G oder Zahl in KiB, Standard RouterOS 2M); die Adlisten
 #                           liegen darin - je 100 000 Namen gut 7 MB
@@ -12,7 +12,7 @@
 #  "log"={"memory"=20000;"syslog"="yes"}   Abfrage-Log je Client (Topic dns): memory = Zeilen im
 #                           RAM-Puffer cfmdns (0 = aus), syslog = zusätzlich an den Syslog-Server (global.rsc
 #                           syslog). Aus beidem: kein Log
-#  "self"={"zones"={"lan"};"deny"={"tracker.example"};"hours"=2}   DNS-Selbstbedienung (D102): Clients der
+#  "self"={"zones"={"lan"};"deny"={"tracker.example"};"hours"=2}   DNS-Selbstbedienung (DN3.2): Clients der
 #                           Zonen öffnen WebFig ihres Gateways, sehen im Lesezeichen cfm-DNS ihre Abfragen und
 #                           schalten eine gesperrte Domain für hours (Standard 2) selbst frei - außer deny
 #                           (samt Subdomains); Meldung an notify.url. Anmeldung mit user (Standard "dns",

@@ -12,9 +12,9 @@
 #   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels), Gerätesuche
 #   mgr-scan     Kanal-Scan der APs mit Pin-Vorschlag ($cfmWifiScan)
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
-#   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (D66)
+#   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (DU4.1)
 #   mgr-mf       Manifest-Regeln (welche Dateien ein Gerät bekommt); lädt $cfmManifests aus der
-#                jeweiligen Version (D70)
+#                jeweiligen Version (DG2.5)
 # Die Module hängen nur beim Aufruf voneinander ab (:global in den Funktionen), die
 # Ladereihenfolge ist daher egal.
 #
@@ -34,12 +34,12 @@
 #   $cfmPush [host=<n>|ring=<r>] [force=yes]   sofortigen Pull auslösen (nur aufgenommene Geräte)
 #   $cfmAudit host=<n> [op=report|mark|purge] [sel=all|A1,A3]
 #   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, ppsk.<ssid-key>.<name>,
-#                                      vaultpw, wg.admin (D84)
+#                                      vaultpw, wg.admin (DR4.2)
 #   $cfmSecretPush [host=<n>]          Secrets per SSH direkt in die Geräte schreiben
 #   $cfmVaultBackup                    verschlüsseltes Backup (inkl. Vault) nach vault/
 #   $cfmRekey host=<n>|all=yes         Geräteschlüssel (Manifest-Signatur) erneuern
-#   $cfmRekey host=<n>|all=yes sftp=yes  SFTP-/Host-Schlüssel erneuern (Manager: zweiphasig, D67)
-#   $cfmNotify test=yes                Probemeldung an global.rsc notify (D66)
+#   $cfmRekey host=<n>|all=yes sftp=yes  SFTP-/Host-Schlüssel erneuern (Manager: zweiphasig, DS2.5)
+#   $cfmNotify test=yes                Probemeldung an global.rsc notify (DU4.1)
 #   $cfmArchivePrune [keep=<n>]        alte Versionen löschen (läuft nach jedem Release)
 #   $cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at="YYYY-MM-DD HH:MM"]
 #                                      RouterOS-Update/-Downgrade, Pakete kommen vom Manager
@@ -160,7 +160,7 @@
   :local s [:tostr ($1->"serial")]
   :return ([:len $s] > 0 and [:len [$cfmVaultGet ("mac." . $s)]] > 0)
 }
-# CAPsMAN-Geräte (D45): alle mit Rolle capsman, ohne solche übergangsweise der Primary-Manager
+# CAPsMAN-Geräte (DW1.5): alle mit Rolle capsman, ohne solche übergangsweise der Primary-Manager
 # (Rolle manager) -> Liste {"n"=Name;"ip"=MGMT-IP}. Steht als Feld cm in jedem Manifest: Die Rolle
 # ap setzt daraus caps-man-addresses/-names, cfmIsCapsman entscheidet damit über den Dienst.
 :global cfmCapsmen do={
@@ -196,16 +196,16 @@
   # Zur Version gehörende Gerätebibliothek mitladen: Manager-Funktionen nutzen ihre Helfer
   # ($cfmNet, $cfmTarget). Global sind sie sonst erst nach einem Apply des Agents - direkt nach
   # Bootstrap oder Neustart fehlen sie, und RouterOS meldet den Aufruf einer unbekannten Funktion
-  # nicht, sondern liefert stillschweigend "nothing" (siehe DECISIONS.md).
+  # nicht, sondern liefert stillschweigend "nothing" (siehe docs/ROUTEROS-EIGENHEITEN.md).
   :onerror e in={ /import file-name=($d . "/lib/lib.rsc") verbose=no } do={}
   :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ /import file-name=($d . "/" . $f) verbose=no }
-  # leases.rsc (D62) ist optional: ältere Versionen im Archiv haben sie nicht
+  # leases.rsc (DN1.1) ist optional: ältere Versionen im Archiv haben sie nicht
   :global cfmLeases; :set cfmLeases ({})
   :onerror e in={ /import file-name=($d . "/leases.rsc") verbose=no } do={}
-  # mlag.rsc (D75) ebenso optional
+  # mlag.rsc (DP2.2) ebenso optional
   :global cfmMlag; :set cfmMlag ({})
   :onerror e in={ /import file-name=($d . "/mlag.rsc") verbose=no } do={}
-  # dns.rsc (D101) ebenso optional
+  # dns.rsc (DN3.1) ebenso optional
   :global cfmDns; :set cfmDns ({})
   :onerror e in={ /import file-name=($d . "/dns.rsc") verbose=no } do={}
   :if ($hold != "yes") do={ :set cfmMgrData 0 }
@@ -247,8 +247,8 @@
 # plan=<host>: nur für diesen Host ein Plan-Manifest aus dem Schnappschuss plan/ ($cfmPlan);
 # role=<rollen>: dabei statt der Rollen aus dem Inventar (Probe eines Rollenwechsels)
 # Welche Dateien ein Gerät bekommt, regelt $cfmMfWant aus lib/mgr-mf.rsc der Version, die es bekommt
-# (D70): je Version einmal geladen. Versionen ohne die Datei baut die installierte Fassung (Skript
-# cfm-mgr-mf), fehlt auch die, die der neuesten Version (Übergang vom Manager-Code vor D70).
+# (DG2.5): je Version einmal geladen. Versionen ohne die Datei baut die installierte Fassung (Skript
+# cfm-mgr-mf), fehlt auch die, die der neuesten Version (Übergang vom Manager-Code vor DG2.5).
 :global cfmManifests do={
   :global cfmMB; :global cfmRings; :global cfmInvLoad; :global cfmVaultGet; :global cfmWrite
   :global cfmJson; :global cfmG; :global cfmLoadData; :global cfmCapsmen; :global cfmFileEx
@@ -256,7 +256,7 @@
   :local rg [$cfmRings]
   :local pl [:len $plan]
   :if ($pl > 0) do={ $cfmLoadData ver=0 } else={ $cfmLoadData }
-  # Gemeinsamer WireGuard-Schlüssel der Router (D84): öffentlicher Schlüssel in die Manifeste der Router;
+  # Gemeinsamer WireGuard-Schlüssel der Router (DR4.2): öffentlicher Schlüssel in die Manifeste der Router;
   # erzeugt bzw. übernommen wird er nur beim echten Release, nicht im Probelauf
   :global cfmWg
   :local wgpub ""
@@ -266,7 +266,7 @@
   :local reap ([:tonsec [:totime ($cfmG->"reapply")]] / 1000000000)
   :local inv [$cfmInvLoad]
   :local cms [$cfmCapsmen $inv]
-  # DNS-Namen der Geräte für die Router (D62): aufgenommene Geräte mit Namen aus Buchstaben, Ziffern, "-"
+  # DNS-Namen der Geräte für die Router (DN1.1): aufgenommene Geräte mit Namen aus Buchstaben, Ziffern, "-"
   :global cfmEnrolled
   :local dnsH ({})
   :foreach hn,hd in=$inv do={
@@ -274,7 +274,7 @@
   }
   :local ord [$cfmJson ($b . "/meta/upgrade.dat")]
   :local cnt 0
-  # MACs der Router (D76): Die Filter isolierter VLANs erkennen das Gateway an ihnen (ein Bridge-Filter
+  # MACs der Router (DP3.1): Die Filter isolierter VLANs erkennen das Gateway an ihnen (ein Bridge-Filter
   # kann IP-Adressen nicht zuverlässig prüfen). Nur, wenn ein VLAN isoliert ist - sonst bliebe jedes
   # Manifest gleich
   :global cfmVlans
@@ -306,7 +306,7 @@
    }
   }
   :foreach src,x in=$srcs do={
-    # Manifest-Regeln dieser Version laden (D70)
+    # Manifest-Regeln dieser Version laden (DG2.5)
     :local how ""
     :local mf ($b . "/" . $src . "/lib/mgr-mf.rsc")
     :if ([$cfmFileEx $mf]) do={
@@ -611,7 +611,7 @@
   :return $n
 }
 
-# ---------- Archiv aufräumen (D27) ----------
+# ---------- Archiv aufräumen (DG2.4) ----------
 # Behält die letzten archiveKeep Versionen (global.rsc, Standard 5) und alle Versionen, die ein
 # Ring nutzt oder die ein Gerät meldet (angewendet, ausstehend, als fehlerhaft markiert).
 :global cfmArchivePrune do={

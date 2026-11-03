@@ -1,5 +1,5 @@
 # ============================================================
-# cfm – feste DHCP-Leases je VLAN (D62)
+# cfm – feste DHCP-Leases je VLAN (DN1.1)
 #  "<VID>"={"<name>"={"mac"="AA:BB:CC:DD:EE:FF";"ip"=<Host-Teil>}}
 #  ip    Host-Anteil im Netz des VLANs (wie gw/dhcp in vlans.rsc), z.B. 50 -> .50
 #  name  Kommentar der Lease und DNS-Name <name>.<domain> auf den Routern (Buchstaben, Ziffern, "-")

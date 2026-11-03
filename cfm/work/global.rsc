@@ -53,14 +53,14 @@
 #  policy     Zonen-Matrix: von-Zone = erlaubte Ziele: Zonen, "wan" = Internet, "*" = alles,
 #             "mtupdate" = nur die MikroTik-Update-Server aus onboard.mtHosts,
 #             "allow:<Liste>" = nur die Ziele einer Liste aus allow.
-#             NAT nur mit Kennzeichen (D38): "*wan" = masquerade, "wan@192.0.2.5" = feste
+#             NAT nur mit Kennzeichen (DR2.3): "*wan" = masquerade, "wan@192.0.2.5" = feste
 #             NAT-Adresse (bei VRRP wandert sie mit dem Master); "wan" ohne Kennzeichen wird
 #             geroutet, der Upstream-Router braucht dann eine Route zurück. Gilt auch für
 #             "mtupdate" und "allow:…". Internet für eine Zone mit "*" per "*,*wan".
 #             Zonen ohne "*" oder "wan": DNS-Anfragen an externe Server gehen an den Router.
 #  allow      Freigabelisten für policy "allow:<Name>": Hostnamen (RouterOS löst sie
 #             regelmäßig auf), IPs oder Netze; nur bestimmte Ports mit ":tcp/443,8883" bzw.
-#             ":udp/123" am Eintrag (D76), sonst alle Ports.
+#             ":udp/123" am Eintrag (DP3.1), sonst alle Ports.
 #  rosChannel Update-Kanal beim Onboarding; rosMin = Mindestversion (sonst Abbruch).
 #  onboard    timeout = maximale Dauer einer Onboarding-Sitzung (Port fällt danach zurück).
 #  mgmtAccess Zonen, aus denen Geräte-Management (SSH/Winbox) erlaubt ist.
@@ -72,7 +72,7 @@
 #  services   aktive IP-Services, alle anderen werden deaktiviert (RouterOS-Namen: telnet, ftp, www,
 #             www-ssl, reverse-proxy, api, api-ssl, ssh, winbox – nicht http/https).
 #  hook       Git-Host für externe Sicherung (leer = aus).
-#  notify     Benachrichtigungen (D66) per HTTP-POST mit JSON-Body an url (leer = aus), z.B. ein
+#  notify     Benachrichtigungen (DU4.1) per HTTP-POST mit JSON-Body an url (leer = aus), z.B. ein
 #             Webhook von Home Assistant "http://192.168.10.50:8123/api/webhook/<id>". Gemeldet wird
 #             je Wechsel: Apply-Fehler/Rollback, Gerät stumm (kein Status seit stale), AP im lokalen
 #             Fallback, RouterOS-Update fehlgeschlagen, Onboarding gescheitert, CHR-Lizenz des
@@ -90,7 +90,7 @@
 #             Passwörter NUR im Vault, ein Satz für alle Geräte (mindestens 8 Zeichen):
 #             $cfmSecret key=snmp.auth value=... und key=snmp.priv (Secret-Push). Die Standard-Community
 #             public (v1/v2c) wird abgeschaltet.
-#  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (D47), z.B. für Home Assistant (welcher
+#  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (DU2.1), z.B. für Home Assistant (welcher
 #             Client an welchem AP). {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}
 #             öffnet dort den Dienst api nur für from, legt den User (Gruppe cfm-api: read,api,test) an,
 #             Passwort NUR im Vault: $cfmSecret key=user.homeassistant value=... (Secret-Push). {} = aus.

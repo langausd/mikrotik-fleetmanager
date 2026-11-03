@@ -1,6 +1,6 @@
 # ============================================================
-# cfm lib/router.dns.rsc – Feature-Modul der Rolle router (D104): DNS aus dns.rsc (D101) und
-# DNS-Selbstbedienung für Clients (D102). router.rsc lädt es per $cfmFeat nur mit dns.rsc; Upstreams, Cache,
+# cfm lib/router.dns.rsc – Feature-Modul der Rolle router (DG4.6): DNS aus dns.rsc (DN3.1) und
+# DNS-Selbstbedienung für Clients (DN3.2). router.rsc lädt es per $cfmFeat nur mit dns.rsc; Upstreams, Cache,
 # den Forwarder cfm-upstream und den Abbau ohne dns.rsc erledigt die Rolle selbst.
 # Von der Rolle: cfmCtx->"dup" = Upstreams (dns.rsc servers, sonst wan.dns)
 # ============================================================
@@ -53,7 +53,7 @@
   }
 }
 
-# DNS-Selbstbedienung (D102, dns.rsc self): Clients aus self.zones sehen im Lesezeichen cfm-DNS (WebFig des
+# DNS-Selbstbedienung (DN3.2, dns.rsc self): Clients aus self.zones sehen im Lesezeichen cfm-DNS (WebFig des
 # Gateways, User self.user der Gruppe cfm-dns: read,api,rest-api - ohne password) ihre Abfragen und schalten eine
 # gesperrte Domain für self.hours frei. Anfrage = Log-Eintrag "cfm-dnsreq: <Domain> <IP>" per /execute, danach
 # /system/script/run cfm-dnsreq (dont-require-permissions: der User selbst darf nichts schreiben; ein :global aus
@@ -74,7 +74,7 @@
   :local site [:tostr ($cfmG->"notify"->"site")]
   :if ([:len $site] = 0) do={ :set site [:tostr ($cfmG->"domain")] }
   :local body [$cfmBody "router.dnsreq"]
-  :local src "# cfm (Rolle router, D102): DNS-Selbstbedienung - Anfragen aus dem Log freischalten, Ablauf aufraeumen. Jeder Apply schreibt es neu\n"
+  :local src "# cfm (Rolle router, DN3.2): DNS-Selbstbedienung - Anfragen aus dem Log freischalten, Ablauf aufraeumen. Jeder Apply schreibt es neu\n"
   :set src ($src . ":local dur " . ($sh * 3600) . "\n:local deny ({" . $dl . "})\n")
   :set src ($src . ":local nu \"" . [$san [:tostr ($cfmG->"notify"->"url")]] . "\"\n:local site \"" . [$san $site] . "\"\n")
   :set src ($src . $body . "\n\$dnsreq dur=\$dur deny=\$deny nu=\$nu site=\$site\n")

@@ -1,5 +1,5 @@
-// cfm-DNS (D102): Lesezeichen für WebFig eines Routers (Rolle router mit dns.rsc self). Zeigt die DNS-Abfragen
-// aus dem RAM-Puffer cfmdns (D101): gesperrte Namen der letzten Minuten, Top-Domains, Freischaltungen. Ein User
+// cfm-DNS (DN3.2): Lesezeichen für WebFig eines Routers (Rolle router mit dns.rsc self). Zeigt die DNS-Abfragen
+// aus dem RAM-Puffer cfmdns (DN3.1): gesperrte Namen der letzten Minuten, Top-Domains, Freischaltungen. Ein User
 // der Gruppe cfm-dns (self.user, nur Lesen) sieht nur die Abfragen der eigenen IP, ein User mit Schreibrecht
 // alle. „Freischalten anfragen“ schreibt per /execute einen Log-Eintrag und startet das Skript cfm-dnsreq: es
 // schaltet die Domain für self.hours frei (außer self.deny) und meldet sie an notify.url. Admins machen eine

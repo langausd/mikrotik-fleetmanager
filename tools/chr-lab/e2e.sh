@@ -59,10 +59,10 @@ expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find wh
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 12' "cm1: 12 Manager-Module als Skripte (von der Rolle übernommen)"
-expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (D91)"
+expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (DT3.2)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
-expect 1 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "cm1: SSH-Client ohne Host-Key-Prüfung (ab 7.25 nach dem Reset an, D71)"
+expect 1 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "cm1: SSH-Client ohne Host-Key-Prüfung (ab 7.25 nach dem Reset an, DS1.5)"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
 
 step "2. Geräte-Bootstrap sw1 + Enroll"
@@ -81,9 +81,9 @@ expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 8' "sw1
 expect 2 '[/ip/neighbor/discovery-settings/get discover-interface-list] = "DISC" and [:len [/interface/list/member/find where list="DISC" and interface="ether2"]] = 1' "sw1: Nachbarsuche auf den Bridge-Ports (Liste DISC)"
 expect 2 '[/ip/service/get [:pick [find where name="reverse-proxy" and !dynamic] 0] disabled]' "sw1: Dienst reverse-proxy aus (ab Werk offen auf 443, TODO 30)"
 r 2 '/system/script/add name=cfm-e2e-x source=":put 1"; /system/script/remove cfm-e2e-x; :log info "cfm-e2e-b"' >/dev/null
-expect 2 '[:tostr [/system/logging/get [find where action="memory" and default and topics~"info"] topics]] = "info;!system" and [:len [/log/find where message="cfm-e2e-b"]] = 1 and [:len [/log/find where topics~"system" and message~"cfm-e2e-x"]] = 0' "sw1: RAM-Log ohne system,info, script,info kommt an (D79)"
-expect 2 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "sw1: SSH-Client ohne Host-Key-Prüfung (D71)"
-expect 2 '[:len [/file/find where name~"^cfm/dl/web"]] = 0' "sw1 (switch): kein Lesezeichen-Code (D91)"
+expect 2 '[:tostr [/system/logging/get [find where action="memory" and default and topics~"info"] topics]] = "info;!system" and [:len [/log/find where message="cfm-e2e-b"]] = 1 and [:len [/log/find where topics~"system" and message~"cfm-e2e-x"]] = 0' "sw1: RAM-Log ohne system,info, script,info kommt an (DU3.2)"
+expect 2 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "sw1: SSH-Client ohne Host-Key-Prüfung (DS1.5)"
+expect 2 '[:len [/file/find where name~"^cfm/dl/web"]] = 0' "sw1 (switch): kein Lesezeichen-Code (DT3.2)"
 case "$(stat sw1 ros)" in *" ("*) ok "sw1: RouterOS-Version mit Kanal gemeldet (bleibt beim Manager Text, 7.25)";; *) bad "sw1: ros=$(stat sw1 ros)";; esac
 
 step "3. Secrets-Push & Idempotenz"
@@ -184,8 +184,8 @@ echo "put $LAB/bs-cm2.rsc cfm-bootstrap.rsc" | put 3
 r 3 '/import cfm-bootstrap.rsc verbose=no' >/dev/null
 mgr '$cfmEnroll name=cm2 ip=192.168.10.3 role=manager-backup ring=0' | grep -q Enrolled && ok "Enroll cm2" || bad "Enroll cm2"
 agentwait 3 4 cm2 && ok "cm2 hat v4 angewendet" || bad "cm2 Apply"
-expect 3 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: kein CAPsMAN (Backup ohne CAPsMAN, D45)"
-expect 3 '[:len [/tool/netwatch/find where comment~"^cfm:nw:primary"]] = 0' "cm2: keine Netwatch-Übernahme mehr (D45)"
+expect 3 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: kein CAPsMAN (Backup ohne CAPsMAN, DW1.5)"
+expect 3 '[:len [/tool/netwatch/find where comment~"^cfm:nw:primary"]] = 0' "cm2: keine Netwatch-Übernahme mehr (DW1.5)"
 expect 3 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "none"' "cm2: Bridge ohne RSTP (stp=none)"
 expect 2 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "rstp"' "sw1: Bridge weiter mit RSTP"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: CAPsMAN aktiv"
@@ -208,15 +208,15 @@ expect 2 '[:len [/ip/dhcp-server/find where comment~"^cfm:dhcp"]] = 2' "sw1: DHC
 expect 2 '[:len [/interface/vlan/find where vlan-id=40]] = 1 and [/interface/vlan/get [find where vlan-id=40] name] = "vlan40" and [/interface/vlan/get [find where vlan-id=40] comment] ~ "^cfm:vlan:40"' "sw1: GAST als vlan40 übernommen, kein zweites VLAN-Interface (TODO 56)"
 expect 2 '[:len [/ip/address/find where address="192.168.40.251/24" and interface="vlan40" and comment~"^cfm:ip:40"]] = 1' "sw1: Adresse des übernommenen Interface bleibt (ip:40)"
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 0' "sw1: minimale Firewall durch Router-Firewall ersetzt"
-# NAT je Policy-Ziel (D38): Beispiel-policy mgmt/lan/iot/onboard mit *, Gäste per Hostfile wan@10.0.2.99
-# Die Freigabeliste iot-cloud hat zwei Adresslisten (mit und ohne Ports, D76) - je eine NAT-Regel
+# NAT je Policy-Ziel (DR2.3): Beispiel-policy mgmt/lan/iot/onboard mit *, Gäste per Hostfile wan@10.0.2.99
+# Die Freigabeliste iot-cloud hat zwei Adresslisten (mit und ohne Ports, DP3.1) - je eine NAT-Regel
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="masquerade"]] = 5' "sw1: masquerade nur für gekennzeichnete Ziele (5)"
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="src-nat" and src-address-list="cfm-z-guest"]] = 1 and [:tostr [/ip/firewall/nat/get [find where comment~"^cfm:nat" and action="src-nat"] to-addresses]] = "10.0.2.99"' "sw1: feste NAT-Adresse für Gäste (wan@)"
 expect 2 '[:len [/ip/address/find where address="10.0.2.99/32" and interface="ether1" and comment~"^cfm:"]] = 1' "sw1: NAT-Adresse am WAN"
 expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-z-guest" and address="192.168.40.0/24"]] = 1' "sw1: Quellnetz-Liste der NAT-Zone"
-# Freigabeliste (D39) und DNS-Umleitung für Zonen ohne Internet (iot, onboard: je udp+tcp)
+# Freigabeliste (DR2.4) und DNS-Umleitung für Zonen ohne Internet (iot, onboard: je udp+tcp)
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-address-list="cfm-allow-iot-cloud"]] = 1 and [:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud" and comment~"^cfm:"]] = 2' "sw1: Freigabeliste als Policy-Ziel"
-# Eintrag mit Ports (D76): eigene Liste, Regel nur für tcp 443 und 8883
+# Eintrag mit Ports (DP3.1): eigene Liste, Regel nur für tcp 443 und 8883
 expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud-tcp443_8883" and address=203.0.113.20]] = 1 and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and dst-address-list="cfm-allow-iot-cloud-tcp443_8883" and protocol="tcp" and dst-port="443,8883"]] = 1' "sw1: Freigabe mit Ports (eigene Liste, tcp 443,8883)"
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and dst-port="53"]] = 4' "sw1: DNS-Umleitung für Zonen ohne Internet"
 # NTP der Router (TODO 59): WAN per DHCP ohne dns -> pool.ntp.org, dazu der NTP-Server der DHCP-Antwort
@@ -224,19 +224,19 @@ expect 2 '[:tostr [/system/ntp/client/get servers]] = "0.pool.ntp.org;1.pool.ntp
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Router-Rolle idempotent" || bad "Router idempotent: $(stat sw1 stats)"
-# Feste Leases und DNS-Namen (D62), $cfmDiff und $cfmShow (D61)
+# Feste Leases und DNS-Namen (DN1.1), $cfmDiff und $cfmShow (DU1.2)
 mgr ':global e2eL [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eL . ":set (\$cfmLeases->\"30\") {\"drucker\"={\"mac\"=\"02:00:00:00:00:aa\";\"ip\"=20}}\n")' >/dev/null
-# dhcpGw (D82): Clients in VLAN 30 bekommen .5 als Gateway, DNS bleibt der Router (.1); dazu NTP-Umleitung (D93)
-# und Bandbreitenlimit für die Gäste (D97)
+# dhcpGw (DN1.2): Clients in VLAN 30 bekommen .5 als Gateway, DNS bleibt der Router (.1); dazu NTP-Umleitung (DN2.2)
+# und Bandbreitenlimit für die Gäste (DR2.7)
 mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 5\n:set (\$cfmVlans->\"30\"->\"ntp\") \"redirect\"\n:set (\$cfmVlans->\"40\"->\"limit\") \"50M/10M\"\n:set (\$cfmVlans->\"40\"->\"limitClient\") \"10M/1500k\"\n")' >/dev/null
 out=$(mgr '$cfmDiff')
 echo "$out" | grep -q "geändert: leases.rsc" && echo "$out" | grep -q "betroffen: alle Geräte" && echo "$out" | grep -qF '+ :set ($cfmLeases->"30")' && ok "\$cfmDiff: work/ gegen das letzte Release mit der neuen Zeile" || { bad "\$cfmDiff work/"; echo "$out" | tail -8; }
 rv=$(mgr '$cfmRelease msg=" Lease" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (Lease) angewendet" || bad "sw1 Apply v$rv"
 expect 2 '[:len [/ip/dhcp-server/lease/find where comment="cfm:lease:30:drucker" and mac-address="02:00:00:00:00:AA" and address="192.168.30.20" and server="dhcp30"]] = 1' "sw1: feste Lease (MAC in Großbuchstaben, Adresse aus dem Host-Anteil)"
-expect 2 '[/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] gateway] = "192.168.30.5" and [/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] dns-server] = "192.168.30.1"' "sw1: dhcpGw - Clients in VLAN 30 mit Gateway .5, DNS weiter der Router (D82)"
-expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and protocol="udp" and dst-port="123" and to-ports="123" and src-address="192.168.30.0/24" and dst-address-type="!local"]] = 1 and [:len [/ip/firewall/nat/find where comment~"^cfm:nat" and dst-port="123"]] = 1' "sw1: NTP-Umleitung nur für VLAN 30 (D93)"
-# Bandbreitenlimit (D97): Simple Queue mit max-limit Upload/Download in RouterOS-Schreibweise, PCQ-Typen je
+expect 2 '[/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] gateway] = "192.168.30.5" and [/ip/dhcp-server/network/get [find where comment="cfm:dn:30"] dns-server] = "192.168.30.1"' "sw1: dhcpGw - Clients in VLAN 30 mit Gateway .5, DNS weiter der Router (DN1.2)"
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action="redirect" and protocol="udp" and dst-port="123" and to-ports="123" and src-address="192.168.30.0/24" and dst-address-type="!local"]] = 1 and [:len [/ip/firewall/nat/find where comment~"^cfm:nat" and dst-port="123"]] = 1' "sw1: NTP-Umleitung nur für VLAN 30 (DN2.2)"
+# Bandbreitenlimit (DR2.7): Simple Queue mit max-limit Upload/Download in RouterOS-Schreibweise, PCQ-Typen je
 # Richtung (ohne comment, Schlüssel = Name), Fasttrack-Ausnahme für das Netz vor der Fasttrack-Regel
 expect 2 '[:len [/queue/simple/find where comment~"^cfm:q:40" and name="vlan40" and max-limit="10M/50M" and queue="cfm-pcq40-up/cfm-pcq40-down"]] = 1 and [:len [/queue/simple/find]] = 1' "sw1: Simple Queue für VLAN 40 (Limit 50M/10M)"
 expect 2 '[/queue/type/get [find name="cfm-pcq40-down"] pcq-rate] = 10000000 and [/queue/type/get [find name="cfm-pcq40-down"] pcq-classifier] = "dst-address" and [/queue/type/get [find name="cfm-pcq40-up"] pcq-rate] = 1500000 and [/queue/type/get [find name="cfm-pcq40-up"] pcq-classifier] = "src-address"' "sw1: PCQ-Typen je Client (10M/1500k)"
@@ -248,7 +248,7 @@ echo "$out" | grep -q "geändert: leases.rsc" && ok "\$cfmDiff zwischen zwei Rel
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Leases, DNS-Namen und Limit idempotent" || bad "Leases idempotent: $(stat sw1 stats)"
-# Limit abbauen (D97), im Probelauf: ohne limitClient fallen die PCQ-Typen weg, ohne limit auch Queue und Ausnahme
+# Limit abbauen (DR2.7), im Probelauf: ohne limitClient fallen die PCQ-Typen weg, ohne limit auch Queue und Ausnahme
 mgr ':global e2eV4 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV4 . ":set (\$cfmVlans->\"40\"->\"limitClient\")\n")' >/dev/null
 out=$(mgr '$cfmPlan host=sw1')
 echo "$out" | grep -q "entfernt: /queue/type cfm-pcq40-down" && echo "$out" | grep -q "entfernt: /queue/type cfm-pcq40-up" && echo "$out" | grep -q "geaendert: /queue/simple q:40: queue=pcq-upload-default/pcq-download-default" && ok "Probelauf ohne limitClient: Standard-PCQ, eigene Typen entfernt" || { bad "Probelauf ohne limitClient"; echo "$out" | grep -E "queue|Plan sw1"; }
@@ -275,9 +275,9 @@ mgr ':global e2eL2; /file/set [/file/find name="cfm/work/leases.rsc"] contents=$
 out=$(mgr ':global e2eV2 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV2 . ":set (\$cfmVlans->\"30\"->\"dhcpGw\") 60\n:set (\$cfmVlans->\"20\"->\"dhcpGw\") 1\n:set (\$cfmVlans->\"40\"->\"ntp\") \"yes\"\n:set (\$cfmVlans->\"40\"->\"limit\") \"1.5M/1M\"\n:set (\$cfmVlans->\"30\"->\"limitClient\") \"2M/1M\"\n:set (\$cfmVlans->\"30\"->\"l3\") \"no\"\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
 echo "$out" | grep -q "ERR vlans.rsc: VLAN 30: dhcpGw 60 liegt im DHCP-Bereich 50-200" && echo "$out" | grep -q "W vlans.rsc: VLAN 20: dhcpGw 1 wirkt nur mit dhcp" && echo "$out" | grep -q "ERR vlans.rsc: VLAN 40: ntp yes (nur redirect)" && echo "$out" | grep -q "ERR vlans.rsc: VLAN 40: limit 1.5M/1M (Download/Upload" && echo "$out" | grep -q "W vlans.rsc: VLAN 30: limit ohne Router-Interface" && ok "Prüfung: dhcpGw im Pool bzw. ohne dhcp, ntp nur redirect, limit" || { bad "Prüfung dhcpGw/ntp"; echo "$out" | grep -i "dhcpgw\|ntp"; }
 mgr ':global e2eV2; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV2' >/dev/null
-# asymRouting (D100): nur "internet"; mit NAT der Zone ins Internet (lan "*wan" im Labor) nur Warnung
+# asymRouting (DR3.2): nur "internet"; mit NAT der Zone ins Internet (lan "*wan" im Labor) nur Warnung
 out=$(mgr ':global e2eV3 [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eV3 . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"internet\"\n:set (\$cfmVlans->\"30\"->\"asymRouting\") \"ja\"\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
-echo "$out" | grep -q "ERR vlans.rsc: VLAN 30: asymRouting ja (nur internet)" && echo "$out" | grep -q "W vlans.rsc: VLAN 20: asymRouting wirkt nicht, solange die Zone lan NAT hat" && ok "Prüfung: asymRouting nur internet, Warnung bei NAT der Zone (D100)" || { bad "Prüfung asymRouting"; echo "$out" | grep -i asym; }
+echo "$out" | grep -q "ERR vlans.rsc: VLAN 30: asymRouting ja (nur internet)" && echo "$out" | grep -q "W vlans.rsc: VLAN 20: asymRouting wirkt nicht, solange die Zone lan NAT hat" && ok "Prüfung: asymRouting nur internet, Warnung bei NAT der Zone (DR3.2)" || { bad "Prüfung asymRouting"; echo "$out" | grep -i asym; }
 mgr ':global e2eV3; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eV3' >/dev/null
 
 step "10. Backup-Spiegel & Vault-Backup"
@@ -372,7 +372,7 @@ expect 1 '[:len [/file/find where name="cfm/pkg/7.0.0/routeros-7.0.0.npk"]] = 1'
 mgr '$cfmPkgPrune' >/dev/null
 expect 1 '[:len [/file/find where name~"^cfm/pkg/7.0.0"]] = 0 and [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] = 1' "Paketversion ohne Einsatz gelöscht, 7.24.1 bleibt"
 
-# (e) eingebautes Update über einen Spiegel (TODO 38, D63): cm2 von 7.24.1 zurück auf die Version
+# (e) eingebautes Update über einen Spiegel (TODO 38, DV1.5): cm2 von 7.24.1 zurück auf die Version
 #     des Images; tools/upgrade-mirror.py lauscht auf LABPORT+90, die VMs erreichen ihn als 10.0.2.100
 tv=$(r 1 ':put [/system/resource/get version]' | head -1 | cut -d' ' -f1)
 mkdir -p "$LAB/mirror"
@@ -404,7 +404,7 @@ out=$(mgr '$cfmLinks')
 echo "$out" | grep -qE "^(cm1 +ether2 +sw1 +ether2|sw1 +ether2 +cm1 +ether2) +ok" && ok "Link cm1:ether2 - sw1:ether2 (beide Seiten melden)" || { bad "Link cm1-sw1 fehlt"; echo "$out" | tail -8; }
 echo "$out" | grep -qE "^(cm1 +ether3 +cm2 +ether2|cm2 +ether2 +cm1 +ether3) +ok" && ok "Link cm1:ether3 - cm2:ether2 (beide Seiten melden)" || bad "Link cm1-cm2 fehlt"
 # MNDP über einen Bridge-Port ohne Adresse hat die Quelle 0.0.0.0. Hinter einem Access-Port (PVE vor den
-# Karten einer VM, D40) landet es im VLAN: nachgestellt mit pvid=10 an cm1:ether3. cm1 verwirft es still (D78)
+# Karten einer VM, DP1.2) landet es im VLAN: nachgestellt mit pvid=10 an cm1:ether3. cm1 verwirft es still (DR2.5)
 expect 3 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]] = "num"' "cm2 (stp=none): Nachbarsuche mit MNDP"
 n0=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=10 frame-types=admit-all' >/dev/null
@@ -412,7 +412,7 @@ r 1 '/interface/bridge/port/set [find interface=ether3] pvid=10 frame-types=admi
 for _ in $(seq 1 14); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; done
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=1 frame-types=admit-only-vlan-tagged' >/dev/null
 n1=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
-expect 1 '[/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets] > 0' "cm1: MNDP mit Quelle 0.0.0.0 still verworfen (D78)"
+expect 1 '[/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets] > 0' "cm1: MNDP mit Quelle 0.0.0.0 still verworfen (DR2.5)"
 [ -n "$n0" ] && [ -n "$n1" ] && [ "$n1" -le "$n0" ] && ok "cm1: kein cfm-drop für MNDP mit Quelle 0.0.0.0" || bad "cm1: cfm-drop für 0.0.0.0:5678 im Log ($n0 -> $n1)"
 expect 1 '[/file/get [find where name="cfm/state/netzplan.md"] contents] ~ "graph LR"' "netzplan.md mit Mermaid-Diagramm"
 mgr '$cfmLinks accept=yes' | grep -q "Baseline gespeichert: 2 Links" && ok "Baseline mit 2 Links eingefroren" || bad "Baseline"
@@ -441,7 +441,7 @@ out=$(mgr '$cfmFind host=swY port=ether9 data=state/find-e2e.json')
 echo "$out" | grep -q "^2 Treffer" && ! echo "$out" | grep -q "^02:00:00:00:0C:01 " && echo "$out" | grep -q "Nachbar fremd-sw, 3 MACs am Port" && ok "\$cfmFind host= port=: was an einem Port hängt" || { bad "\$cfmFind host= port="; echo "$out" | tail -4; }
 r 1 '/file/remove [find where name="cfm/state/find-e2e.json"]' >/dev/null
 mgr '$cfmChannels' | grep -q "keine Funkdaten" && ok "Kanalbericht (Labor ohne Radios)" || bad "Kanalbericht"
-# Kanal-Scan (D56/D60): ohne APs kein Vorschlag und keine Messdatei; Auswertung mit erfundenen Daten
+# Kanal-Scan (DW3.2/DW3.3): ohne APs kein Vorschlag und keine Messdatei; Auswertung mit erfundenen Daten
 out=$(mgr '$cfmWifiScan')
 echo "$out" | grep -q "keine Netze gemessen" && ! echo "$out" | grep -q "^Vorschlag" && ok "WLAN-Scan ohne Messdaten: kein Vorschlag" || { bad "WLAN-Scan ohne Messdaten"; echo "$out" | tail -3; }
 expect 1 '[:len [/file/find where name="cfm/state/wifiscan.json"]] = 0' "WLAN-Scan ohne Netze schreibt keine Messdatei"
@@ -451,7 +451,7 @@ out=$(mgr '$cfmWifiScan data=yes')
 l=$(echo "$out" | grep "^Vorschlag 1/6/11")
 echo "$l" | grep -q "Kosten 0" && ! echo "$l" | grep -q "apA=2412" && ! echo "$l" | grep -q "apB=2462" && ok "WLAN-Scan data=yes: Vorschlag meidet die belegten Kanäle" || { bad "WLAN-Scan data=yes"; echo "$out" | tail -6; }
 echo "$out" | grep -q "^Vorschlag 1/5/9 " && ok "WLAN-Scan: Kanalsatz 1/5/9 (TODO 51)" || bad "Kanalsatz 1/5/9 fehlt"
-# Andere Funknetze (TODO 51, D80): Zigbee 18 (2440 MHz) bei apA verdrängt apA von Kanal 6, Thread
+# Andere Funknetze (TODO 51, DW3.5): Zigbee 18 (2440 MHz) bei apA verdrängt apA von Kanal 6, Thread
 # "auto" bei apB bekommt Kanal 16 (2430 MHz: weit weg von apA auf 11 und apB auf 1, nicht neben 18)
 mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"others\") {\"zb\"={\"type\"=\"zigbee\";\"ch\"=18;\"near\"=\"apA\"};\"ot\"={\"type\"=\"thread\";\"ch\"=\"auto\";\"near\"=\"apB\"};\"ml\"={\"type\"=\"milight-rgbw\"}}\n")' >/dev/null
 out=$(mgr '$cfmWifiScan data=yes')
@@ -489,19 +489,19 @@ expect 1 '[/interface/wifi/security/get [find name="cfm-main-6g"] passphrase] = 
 expect 1 '[:len [/log/find where message~"cm1 meldet nach dem Push Secrets v0"]] > 0 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: Secret-Push gleich nach dem Apply (\$cfmFollow), CAPsMAN wieder an"
 for _ in $(seq 1 20); do r 1 ':put [:len [/system/scheduler/find where name="cfm-mgr-follow"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
 expect 1 '[:len [/system/scheduler/find where name="cfm-mgr-follow"]] = 0 and [:len [/file/find where name="cfm/meta/follow.dat"]] = 0' "cm1: cfm-mgr-follow räumt sich nach der Meldung weg"
-# Trennschwelle je Band (TODO 61, D92): Liste cfm-wifi-5g, datapath je Band mit interface-list, zwei
+# Trennschwelle je Band (TODO 61, DW2.5): Liste cfm-wifi-5g, datapath je Band mit interface-list, zwei
 # access-list-Regeln (abweisen unter join, annehmen bis drop mit hold) in dieser Reihenfolge; ohne drop
 # ist alles wieder weg. Das CHR hat keine Radios - geprüft werden die Objekte, nicht das Trennen
 mgr ':global e2eW2 [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW2 . ":set (\$cfmWifi->\"steer\") {\"5\"={\"threshold\"=-75;\"drop\"=-78;\"join\"=-72;\"hold\"=\"30s\"}}\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" Trennschwelle" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Trennschwelle 5 GHz) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
-expect 1 '[:len [/interface/list/find where name="cfm-wifi-5g"]] = 1 and [/interface/wifi/datapath/get [find name="cfm-main-5g"] interface-list] = "cfm-wifi-5g" and [/interface/wifi/datapath/get [find name="cfm-main-5g"] vlan-id] = 20 and [/interface/wifi/datapath/get [find name="cfm-guest-5g"] interface-list] = "cfm-wifi-5g" and [:len [/interface/wifi/datapath/find where name="cfm-main-2g"]] = 0' "cm1: Liste cfm-wifi-5g, datapath je Band mit interface-list (D92)"
+expect 1 '[:len [/interface/list/find where name="cfm-wifi-5g"]] = 1 and [/interface/wifi/datapath/get [find name="cfm-main-5g"] interface-list] = "cfm-wifi-5g" and [/interface/wifi/datapath/get [find name="cfm-main-5g"] vlan-id] = 20 and [/interface/wifi/datapath/get [find name="cfm-guest-5g"] interface-list] = "cfm-wifi-5g" and [:len [/interface/wifi/datapath/find where name="cfm-main-2g"]] = 0' "cm1: Liste cfm-wifi-5g, datapath je Band mit interface-list (DW2.5)"
 expect 1 '[/interface/wifi/configuration/get [find name="cfm-m5"] datapath] = "cfm-main-5g" and [/interface/wifi/configuration/get [find name="cfm-guest-5g"] datapath] = "cfm-guest-5g" and [/interface/wifi/configuration/get [find name="cfm-m2"] datapath] = "cfm-main"' "cm1: 5-GHz-Konfigurationen auf dem datapath des Bands, 2,4 GHz unverändert"
 out=$(r 1 ':local a [:pick [/interface/wifi/access-list/find where comment~"^cfm:wcut:00"] 0]; :local b [:pick [/interface/wifi/access-list/find where comment="cfm:wcut:01"] 0]; :local l [/interface/wifi/access-list/find]; :put ("A=" . [/interface/wifi/access-list/get $a action] . "/" . [/interface/wifi/access-list/get $a signal-range] . "/" . [/interface/wifi/access-list/get $a interface] . " B=" . [/interface/wifi/access-list/get $b action] . "/" . [/interface/wifi/access-list/get $b signal-range] . "/" . [:totime [/interface/wifi/access-list/get $b allow-signal-out-of-range]] . " O=" . ([:find $l $a] < [:find $l $b]))')
 echo "$out" | grep -q "A=reject/-120..-73/cfm-wifi-5g B=accept/-78..0/00:00:30 O=true" && ok "cm1: access-list abweisen unter join (-72), dann annehmen bis drop (-78, 30 s)" || { bad "access-list der Trennschwelle"; echo "$out" | tail -2; }
 out=$(mgr '$cfmPlan host=cm1')
 echo "$out" | grep -qE "wcut|wdp:|il:wifi|Regelblock" && { bad "Trennschwelle erscheint im Probelauf erneut"; echo "$out" | grep -E "wcut|wdp:|il:wifi|Regelblock"; } || ok "Trennschwelle ohne Scheinänderung im Probelauf"
-# Client-VLAN je MAC (TODO 65a, D95): Lease mit "wifi"="yes" -> vorn im Block wcut die Grenzen je MAC mit
+# Client-VLAN je MAC (TODO 65a, DW2.6): Lease mit "wifi"="yes" -> vorn im Block wcut die Grenzen je MAC mit
 # vlan-id der Lease, zuletzt "annehmen mit VLAN", danach die allgemeinen Regeln. Dazu minSignal (Regel je MAC)
 mgr ':global e2eLw [/file/get [/file/find name="cfm/work/leases.rsc"] contents]; :global e2eWw [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eWw . ":set (\$cfmWifi->\"minSignal\") -80\n"); /file/set [/file/find name="cfm/work/leases.rsc"] contents=($e2eLw . ":set (\$cfmLeases->\"40\") {\"firma\"={\"mac\"=\"F4:00:00:00:00:41\";\"ip\"=41;\"wifi\"=\"yes\"};\"zufall\"={\"mac\"=\"02:00:00:00:00:42\";\"ip\"=42;\"wifi\"=\"yes\"};\"falsch\"={\"mac\"=\"F4:00:00:00:00:43\";\"ip\"=43;\"wifi\"=\"ja\"}}\n:set (\$cfmLeases->\"30\") {\"firma-alt\"={\"mac\"=\"F4:00:00:00:00:41\";\"ip\"=41;\"wifi\"=\"yes\"}}\n")' >/dev/null
 out=$(mgr ':global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
@@ -532,10 +532,10 @@ echo "$out" | grep -q "priority" && { bad "stpPrio 0xA000 erscheint im Probelauf
 mgr ':global e2eP; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eP' >/dev/null
 out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ppsk\"->\"main\") {\"x\"={\"vlan\"=20}}\n:set (\$cfmWifi->\"ssids\"->\"cap\") {\"ssid\"=\"x\";\"vlan\"=20}\n:set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5955\";\"width\"=\"20mhz\"}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
 echo "$out" | grep -q "PPSK auf SSID main braucht sec=wpa2-psk" && ok "Prüfung: PPSK nur mit WPA2-PSK" || { bad "PPSK/WPA3 nicht erkannt"; echo "$out" | tail -3; }
-echo "$out" | grep -q "cap ist reserviert" && ok "Prüfung: SSID-Schlüssel cap reserviert (D41)" || { bad "SSID-Schlüssel cap nicht erkannt"; echo "$out" | tail -3; }
+echo "$out" | grep -q "cap ist reserviert" && ok "Prüfung: SSID-Schlüssel cap reserviert (DW1.3)" || { bad "SSID-Schlüssel cap nicht erkannt"; echo "$out" | tail -3; }
 echo "$out" | grep -q "(6 GHz) braucht" && ok "Prüfung: 6 GHz nur mit WPA3 und PMF required" || { bad "6 GHz mit WPA2 nicht erkannt"; echo "$out" | tail -3; }
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
-# Schaltbare SSIDs (D64, D90): guest und event mit switch=off stehen trotzdem fest in den Regeln (feste
+# Schaltbare SSIDs (DW4.1, DW4.2): guest und event mit switch=off stehen trotzdem fest in den Regeln (feste
 # Interfaces, create-enabled); geschaltet werden ihre Interfaces, die Regeln bleiben. Das CHR hat keine
 # Radios und damit keine Interfaces - geprüft werden Regeln, Skripte, Zustand, Auto-Aus und Apply
 cnt=':local n 0; :foreach i in=[/interface/wifi/provisioning/find where comment~"^cfm:wprov"] do={ :if ([:tostr [/interface/wifi/provisioning/get $i slave-configurations]] ~ "cfm-guest") do={ :set n ($n + 1) } }; :put ("G=" . $n)'
@@ -544,9 +544,9 @@ mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2
 rv=$(mgr '$cfmRelease msg=" SSID schaltbar" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Gast schaltbar) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
 r 1 "$cnt" | grep -q "G=0" && bad "Gast-SSID fehlt in den Regeln: $(r 1 "$cnt" | tail -1)" || ok "Gast-SSID steht auch im Grundzustand aus fest in den Regeln ($(r 1 "$cnt" | tail -1))"
-expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] > 0 and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and action!="create-enabled"]] = 0' "Provisioning mit festen Interfaces (create-enabled, D90)"
+expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] > 0 and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and action!="create-enabled"]] = 0' "Provisioning mit festen Interfaces (create-enabled, DW4.2)"
 expect 1 '[/system/script/get [find name="cfm-ssid-guest-on"] dont-require-permissions] = true and [:len [/system/script/find where name~"^cfm-ssid-(guest|event)-(on|off)\$"]] = 4 and [:len [/system/scheduler/find where name="cfm-ssid-check" and interval=10m]] = 1' "cm1: Schalt-Skripte (dont-require-permissions) und Prüfung alle 10 min"
-expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] ":local k \"guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "configuration=(\"cfm-\" . \$k)"]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "provisioning/set"]] = "nil"' "Schalt-Skript (Rumpf capsman.ssid, D104) schaltet die Interfaces der Gast-SSID, nicht die Regeln"
+expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] ":local k \"guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "configuration=(\"cfm-\" . \$k)"]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-guest-on"] source]] "provisioning/set"]] = "nil"' "Schalt-Skript (Rumpf capsman.ssid, DG4.6) schaltet die Interfaces der Gast-SSID, nicht die Regeln"
 expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-check"] source]] "\"k\"=\"guest\""]] = "num" and [:typeof [:find [:tostr [/system/script/get [find name="cfm-ssid-check"] source]] "\$ssidcheck ssids="]] = "num"' "cfm-ssid-check (Rumpf capsman.ssidcheck) setzt den Zustand auch an den Interfaces durch"
 # Veraltete CAP-Interfaces (Hardware 2026-10-26): Das CHR hat keine CAP-Radios, cfm-reprov steht mit leerer Liste da
 expect 1 '[:typeof [:find [:tostr [/system/script/get [find name="cfm-reprov"] source]] ":local aps ({})"]] = "num"' "cm1: cfm-reprov ohne veraltete CAPs"
@@ -566,7 +566,7 @@ expect 1 '[/file/get cfm/ssid-guest.txt contents] = "off"' "cfm-ssid-guest-off: 
 r 1 '/system/script/run cfm-ssid-guest-on; /file/set cfm/ssid-guest.txt contents="on 1000"; /system/script/run cfm-ssid-check' >/dev/null
 expect 1 '[/file/get cfm/ssid-guest.txt contents] = "off"' "Auto-Aus nach Ablauf (cfm-ssid-check startet cfm-ssid-guest-off)"
 r 1 ':global cfmSsidguest; :put ("S=" . $cfmSsidguest)' | grep -q "S=off" && ok "Auto-Aus: cfmSsidguest=off" || bad "Auto-Aus: cfmSsidguest $(r 1 ':global cfmSsidguest; :put $cfmSsidguest' | tail -1)"
-# Schalten gilt beim nächsten Apply nicht als Änderung (Befund 2026-10-19 mit dem Verfahren vor D90)
+# Schalten gilt beim nächsten Apply nicht als Änderung (Befund 2026-10-19 mit dem Verfahren vor DW4.2)
 out=$(mgr '$cfmPlan host=cm1')
 echo "$out" | grep -q "Regelblock /interface/wifi/provisioning" && { bad "Nach dem Schalten baut der Plan wprov neu"; echo "$out" | grep -E "Regelblock|Plan cm1"; } || ok "Nach dem Schalten kein Neuaufbau von wprov"
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
@@ -577,7 +577,7 @@ step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enr
 mgr ':global e2eC [/file/get [/file/find name="cfm/work/hosts/cm2.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/cm2.rsc"] contents=($e2eC . ":global cfmHost; :set (\$cfmHost->\"gw\") \"192.168.10.254\"; :set (\$cfmHost->\"dns\") \"192.168.10.253\"; :set (\$cfmHost->\"ntp\") {\"192.168.10.252\"}; :set (\$cfmHost->\"cpuVlans\") {20}; :set (\$cfmHost->\"bridgeFrames\") \"admit-all\"\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" Hostfile-Overrides" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 # cm2 ist Backup-Manager: Fällt sein Apply in den eigenen Spiegel-Sync, wartet sein Agent auf den SFTP des
-# Primary (Wiederholungen bis 2 min, D58) - deshalb bis zu 6 min
+# Primary (Wiederholungen bis 2 min, DM3.2) - deshalb bis zu 6 min
 agentwait 3 "$rv" cm2 90 && [ "$(stat cm2 res)" = ok ] && ok "cm2 hat v$rv (Hostfile-Overrides) angewendet" || bad "cm2 Apply v$rv: $(stat cm2 res)"
 expect 3 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and static]] = 1 and [:tostr [/ip/route/get [find where comment="cfm:rt:default"] gateway]] = "192.168.10.254"' "cm2: genau eine Default-Route, Gateway aus dem Hostfile (Bootstrap-Route übernommen)"
 expect 3 '[:tostr [/ip/dns/get servers]] = "192.168.10.253" and [:tostr [/system/ntp/client/get servers]] ~ "192.168.10.252"' "cm2: DNS und NTP aus dem Hostfile"
@@ -598,7 +598,7 @@ t1=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t1" ] && break; sleep 3; done
 expect 2 '![/system/scheduler/get [find name="cfm-agent"] disabled]' "sw1: Apply schaltet den Agent-Scheduler wieder ein"
 
-step "14c. CAPsMAN als eigene Rolle (D45), AP mit lokalem Fallback ohne Radios (D46)"
+step "14c. CAPsMAN als eigene Rolle (DW1.5), AP mit lokalem Fallback ohne Radios (DW1.6)"
 invrole() { # invrole <alt> <neu>: Rolle im Inventar ersetzen (Wert muss eindeutig sein), Manifeste neu bauen
   local o="\\\"role\\\"=\\\"$1\\\"" n="\\\"role\\\"=\\\"$2\\\"" l=$(( ${#1} + 9 ))
   mgr ':local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "'"$o"'"]; /file/set $f contents=([:pick $c 0 $p] . "'"$n"'" . [:pick $c ($p + '"$l"') [:len $c]]); :global cfmManifests; $cfmManifests' >/dev/null; }
@@ -616,7 +616,7 @@ applied() { # applied <name>: Lauf erzwingen und abwarten, true bei res=ok. Vorh
   done
   [ "$(stat "$1" t)" != "$t0" ] && [ "$(stat "$1" res)" = ok ]; }
 mgr ':global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put $e }' | grep -q "kein Gerät mit Rolle capsman" && ok "Prüfung: Übergang ohne Rolle capsman gemeldet (cm1 bleibt CAPsMAN)" || bad "Übergangswarnung fehlt"
-# API-Lesezugang auf dem CAPsMAN (D47): erst auf cm1 (Übergangsregel), wandert mit der Rolle capsman
+# API-Lesezugang auf dem CAPsMAN (DU2.1): erst auf cm1 (Übergangsregel), wandert mit der Rolle capsman
 mgr ':global e2eG [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"capsmanApi\") {\"from\"={\"10.0.2.2/32\"};\"user\"=\"hatest\"}\n")' >/dev/null
 mgr '$cfmSecret key=user.hatest value="Api-Lab-2026"' >/dev/null
 rv=$(mgr '$cfmRelease msg=" capsmanApi" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
@@ -632,8 +632,8 @@ invrole "manager-backup" "manager-backup,ap"
 out=$(mgr ':global cfmCheck; /file/add name="cfm/meta/inv2.rsc" contents=[/file/get [/file/find name="cfm/meta/inventory.rsc"] contents]; :local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "\"role\"=\"manager\""]; /file/set $f contents=([:pick $c 0 $p] . "\"role\"=\"manager,capsman\"" . [:pick $c ($p + 16) [:len $c]]); :foreach e in=([$cfmCheck]->"err") do={ :put $e }; /file/set $f contents=[/file/get [/file/find name="cfm/meta/inv2.rsc"] contents]; /file/remove [/file/find name="cfm/meta/inv2.rsc"]')
 echo "$out" | grep -q "Rolle capsman mehrfach vergeben" && ok "Prüfung: nur ein CAPsMAN (Rolle capsman doppelt = Fehler)" || { bad "doppelte Rolle capsman nicht erkannt"; echo "$out" | tail -3; }
 applied sw1 && ok "sw1 als switch,router,capsman angewendet" || bad "sw1 capsman: $(stat sw1 res)"
-expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "sw1 (capsman): WLAN-Teil lib/lib-wifi.rsc geladen (D68)"
-expect 2 '[:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 0' "sw1 (capsman): nur cfm-Monitor für das Lade-Lesezeichen (D91)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "sw1 (capsman): WLAN-Teil lib/lib-wifi.rsc geladen (DG4.3)"
+expect 2 '[:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 0' "sw1 (capsman): nur cfm-Monitor für das Lade-Lesezeichen (DT3.2)"
 # Kam der Secret-Sync des Manager-Ticks (1 min) schon dazwischen (langsames Labor), ist der CAPsMAN bereits mit PSK an
 expect 2 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] >= 2 and (([:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [/ppp/secret/get [find name="cfm:key"] comment] ~ "sv=0\$") or ([:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [:len [/interface/wifi/security/get [find name="cfm-main"] passphrase]] > 0))' "sw1: CAPsMAN gerendert, bleibt aus bis zur PSK (Secret-Push angefordert)"
 mgr '$cfmSecretPush host=sw1' >/dev/null
@@ -668,7 +668,7 @@ echo "$out" | grep -q "W inventory: cm2 hat das Paket wifi-qcom-ac" && ok "\$cfm
 nc=$(r 3 ':put [:len [/certificate/find where trust-store=capsman]]' | tail -1 | tr -dc 0-9)
 invrole "switch,router,capsman" "switch,router"
 applied sw1 && ok "sw1 ohne Rolle capsman angewendet" || bad "sw1: $(stat sw1 res)"
-expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 0 and [:len [/file/find where name="cfm/dl/lib/lib.rsc"]] = 1' "sw1 ohne WLAN-Rolle: lib-wifi.rsc nicht mehr im Manifest, aus dl/ entfernt (D68, D69)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 0 and [:len [/file/find where name="cfm/dl/lib/lib.rsc"]] = 1' "sw1 ohne WLAN-Rolle: lib-wifi.rsc nicht mehr im Manifest, aus dl/ entfernt (DG4.3, DG4.4)"
 expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0' "sw1: CAPsMAN aus und abgeräumt"
 applied cm1 && ok "cm1 wieder CAPsMAN (Übergangsregel)" || bad "cm1: $(stat cm1 res)"
 mgr '$cfmSecretPush host=cm1' >/dev/null
@@ -710,7 +710,7 @@ expect 2 '[:len [/ip/address/find where address="192.168.10.21/24" and !disabled
 rv=$(mgr '/file/remove [find name="cfm/work/hosts/sw1.post.rsc"]; $cfmRelease msg=" Watchdog-Test zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$rv ohne post.rsc angewendet" || bad "sw1 Apply v$rv: $(stat sw1 res)"
 
-step "14e. Admin-SSH-Keys je User (D65)"
+step "14e. Admin-SSH-Keys je User (DS3.3)"
 # gemeinsame Datei abgelehnt, Datei eines unbekannten Users gewarnt, kaputte Zeile ein Fehler
 out=$(mgr '/file/add name="cfm/work/authorized_keys" contents="x"; /file/add name="cfm/work/authorized_keys.niemand" contents="ssh-ed25519 AAAA== x\nkaputt\n"; :delay 200ms; :global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }; /file/remove [find name="cfm/work/authorized_keys"]; /file/remove [find name="cfm/work/authorized_keys.niemand"]')
 echo "$out" | grep -q "ERR authorized_keys: die gemeinsame Datei gilt nicht mehr" && ok "\$cfmCheck: gemeinsame authorized_keys abgelehnt" || { bad "gemeinsame authorized_keys nicht abgelehnt"; echo "$out" | tail -3; }
@@ -730,15 +730,15 @@ agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
 mgr "\$cfmDiff ver=$v0 to=$rv" | grep -q "betroffen: alle Geräte" && ok "\$cfmDiff: Key-Datei betrifft alle Geräte" || bad "\$cfmDiff ohne alle Geräte"
 expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 2 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@hand"]] = 0 and [:len [/user/ssh-keys/find where user=netadmin and info="e2e@zwei"]] = 1' "sw1: netadmin hat genau die zwei Keys der Datei, Hand-Key entfernt"
 expect 2 '[:len [/user/ssh-keys/find where user!=netadmin and info~"e2e@"]] = 0' "sw1: andere User ohne Datei unangetastet"
-expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 1' "sw1: Feature-Modul base.sshkeys im Manifest, solange es eine authorized_keys.<user> gibt (D104)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 1' "sw1: Feature-Modul base.sshkeys im Manifest, solange es eine authorized_keys.<user> gibt (DG4.6)"
 out=$(ssh -p $((LABPORT+20)) "${O[@]}" -o BatchMode=yes -i "$LAB/e2e_k2" netadmin@127.0.0.1 ':put keyok' 2>&1 | tr -d '\r')
 echo "$out" | grep -q keyok && ok "sw1: Login als netadmin mit dem zweiten Key" || bad "Key-Login netadmin: $(echo "$out" | tail -1)"
 lm0=$(r 2 ':put [/file/get cfm/dl/roles/base.rsc last-modified]' | tail -1)
 applied sw1 || true
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Keys idempotent (zweiter Apply ohne Änderung)" || bad "Keys idempotent: $(stat sw1 stats)"
 lm1=$(r 2 ':put [/file/get cfm/dl/roles/base.rsc last-modified]' | tail -1)
-[ -n "$lm0" ] && [ "$lm0" = "$lm1" ] && ok "Reapply lädt unveränderte Dateien nicht neu (D69)" || bad "Reapply lud roles/base.rsc neu ($lm0 -> $lm1)"
-expect 1 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "cm1 (manager): WLAN-Teil lib/lib-wifi.rsc im Manifest (D68)"
+[ -n "$lm0" ] && [ "$lm0" = "$lm1" ] && ok "Reapply lädt unveränderte Dateien nicht neu (DG4.4)" || bad "Reapply lud roles/base.rsc neu ($lm0 -> $lm1)"
+expect 1 '[:len [/file/find where name="cfm/dl/lib/lib-wifi.rsc"]] = 1' "cm1 (manager): WLAN-Teil lib/lib-wifi.rsc im Manifest (DG4.3)"
 # alle Keys einer Person entziehen = Datei leeren; danach Datei weg (Schritt 15 meldet netadmin per Passwort an)
 echo "# entzogen" > "$LAB/ak.netadmin"; echo "put $LAB/ak.netadmin cfm/work/authorized_keys.netadmin" | put 1
 rv=$(mgr '$cfmRelease msg=" Admin-Keys entzogen" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
@@ -747,7 +747,7 @@ expect 2 '[:len [/user/ssh-keys/find where user=netadmin]] = 0' "sw1: leere Date
 expect 1 '[:len [/user/ssh-keys/find where user=netadmin]] = 0' "cm1: leere Datei entzieht alle Keys von netadmin"
 mgr '/file/remove [find name="cfm/work/authorized_keys.netadmin"]' >/dev/null
 
-step "14f. Benachrichtigungen (D66)"
+step "14f. Benachrichtigungen (DU4.1)"
 # Empfänger auf dem Host; die VMs erreichen ihn über das QEMU-User-Net als 10.0.2.2
 NP=$((LABPORT + 91)); NL="$LAB/notify.log"; : > "$NL"
 sink() { python3 "$ROOT/tools/chr-lab/notify-sink.py" "$NP" "$NL" & npid=$!; sleep 1; }
@@ -763,9 +763,9 @@ out=$(mgr ':global cfmCheck; :global e2eG; /file/set [/file/find name="cfm/work/
 echo "$out" | grep -q "ERR global.rsc: notify url ftp://x ist keine http(s)-URL" && echo "$out" | grep -q "ERR global.rsc: notify stale=bald ist keine Zeitangabe" && ok "\$cfmCheck: notify-URL und Zeitangabe geprüft" || { bad "\$cfmCheck notify"; echo "$out" | tail -3; }
 rv=$(mgr '$cfmRelease msg=" notify" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 || true; agentwait 1 "$rv" cm1 || true; agentwait 3 "$rv" cm2 || true
-# 14e hat authorized_keys.netadmin aus work/ gelöscht: Die Datei darf nicht in dl/ liegen bleiben (D69)
-expect 2 '[:len [/file/find where name="cfm/dl/authorized_keys.netadmin"]] = 0 and [:len [/file/find where name="cfm/dl/roles/base.rsc"]] = 1' "sw1: gelöschte authorized_keys.netadmin auch aus dl/ entfernt (D65, D69)"
-expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 0' "sw1: ohne authorized_keys.<user> auch kein Feature-Modul base.sshkeys (D104)"
+# 14e hat authorized_keys.netadmin aus work/ gelöscht: Die Datei darf nicht in dl/ liegen bleiben (DG4.4)
+expect 2 '[:len [/file/find where name="cfm/dl/authorized_keys.netadmin"]] = 0 and [:len [/file/find where name="cfm/dl/roles/base.rsc"]] = 1' "sw1: gelöschte authorized_keys.netadmin auch aus dl/ entfernt (DS3.3, DG4.4)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/base.sshkeys.rsc"]] = 0' "sw1: ohne authorized_keys.<user> auch kein Feature-Modul base.sshkeys (DG4.6)"
 out=$(mgr '$cfmNotify test=yes; $cfmNotify ev="e2e" host="sw1" st="once" msg=("Pr\C3\BCfung \C3\A4\C3\B6\C3\BC \"x\"")')
 echo "$out" | grep -q "zugestellt an http://10.0.2.2:$NP/hook" && nwait '"ev": "test"' && ok "Probemeldung zugestellt" || { bad "Probemeldung"; echo "$out" | tail -2; }
 nwait '"ev": "e2e"' && grep '"ev": "e2e"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "e2e", "state": "once", "msg": "Prüfung äöü \\"x\\"", "text": "Labor: sw1 - Prüfung äöü \\"x\\""' && grep '"ev": "e2e"' "$NL" | grep -q '"_ct": "application/json"' && ok "JSON mit Umlauten und Anführungszeichen, Content-Type application/json" || { bad "JSON der Meldung"; tail -1 "$NL"; }
@@ -832,7 +832,7 @@ nwait '"ev": "primary-tick", "state": "off"' && expect 3 '[:len ([:deserialize f
 expect 1 '[:len [/file/find where name="cfm/meta/notify-b.dat"]] = 0' "Primary: keine Zustandsdatei des Backups"
 mgr ':global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG' >/dev/null
 
-step "14g. SFTP-User auf dem Backup, Ernstfall, Schlüssel erneuern (D67)"
+step "14g. SFTP-User auf dem Backup, Ernstfall, Schlüssel erneuern (DS2.5)"
 fp() { r "$1" ":put [/user/ssh-keys/get [:pick [find where user=\"$2\"] 0] fingerprint]" | head -1; }
 mirror | grep -q MIR=true && ok "Spiegel auf cm2 angestoßen" || bad "Spiegel auf cm2"
 expect 3 '[:len [/user/find where name~"^cfmd-(cm1|sw1)\$" and group="cfm-dev" and comment~" k=" and disabled]] = 2 and [:len [/user/ssh-keys/find where user="cfmd-sw1"]] = 1 and [:len [/user/find where name="cfmd-cm2"]] = 0' "cm2: SFTP-User von cm1 und sw1 gesperrt, je ein Schlüssel, keiner für sich selbst"
@@ -890,7 +890,7 @@ expect 2 '[:len [/user/ssh-keys/find where user=cfm]] = 2 and [:len [/user/ssh-k
 expect 3 '[:len [/user/ssh-keys/private/find where user=cfm]] = 1 and [:len [/file/find where name~"^cfm-rk"]] = 0' "cm2: ein privater Schlüssel für cfm, keine Schlüsseldateien"
 mirror | grep -q MIR=true && ok "cm2 spiegelt mit dem neuen Schlüssel" || bad "cm2 spiegelt nach der Rotation nicht"
 t0=$(stat cm2 t); mgr '$cfmPush host=cm2 force=yes' >/dev/null
-# fällt der Lauf in den eigenen Spiegel-Sync, dauert er gut 3 min (D58)
+# fällt der Lauf in den eigenen Spiegel-Sync, dauert er gut 3 min (DM3.2)
 for _ in $(seq 1 75); do [ "$(stat cm2 t)" != "$t0" ] && break; sleep 4; done
 [ "$(stat cm2 t)" != "$t0" ] && [ "$(stat cm2 res)" = ok ] && ok "cm2: Agent zieht mit dem neuen Schlüssel" || bad "cm2 nach Rekey SFTP: $(stat cm2 res)"
 # Primary cm1 selbst: danach muss jeder Push mit dem neuen Schlüssel gehen (Schritt 15: auch als netadmin)
@@ -909,15 +909,15 @@ done
 mirror | grep -q MIR=true && ok "cm2 spiegelt nach der Rotation von cm1" || bad "cm2 spiegelt nach der Rotation von cm1 nicht"
 kill $npid 2>/dev/null
 
-step "14h. Manifest-Regeln je Version (D70)"
+step "14h. Manifest-Regeln je Version (DG2.5)"
 # Eine Regel, die nur die neue Version kennt: Ring 0 bekommt sie mit dem Release, Ring 2 erst mit dem
 # Aufstieg - auch wenn $cfmPromote in einer neuen Sitzung mit dem installierten (älteren) Code läuft
 mfhas() { # mfhas <host> <text>: true/false, ob das Manifest des Hosts den Text enthält
   mgr ':local r "kein Manifest"; :foreach f in=[/file/find where name~"^cfm/live/m/.*\\.mf\$"] do={ :local c [/file/get $f contents]; :local j [:deserialize from=json [:pick $c 0 [:find $c "\n# mac="]]]; :if (($j->"name") = "'"$1"'") do={ :set r ([:typeof [:find $c "'"$2"'"]] = "num") } }; :put ("MF=" . $r)' | sed -n 's/^MF=//p' | head -1; }
 sed 's|^  :return \$want$|  :set ($want->[:len $want]) ({"e2e-mark.txt";0;0})\n  :return $want|' "$ROOT/cfm/work/lib/mgr-mf.rsc" > "$LAB/mgr-mf-e2e.rsc"
-echo "D70" > "$LAB/e2e-mark.txt"
+echo "DG2.5" > "$LAB/e2e-mark.txt"
 printf 'put %s cfm/work/lib/mgr-mf.rsc\nput %s cfm/work/e2e-mark.txt\n' "$LAB/mgr-mf-e2e.rsc" "$LAB/e2e-mark.txt" | put 1
-rv=$(mgr '$cfmRelease msg=" e2e D70"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+rv=$(mgr '$cfmRelease msg=" e2e DG2.5"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 [ -n "$rv" ] && ok "Release v$rv mit einer Regel nur in dieser Version" || bad "Release mit neuer Regel"
 for v in 1 3; do
   h=cm1; [ $v = 3 ] && h=cm2
@@ -933,8 +933,8 @@ a=$(mfhas sw1 e2e-mark); [ "$a" = true ] && ok "sw1: Regel bleibt beim Neubau du
 agentwait 2 "$rv" sw1 && expect 2 '[:len [/file/find where name="cfm/dl/e2e-mark.txt"]] = 1' "sw1: Datei der neuen Regel geladen" || bad "sw1 Apply v$rv: $(stat sw1 res)"
 agentwait 1 "$rv" cm1 60 && expect 1 '[:typeof [:find [/system/script/get cfm-mgr-mf source] "e2e-mark"]] = "num"' "cm1: nach dem Apply die Regeln von v$rv installiert" || bad "cm1 Apply v$rv: $(stat cm1 res)"
 echo "put $ROOT/cfm/work/lib/mgr-mf.rsc cfm/work/lib/mgr-mf.rsc" | put 1
-rv=$(mgr '/file/remove cfm/work/e2e-mark.txt; $cfmRelease all=yes msg=" e2e D70 zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
-agentwait 2 "$rv" sw1 && expect 2 '[:len [/file/find where name="cfm/dl/e2e-mark.txt"]] = 0' "sw1: Datei nach dem Rückbau der Regel entfernt (D69)" || bad "sw1 Apply v$rv: $(stat sw1 res)"
+rv=$(mgr '/file/remove cfm/work/e2e-mark.txt; $cfmRelease all=yes msg=" e2e DG2.5 zurück"' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && expect 2 '[:len [/file/find where name="cfm/dl/e2e-mark.txt"]] = 0' "sw1: Datei nach dem Rückbau der Regel entfernt (DG4.4)" || bad "sw1 Apply v$rv: $(stat sw1 res)"
 agentwait 1 "$rv" cm1 60 && [ "$(stat cm1 res)" = ok ] && ok "cm1 wieder auf den Regeln aus dem Seed (v$rv)" || bad "cm1 Apply v$rv: $(stat cm1 res)"
 
 step "14i. Apply auf dem Manager parallel zu Manager-Befehlen (Sperre cfmApplyBusy)"
@@ -976,10 +976,10 @@ rv=$(mgr '$cfmRelease msg=" SNMP" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 
 agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 && ok "sw1 und cm1 haben v$rv (SNMP) angewendet" || bad "Apply v$rv (SNMP): sw1 $(stat sw1 res), cm1 $(stat cm1 res)"
 expect 2 '[/snmp/get enabled] and [/snmp/get location] = "Rack 1" and [/snmp/get contact] = "lab@example.org" and [/snmp/community/get [find default] disabled]' "sw1: SNMP an, Ort aus dem Hostfile, public abgeschaltet"
 expect 1 '[/snmp/get location] = "Labor"' "cm1: Ort aus global.rsc"
-expect 1 '[:len [/file/find where name="cfm/dl/lib/base.snmp.rsc"]] = 1 and [:len [/file/find where name~"^cfm/dl/lib/router[.]"]] = 0' "cm1 (manager, kein router): keine Feature-Module der Rolle router (D104)"
+expect 1 '[:len [/file/find where name="cfm/dl/lib/base.snmp.rsc"]] = 1 and [:len [/file/find where name~"^cfm/dl/lib/router[.]"]] = 0' "cm1 (manager, kein router): keine Feature-Module der Rolle router (DG4.6)"
 # upload-seed.sh lädt nur gebrauchte Module hoch: Fehlt eins, dessen Feature die Daten nutzen, stoppt $cfmCheck das Release
 out=$(mgr '/file/remove [find name="cfm/work/lib/base.snmp.rsc"]; :delay 200ms; :global cfmCheck; :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }')
-echo "$out" | grep -q "ERR lib/base.snmp.rsc fehlt, global.rsc snmp nutzt das Feature" && ok "\$cfmCheck: fehlendes Feature-Modul base.snmp gemeldet (D104)" || { bad "\$cfmCheck ohne Meldung zu base.snmp"; echo "$out" | grep ERR | head -3; }
+echo "$out" | grep -q "ERR lib/base.snmp.rsc fehlt, global.rsc snmp nutzt das Feature" && ok "\$cfmCheck: fehlendes Feature-Modul base.snmp gemeldet (DG4.6)" || { bad "\$cfmCheck ohne Meldung zu base.snmp"; echo "$out" | grep ERR | head -3; }
 echo "put $ROOT/cfm/work/lib/base.snmp.rsc cfm/work/lib/base.snmp.rsc" | put 1
 expect 2 '[:len [/snmp/community/find where name="librenms" and comment~"^cfm:snmp:librenms" and security="private" and authentication-protocol="SHA512" and encryption-protocol="AES" and read-access and !write-access]] = 1 and [:tostr [/snmp/community/get [find name="librenms"] addresses]] = "127.0.0.1/32;10.0.2.2/32"' "sw1: Community librenms (authPriv SHA512/AES, nur lesend, nur from)"
 expect 2 '[/system/logging/action/get [find name="cfmremote"] remote-log-format] = "syslog"' "sw1: Syslog im RFC-Format (syslogFormat)"
@@ -991,7 +991,7 @@ t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "SNMP idempotent" || bad "SNMP idempotent: $(stat sw1 stats)"
 
-step "14l. DNS der Router aus dns.rsc (D101): Upstream, Adliste, Ausnahme, Weiterleitung, Abfrage-Log; Selbstbedienung (D102)"
+step "14l. DNS der Router aus dns.rsc (DN3.1): Upstream, Adliste, Ausnahme, Weiterleitung, Abfrage-Log; Selbstbedienung (DN3.2)"
 # Adliste vom Host (QEMU: 10.0.2.2 = Host), Upstream der DNS der QEMU-Umgebung (10.0.2.3). Echte Namen,
 # keine example.*: manche Resolver hinter dem Host sperren die (NXDOMAIN)
 mkdir -p "$LAB/adlist"; printf '0.0.0.0 www.mikrotik.com\n0.0.0.0 www.wikipedia.org\n0.0.0.0 ads.debian.org\n0.0.0.0 www.heise.de\n' > "$LAB/adlist/lab-hosts.txt"
@@ -1002,7 +1002,7 @@ n=0; for m in "ERR dns.rsc: servers: x ist keine" "ERR dns.rsc: cache 64X" "ERR 
 mgr ':global e2eD14l; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14l . ":set cfmDns {\"servers\"={\"10.0.2.3\"};\"cache\"=\"16M\";\"adlists\"={\"http://10.0.2.2:'$((LABPORT + 91))'/lab-hosts.txt\"};\"allow\"={\"wikipedia.org\"};\"forward\"={\"debian.org\"=\"10.0.2.3\";\"tot.example\"={\"192.0.2.1\";\"192.0.2.2\"}};\"log\"={\"memory\"=500;\"syslog\"=\"yes\"}}\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" DNS" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (dns.rsc) angewendet" || bad "Apply v$rv (dns.rsc): sw1 $(stat sw1 res)"
-expect 2 '[:len [/file/find where name="cfm/dl/lib/router.dns.rsc"]] = 1 and [:len [/file/find where name="cfm/dl/lib/router.dnsreq.rsc"]] = 1' "sw1 (router): Feature-Module router.dns und router.dnsreq im Manifest (D104)"
+expect 2 '[:len [/file/find where name="cfm/dl/lib/router.dns.rsc"]] = 1 and [:len [/file/find where name="cfm/dl/lib/router.dnsreq.rsc"]] = 1' "sw1 (router): Feature-Module router.dns und router.dnsreq im Manifest (DG4.6)"
 mgr '$cfmShow host=sw1' | grep -q "DNS (dns.rsc): Upstream 10.0.2.3, 1 Adlisten, 1 Ausnahmen, debian.org -> 10.0.2.3" && ok "\$cfmShow nennt die DNS-Einstellungen" || bad "\$cfmShow ohne DNS-Zeile"
 expect 2 '[:tostr [/ip/dns/get servers]] = "10.0.2.3" and [/ip/dns/get cache-size] = 16384' "sw1: Upstream und Cache aus dns.rsc"
 expect 2 '[:len [/ip/dns/adlist/find where comment~"^cfm:dnsal:" and url~"lab-hosts.txt"]] = 1 and [:len [/ip/dns/forwarders/find where name="cfm-upstream" and comment~"^cfm:dnsfw:"]] = 1' "sw1: Adliste und Forwarder cfm-upstream"
@@ -1018,7 +1018,7 @@ r 2 ':foreach i in=[/log/find where buffer=cfmdns] do={ :put [/log/get $i messag
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
 stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "DNS idempotent" || bad "DNS idempotent: $(stat sw1 stats)"
-# --- DNS-Selbstbedienung (D102): als User dns von cm1 (192.168.10.2, Zone mgmt) per REST an sw1 ---
+# --- DNS-Selbstbedienung (DN3.2): als User dns von cm1 (192.168.10.2, Zone mgmt) per REST an sw1 ---
 NP=$((LABPORT + 92)); NL="$LAB/notify-dns.log"; : > "$NL"; sink
 mgr ':global e2eG14m [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14m . ":set (\$cfmG->\"notify\"->\"url\") \"http://10.0.2.2:'"$NP"'/hook\"\n:set (\$cfmG->\"notify\"->\"site\") \"Labor\"\n")' >/dev/null
 out=$(mgr ':global e2eD14m [/file/get [/file/find name="cfm/work/dns.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14m . ":set (\$cfmDns->\"self\") {\"zones\"={\"nope\"};\"deny\"={\"Kein Name\"};\"hours\"=0;\"user\"=\"netadmin\";\"x\"=1}\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }; /file/set [/file/find name="cfm/work/dns.rsc"] contents=($e2eD14m . ":set (\$cfmDns->\"self\") {\"zones\"={\"mgmt\";\"lan\"};\"deny\"={\"mikrotik.com\"};\"hours\"=1}\n"); :set ck [$cfmCheck]; :foreach e in=($ck->"warn") do={ :put ("W " . $e) }')
@@ -1045,7 +1045,7 @@ dreq www.mikrotik.com >/dev/null; dreq 'Kein_Name!' >/dev/null; dreq heise.de >/
 expect 2 '[:len [/ip/dns/static/find where name="www.mikrotik.com"]] = 0 and [:len [/log/find where message~"DNS-Freischaltung www.mikrotik.com abgelehnt .self.deny."]] = 1 and [:len [/log/find where message~"DNS-Freischaltung . abgelehnt .kein g"]] = 1 and [:len [/log/find where message~"^cfm: DNS-Freischaltung heise.de"]] = 2' "deny und ungültiger Name abgelehnt, jede Anfrage genau einmal bearbeitet"
 r 2 '/system/script/run cfm-dnsreq' >/dev/null
 expect 2 '[:len [/log/find where message~"^cfm: DNS-Freischaltung"]] = 4' "zweiter Lauf (Scheduler) bearbeitet nichts doppelt"
-nwait '"result": "allowed"' && grep '"result": "allowed"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "dnsreq".*"domain": "heise.de", "client": "192.168.10.2"' && nwait '"result": "denied"' && nwait '"result": "extended"' && ! grep -q '"result": "invalid"' "$NL" && ok "Meldungen an notify.url: allowed, extended, denied (JSON wie D66)" || { bad "Meldungen dnsreq"; tail -3 "$NL" | cut -c1-200; }
+nwait '"result": "allowed"' && grep '"result": "allowed"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "dnsreq".*"domain": "heise.de", "client": "192.168.10.2"' && nwait '"result": "denied"' && nwait '"result": "extended"' && ! grep -q '"result": "invalid"' "$NL" && ok "Meldungen an notify.url: allowed, extended, denied (JSON wie DU4.1)" || { bad "Meldungen dnsreq"; tail -3 "$NL" | cut -c1-200; }
 r 2 '/ip/dns/static/set [find where name="heise.de"] comment="dnsui:tmp:1 192.168.10.2"; /system/script/run cfm-dnsreq' >/dev/null
 expect 2 '[:len [/ip/dns/static/find where name="heise.de"]] = 0' "abgelaufene Freischaltung entfernt"
 dreq heise.de >/dev/null; r 2 '/ip/dns/static/set [find where name="heise.de"] comment="dnsui:perm 192.168.10.2 2026-10-31"' >/dev/null

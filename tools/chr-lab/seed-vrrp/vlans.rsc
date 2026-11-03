@@ -1,8 +1,8 @@
 # ============================================================
 # LAB (Router-Probe, e2e-vrrp.sh): VLANs wie im Zielbild eines Standorts, dessen Internet-Router im
 # LAN steht (Variante C): LAN-Gateway der Router ist die VIP .2, der Internet-Router behält .1 und
-# bleibt Default-Gateway der LAN-Clients (dhcpGw, D82); LAN, IoT und Gast mit DHCP vom VRRP-Master,
-# DNS der LAN-Clients ist die VIP (D86).
+# bleibt Default-Gateway der LAN-Clients (dhcpGw, DN1.2); LAN, IoT und Gast mit DHCP vom VRRP-Master,
+# DNS der LAN-Clients ist die VIP (DR3.1).
 # ============================================================
 :global cfmVlans {
   "10"={"name"="MGMT";"zone"="mgmt"};

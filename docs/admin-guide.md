@@ -22,15 +22,15 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
 > Internet-Gateway, mit DHCP, festen Leases und DNS-Namen und WireGuard-Zugang; die Ausfalltests per
 > Neustart liefen durch. Automatisches Onboarding im
 > CAPs-Modus, CAPsMAN-Umzug, RouterOS-Updates mit Zusatzpaketen (arm, arm64) bis 7.25, das eingebaute Update
-> vom Spiegel (hEX mit 16 MB Flash) und per `via=internet` (CRS), schaltbare SSIDs (seit D90 mit festen
+> vom Spiegel (hEX mit 16 MB Flash) und per `via=internet` (CRS), schaltbare SSIDs (seit DW4.2 mit festen
 > Interfaces), die Umstellung auf Admin-Keys je User, der Kanal-Scan über den CAPsMAN, Steering mit
-> Mindestsignal und die Trennschwelle je Band (D92), die NTP-Umleitung je VLAN (D93) und das Bandbreitenlimit
-> je VLAN (D97) liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
-> Fehler“, siehe auch [DECISIONS.md](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
+> Mindestsignal und die Trennschwelle je Band (DW2.5), die NTP-Umleitung je VLAN (DN2.2) und das Bandbreitenlimit
+> je VLAN (DR2.7) liefen dort. Die gefundenen Fehler sind behoben oder stehen in [TODO.md](TODO.md) unter „Bekannte
+> Fehler“, siehe auch [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten).
 > **Noch nicht** mit echter Hardware erprobt sind der Backup-Manager,
 > das Onboarding gegen Werks-Configs von Routern und CRS-Switches, PPSK-VLANs, weitere SSIDs im
 > lokalen Fallback, LACP-Bonds, MLAG und isolierte VLANs
-> (D74–D76); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
+> (DP2.1, DP2.2, DP3.1); offene Punkte stehen in [TODO.md](TODO.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
 
 **Inhalt:** [1 Was cfm macht](#1-was-cfm-macht) · [2 Konzepte](#2-konzepte) ·
@@ -52,7 +52,7 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
   in **Canary-Ringen** raus, jedes Gerät sichert sich vorher und rollt bei Problemen selbst zurück.
 * Ein Gerät mit der Rolle `capsman` ist **wifi-CAPsMAN** für alle APs (mehrere SSIDs, WPA2/WPA3,
   802.11r/k/v); ohne diese Rolle übernimmt das übergangsweise der Manager. Fällt der CAPsMAN aus,
-  senden die APs mit einer lokalen Kopie der Haupt-SSID weiter (D45/D46).
+  senden die APs mit einer lokalen Kopie der Haupt-SSID weiter (DW1.5/DW1.6).
 * Secrets (Passwörter, PSKs) liegen nur im **Vault** des Managers und werden per SSH verteilt.
 * Die aktive Config jedes Geräts liegt zentral auf dem Manager und optional in einem **Git-Repo**.
 * **Neue Geräte** im Werkszustand werden am Zielort weitgehend automatisch aufgenommen.
@@ -60,8 +60,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), offene Punkte 
   einem Wartungsfenster.
 * Jedes Gerät bekommt eine **minimale Firewall**, die nur Management-Zugriffe zulässt.
 * Die Router lösen **DNS** nach `dns.rsc` auf: eigene Upstreams, Werbe-/Tracker-Sperrlisten, Ausnahmen,
-  Weiterleitung je Domain, Abfrage-Log je Client (D101). Clients sehen im Browser ihre gesperrten
-  Abfragen und schalten eine Domain selbst für ein paar Stunden frei (Lesezeichen cfm-DNS, D102, 8.14).
+  Weiterleitung je Domain, Abfrage-Log je Client (DN3.1). Clients sehen im Browser ihre gesperrten
+  Abfragen und schalten eine Domain selbst für ein paar Stunden frei (Lesezeichen cfm-DNS, DN3.2, 8.14).
 * Die **Verkabelung** wird per LLDP erfasst und gegen einen Soll-Stand geprüft; daraus entsteht
   ein Netzplan.
 * **Zustandswechsel** (Apply-Fehler, stumme Geräte, APs ohne CAPsMAN, gescheiterte Updates …)
@@ -97,7 +97,7 @@ sofort bei einem Push vom Manager:
    (Fallback-Liste `managers`) und dessen MAC mit dem Geräteschlüssel prüfen.
 2. Nur wenn sich etwas geändert hat (oder einmal täglich, `reapply`): Dateien laden, SHA-512
    prüfen, verschlüsseltes Backup ziehen, Watchdog scharf schalten. Geladen werden nur Dateien, die
-   nicht schon mit diesem Hash in `cfm/dl/` liegen (D69): Jeder SFTP-Abruf dauert mindestens 1 s.
+   nicht schon mit diesem Hash in `cfm/dl/` liegen (DG4.4): Jeder SFTP-Abruf dauert mindestens 1 s.
 3. Bibliothek, Daten, Hostfile und Rollen importieren; verwaiste Objekte entfernen.
 4. Erreichbarkeit des Managers bestätigen. Sonst rollt der Watchdog nach 5 Minuten (`watchdog`)
    per `/system backup load` zurück.
@@ -124,8 +124,8 @@ nächsten Apply zurückgesetzt.
 Aufräumen und Audit umfassen die Menüs aus `cfmMenus` im Kopf von `lib/lib.rsc` (Bonds, Bridge
 samt Bridge-Filter, VLANs, Adressen, Routen und Routing-Tabellen, DHCP samt statischer Leases,
 Firewall inkl. Mangle, DNS, Queues, WLAN, Benutzer, Skripte, Scheduler …). Queue-Typen haben in RouterOS
-keinen Kommentar: Dort gehören cfm die Typen mit Namen `cfm-…` (D97). Seit D62 gehören statische
-DHCP-Leases, Mangle-Regeln und Routing-Tabellen dazu, seit D74/D76 Bonds und Bridge-Filter: Auf
+keinen Kommentar: Dort gehören cfm die Typen mit Namen `cfm-…` (DR2.7). Seit DN1.1 gehören statische
+DHCP-Leases, Mangle-Regeln und Routing-Tabellen dazu, seit DP2.1/DP3.1 Bonds und Bridge-Filter: Auf
 einem Bestandsgerät zeigt `$cfmAudit` von Hand angelegte feste Leases, Bonds oder Filterregeln
 (z.B. eine DHCP-Sperre am Uplink) deshalb als unverwaltet – sie bleiben, solange du sie nicht per
 `op=purge` entfernst. Vorsicht mit `op=purge sel=all`.
@@ -191,13 +191,13 @@ Bevor du etwas einspielst, kläre diese Punkte:
 > Dienste (Telnet, FTP, WebFig, API) sind aus, MAC-Winbox gibt es nur im MGMT-VLAN. Zusätzlich
 > verwirft die minimale Firewall auf Switches, APs und Managern alles, was nicht aus diesen Netzen
 > kommt. Trage deinen Admin-PC in `mgmtExtra` ein, wenn er nicht im MGMT-VLAN hängt. Hinter
-> cfm-Routern leiten diese ihn auch ins MGMT-VLAN weiter (D83), das übrige Netz seiner Zone nicht.
+> cfm-Routern leiten diese ihn auch ins MGMT-VLAN weiter (DR2.6), das übrige Netz seiner Zone nicht.
 
 **Konventionen:**
 * Subnetz eines VLANs ist `192.168.<VID>.0/24`, Gateway `.1` (änderbar per `gw`, eigenes Netz per `net`).
 * VRRP: reale Router-IP `.250 + routerId`, VIP = Gateway, Priorität `210 − 10 · routerId` (routerId 1 ist
   bevorzugter Master). DHCP und WireGuard schaltet ein neuer Master erst nach 5 s ein, wenn er dann
-  noch Master ist (D85); der Backup schaltet sie sofort ab.
+  noch Master ist (DR1.5); der Backup schaltet sie sofort ab.
 * Interfaces heißen `vlan<VID>` bzw. `vrrp<VID>`, die Bridge heißt `bridge`.
 * **VLAN 88 (`192.168.88.0/24`) ist für das Onboarding reserviert** und darf nicht anderweitig
   benutzt werden; es passt bewusst zur Werks-IP `192.168.88.1` neuer Geräte.
@@ -208,7 +208,7 @@ Bevor du etwas einspielst, kläre diese Punkte:
 * Manager: jeder MikroTik mit genug Flash (das Archiv hält `archiveKeep` Versionen; RouterOS-Pakete
   brauchen ca. 20 MB je Architektur und Version, notfalls auf USB/NVMe per `pkgPath`) und mit
   Internetzugang für die Paket-Downloads (ohne Internet: Pakete von Hand ablegen, 8.6).
-* Der CAPsMAN kann mit eigenen Radios mitfunken (Hostfile `capsmanRadios`, D53), ein eigenes Gerät
+* Der CAPsMAN kann mit eigenen Radios mitfunken (Hostfile `capsmanRadios`, DW1.7), ein eigenes Gerät
   mit der Rolle `ap` braucht er dafür nicht.
 * APs brauchen den **neuen wifi-Stack** mit `wifi-qcom` (ax) bzw. `wifi-qcom-be` (Wi-Fi 7). Der alte
   `wireless`-Stack wird nicht unterstützt; APs mit `wifi-qcom-ac` (hAP ac², cAP ac) übernehmen das
@@ -228,27 +228,27 @@ irgendetwas ausgerollt wird.
 | `mgmtVlan` | MGMT-VLAN | `10` |
 | `managers` | Manager-IPs, Primary zuerst (Fallback-Reihenfolge der Geräte) | |
 | `mgrPath` | Basisverzeichnis auf dem Manager | `cfm` |
-| `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, D62). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
+| `domain` | Domain für DHCP und die DNS-Namen der Router (`<name>.<domain>`, DN1.1). Nicht `.local` – das gehört mDNS (RFC 6762), Unicast-Einträge dort stören Bonjour/Avahi | `internal` (ICANN-Reservierung für private Netze) |
 | `tz`, `ntp`, `dns` | Zeitzone, NTP/DNS für Nicht-Router (Router: `wan` im Hostfile) | |
 | `syslog` | Adresse eines Syslog-Servers, z.B. LibreNMS (8.12) oder Graylog (8.15); leer = aus. RouterOS selbst nimmt keinen Syslog entgegen, auch der Manager nicht. Wird es geleert, entfernt der nächste Apply die Aktion `cfmremote` und ihre Einträge | leer (`new-site.py`) |
 | `syslogFormat` | Format an den Syslog-Server: `syslog` = RFC-Kopf mit Facility `daemon` und Schwere aus dem Topic (LibreNMS sortiert danach), `default` = RouterOS-eigenes Format (TODO 54). Zeit ohne Zeitzone (`bsd-syslog`), das Topic selbst steht nicht in der Meldung. Ältere RouterOS-Versionen ohne `remote-log-format` bleiben beim eigenen | `syslog` |
 | `snmp` | SNMPv3 nur lesend für LibreNMS (8.12): `{"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"=…;"location"=…}`. Ohne `from` bleibt `/snmp` unangetastet | `{}` |
-| `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (D79). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
+| `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (DU3.2). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
-| `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (D57) | `10m` |
+| `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (DM2.2) | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
 | `archiveKeep` | so viele Versionen bleiben im Archiv (plus alle, die Ringe oder Geräte nutzen) | `5` |
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
 | `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server), `allow:<Liste>` (nur die Ziele der Liste). **NAT nur mit Kennzeichen:** `*wan` = masquerade, `wan@<Adresse>` = feste NAT-Adresse (bei VRRP wandert sie mit dem Master); gilt auch für `mtupdate` und `allow:…`. `wan` ohne Kennzeichen wird geroutet, der Upstream braucht eine Route zurück. Zonen ohne `*`/`wan`: DNS an externe Server wird auf den Router umgeleitet | |
-| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}`; nur bestimmte Ports mit `":tcp/443,8883"` bzw. `":udp/123"` am Eintrag (D76), z.B. `"cloud.example.com:tcp/443"` – je Port-Kombination eine eigene Adressliste `cfm-allow-<Liste>-tcp443` mit eigener Regel, Einträge ohne Ports gelten wie bisher für alle | `{}` |
+| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}`; nur bestimmte Ports mit `":tcp/443,8883"` bzw. `":udp/123"` am Eintrag (DP3.1), z.B. `"cloud.example.com:tcp/443"` – je Port-Kombination eine eigene Adressliste `cfm-allow-<Liste>-tcp443` mit eigener Regel, Einträge ohne Ports gelten wie bisher für alle | `{}` |
 | `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.22` |
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
 | `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `reverse-proxy`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet – auch `reverse-proxy`, den RouterOS 7.2x ab Werk auf Port 443 ohne Adressbeschränkung einschaltet. `$cfmCheck` meldet unbekannte Namen und doppelte Ports als Fehler | `ssh`, `winbox` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
-| `notify` | Benachrichtigungen (D66, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
+| `notify` | Benachrichtigungen (DU4.1, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
 
 ### `vlans.rsc`
 
@@ -260,16 +260,16 @@ Schlüssel ist die VLAN-ID als String.
 | `zone` | Firewall-Zone |
 | `net`, `gw` | eigenes Subnetz bzw. Host-Anteil des Gateways (Standard `192.168.<VID>.0/24`, `.1`) |
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
-| `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, D82). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt. Ist das VLAN zugleich das WAN der Router (Internet-Router im LAN), nehmen sie DNS, DHCP und NTP aus diesem Netz trotzdem an (D86) |
-| `ntp` | `"redirect"`: NTP (`udp/123`) aus dem VLAN an jedes Ziel außer dem Router landet beim NTP-Server der Router – für Geräte mit fest eingebautem NTP-Server, z.B. OpenBeken (D93). Ein anderer NTP-Server im Haus ist aus dem VLAN dann nicht erreichbar |
-| `asymRouting` | `"internet"`: nur am WAN-VLAN, wenn der Internet-Router im selben Netz steht. Hosts, die die VIP (`gw`) als Gateway nehmen, kommen damit ins Internet – Hinweg über die Router ohne Verbindungsverfolgung, Antwort direkt vom Internet-Router. Übergangslösung bis zu einem Transfernetz, Standard aus (8.13, D100) |
-| `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (D97) |
+| `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, DN1.2). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt. Ist das VLAN zugleich das WAN der Router (Internet-Router im LAN), nehmen sie DNS, DHCP und NTP aus diesem Netz trotzdem an (DR3.1) |
+| `ntp` | `"redirect"`: NTP (`udp/123`) aus dem VLAN an jedes Ziel außer dem Router landet beim NTP-Server der Router – für Geräte mit fest eingebautem NTP-Server, z.B. OpenBeken (DN2.2). Ein anderer NTP-Server im Haus ist aus dem VLAN dann nicht erreichbar |
+| `asymRouting` | `"internet"`: nur am WAN-VLAN, wenn der Internet-Router im selben Netz steht. Hosts, die die VIP (`gw`) als Gateway nehmen, kommen damit ins Internet – Hinweg über die Router ohne Verbindungsverfolgung, Antwort direkt vom Internet-Router. Übergangslösung bis zu einem Transfernetz, Standard aus (8.13, DR3.2) |
+| `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (DR2.7) |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
-| `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (D76) |
+| `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (DP3.1) |
 | `isolateAllow` | Ausnahmen der Isolation: Namen aus `leases.rsc` (desselben VLANs) oder MAC-Adressen, z.B. `"zigbee-hub,drucker"`; diese Geräte erreichen alle Clients und umgekehrt |
 
-**Isolierte VLANs (D76).** Gefiltert wird am Eingang jedes Client-Ports: reine Access-Ports des
+**Isolierte VLANs (DP3.1).** Gefiltert wird am Eingang jedes Client-Ports: reine Access-Ports des
 VLANs (Profil mit nur diesem VLAN ungetaggt; sie bekommen `hw=no`, ihr Verkehr läuft über die CPU,
 sonst sähe der Bridge-Filter ihn im Switch-Chip nicht) und die WLAN-Interfaces der SSIDs in diesem
 VLAN (Client-Isolation wird dort mit eingeschaltet, Datapath mit `interface-list=cfm-iso`). Erlaubt
@@ -307,19 +307,19 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 * `master`: die SSID, die das physische Radio trägt, alle anderen werden virtuelle APs.
 * `channels`: Kanal-Pools je Band; `radios`: optional feste Kanäle je AP (`{"ap1"={"5"="5180"}}`).
   Ohne Pin wählt der CAPsMAN den Kanal bei jeder Neuverbindung eines APs aus dem Pool neu; der Pin
-  gilt auch für den lokalen Fallback der APs (D46).
+  gilt auch für den lokalen Fallback der APs (DW1.6).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (in der Vorlage `03:00`; leer = nur beim Start);
   je Band `skipDfs` (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
 * 6 GHz: Kanal-Eintrag `"6"` mit `band="6ghz-ax"` und der Security des Bands, z.B.
   `"sec"="wpa3-psk";"pmf"="required"` (6 GHz erlaubt kein WPA2, `$cfmCheck` meldet das). Solche
   Angaben im Kanal-Eintrag (`sec`, `ft`, `ftOverDs`, `pmf`) gelten für alle SSIDs auf dem Band und
-  ergeben ein eigenes Profil `cfm-<schlüssel>-6g` mit derselben Passphrase (D48). Die `master`-SSID
+  ergeben ein eigenes Profil `cfm-<schlüssel>-6g` mit derselben Passphrase (DW2.3). Die `master`-SSID
   sendet auf allen Bändern aus `channels`, weitere SSIDs nur laut `bands` (z.B. `"2,5,6"`).
-* `mlo`: Wi-Fi 7 Multi-Link, Standard `"disabled"` (D48). Ein MLD bietet kein FT an, Clients im
+* `mlo`: Wi-Fi 7 Multi-Link, Standard `"disabled"` (DW2.3). Ein MLD bietet kein FT an, Clients im
   FT-Verbund meiden den AP dann. Außerdem gibt es nur ein `mld-datapath` je CAP (`cfm-mld`, VLAN der
-  `master`-SSID, D44), weitere SSIDs landeten per MLO dort. Nach dem Umschalten die Radios der
+  `master`-SSID, DW1.4), weitere SSIDs landeten per MLO dort. Nach dem Umschalten die Radios der
   Wi-Fi-7-CAPs neu provisionieren (siehe unten).
-* Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, D47)
+* Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, DU2.1)
   statt `cap-wifiN`; neu vergeben erst beim nächsten Provisionieren eines Radios
   (`cfm-reprov`, siehe 6.8, oder `/interface/wifi/radio/provision [find where !local]` am CAPsMAN, alle
   APs ~3 s weg). Nur die
@@ -327,7 +327,7 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   `identity-regexp` würden sie als APs einschalten. Das MLD eines Wi-Fi-7-CAP heißt danach
   `mld-<Identity>-2g` (nur mit MLO); Radios ohne passende Regel (Band nicht in `channels`) behalten
   `cap-wifiN`.
-* `steer`: Steering je Band (RouterOS ≥ 7.21, D55), z.B.
+* `steer`: Steering je Band (RouterOS ≥ 7.21, DW2.4), z.B.
   `"steer"={"2"={"threshold"=-78;"after"="10s";"kick"="5m"};"5"={"threshold"=-75;"after"="10s"}}`.
   Liegt ein Client länger als `after` unter `threshold` (dBm), schlägt ihm der AP per 802.11v die
   Nachbar-APs derselben SSID vor (`count` Vorschläge alle `period`, Standard 3 alle 30 s); `kick`
@@ -335,7 +335,7 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   hört, prüft RouterOS nicht – Schwellen vor Ort ermitteln und erst vorsichtig (ohne `kick`)
   einschalten.
   **Clients mit FT trennt der `kick` nicht** (Befund 2026-10-18/22, 7.24.5), und manche ignorieren die
-  Vorschläge. Dafür gibt es je Band die **Trennschwelle** (D92): `drop` (dBm), dazu `join` und `hold`,
+  Vorschläge. Dafür gibt es je Band die **Trennschwelle** (DW2.5): `drop` (dBm), dazu `join` und `hold`,
   z.B. `"6"={"threshold"=-72;"after"="5s";"drop"=-74;"join"=-68;"hold"="30s"}`. Eine Anmeldung unter
   `join` weist der AP ab (Standard: gleich `drop`); liegt ein angemeldeter Client länger als `hold`
   (Standard 0 s) unter `drop`, trennt er ihn – hart, ohne Vorschlag, auch nach einem Wechsel per FT; der
@@ -343,7 +343,7 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   am Rand zwischen Trennen und Wiederanmelden (`$cfmCheck` weist darauf hin). Technisch: zwei
   access-list-Regeln je Band für die Interface-Liste `cfm-wifi-<Band>g`, in die RouterOS die Interfaces
   über einen eigenen datapath je Band (`cfm-<SSID>-<Band>g`) selbst einträgt – auch nach dem
-  Neu-Provisionieren. SSIDs in einem isolierten VLAN (D76) sind ausgenommen. **Jede Änderung an
+  Neu-Provisionieren. SSIDs in einem isolierten VLAN (DP3.1) sind ausgenommen. **Jede Änderung an
   `join`/`drop`/`hold` trennt beim Apply alle Clients des Bands einmal** (RouterOS prüft bei jeder Änderung
   der access-list alle Verbindungen neu, ein Handy war danach bis zu 31 s weg) – Werte gebündelt ändern.
 * `minSignal`: Mindestsignal bei der Anmeldung (dBm, ein Wert für alle Bänder), z.B. `-82`.
@@ -353,16 +353,16 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   Client per FT mit -83 dBm trotz Schwelle -80; die Abweisung der Trennschwelle griff am 2026-10-23 dagegen
   auch bei FT-Wechseln (Ursache des Unterschieds offen).
 * `others`: andere Funknetze im 2,4-GHz-Band (Zigbee, Thread, Milight, Bluetooth) für den
-  Kanal-Vorschlag von `$cfmWifiScan` (D80), z.B. `"others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"}}`.
+  Kanal-Vorschlag von `$cfmWifiScan` (DW3.5), z.B. `"others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"}}`.
   Wirkt nur auf den Vorschlag und die Prüfung, nicht auf die Geräte; Typen und Gewichte in 8.7.
 * `fallback="yes"` an einer weiteren SSID (z.B. Gast): Sie sendet auch im lokalen Fallback der APs
-  weiter (D54, `slaves-static`). Die `master`-SSID tut das immer (D46). Noch nicht auf Hardware
+  weiter (DW1.8, `slaves-static`). Die `master`-SSID tut das immer (DW1.6). Noch nicht auf Hardware
   geprüft – nach dem Einschalten den CAPsMAN-Dienst kurz abschalten und nachsehen.
 * `switch="off"|"on"` an einer weiteren SSID: schaltbar per Skript, der Wert ist der Grundzustand
-  (D64, siehe 6.8); dazu optional `autoOff` (z.B. `"50h"`): so lange nach dem Einschalten schaltet
+  (DW4.1, siehe 6.8); dazu optional `autoOff` (z.B. `"50h"`): so lange nach dem Einschalten schaltet
   der CAPsMAN sie selbst wieder ab. Schlüssel der SSID nur aus Kleinbuchstaben und Ziffern.
   Schaltbare SSIDs stehen in den Provisioning-Regeln immer, auch ausgeschaltet (geschaltet werden ihre
-  festen Interfaces, D90), und immer hinter den festen SSIDs: So behalten die virtuellen Interfaces
+  festen Interfaces, DW4.2), und immer hinter den festen SSIDs: So behalten die virtuellen Interfaces
   der übrigen ihre Nummern (Home Assistant, Monitoring).
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
@@ -379,11 +379,11 @@ Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`.
   Subnetz automatisch über die WireGuard-Schnittstelle an, ohne Proxy-ARP-Tricks.
 * `peers`: Key = Name; `pubkey` = Public Key des Peers; `addr` = Host-Anteil der Tunnel-IP in
   `net`. Leere `peers={}` = WireGuard-Interface bleibt aus. Alle Router haben denselben privaten
-  Schlüssel aus dem Vault (`wg.admin`, D84), er steht nicht in den Daten.
+  Schlüssel aus dem Vault (`wg.admin`, DR4.2), er steht nicht in den Daten.
 
 ### `leases.rsc`
 
-Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLANs mit `dhcp`
+Feste DHCP-Leases je VLAN (DN1.1), wirksam auf Geräten mit Rolle `router` in VLANs mit `dhcp`
 (bei VRRP auf allen Routern, der DHCP-Server läuft nur auf dem Master):
 
 ```
@@ -405,7 +405,7 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
   und fliegt nach dem Umzug raus. Eine umbenannte Lease (gleiche MAC und Adresse) übernimmt der Apply
   unter dem neuen Namen, sie bleibt bestehen.
 * Die MAC darf klein geschrieben sein, die Rolle schreibt sie wie RouterOS groß.
-* **`"wifi"="yes"`** (D95): Das Gerät landet im WLAN an jeder SSID im VLAN dieser Lease, z.B. ein
+* **`"wifi"="yes"`** (DW2.6): Das Gerät landet im WLAN an jeder SSID im VLAN dieser Lease, z.B. ein
   Firmen-Laptop mit der Haupt-SSID im Gäste-VLAN: `"40"={"firma-laptop"={"mac"="…";"ip"=30;"wifi"="yes"}}`.
   Der CAPsMAN (und der lokale Fallback der APs) legt dafür vorn in der Access-List Einträge je MAC mit
   `vlan-id` an, mit denselben Signal-Grenzen wie für alle (`minSignal`, Trennschwelle je Band). Die MAC
@@ -418,7 +418,7 @@ Feste DHCP-Leases je VLAN (D62), wirksam auf Geräten mit Rolle `router` in VLAN
 
 ### `mlag.rsc`
 
-MLAG-Paare (D75): zwei Switches, an denen Geräte per LACP über beide hängen. Fällt ein Switch aus,
+MLAG-Paare (DP2.2): zwei Switches, an denen Geräte per LACP über beide hängen. Fällt ein Switch aus,
 läuft der Verkehr über den anderen weiter.
 
 ```
@@ -449,9 +449,9 @@ läuft der Verkehr über den anderen weiter.
 
 ### `dns.rsc`
 
-DNS der Router (D101, nur Rolle `router`): Upstream-Server, Adblocking, Ausnahmen, Weiterleitung je Domain
+DNS der Router (DN3.1, nur Rolle `router`): Upstream-Server, Adblocking, Ausnahmen, Weiterleitung je Domain
 und ein Abfrage-Log je Client. Ohne Einträge (`:global cfmDns ({})`) bleibt es beim bisherigen Verhalten:
-Die Router fragen `wan.dns` aus dem Hostfile und beantworten selbst nur die Namen aus D62.
+Die Router fragen `wan.dns` aus dem Hostfile und beantworten selbst nur die Namen aus DN1.1.
 
 ```
 :global cfmDns {
@@ -488,11 +488,11 @@ Die Router fragen `wan.dns` aus dem Hostfile und beantworten selbst nur die Name
 * `$cfmCheck` prüft Adressen, Größe, URLs, Domainnamen und die Log-Schalter und warnt bei unbekannten
   Schlüsseln. `$cfmShow host=<router>` zeigt eine Zusammenfassung. Fehlen die Einträge, räumt der nächste
   Apply Adlisten, Forwarder, FWD-Einträge und Log-Regeln wieder weg.
-* `self`: DNS-Selbstbedienung (D102), siehe unten.
+* `self`: DNS-Selbstbedienung (DN3.2), siehe unten.
 * Nicht dabei: DNSSEC-Prüfung im Router (den Upstream so wählen, dass er prüft, z.B. Quad9), Regeln je
   Client (RouterOS kennt keine), Statistik über das RAM-Log hinaus (dafür `syslog`).
 
-**DNS-Selbstbedienung (`self`, D102).** Clients sehen ihre eigenen DNS-Abfragen und schalten eine gesperrte
+**DNS-Selbstbedienung (`self`, DN3.2).** Clients sehen ihre eigenen DNS-Abfragen und schalten eine gesperrte
 Domain selbst für ein paar Stunden frei – ohne zusätzlichen Dienst, alles auf dem Router:
 
 * `zones`: Zonen, deren Clients WebFig/REST ihres Gateways erreichen (Dienst `www`, ohne Eintrag in
@@ -508,7 +508,7 @@ Domain selbst für ein paar Stunden frei – ohne zusätzlichen Dienst, alles au
   (Name kürzbar, z.B. auf die Hauptdomain) schreibt per `/execute` den Log-Eintrag
   `cfm-dnsreq: <Domain> <IP>` und startet das Skript `cfm-dnsreq` (`dont-require-permissions`). Das legt
   einen `FWD`-Eintrag an `cfm-upstream` mit Kommentar `dnsui:tmp:<Ablauf> <IP>` an, sofort wirksam, und
-  meldet `ev=dnsreq` an `notify.url` (wie D66, dazu `domain`, `client`, `result`, `until`). Ein Scheduler
+  meldet `ev=dnsreq` an `notify.url` (wie DU4.1, dazu `domain`, `client`, `result`, `until`). Ein Scheduler
   (1 min) räumt Abgelaufenes weg und holt verpasste Anfragen nach.
 * Admin (User mit Schreibrecht) sieht im Lesezeichen alle Clients und macht eine befristete Freischaltung
   dauerhaft (`dnsui:perm`) oder entfernt sie. Dauerhafte bleiben stehen (die GC fasst nur `cfm:` an), jeder
@@ -524,7 +524,7 @@ Domain selbst für ein paar Stunden frei – ohne zusätzlichen Dienst, alles au
 
 ### `authorized_keys.<user>` (optional)
 
-Persönliche Admin-SSH-Keys **je User** (D65), eine Datei je Person: `authorized_keys.alice` gilt nur
+Persönliche Admin-SSH-Keys **je User** (DS3.3), eine Datei je Person: `authorized_keys.alice` gilt nur
 für den User `alice` aus `global.rsc` `users`. Format wie bei OpenSSH: eine Zeile je Key,
 `<typ> <base64> [kommentar]`, z.B. `ssh-ed25519 AAAAC3... alice@laptop`. RouterOS kennt nur
 `ssh-ed25519`, `ssh-rsa` und `sk-ssh-ed25519@openssh.com`; OpenSSH-Optionen vor dem Typ
@@ -546,7 +546,7 @@ Die Rolle `base` gleicht auf **jedem** Gerät die Keys jedes Users ab, für den 
   dort vergleicht `base` näherungsweise über den Kommentar (`Admin-SSH-Keys alice: 1 neu,
   0 entfernt`).
 
-Die frühere gemeinsame Datei `authorized_keys` für alle User (D35) gilt nicht mehr: `$cfmCheck`
+Die frühere gemeinsame Datei `authorized_keys` für alle User (DS3.2) gilt nicht mehr: `$cfmCheck`
 lehnt sie ab, `tools/upload-seed.sh` lädt sie nicht hoch. Umstellen: Keys je Person nach
 `authorized_keys.<user>` verschieben, hochladen, die alte Datei auf dem Manager löschen
 (`/file/remove cfm/work/authorized_keys`), dann `$cfmRelease`. Die Keys, die schon auf den Geräten
@@ -574,18 +574,18 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 |---|---|
 | `ports` | Port → Profil |
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
-| `bonds` | Link-Bündel (D74): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
+| `bonds` | Link-Bündel (DP2.1): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
-| `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe D40). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
+| `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe DP1.2). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
-| `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` und `"ntp"` (Zeitquelle des Routers, Text oder Liste, D88). Ohne `ntp` gilt `dns` auch als NTP-Server, ohne beide `0.pool.ntp.org`/`1.pool.ntp.org`; mit `dhcp` kommt der NTP-Server der DHCP-Antwort dazu |
+| `wan` | nur Rolle `router`: `{"if"="vlan20";"gw"=…;"dns"=…}` oder `{"if"="ether1";"dhcp"="yes"}`, optional `"addr"` und `"ntp"` (Zeitquelle des Routers, Text oder Liste, DN2.1). Ohne `ntp` gilt `dns` auch als NTP-Server, ohne beide `0.pool.ntp.org`/`1.pool.ntp.org`; mit `dhcp` kommt der NTP-Server der DHCP-Antwort dazu |
 | `links` | erwartete Verkabelung für `$cfmLinks`: `{"ether1"="rtr1:ether2";"ether8"="-"}` (Gerät:Port, nur Gerät oder `-` für „hier hängt nichts“) |
 | `cpuVlans` | nur Nicht-Router: VLANs, in denen die Bridge (CPU) getaggt bleibt, z.B. `{165;175;177}` – für eigene VLAN-Interfaces aus der `post.rsc` oder eines Bestandsgeräts, das noch selbst routet (7.3). MGMT ist immer dabei |
-| `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste. Mit eigenem `gw` und WireGuard-Peers zusätzlich die Route ins WG-Netz über das MGMT-Gateway (D84) |
+| `gw`, `dns`, `ntp` | nur Nicht-Router: Default-Route, DNS- und NTP-Server statt MGMT-Gateway bzw. `dns`/`ntp` aus `global.rsc` – für ein Gerät, das selbst das MGMT-Gateway ist, oder einen eigenen Ausgang (z.B. ein NAT-Käfig direkt über den Internet-Router). `ntp` auch als Liste. Mit eigenem `gw` und WireGuard-Peers zusätzlich die Route ins WG-Netz über das MGMT-Gateway (DR4.2) |
 | `bridgeFrames` | `"admit-all"`: die Bridge (CPU) nimmt weiter ungetaggte Frames an, statt nur getaggte – für eine Adresse direkt auf der Bridge (VLAN 1), die erhalten bleiben soll |
 | `location` | SNMP-Standort dieses Geräts (sysLocation, z.B. `"Keller, Rack 1"`), sonst `snmp.location` aus `global.rsc` |
-| `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (D53). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Bei einem Neustart des Geräts provisioniert RouterOS die eigenen Radios selbst wieder, ohne den cfm-Agent (vor der ersten SSH-Verbindung des Agents im Log, D53) – kein Unterschied zu echten CAPs. Client-Test und FT-Roaming zu den CAPs bestanden (hAP be³ und CRS418, D53) |
+| `capsmanRadios` | nur auf dem CAPsMAN: `"yes"` provisioniert dessen eigene Radios über den eigenen CAPsMAN – dieselben SSIDs, Pins (`radios` mit der Identity des CAPsMAN) und Namen wie bei den APs (DW1.7). Neu provisioniert nur bei geänderten WLAN-Daten (kurzer Aussetzer der eigenen Radios); wieder `"no"` bzw. weglassen setzt die Radios zurück. Bei einem Neustart des Geräts provisioniert RouterOS die eigenen Radios selbst wieder, ohne den cfm-Agent (vor der ersten SSH-Verbindung des Agents im Log, DW1.7) – kein Unterschied zu echten CAPs. Client-Test und FT-Roaming zu den CAPs bestanden (hAP be³ und CRS418, DW1.7) |
 
 Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 `:global cfmVlans; :set ($cfmVlans->"119"->"l3") "no"`.
@@ -596,13 +596,13 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 
 | Rolle | Konfiguriert |
 |---|---|
-| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog (`syslogFormat`), SNMPv3 nur lesend für LibreNMS (`snmp`, D99), RAM-Log ohne `system,info` (`logMemory`, D79); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (D74), MLAG aus `mlag.rsc` (D75); Filter isolierter VLANs an den Client-Ports (D76); Agent |
+| `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog (`syslogFormat`), SNMPv3 nur lesend für LibreNMS (`snmp`, DU4.3), RAM-Log ohne `system,info` (`logMemory`, DU3.2); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (DP2.1), MLAG aus `mlag.rsc` (DP2.2); Filter isolierter VLANs an den Client-Ports (DP3.1); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, D45); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, D46); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (D76); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, D54 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
-| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (D45). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (D53); Provisioning mit festen Interfaces (D90); Schalt-Skripte für SSIDs mit `switch` (D64, 6.8) |
-| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, D86); DNS (Upstream, Adlisten, Ausnahmen, Weiterleitungen und Abfrage-Log aus `dns.rsc`, D101; Selbstbedienung mit User, Skript `cfm-dnsreq` und WebFig-Zugang aus `self.zones`, D102); NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, D88); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (D100); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (D62); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
-| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (D57) |
-| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, D67) |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, DW1.5); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, DW1.6); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (DP3.1); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, DW1.8 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
+| `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (DW1.5). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (DW1.7); Provisioning mit festen Interfaces (DW4.2); Schalt-Skripte für SSIDs mit `switch` (DW4.1, 6.8) |
+| `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, DR3.1); DNS (Upstream, Adlisten, Ausnahmen, Weiterleitungen und Abfrage-Log aus `dns.rsc`, DN3.1; Selbstbedienung mit User, Skript `cfm-dnsreq` und WebFig-Zugang aus `self.zones`, DN3.2); NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, DN2.1); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (DR3.2); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (DN1.1); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
+| `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (DM2.2) |
+| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, DS2.5) |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
 zusätzlich `local-forward`, zum Beispiel per `hosts/<name>.post.rsc`. Sie greifen vor dem finalen
@@ -619,7 +619,7 @@ den Geräten) brauchst du:
 |---|---|
 | bash | `upload-seed.sh`, `pull-site.sh` |
 | OpenSSH (`ssh`, `sftp`) und ein SSH-Key am Manager | Upload und Pull per Batch-SFTP, das kein Passwort abfragen kann (6.2) |
-| Python 3, nur Standardbibliothek | `new-site.py` (6.1), `rsc-check.py`; `upload-seed.sh` wählt damit die Feature-Module, die die Site braucht (`feature-module.py`, D104) – ohne Python lädt es alle hoch |
+| Python 3, nur Standardbibliothek | `new-site.py` (6.1), `rsc-check.py`; `upload-seed.sh` wählt damit die Feature-Module, die die Site braucht (`feature-module.py`, DG4.6) – ohne Python lädt es alle hoch |
 | Git | Repo holen und aktualisieren |
 
 Python-Pakete außerhalb der Standardbibliothek braucht kein Werkzeug. Eigene Voraussetzungen haben nur
@@ -645,7 +645,7 @@ Logbuch (neueste Einträge oben), die nächsten Schritte und offene Punkte; ausf
 gehören in eine `BEFUNDE.md` daneben. `tools/upload-seed.sh` lädt aus dem Overlay nur die Daten
 (`*.rsc`, `authorized_keys.<user>`, `hosts/`, `meta/` …); Notizen wie diese oder eigene CSV-Listen bleiben
 lokal. Die Site-Daten lädt es nur beim ersten Aufsetzen (`--seed-inventory`) oder mit `--site` hoch;
-danach führt sie der Manager, und ein normaler Upload bringt nur neuen Framework-Code (D72, 8.1). Die Bootstrap-Datei
+danach führt sie der Manager, und ein normaler Upload bringt nur neuen Framework-Code (DT2.2, 8.1). Die Bootstrap-Datei
 gehört nicht nach `work/` (das wird an die Flotte verteilt), sondern ins Wurzelverzeichnis des
 Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad die
 `bootstrap-manager.rsc` aus dem Overlay.
@@ -654,7 +654,7 @@ Geräts – `--bootstrap <datei>` nimmt sie beim selben Aufruf mit, ohne Pfad di
 
 1. Den Manager mit einem Port an einen Trunk hängen, der das MGMT-VLAN tagged führt.
 
-   **Manager in einer VM:** Eine Karte je VLAN (`vport:<vid>`) und `stp="none"` im Hostfile (D40).
+   **Manager in einer VM:** Eine Karte je VLAN (`vport:<vid>`) und `stp="none"` im Hostfile (DP1.2).
    Der Reset im Bootstrap nummeriert die Karten neu – die Zuordnung danach über die MAC-Adressen
    prüfen, nicht über die Reihenfolge. Das MGMT-VLAN kommt an einer solchen Karte ungetaggt an, der
    Bootstrap legt es aber getaggt auf den Uplink: Der Manager ist über seine MGMT-IP deshalb erst
@@ -744,12 +744,12 @@ werden Arbeitsstand, Metadaten, Archiv, Geräte-Exporte und das verschlüsselte 
 
 ### 6.6 CAPsMAN auf ein eigenes Gerät legen oder umziehen
 
-Der CAPsMAN ist ein eigener Dienst (Rolle `capsman`, D45), unabhängig vom Config-Manager. Die APs
+Der CAPsMAN ist ein eigener Dienst (Rolle `capsman`, DW1.5), unabhängig vom Config-Manager. Die APs
 erfahren über ihr Manifest (Feld `cm`), wo er läuft; wandert die Rolle, folgen sie beim nächsten
 Lauf, erneuern ihre CAPsMAN-Zertifikate und verbinden sich neu. Den kurzen Abriss überbrücken
-sie mit ihrer lokalen Kopie der `master`-SSID (D46).
+sie mit ihrer lokalen Kopie der `master`-SSID (DW1.6).
 
-1. Alle Geräte auf einem Stand mit D45/D46 (Release, alle Ringe). Einträge `caps-man-names` in
+1. Alle Geräte auf einem Stand mit DW1.5/DW1.6 (Release, alle Ringe). Einträge `caps-man-names` in
    `hosts/*.post.rsc` entfernen, sie würden die Namen aus dem Manifest überschreiben.
 2. Rolle vergeben: `$cfmEnroll name=<gerät> ip=<mgmt-ip> role=<bisher>,capsman`. Das nimmt das
    Gerät mit neuer Rolle neu auf (neuer Geräteschlüssel, Agent neu, erster Lauf) und baut die
@@ -760,16 +760,16 @@ sie mit ihrer lokalen Kopie der `master`-SSID (D46).
 4. Die APs und den bisherigen CAPsMAN anstoßen: `$cfmPush host=<ap>` bzw. `$cfmPush ring=…`.
    Der alte CAPsMAN schaltet sich ab und räumt seine WLAN-Profile weg.
 5. Prüfen: auf dem neuen CAPsMAN `/interface/wifi/print` (je AP dynamische Interfaces
-   `<AP>-2g`/`-5g`, D47; vor der ersten Provisionierung `cap-wifiN`), auf einem AP
+   `<AP>-2g`/`-5g`, DU2.1; vor der ersten Provisionierung `cap-wifiN`), auf einem AP
    `/interface/wifi/cap/print` (`current-caps-man-identity`).
 
 Fällt der CAPsMAN länger aus, genauso auf ein anderes Gerät verschieben.
 
 Hat das CAPsMAN-Gerät eigene Radios, funken sie mit `capsmanRadios="yes"` in seinem Hostfile mit
-(D53). Zieht der CAPsMAN um, den Schalter im Hostfile des alten Geräts entfernen (setzt dessen
+(DW1.7). Zieht der CAPsMAN um, den Schalter im Hostfile des alten Geräts entfernen (setzt dessen
 Radios zurück) und beim neuen setzen.
 
-### 6.7 Clients je AP in Home Assistant (D47)
+### 6.7 Clients je AP in Home Assistant (DU2.1)
 
 Die Registration-Tabelle des CAPsMAN zeigt alle Clients aller APs. Für einen Monitoring-Host (z.B.
 Home Assistant) öffnet cfm dort die RouterOS-API, nur lesend und nur für dessen Adresse (ohne Home
@@ -798,13 +798,13 @@ Assistant: Lesezeichen „cfm-Monitor“, 8.10):
 3. In HA die Integration einrichten: Host = MGMT-IP des CAPsMAN, Port 8728, ohne SSL, User/Passwort
    wie oben. Zieht der CAPsMAN um, dort die Adresse ändern (die Freigaben ziehen selbst mit).
 
-### 6.8 SSID per Home Assistant schalten (D64, D90)
+### 6.8 SSID per Home Assistant schalten (DW4.1, DW4.2)
 
 Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre Beacons. Mit
 `"switch"="off"` an der SSID in `wifi.rsc` (optional `"autoOff"="50h"`) bekommt der CAPsMAN:
 
 * feste WLAN-Interfaces: Die Provisioning-Regeln legen die Interfaces der APs fest an
-  (`action=create-enabled`, D90; mit `capsmanRadios` auch die der eigenen Radios), die schaltbare SSID
+  (`action=create-enabled`, DW4.2; mit `capsmanRadios` auch die der eigenen Radios), die schaltbare SSID
   steht immer darin. Anders als dynamische lassen sich feste Interfaces einzeln ab- und anschalten;
 * die Skripte `cfm-ssid-<key>-on` und `cfm-ssid-<key>-off`: Sie schalten nur die Interfaces der SSID an
   bzw. ab (Konfiguration `cfm-<key>` bzw. `cfm-<key>-<Band>g`), die übrigen SSIDs senden weiter, neu
@@ -824,7 +824,7 @@ Eine selten gebrauchte SSID (z.B. Gast) kostet auf jedem Kanal Airtime für ihre
 Fällt `switch` an einer SSID weg, schaltet der nächste Apply ihre Interfaces ein und löscht die
 Zustandsdatei.
 
-**CAPs nach einer Regeländerung neu provisionieren (D94):** Ändern sich die Konfigurationen in den
+**CAPs nach einer Regeländerung neu provisionieren (DW4.3):** Ändern sich die Konfigurationen in den
 Regeln (neue SSID, Aufteilung nach Band, neuer Pin), behalten die festen Interfaces der CAPs die alten,
 bis ihr Radio neu provisioniert wird. Der Apply provisioniert nur die eigenen Radios des CAPsMAN. Er
 erkennt veraltete CAP-Radios und warnt (`CAP-Radio … veraltet`, im Probelauf als `WARNUNG`). Dann zu
@@ -842,14 +842,14 @@ schalten auch, kennen aber keinen Zustand. Jede Abfrage ist eine API-Anmeldung m
 am CAPsMAN – Abfrageintervall nicht unter 5 min.
 Von Hand am CAPsMAN: `/system/script/run cfm-ssid-guest-on`.
 
-**Umstieg vom Stand vor D90:** Das erste Release provisioniert die eigenen Radios des CAPsMAN neu (mit
+**Umstieg vom Stand vor DW4.2:** Das erste Release provisioniert die eigenen Radios des CAPsMAN neu (mit
 `capsmanRadios`, dieses Gerät etwa 3 s ohne WLAN). Die APs behalten ihre dynamischen Interfaces bis
 zum ersten Schalten. Das provisioniert ihre Radios einmal neu (alle APs etwa 3 s weg, wie vorher bei
 jedem Schalten, das Skript braucht dann rund 10 s), danach gibt es nur noch feste Interfaces. In HA
 das Hilfsskript aus diesem Stand verwenden: Das alte las den Zustand aus den Provisioning-Regeln und
-meldet mit D90 immer `on`. Das neue gilt auch für den Stand vor D90.
+meldet mit DW4.2 immer `on`. Das neue gilt auch für den Stand vor DW4.2.
 
-**Zurück zum Stand vor D90:** den vorigen Framework-Stand hochladen und releasen, danach am CAPsMAN
+**Zurück zum Stand vor DW4.2:** den vorigen Framework-Stand hochladen und releasen, danach am CAPsMAN
 die festen Interfaces entfernen und die Radios neu provisionieren (alle APs etwa 3 s weg; die dritte
 Zeile nur mit `capsmanRadios`):
 
@@ -907,7 +907,7 @@ Das dauert je nach Update 5–15 Minuten. Zu beachten:
   unbekannte Seriennummern erscheinen in `$cfmPending` und werden per `$cfmApprove` freigegeben.
 
 **Switch am Zielport noch nicht aufgenommen** (z.B. das erste Gerät hinter einem Bestands-Switch,
-D50): Den Port schaltest du selbst, der Manager erledigt den Rest wie oben.
+DO1.7): Den Port schaltest du selbst, der Manager erledigt den Rest wie oben.
 ```
 $cfmOnboard manual=yes name=ap3 sw=core port=ether7     # sw/port nur als Notiz
 ```
@@ -948,7 +948,7 @@ ein NAT-Käfig, Freigaben) vorher in `hosts/<n>.post.rsc` übernehmen, sonst sin
    Manager-Schlüssel (Inhalt wie `keys` in der Bootstrap-Datei), das MGMT-VLAN-Interface
    `vlan<mgmtVlan>` auf der Bridge `bridge` und die MGMT-Adresse. Die Bridge muss `bridge` heißen
    (vorab umbenennen). VLAN-Interfaces auf ihr mit anderem Namen (z.B. `GAST`) übernimmt cfm über die
-   VLAN-ID und benennt sie in `vlan<VID>` um, Adressen und DHCP bleiben daran (D87); im Probelauf
+   VLAN-ID und benennt sie in `vlan<VID>` um, Adressen und DHCP bleiben daran (DP1.3); im Probelauf
    erscheinen Objekte an einem solchen Interface noch als „neu“.
    Passen mehrere Objekte auf dasselbe Suchmuster – etwa zwei Adressen am MGMT-Interface –, die
    richtige vorab taggen (`comment="cfm:ip:mgmt"`), sonst übernimmt die Rolle die erste gefundene.
@@ -965,7 +965,7 @@ ein NAT-Käfig, Freigaben) vorher in `hosts/<n>.post.rsc` übernehmen, sonst sin
 
 **Gerät routet noch selbst** (z.B. ein Core-Switch mit L3 im Switch-Chip vor dem Router-Umzug):
 Rolle `switch` reicht, die L3-Objekte bleiben unverwaltet. Damit der erste Apply sie nicht
-beschädigt (D43): im Hostfile `cpuVlans` (die Bridge bleibt in den VLANs der eigenen
+beschädigt (DO2.1): im Hostfile `cpuVlans` (die Bridge bleibt in den VLANs der eigenen
 VLAN-Interfaces getaggt), `gw`/`dns`/`ntp` (sonst zeigen Route, DNS und NTP auf das Gerät selbst),
 ggf. `bridgeFrames="admit-all"`; in der `post.rsc` Freigaben in `local-input` für die Dienste, die
 das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – der input-Block der Rolle
@@ -978,7 +978,7 @@ das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – de
   Bootstrap und `$cfmEnroll`. Die alte Seriennummer und ihr Schlüssel werden ersetzt.
 * **Zurückgesetztes Gerät:** einfach erneut `$cfmOnboard … name=<name>`. Das Aufkleber-Passwort
   bleibt dafür im Vault gespeichert.
-* **AP abgebaut oder getauscht:** Seine festen WLAN-Interfaces (D90) bleiben am CAPsMAN stehen
+* **AP abgebaut oder getauscht:** Seine festen WLAN-Interfaces (DW4.2) bleiben am CAPsMAN stehen
   (`<Identity>-2g` usw., inaktiv), ein Ersatzgerät bekommt eigene. Die alten von Hand entfernen:
   `/interface/wifi/remove [find where !dynamic and name~"^<identity>-"]` (auf Hardware noch nicht
   geprüft, TODO 58).
@@ -991,9 +991,9 @@ das Gerät für andere erbringt (DHCP UDP 67, NTP 123, SNMP 161, DNS …) – de
 
 Alle Befehle laufen im Terminal des Primary-Managers nach `/system script run cfm-mgr`.
 Die Site-Daten unter `cfm/work/` (`global.rsc`, `vlans.rsc`, …, `hosts/`, `authorized_keys.<user>`)
-führt der Manager (D72). Du bearbeitest sie auf einem dieser Wege:
-* **im Browser mit dem cfm-Editor** (D73): einmal `tools/editor/install.html` öffnen und den Knopf
-  „cfm“ in die Lesezeichen-Leiste ziehen (D91). Dann WebFig des Managers öffnen, „cfm“ anklicken, mit
+führt der Manager (DT2.2). Du bearbeitest sie auf einem dieser Wege:
+* **im Browser mit dem cfm-Editor** (DT3.1): einmal `tools/editor/install.html` öffnen und den Knopf
+  „cfm“ in die Lesezeichen-Leiste ziehen (DT3.2). Dann WebFig des Managers öffnen, „cfm“ anklicken, mit
   einem RouterOS-User der Gruppe full anmelden und „cfm-Editor“ wählen (der Browser merkt sich die
   Anmeldung bis zum Schließen, auch für cfm-Monitor und cfm-DNS). Links die Datei wählen, ändern,
   Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
@@ -1061,7 +1061,7 @@ unberührt; die inhaltliche Prüfung läuft gegen das Verzeichnis, rollenabhäng
 den Rollen aus dem Inventar.
 Das Ergebnis liegt auch in `cfm/state/<name>/plan.txt`.
 
-**Effektive Konfiguration eines Geräts** (D61):
+**Effektive Konfiguration eines Geräts** (DU1.2):
 
 ```
 $cfmShow host=sw1              # Daten: Rollen, Ring, Hostfile, Ports mit Profil, Bonds, VLANs, WLAN, Leases
@@ -1074,7 +1074,7 @@ Ohne `objects` rechnet der Manager allein, auch für Geräte, die gerade nicht e
 verlangten Objekte mit Schlüssel und Sollwerten (lange Werte gekürzt, ohne `post.rsc`); ein Agent
 vor diesem Stand liefert stattdessen den normalen Plan.
 
-**Unterschiede zwischen zwei Ständen** (D61):
+**Unterschiede zwischen zwei Ständen** (DU1.2):
 
 ```
 $cfmDiff                       # letztes Release -> work/: was ändert das nächste Release?
@@ -1109,23 +1109,23 @@ Datendateien (`global`, `vlans`, `profiles`, `wifi`, `wireguard`, `leases`, `mla
 | Vorher sehen, was sich ändert | `$cfmDiff` (Dateien und Zeilen), `$cfmPlan host=<name>` (Objekte auf dem Gerät) |
 | Effektive Konfiguration eines Geräts | `$cfmShow host=<name>` bzw. `objects=yes` |
 | Feste Adresse und DNS-Name für ein Gerät im VLAN | `leases.rsc` → Release (nur mit Rolle `router`) |
-| Uplink aus zwei Kabeln (LACP) | Hostfile `bonds` und Profil unter `ports` auf beiden Seiten → Release beider Geräte zugleich (D74) |
-| Server oder Switch redundant an zwei Switches | Paar in `mlag.rsc`, Ports aus den Hostfiles nehmen, Gegenstelle mit LACP-Bond → Release mit `all=yes` im Wartungsfenster (D75) |
-| Werbung/Tracker blocken, Ausnahme eintragen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → Release (D101) |
-| Clients sollen gesperrte Domains selbst sehen und freischalten | `dns.rsc` `self` (Zonen, `deny`), `$cfmSecret key=user.dns`, Release, Secret-Push; Lesezeichen `cfm` → cfm-DNS (D102) |
+| Uplink aus zwei Kabeln (LACP) | Hostfile `bonds` und Profil unter `ports` auf beiden Seiten → Release beider Geräte zugleich (DP2.1) |
+| Server oder Switch redundant an zwei Switches | Paar in `mlag.rsc`, Ports aus den Hostfiles nehmen, Gegenstelle mit LACP-Bond → Release mit `all=yes` im Wartungsfenster (DP2.2) |
+| Werbung/Tracker blocken, Ausnahme eintragen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → Release (DN3.1) |
+| Clients sollen gesperrte Domains selbst sehen und freischalten | `dns.rsc` `self` (Zonen, `deny`), `$cfmSecret key=user.dns`, Release, Secret-Push; Lesezeichen `cfm` → cfm-DNS (DN3.2) |
 | Syslog aller Geräte zentral sammeln, DNS-Log eine Woche aufheben, in LibreNMS je Gerät ansehen | Graylog einrichten (8.15), `global.rsc` `syslog`, ggf. `dns.rsc` `log.syslog=yes` → Release |
-| IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (D76) |
-| Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (D76) |
+| IoT-Geräte voneinander trennen | `"isolate"="yes"` am VLAN, Ausnahmen per `isolateAllow` (Namen aus `leases.rsc`) → Release (DP3.1) |
+| Freigabe nur für bestimmte Ports | Eintrag in `allow` mit `":tcp/443"` bzw. `":udp/123"` → Release (DP3.1) |
 | IoT-Gerät soll selbst einen Dienst im LAN erreichen (z.B. MQTT-Broker) | Liste in `allow` mit Adresse und Port, z.B. `"broker"={"192.168.20.30:tcp/1883"}`, `policy` `"iot"="allow:broker"` ohne NAT-Kennzeichen → Release. Abfragen aus dem LAN ins IoT-Netz brauchen keine Freigabe (`lan` → `iot`) |
-| Gast-WLAN begrenzen | `"limit"="50M/10M"` (ganzes Netz) und/oder `"limitClient"="10M/2M"` (je Client) an der VLAN-Zeile → Release (D97). Wirkt auf neue Verbindungen; Probe: `/queue/simple/print stats` am Router |
-| Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN (nur diese SSID, die übrigen senden weiter, D90), z.B. aus Home Assistant (6.8) |
+| Gast-WLAN begrenzen | `"limit"="50M/10M"` (ganzes Netz) und/oder `"limitClient"="10M/2M"` (je Client) an der VLAN-Zeile → Release (DR2.7). Wirkt auf neue Verbindungen; Probe: `/queue/simple/print stats` am Router |
+| Gast-WLAN nur bei Bedarf | `"switch"="off"` (+ `autoOff`) an der SSID → Release; schalten per `cfm-ssid-<key>-on/-off` am CAPsMAN (nur diese SSID, die übrigen senden weiter, DW4.2), z.B. aus Home Assistant (6.8) |
 | RouterOS aktualisieren | `$cfmUpgrade ver=<x.y.z> ring=0`, später die anderen Ringe (siehe 8.6) |
 | Geräteschlüssel erneuern | `$cfmRekey host=<name>` bzw. `all=yes` |
-| SFTP-/Host-Schlüssel erneuern | `$cfmRekey host=<name> sftp=yes` bzw. `all=yes sftp=yes` (10, D67) |
+| SFTP-/Host-Schlüssel erneuern | `$cfmRekey host=<name> sftp=yes` bzw. `all=yes sftp=yes` (10, DS2.5) |
 | Archiv verkleinern | `$cfmArchivePrune keep=5` (sonst automatisch mit `archiveKeep`) |
 | Verkabelung prüfen, Netzplan | `$cfmLinks`; Soll einfrieren mit `accept=yes`, Graphviz/CSV mit `export=yes` (siehe 8.7) |
 | Zweite Passphrase mit eigenem VLAN | `ppsk` in `wifi.rsc` → Release → `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
-| Ein Gerät im WLAN in ein anderes VLAN (per MAC) | Lease in `leases.rsc` im Ziel-VLAN mit `"wifi"="yes"` → Release (D95) |
+| Ein Gerät im WLAN in ein anderes VLAN (per MAC) | Lease in `leases.rsc` im Ziel-VLAN mit `"wifi"="yes"` → Release (DW2.6) |
 | WLAN-Kanäle ansehen | `$cfmChannels` |
 | Clients je AP und Roaming verfolgen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (8.10) |
 | Gerät finden: wo hängt MAC, IP oder Name? | `$cfmFind <text>` bzw. cfm-Monitor, Reiter Suche; was hängt an einem Port: `$cfmFind host=<gerät> port=<port>`; schwache WLAN-Clients: `$cfmFind signal=-75` (8.11) |
@@ -1137,17 +1137,17 @@ Datendateien (`global`, `vlans`, `profiles`, `wifi`, `wireguard`, `leases`, `mla
   `bad vN` = Version N ist gescheitert, der Agent wendet sie nicht erneut an (vorn in der Spalte;
   ausgeblendet, sobald eine neuere Version ok läuft; `$cfmPush host=<n> force=yes` wendet sie trotzdem an und
   löscht `bad`, wenn es klappt), `pend vN`, `fw X!` = Firmware X trotz Neustart nicht aktiv, `WLAN lokal` = AP ohne Verbindung zum CAPsMAN,
-  sendet nur die lokale Kopie der `master`-SSID, D46; `nicht aufgenommen` = Inventar-Eintrag ohne
+  sendet nur die lokale Kopie der `master`-SSID, DW1.6; `nicht aufgenommen` = Inventar-Eintrag ohne
   Geräteschlüssel, z.B. Platzhalter oder per `$cfmRegister` vorgemerkt – solche Geräte stößt der
-  Manager nicht an, D49), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
+  Manager nicht an, DO2.2), Secrets-Version, RouterOS-Version (bei offenem Auftrag mit Zielversion)
   und das Alter der letzten Meldung. Weicht bei einem Gerät Ist von Soll ab oder steht ein Apply aus,
   holt der Befehl dessen Status vorher selbst ab („frisch abgeholt: …“, je Gerät höchstens einmal in der
-  Minute, D89); alle übrigen Zeilen stammen aus dem letzten Manager-Tick.
+  Minute, DU1.5); alle übrigen Zeilen stammen aus dem letzten Manager-Tick.
 * Die aktive Config jedes Geräts liegt in `cfm/state/<name>/export.rsc`, der letzte Audit in
   `audit.txt`, beides auch im Git.
 * Logs: auf jedem Gerät `/log print where message~"cfm"`, zentral per Syslog (`syslog`), wenn ein
   Syslog-Server mitschreibt. Konfig-Änderungen und Anmeldungen (`system,info`) stehen nur dort, nicht im
-  RAM-Puffer (`logMemory`, D79) – ohne Syslog-Server gehen sie verloren (`"logMemory"="info"` holt sie zurück).
+  RAM-Puffer (`logMemory`, DU3.2) – ohne Syslog-Server gehen sie verloren (`"logMemory"="info"` holt sie zurück).
 * `$cfmCollect host=<name>` holt Status und Export sofort statt beim nächsten Tick.
 
 ### 8.6 RouterOS-Updates
@@ -1168,14 +1168,14 @@ $cfmUpgrade ver=7.25.1 host=core via=internet           # eingebautes Update, Ge
   alle Architekturen der betroffenen Geräte von download.mikrotik.com nach `pkgPath` und prüft die
   NPK-Kennung am Dateianfang. Fehlt eines oder ist es ungültig, startet nichts; die Meldung nennt
   alle fehlenden Dateien auf einmal. Architektur, Pakete und freien Platz meldet jedes Gerät in
-  seinem Status. Nicht aufgenommene Inventar-Einträge überspringt `ring=`/`all=yes` (D49).
+  seinem Status. Nicht aufgenommene Inventar-Einträge überspringt `ring=`/`all=yes` (DO2.2).
 * Vor dem Auftrag zeigt eine Tabelle je Gerät Version, Architektur, Bedarf, freien Platz und
   Urteil. `check=yes` zeigt nur diese Tabelle und die fehlenden Pakete (mit Download-URL und
-  Ablageort) – ohne Download und ohne Auftrag, auch auf dem Backup-Manager (D52).
+  Ablageort) – ohne Download und ohne Auftrag, auch auf dem Backup-Manager (DV1.4).
 * **Platz:** Passen die Pakete plus 1 MB Reserve nicht in den gemeldeten freien Platz, bekommt das
   Gerät keinen Auftrag („zu wenig Platz … kein Auftrag“), die übrigen schon. Der Agent prüft vor
   dem Download noch einmal und lädt dann nichts („Platz fehlt: … KB frei, … KB nötig“ in
-  `$cfmUpgrade`); nach dem Aufräumen einen neuen Auftrag erteilen (D51). Geräte mit
+  `$cfmUpgrade`); nach dem Aufräumen einen neuen Auftrag erteilen (DV1.3). Geräte mit
   `flash/`-Verzeichnis melden keinen Wert (ihre Wurzel liegt im RAM) und werden nicht geprüft.
 * Die Geräte holen die Pakete per SFTP vom Manager, prüfen die Größe und starten sofort bzw. zum
   Zeitpunkt `at` neu. RouterOS prüft die Signatur der Pakete beim Installieren.
@@ -1201,7 +1201,7 @@ $cfmUpgrade ver=7.25.1 host=core via=internet           # eingebautes Update, Ge
   laufenden Version darfst du von Hand löschen.
 * **Geräte mit 16 MB Flash** (hEX, CRS328 …) haben oft nur 2–3 MB frei, `routeros` braucht ~12 MB:
   Dort lehnt `$cfmUpgrade` den normalen Auftrag ab (TODO 38). Für sie gibt es das **eingebaute
-  Update** (D63, `via=`): Das Gerät lädt selbst und kommt mit wenig Flash zurecht (RouterOS lädt dann
+  Update** (DV1.5, `via=`): Das Gerät lädt selbst und kommt mit wenig Flash zurecht (RouterOS lädt dann
   in den RAM). Der Manager braucht dafür keine Pakete und prüft keinen Platz.
   * `via=internet`: Das Gerät braucht selbst Internet (und DNS).
   * `via=mirror mirror=<IP>`: Für Geräte ohne Internet. Auf einem Rechner, den die Geräte
@@ -1245,8 +1245,8 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.
 * `$cfmWifiScan [host=<ap>] [band=2] [duration=10s]` lässt alle APs nacheinander auf ihren Radios
-  des Bands scannen (D56). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am AP ab; cfm scannt
-  deshalb auf dem CAPsMAN am Interface `<AP>-<Band>g` (D60), Radios ohne CAPsMAN direkt am AP.
+  des Bands scannen (DW3.2). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am AP ab; cfm scannt
+  deshalb auf dem CAPsMAN am Interface `<AP>-<Band>g` (DW3.3), Radios ohne CAPsMAN direkt am AP.
   Funkt der CAPsMAN selbst mit (`capsmanRadios`), scannt er über sein Interface `<Name>-<Band>g`
   mit und steht im Vorschlag; ohne dieses Interface (Radios aus) bleibt er draußen.
   Unter 10 s Dauer liefert der CAPsMAN keine Ergebnisse, kürzere Angaben hebt der Befehl auf 10 s
@@ -1260,7 +1260,7 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   ihre Werte und müssen nicht erneut vom Kanal). Liegt dort eine Messung eines anderen Bands,
   ersetzt `host=` sie ganz – Messungen, die du behalten willst, vorher wegkopieren.
 
-#### Kostenmodell des Kanal-Vorschlags (D56)
+#### Kostenmodell des Kanal-Vorschlags (DW3.2)
 
 Der Vorschlag gilt nur für 2,4 GHz (bei `band=5`/`6` zeigt der Befehl nur die Messung). Er bewertet
 jeden möglichen Plan – eine Frequenz je AP – mit einer Kostenzahl und nennt den billigsten. Die
@@ -1302,7 +1302,7 @@ Anhaltspunkt nehmen und im Betrieb vergleichen (Paketverlust und Abbrüche auf 2
 wertet einen fremden AP auf demselben Kanal als die stärkste Störung; in der Praxis teilen sich
 Netze auf demselben Kanal die Sendezeit geordnet, halb überlappende stören sich eher.
 
-#### Andere Funknetze im 2,4-GHz-Band (D80)
+#### Andere Funknetze im 2,4-GHz-Band (DW3.5)
 
 Zigbee, Thread, Bluetooth und Funkbrücken wie Milight sieht der Scan nicht – die MikroTik-Radios
 messen nur WLAN. Du trägst sie in `wifi.rsc` unter `others` ein, `$cfmWifiScan` rechnet sie in die
@@ -1360,7 +1360,7 @@ MGMT-VLAN. Siehe `wireguard.rsc`.
 2. Einmalig ein eigenes Subnetz in `wireguard.rsc` → `net` festlegen (darf keins von `vlans.rsc`
    sein, `$cfmCheck` prüft das). Dann je Peer eintragen: `"peers"={"<name>"={"pubkey"="<PUBKEY>";
    "addr"=<Host-Teil in net, frei>}}` → `$cfmRelease` + `$cfmPromote` bis zum Ring des Routers.
-3. Schlüssel des Routers (D84): Alle Router haben denselben, Vault-Eintrag `wg.admin`. Beim ersten
+3. Schlüssel des Routers (DR4.2): Alle Router haben denselben, Vault-Eintrag `wg.admin`. Beim ersten
    Release mit Peers übernimmt der Manager den Schlüssel eines Routers, der `wg-admin` schon hat
    (bestehende Clients behalten den Server-Schlüssel), sonst erzeugt er einen; verteilt wird er
    per Secret-Push. Ein Router mit anderem Schlüssel (neu angelegt, von Hand geändert) fordert beim
@@ -1413,7 +1413,7 @@ o.ä.) – sonst überlagert die Route das eigene lokale Netz des Laptops, falls
 ist. Bei mehreren WireGuard-Verbindungen (z.B. weitere Standorte) auf sich nicht überschneidende
 `allowed-ips` achten.
 
-### 8.9 Benachrichtigungen (D66)
+### 8.9 Benachrichtigungen (DU4.1)
 
 Der Primary-Manager meldet Zustandswechsel per HTTP-POST an `global.rsc` `notify.url`, am Ende jedes
 Manager-Ticks (`mgrTick`). Gemeldet wird jeweils einmal beim Eintreten (`"state":"on"`) und einmal,
@@ -1423,13 +1423,13 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 |---|---|
 | `apply` | Gerät meldet einen Apply-Fehler, Rollback (`failed …`, `rollback-watchdog`) oder eine noch aktuelle `bad`-Version |
 | `stumm` | kein neuer Status seit `notify.stale` (Standard 30 min; Uhr des Geräts wie bei `$cfmStatus`) |
-| `wlan` | AP läuft im lokalen Fallback (kein CAPsMAN verbunden, D46) |
+| `wlan` | AP läuft im lokalen Fallback (kein CAPsMAN verbunden, DW1.6) |
 | `update` | RouterOS-Update fehlgeschlagen, Fenster verpasst oder zu wenig Platz |
 | `lizenz` | CHR-Lizenz des Managers: `next-renewal-at` mindestens einen Tag überfällig, oder `deadline-at` näher als `notify.licWarn` (Standard 14 Tage) |
 | `onboard` | Onboarding gescheitert oder abgelaufen (`"state":"once"`, kein „wieder ok“) |
 | `primary` | nur vom **Backup-Manager**: Spiegel-Abruf per SFTP beim Primary scheitert seit `notify.stale` (`device` = Primary) |
 | `primary-tick` | nur vom Backup-Manager: Primary erreichbar, aber der neueste gespiegelte Gerätestatus ist älter als `notify.stale` – sein Manager-Tick steht |
-| `dnsreq` | nur von einem **Router** mit DNS-Selbstbedienung (D102, 8.14), direkt und sofort, nicht über den Manager-Tick: ein Client hat eine Domain freigeschaltet (`result` `allowed`), verlängert (`extended`) oder wurde wegen `self.deny` abgewiesen (`denied`); `"state":"once"`, `level` `action`, dazu `domain`, `client`, `result`, `until` (Ablauf, Unixzeit), `key` `dnsreq:<Domain>`. Ohne Wiederholung: Kommt sie nicht an, steht nur im Log des Routers `cfm: DNS-Freischaltung: Meldung nicht zugestellt: …` |
+| `dnsreq` | nur von einem **Router** mit DNS-Selbstbedienung (DN3.2, 8.14), direkt und sofort, nicht über den Manager-Tick: ein Client hat eine Domain freigeschaltet (`result` `allowed`), verlängert (`extended`) oder wurde wegen `self.deny` abgewiesen (`denied`); `"state":"once"`, `level` `action`, dazu `domain`, `client`, `result`, `until` (Ablauf, Unixzeit), `key` `dnsreq:<Domain>`. Ohne Wiederholung: Kommt sie nicht an, steht nur im Log des Routers `cfm: DNS-Freischaltung: Meldung nicht zugestellt: …` |
 | `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), wenn ein aufgenommenes Gerät älter ist (`"on"`, offen in `meta/notify.dat` `roso`). `"off"`, sobald kein Gerät mehr älter ist (in jedem Tick geprüft, also kurz nach dem letzten `$cfmUpgrade`), oder `"off"` mit „überholt durch …“, wenn eine neuere Version kommt, bevor alle aktualisiert sind – dann erst danach das `"on"` der neuen. Absichtlich ausgelassene Geräte halten die Meldung offen: beim Empfänger abhaken (TODO 64) |
 
 Zusätzlich trägt jede Meldung `level`, `device` und `message` für einfache Empfänger: `level` ist
@@ -1452,13 +1452,13 @@ Internet. Einrichtung in Home Assistant: [home-assistant.md](home-assistant.md#7
 Zum Ausprobieren ohne Home Assistant: `tools/chr-lab/notify-sink.py <port> <datei> --bind 0.0.0.0`
 schreibt jede Meldung als JSON-Zeile.
 
-### 8.10 WLAN-Clients und Roaming ansehen (D77)
+### 8.10 WLAN-Clients und Roaming ansehen (DU2.2)
 
 Ohne Home Assistant (6.7) zeigt das Lesezeichen **cfm-Monitor** (bis 2026-10-16 „cfm-WLAN“) im Reiter
 **WLAN** die Clients aller APs direkt in WebFig des CAPsMAN. Der Reiter **Suche** gehört zu 8.11.
 
 1. Einmalig `tools/editor/install.html` im Browser öffnen und den Knopf „cfm“ in die
-   Lesezeichen-Leiste ziehen (dasselbe Lesezeichen wie für den cfm-Editor, 8.1, D91).
+   Lesezeichen-Leiste ziehen (dasselbe Lesezeichen wie für den cfm-Editor, 8.1, DT3.2).
 2. WebFig des **CAPsMAN** öffnen (Gerät mit Rolle `capsman`, ohne sie der Primary-Manager), „cfm“
    anklicken und anmelden – ein User mit Leserecht genügt; auf dem Manager „cfm-Monitor“ wählen. Auf einem anderen Gerät nennt
    der Reiter WLAN den CAPsMAN (aus dem Manifest des Geräts) mit Link zu dessen WebFig.
@@ -1477,7 +1477,7 @@ des Geräts (Name aus `leases.rsc`, sonst der Hostname des Clients), sonst steht
 auf den Namen vergibt einen eigenen (nur im Browser). Zum Roaming-Test die Ansicht beim Durchlaufen
 des Gebäudes offen lassen, Abfrage alle 5 s.
 
-### 8.11 Geräte finden (D81)
+### 8.11 Geräte finden (DU1.4)
 
 `$cfmFind` beantwortet „wo hängt dieses Gerät?“. Der Manager fragt dafür alle aufgenommenen Geräte
 live per SSH ab: die gelernten MACs der Bridge, die ARP-Tabellen, die DHCP-Leases und auf dem CAPsMAN
@@ -1559,10 +1559,10 @@ Fällt `snmp` weg, entfernt der nächste Apply die Community; SNMP selbst bleibt
 antwortet aber niemandem mehr (`public` bleibt aus). Syslog: `syslog` auf die MGMT-Adresse des Servers,
 `syslogFormat` `syslog` (Standard). Mit Graylog als Syslog-Server zeigt LibreNMS dessen Meldungen je Gerät (8.15).
 
-### 8.13 Internet-Router im LAN: VIP als Gateway mit `asymRouting` (D100)
+### 8.13 Internet-Router im LAN: VIP als Gateway mit `asymRouting` (DR3.2)
 
 **Ausgangslage.** Steht der Internet-Router (z.B. ein DSL- oder Kabel-Router) im selben Netz wie die Clients und ist
-dieses Netz zugleich das WAN der cfm-Router (D86), behalten die Clients ihn als Gateway (`dhcpGw`, D82). Der
+dieses Netz zugleich das WAN der cfm-Router (DR3.1), behalten die Clients ihn als Gateway (`dhcpGw`, DN1.2). Der
 Internet-Router reicht Verkehr in die übrigen VLANs über statische Routen an die VIP weiter. Fällt er aus,
 sind auch die Wege zu den internen Netzen weg – er ist ein Single Point of Failure für das ganze Haus.
 
@@ -1618,7 +1618,7 @@ ins Internet (vorher auf den Internet-Router zurückstellen). Der saubere Endzus
 Transfernetz für den Internet-Router (dann ist die VIP für alle das Gateway, auch für einen zweiten
 Internet-Anschluss); dort entfällt der Schalter.
 
-### 8.14 DNS: Sperren ansehen und freischalten (D101, D102)
+### 8.14 DNS: Sperren ansehen und freischalten (DN3.1, DN3.2)
 
 Die Router sperren Werbung und Tracker nach `dns.rsc` (`adlists`, 4. Datenmodell). Klemmt dadurch eine
 Seite, gibt es drei Wege:
@@ -1715,7 +1715,7 @@ Kommandozeile.
 **Was ankommt:** `source` ist die Identity des Geräts, `level` die Schwere aus dem Topic (warning = 4,
 info = 6), Facility `daemon`; die Meldung beginnt mit der Identity. Das Topic selbst überträgt RouterOS
 nicht – Streams unterscheiden deshalb am Text. Umlaute und andere Nicht-ASCII-Zeichen ersetzt RouterOS beim
-Versand durch `?`; cfm schreibt seine Log-Meldungen deshalb in ASCII (D103). Konfig-Änderungen stehen mit
+Versand durch `?`; cfm schreibt seine Log-Meldungen deshalb in ASCII (DU3.4). Konfig-Änderungen stehen mit
 Benutzer und Befehl im Syslog, Passwörter und Schlüssel darin schwärzt RouterOS (10). LibreNMS ordnet die Meldungen über den sysName zu (Groß-/Kleinschreibung egal). **Probe:** auf einem Gerät `:log warning "Test Graylog"`, nach wenigen Sekunden
 steht die Zeile in LibreNMS beim Gerät (Logs → Graylog) und in Graylog unter Search.
 
@@ -1729,10 +1729,10 @@ steht die Zeile in LibreNMS beim Gerät (Logs → Graylog) und in Graylog unter 
 | Gerät nach dem Apply unerreichbar | Watchdog rollt nach 5 min zurück, Ergebnis `rollback-watchdog` | Ursache (Ports/VLANs) im Hostfile beheben |
 | Fehlerhafte Version schon in Ring 0 | Ringe 1 und 2 bekommen sie nicht | reparieren oder `$cfmRollback ver=<N>` |
 | Zurück auf einen alten Stand | – | `$cfmRollback ver=<N> [all=yes]`. **Achtung:** überschreibt `work/` mit dem alten Stand |
-| Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (D67) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
+| Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (DS2.5) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
 | Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
-| Ein Switch eines MLAG-Paars fällt aus | doppelt angebundene Geräte laufen über den anderen Knoten weiter (LACP, D75; auf Hardware noch nicht geprüft) | Gerät tauschen bzw. aufnehmen (7.4), beide Knoten im selben Ring lassen |
-| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, D54, auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
+| Ein Switch eines MLAG-Paars fällt aus | doppelt angebundene Geräte laufen über den anderen Knoten weiter (LACP, DP2.2; auf Hardware noch nicht geprüft) | Gerät tauschen bzw. aufnehmen (7.4), beide Knoten im selben Ring lassen |
+| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, DW1.8, auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
 | Release stoppt mit „Prüfung“ | nichts wurde ausgerollt | Fehler beheben oder bewusst `force=yes` |
 | RouterOS-Update schlägt fehl | Gerät bleibt auf der alten Version, Status `fehlgeschlagen`, kein weiterer Neustart | Log am Gerät lesen, `$cfmUpgrade cancel=yes host=<name>`, neuen Auftrag erteilen |
@@ -1755,7 +1755,7 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   seinen Geräteschlüssel kennt (`ssh-exec` prüft keine Host-Schlüssel). Ein Gerät, das sich nur
   unter der IP ausgibt, bekommt keine Secrets. `$cfmRekey` erneuert Geräteschlüssel, zum Beispiel
   bei Verdacht auf eine Kompromittierung.
-* **SFTP-/Host-Schlüssel erneuern (D67):** `$cfmRekey host=<n> sftp=yes` (bzw. `all=yes sftp=yes`,
+* **SFTP-/Host-Schlüssel erneuern (DS2.5):** `$cfmRekey host=<n> sftp=yes` (bzw. `all=yes sftp=yes`,
   Manager zuletzt) erzeugt auf dem Gerät einen neuen ed25519-Host-Key – er ist zugleich sein
   SFTP-Schlüssel am Manager. Deine SSH-Clients melden den Host-Key danach einmal als geändert
   (`ssh-keygen -R <ip>`). Bei einem Manager kommt der neue Schlüssel zuerst auf **alle** aufgenommenen
@@ -1769,10 +1769,10 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
 * **Minimale Firewall:** Switches, APs und Manager lassen nur Antworten, ICMP und Verbindungen aus
   den Management-Netzen zu (MGMT, `mgmtAccess`, `mgmtExtra`), Manager zusätzlich DHCP für das
   Onboarding. MNDP mit Quelle `0.0.0.0` (Bridge-Ports ohne Adresse, z.B. hinter den Karten einer VM)
-  wird still verworfen (D78), der Rest begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
+  wird still verworfen (DR2.5), der Rest begrenzt geloggt (`cfm-drop`) und verworfen. Für IPv6 gilt auf allen
   Geräten: nur Antworten, ICMPv6 und Link-Local aus dem MGMT-VLAN. Router behalten ihre
   Zonen-Firewall.
-* **Syslog (D103):** Er geht per UDP im Klartext übers MGMT-VLAN (8.15). Konfig-Änderungen stehen darin mit
+* **Syslog (DU3.4):** Er geht per UDP im Klartext übers MGMT-VLAN (8.15). Konfig-Änderungen stehen darin mit
   Benutzer und Befehl; Passwörter, Passphrasen, SNMP-Passwörter und WireGuard-Schlüssel schwärzt RouterOS.
   **Dateiinhalte nicht:** `/file/add`/`/file/set` mit `contents=` landen vollständig im Log. cfm überträgt
   deshalb keine Schlüssel als Dateiinhalt (der Rekey eines Managers exportiert den Host-Key neu) und kopiert
@@ -1794,7 +1794,7 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
 * **Onboarding:** Das Onboarding-VLAN ist nur während einer Sitzung an genau einem Port
   untagged und erreicht nur die MikroTik-Update-Server. RouterOS prüft bei `ssh-exec`/`fetch`
   keine Host-Schlüssel. Sorge deshalb dafür, dass niemand anderes im Onboarding-VLAN hängt.
-* **DNS-Selbstbedienung (D102):** Der gemeinsame User `dns` darf nichts ändern, aber per REST alles
+* **DNS-Selbstbedienung (DN3.2):** Der gemeinsame User `dns` darf nichts ändern, aber per REST alles
   lesen, was die Gruppe `read` zeigt: die Konfiguration des Routers ohne Passwörter und Schlüssel
   (`!sensitive`) und das ganze DNS-Log aller Clients – die Beschränkung auf die eigene IP macht nur das
   Lesezeichen. Anmeldung über `http`, also im Klartext im VLAN. Passwort deshalb nur an Leute geben, denen
@@ -1803,7 +1803,7 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
 * **`vaultpw`** gehört offline in einen Passwortmanager, nicht auf den Manager allein.
 * **Git-Host:** nur Forced Command für den Manager-Schlüssel, der Lese-User `cfm-git` am Manager.
 * **Persönliche Admin-SSH-Keys:** optional über `authorized_keys.<user>` je Person (siehe
-  Datenmodell, D65). Das Passwort gilt danach nur noch für Winbox/WebFig, SSH verlangt den Key. Gibt
+  Datenmodell, DS3.3). Das Passwort gilt danach nur noch für Winbox/WebFig, SSH verlangt den Key. Gibt
   es die Datei eines Users, entfernt jeder Apply dessen Keys, die nicht drinstehen – auch von Hand
   hinzugefügte. Entzug je Person: Zeile löschen bzw. Datei leeren, dann `$cfmRelease`.
 
@@ -1835,11 +1835,11 @@ Apply ihre Werte.
 
 Neue Menüs, die aufgeräumt werden sollen, gehören in die Liste `cfmMenus` in `lib/lib.rsc`. Kennt ein
 Menü kein `comment` (z.B. `/queue/type`), kommt es zusätzlich in `cfmByName`: Dort ist `k` der Name, der
-mit `cfm-` beginnen muss (D97).
+mit `cfm-` beginnen muss (DR2.7).
 Der WLAN-Teil (`$cfmWifiRender`, `$cfmCapsmanOn` …) steht in `lib/lib-wifi.rsc` und ist nur auf
-Geräten mit Rolle `ap`, `capsman` oder `manager` geladen (D68).
+Geräten mit Rolle `ap`, `capsman` oder `manager` geladen (DG4.3).
 
-**Feature-Module (D104):** Code, den nur Sites mit einem bestimmten Feature brauchen, gehört in eine
+**Feature-Module (DG4.6):** Code, den nur Sites mit einem bestimmten Feature brauchen, gehört in eine
 eigene Datei `lib/<rolle>.<feature>.rsc` (Name nur aus `a-z`, `0-9`, `-`). Das Manifest liefert sie
 jedem Gerät mit dieser Rolle (`base.*` allen), ohne sie zu importieren; die Rolle lädt sie per
 `$cfmFeat "<rolle>.<feature>"` nur, wenn das Gerät das Feature nutzt – oder solange Reste aufzuräumen
@@ -1890,9 +1890,9 @@ Diese Fallen zeigen sich erst beim echten Laden per `/import`, nicht beim Syntax
 * Geräteabhängige Menüs (z.B. `/system routerboard`) in Leerzeichen-Schreibweise, sonst ist das
   Fehlen auf CHR/x86 ein nicht abfangbarer Syntaxfehler.
 
-Die vollständige Liste steht im Kopf von `cfm/work/lib/lib.rsc` und in [DECISIONS.md](DECISIONS.md#im-chr-labor-verifizierte-routeros-eigenheiten-7242),
+Die vollständige Liste steht im Kopf von `cfm/work/lib/lib.rsc` und in [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#im-chr-labor-verifizierte-routeros-eigenheiten-ab-7242),
 die auf Hardware gefundenen Eigenheiten (z.B. `find` liefert auch dynamische Einträge)
-[gleich darunter](DECISIONS.md#auf-hardware-verifizierte-routeros-eigenheiten).
+[gleich darunter](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten).
 
 **Prüfskript:** `tools/rsc-check.py` findet diese Fallen ohne Gerät, dazu unausgeglichene
 Klammern, zu große Dateien und Dotfiles unter `work/`:
@@ -1935,10 +1935,10 @@ cd tools/chr-lab
 `e2e-vrrp.sh` startet fünf VMs: cm1 (Manager, zentraler Switch, dritter Router), r1 und r2 als
 Router, vm4 als nicht verwalteter Internet-Router mit je einer VRF als Client in IoT und Gast, vm5
 als Switch mit eigenem Ausgang über den Internet-Router (Daten in `seed-vrrp/`). Geprüft werden VIPs
-und DHCP nur auf dem Master, DHCP und DNS der Router im LAN, das zugleich ihr WAN ist (D86, DHCP-Client
+und DHCP nur auf dem Master, DHCP und DNS der Router im LAN, das zugleich ihr WAN ist (DR3.1, DHCP-Client
 auf vm4), die Zonen-Policy samt fester NAT-Adresse der Gäste, `mgmtExtra` bis ins
 MGMT-VLAN, WireGuard über die VIP, Ausfall und Rückkehr des Masters, ein kurzer Master-Ausflug eines
-Backups ohne DHCP/WireGuard (D85), der Neustart des Masters und der Ausfall von zwei Routern.
+Backups ohne DHCP/WireGuard (DR1.5), der Neustart des Masters und der Ausfall von zwei Routern.
 `e2e-mlag.sh` verbindet fünf VMs frei per `LABLINKS` (Paare von VM-Nummern, ein Paar je Kabel; ohne
 Angabe Stern) und nutzt e1000-Karten (`LABNIC=e1000`): Mit virtio meldet RouterOS keine
 Geschwindigkeit, LACP bündelt dann nur einen Port. sw1/sw2 bilden das MLAG-Paar, srv1 hängt per LACP
@@ -1957,7 +1957,7 @@ Die Lab-Hostfiles setzen `adminUser="keep"`, weil `lab.sh` sich als `admin` anme
 Der Update-Schritt lädt ein RouterOS-Paket (ca. 20 MB) aus dem Internet; dafür legt der Test auf
 cm1 zwei Routen über `ether1` an. SFTP zwischen den CHRs ist langsam (etwa 100 KB/s), der Schritt
 dauert deshalb einige Minuten. Danach aktualisiert sich cm2 mit dem eingebauten Update über
-`tools/upgrade-mirror.py` (D63): Die VMs erreichen den Spiegel als `10.0.2.100:80`, `lab.sh` leitet
+`tools/upgrade-mirror.py` (DV1.5): Die VMs erreichen den Spiegel als `10.0.2.100:80`, `lab.sh` leitet
 das per QEMU auf `127.0.0.1:LABPORT+90` des Rechners weiter (braucht `nc`); der Zwischenspeicher
 liegt unter `$LAB/mirror`.
 
@@ -1978,33 +1978,33 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmArchivePrune [keep=<n>]` | alte Versionen löschen (automatisch nach jedem Release) |
 | `$cfmPromote [ring=1\|2]` | Version des vorigen Rings freigeben |
 | `$cfmRollback ver=<N> [all=yes]` | alten Stand als neue Version freigeben (überschreibt `work/`) |
-| `$cfmStatus` | Flottenübersicht; holt veraltete Stände vorher selbst ab (D89) |
-| `$cfmPush [host=<n>\|ring=<r>] [force=yes]` | sofortigen Pull auslösen (nur aufgenommene Geräte, D49) |
+| `$cfmStatus` | Flottenübersicht; holt veraltete Stände vorher selbst ab (DU1.5) |
+| `$cfmPush [host=<n>\|ring=<r>] [force=yes]` | sofortigen Pull auslösen (nur aufgenommene Geräte, DO2.2) |
 | `$cfmCollect [host=<n>]` | Status und Export sofort abholen |
 | `$cfmAudit host=<n> [op=report\|mark\|purge] [sel=all\|A1,A3]` | unverwaltete Objekte anzeigen, markieren, entfernen |
 | `$cfmSecret key=<k> value=<v>` | Vault-Eintrag setzen (`user.<name>`, `psk.<ssid>`, `ppsk.<ssid>.<name>`, `vaultpw`, `wg.admin`) |
 | `$cfmSecretPush [host=<n>]` | Secrets sofort verteilen |
 | `$cfmVaultBackup` | verschlüsseltes Manager-Backup nach `vault/` |
 | `$cfmRekey host=<n>\|all=yes` | Geräteschlüssel erneuern |
-| `$cfmRekey host=<n>\|all=yes sftp=yes` | SFTP-/Host-Schlüssel erneuern (Manager zweiphasig, D67) |
-| `$cfmNotify test=yes` | Probemeldung an `notify.url` (D66) |
+| `$cfmRekey host=<n>\|all=yes sftp=yes` | SFTP-/Host-Schlüssel erneuern (Manager zweiphasig, DS2.5) |
+| `$cfmNotify test=yes` | Probemeldung an `notify.url` (DU4.1) |
 | `$cfmUpgrade ver=<x.y.z> host=<n>\|ring=<r>\|all=yes [at="YYYY-MM-DD HH:MM"]` | RouterOS-Update oder -Downgrade, sofort oder im Wartungsfenster |
 | `$cfmUpgrade ver=<x.y.z> host=…\|ring=…\|all=yes check=yes` | Probe ohne Download und Auftrag: Bedarf, freier Platz, fehlende Pakete |
-| `$cfmUpgrade ver=<x.y.z> host=…\|ring=… via=internet\|via=mirror mirror=<IP>` | eingebautes Update des Geräts, auch bei 16 MB Flash (D63, Spiegel: `tools/upgrade-mirror.py`) |
+| `$cfmUpgrade ver=<x.y.z> host=…\|ring=… via=internet\|via=mirror mirror=<IP>` | eingebautes Update des Geräts, auch bei 16 MB Flash (DV1.5, Spiegel: `tools/upgrade-mirror.py`) |
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
-| `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, D81) |
+| `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
 | `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
-| `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (D50) |
+| `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (DO1.7) |
 | `$cfmPending` · `$cfmApprove serial= name= ip= [role=] [ring=] [pw=]` | unbekannte Geräte |
 | `$cfmBootstrap [name=<n>]` | Bootstrap-Datei für die manuelle Aufnahme; `name=`: gerätespezifisch für ein Gerät aus dem Inventar (`cfm/onb/<n>-bootstrap.rsc`, alle Ports, 7.3) |
 | `$cfmEnroll name= ip= [role=] [ring=] [rekey=yes] [noapply=yes]` | Gerät aufnehmen (manuell); `noapply=yes`: ohne ersten Apply, Scheduler aus (7.3) |
 | `$cfmTrust [host=<n>]` | Manager-Schlüssel an Geräte verteilen |
-| `$cfmPromoteManager` | auf dem Backup: zum Primary befördern, schaltet die SFTP-User der Geräte frei (D67) |
+| `$cfmPromoteManager` | auf dem Backup: zum Primary befördern, schaltet die SFTP-User der Geräte frei (DS2.5) |
 
 ---
 
@@ -2014,12 +2014,12 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 | Pfad | Inhalt |
 |---|---|
-| `work/` | Arbeitsstand (Daten, Rollen, Hostfiles, Bibliothek, `web/` mit dem Code für das Lesezeichen „cfm“, D91) |
+| `work/` | Arbeitsstand (Daten, Rollen, Hostfiles, Bibliothek, `web/` mit dem Code für das Lesezeichen „cfm“, DT3.2) |
 | `archive/v<N>/` | freigegebene Versionen mit `index.dat` (Dateien + SHA-512) |
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
 | `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
 | `pkg/<ver>/` | RouterOS-Pakete für `$cfmUpgrade` (oder unter `pkgPath`) |
-| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat`, `notify.dat` (offene Meldungen, D66), `hook.dat` (Stand der Git-Sicherung), nach einem Push an einen CAPsMAN `follow.dat` (Nachfassen, Scheduler `cfm-mgr-follow`); auf dem Backup-Manager `notify-b.dat` und nach der Beförderung `PROMOTED` |
+| `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat`, `notify.dat` (offene Meldungen, DU4.1), `hook.dat` (Stand der Git-Sicherung), nach einem Push an einen CAPsMAN `follow.dat` (Nachfassen, Scheduler `cfm-mgr-follow`); auf dem Backup-Manager `notify-b.dat` und nach der Beförderung `PROMOTED` |
 | `onb/` | Arbeitsdateien des Onboardings (`probe.rsc`, `probe.txt`, `go.rsc`, `<name>-bootstrap.rsc`) |
 | `cfm-bootstrap.rsc` | Bootstrap-Datei für neue Geräte (`$cfmBootstrap`) |
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
@@ -2031,7 +2031,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 
 **Auf jedem Gerät:** User `cfm` (Manager-Schlüssel), Skripte `cfm-agent` und `cfm-conf`, Scheduler
 `cfm-agent` (Takt) und `cfm-agent-boot` (20 s nach jedem Neustart), Geräteschlüssel als `/ppp secret` `cfm:key`, Dateien `cfm/state.json`, `cfm/out/`,
-`cfm/dl/` (auf Manager und CAPsMAN mit `web/` für das Lesezeichen „cfm“, D91; auf Routern `web/cfm-dns.js`), `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
+`cfm/dl/` (auf Manager und CAPsMAN mit `web/` für das Lesezeichen „cfm“, DT3.2; auf Routern `web/cfm-dns.js`), `cfm/pre.backup`, mit `hosts/<name>.post.rsc` `cfm/post.json` (deren cfm-Objekte, für
 den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöcke
 `cfm:fwb…` (Nicht-Router) und `cfm:fw6…` (IPv6); Interface-Liste `DISC` (Nachbarsuche); Bonds
 `cfm:bond:<name>` (Peer-Bond eines MLAG-Paars `peer-<Paar>`); mit isolierten VLANs die Interface-Liste
@@ -2040,12 +2040,12 @@ den Probelauf), beim Probelauf `cfm/pl/` und `cfm/out/plan.txt`; Firewall-Blöck
 Switch `cfm-onboard-revert`, bei einem geplanten RouterOS-Update `cfm-upgrade` und die Pakete im
 Wurzelverzeichnis, beim eingebauten Update über einen Spiegel der DNS-Eintrag `cfm-sys:upgrade-mirror`.
 Auf dem CAPsMAN feste WLAN-Interfaces je Radio der APs (`<Identity>-<Band>g` samt virtuellen APs,
-Provisioning `create-enabled`, D90; sie bleiben nach dem Abbau eines AP stehen), mit schaltbaren SSIDs
-(D64) Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
-samt Scheduler, Zustand in `cfm/ssid-<key>.txt`; mit eigenen Radios (`capsmanRadios`, D53) der Merker
-`cfm/wifi-local.txt`. Mit `snmp` (TODO 54) die Community `cfm:snmp:<user>`. Auf Routern mit `dns.rsc` (D101) die
+Provisioning `create-enabled`, DW4.2; sie bleiben nach dem Abbau eines AP stehen), mit schaltbaren SSIDs
+(DW4.1) Skripte `cfm-ssid-<key>-on/-off` und `cfm-ssid-check`
+samt Scheduler, Zustand in `cfm/ssid-<key>.txt`; mit eigenen Radios (`capsmanRadios`, DW1.7) der Merker
+`cfm/wifi-local.txt`. Mit `snmp` (TODO 54) die Community `cfm:snmp:<user>`. Auf Routern mit `dns.rsc` (DN3.1) die
 Adlisten, der Forwarder `cfm-upstream`, `FWD`-Einträge `cfm:dnsallow:`/`cfm:dnsfwd:`, die Log-Aktion
-`cfmdns` samt Regeln; mit `self` (D102) Gruppe `cfm-dns`, User `dns`, Skript und Scheduler `cfm-dnsreq`
+`cfmdns` samt Regeln; mit `self` (DN3.2) Gruppe `cfm-dns`, User `dns`, Skript und Scheduler `cfm-dnsreq`
 sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>` (Letztere fasst cfm nicht an). Nach einem Audit liegt der Bericht in `cfm/out/audit.txt`.
 
 ---
@@ -2054,10 +2054,10 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 
 | Symptom | Ursache | Abhilfe |
 |---|---|---|
-| Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen. Der Agent hat da schon 2 min lang wiederholt (8/16/32/64 s, Log „Manifest nicht abrufbar – neuer Versuch“, D58); kurze Aussetzer, etwa während ein Backup-Manager spiegelt, fängt das ab |
+| Gerät meldet „kein Manager erreichbar“ | Route/Gateway im MGMT-Netz, Firewall, Manager-Dienste nur aus MGMT | Ping zum Manager vom Gerät, `managers` prüfen. Der Agent hat da schon 2 min lang wiederholt (8/16/32/64 s, Log „Manifest nicht abrufbar – neuer Versuch“, DM3.2); kurze Aussetzer, etwa während ein Backup-Manager spiegelt, fängt das ab |
 | „Manifest-MAC ungueltig“ | Geräteschlüssel passt nicht mehr (Reset, Restore); direkt nach `$cfmRekey` kurzzeitig normal | `$cfmEnroll name=<n> ip=<ip> rekey=yes` |
 | „Release abgebrochen (Prüfung)“ | inhaltlicher Fehler in `work/` | Meldung lesen und beheben; bewusst: `force=yes` |
-| Prüfung: „authorized_keys: die gemeinsame Datei gilt nicht mehr (D65)“ | alte Key-Datei für alle User in `work/` | Keys je Person nach `authorized_keys.<user>`, hochladen, `/file/remove cfm/work/authorized_keys` |
+| Prüfung: „authorized_keys: die gemeinsame Datei gilt nicht mehr (DS3.3)“ | alte Key-Datei für alle User in `work/` | Keys je Person nach `authorized_keys.<user>`, hochladen, `/file/remove cfm/work/authorized_keys` |
 | Log `cfm: authorized_keys.<user>: Key N nicht angelegt …`, danach „vorhandene Keys bleiben stehen“ | Zeile ist kein Key, den RouterOS annimmt (nur rsa, ed25519, ed25519-sk) | Zeile korrigieren, releasen; bis dahin entfernt cfm für diesen User keine Keys |
 | Warnung „Paket wifi-qcom-ac“ (Log des AP bzw. `$cfmCheck`) | AP mit altem Treiber übernimmt das VLAN einer SSID nicht vom CAPsMAN (TODO 23) | Gerät nicht als `ap` unter cfm betreiben |
 | Secret-Push: „Identitätsprüfung fehlgeschlagen“ (Log: „Identitaetspruefung …“) | Geräteschlüssel passt nicht, oder ein anderes Gerät antwortet unter der IP | Gerät prüfen; nach einem Reset `$cfmEnroll … rekey=yes` |
@@ -2070,17 +2070,17 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | Probelauf: „keine Antwort“ | Agent war gerade beschäftigt | später erneut |
 | Update: `Fenster verpasst` / `fehlgeschlagen` | Pakete zu spät da bzw. Installation gescheitert | `$cfmUpgrade` zeigt den Stand, Log am Gerät, neuen Auftrag erteilen |
 | Eigener Dienst am Gerät nicht erreichbar, Log `cfm-drop` | minimale Firewall | Regel in der Chain `local-input` oder Netz in `mgmtExtra` |
-| Log voller `cfm-drop input: in:vlan<VID> … 0.0.0.0:5678->255.255.255.255:5678` | MNDP über einen Bridge-Port ohne Adresse hinter einem Access-Port, z.B. die Karten einer VM (D40); das Gerät hat den Framework-Stand vor D78 | Framework-Update mit Release: der input-Block verwirft es dann still (D78) |
-| Log voller `cfm-drop input: in:vlan<VID>` mit Broadcasts aus einem Client-VLAN | das Gerät hat dort eine eigene Adresse (z.B. Ausgang eines NAT-Käfigs per `post.rsc`) und bekommt jeden Broadcast zugestellt | in der `post.rsc` `{"chain"="local-input";"action"="drop";"in-interface"="vlan<VID>"}` (still, nach den Freigaben, D78) |
+| Log voller `cfm-drop input: in:vlan<VID> … 0.0.0.0:5678->255.255.255.255:5678` | MNDP über einen Bridge-Port ohne Adresse hinter einem Access-Port, z.B. die Karten einer VM (DP1.2); das Gerät hat den Framework-Stand vor DR2.5 | Framework-Update mit Release: der input-Block verwirft es dann still (DR2.5) |
+| Log voller `cfm-drop input: in:vlan<VID>` mit Broadcasts aus einem Client-VLAN | das Gerät hat dort eine eigene Adresse (z.B. Ausgang eines NAT-Käfigs per `post.rsc`) und bekommt jeden Broadcast zugestellt | in der `post.rsc` `{"chain"="local-input";"action"="drop";"in-interface"="vlan<VID>"}` (still, nach den Freigaben, DR2.5) |
 | Agent meldet „kein Manager erreichbar - der Agent laeuft als …“ (bzw. nur „kein Manager erreichbar“ und SFTP „authentication failure“) nach Start von Hand | `/system script run cfm-agent` aus einer Admin-Sitzung: der Download nimmt den Schlüssel des aufrufenden Users, nur `cfm` hat ihn | `$cfmPush host=<n>` am Manager (läuft als `cfm`) |
 | Zwei Default-Routen (ECMP), eine ohne cfm-Tag | Bootstrap-Route eines vor dem Fix (TODO 34) aufgenommenen Geräts neben einer Route mit `gw=` aus dem Hostfile | die Route ohne Tag löschen |
 | `$cfmLinks`: Link `einseitig` | die Gegenstelle meldet (noch) keine Nachbarn | nächsten Agent-Lauf abwarten oder `$cfmPush host=<n>` |
 | Log `cfm: Netz: fehlt …` | Kabel gezogen, umgesteckt oder Gerät aus | Verkabelung prüfen; gewollte Änderung: `$cfmLinks accept=yes` |
-| `$cfmFind <text>` meldet `… IN: :return [<text>/find where !dynamic]` | auf dem Manager ist noch der gleichnamige alte Helfer geladen (Gerätebibliothek vor D81, z.B. nach einem Apply der alten Version auf dem Manager) | `/system script run cfm-mgr`, dann erneut; dauerhaft, sobald der Manager selbst die neue Version hat |
+| `$cfmFind <text>` meldet `… IN: :return [<text>/find where !dynamic]` | auf dem Manager ist noch der gleichnamige alte Helfer geladen (Gerätebibliothek vor DU1.4, z.B. nach einem Apply der alten Version auf dem Manager) | `/system script run cfm-mgr`, dann erneut; dauerhaft, sobald der Manager selbst die neue Version hat |
 | `$cfmFind`: Gerät „nicht erreichbar“ bzw. „keine Daten“ | Gerät aus, kein Ping im MGMT-Netz oder ssh-exec als `cfm` scheitert | `$cfmStatus`; die übrigen Geräte werden trotzdem ausgewertet, MACs hinter dem stummen Gerät stehen dann „über Uplink“ |
 | `$cfmFind`: Gerät steht unter „nur ARP/Lease“ | keine Bridge hat die MAC gerade gelernt (Gerät still, Eintrag nach einigen Minuten verfallen) | Gerät ansprechen (Ping), erneut suchen |
 | cfm-Monitor, Reiter Suche: „Fehler … 401/403“ oder kein Ergebnis | User ohne Gruppe `full` (die Suche startet `$cfmFind` per `:execute`) bzw. WebFig nicht die des Managers | mit einem User der Gruppe `full` in WebFig des Managers anmelden |
-| cfm-Monitor, Reiter Suche: „Dieser Manager hat die Suche noch nicht“ | die Manager-Module auf dem Manager sind älter als D81 (Framework hochgeladen, aber der Ring des Managers hat die neue Version noch nicht angewendet) | Framework-Update zu Ende bringen: `$cfmRelease`, Ringe befördern, bis der Manager selbst sie anwendet |
+| cfm-Monitor, Reiter Suche: „Dieser Manager hat die Suche noch nicht“ | die Manager-Module auf dem Manager sind älter als DU1.4 (Framework hochgeladen, aber der Ring des Managers hat die neue Version noch nicht angewendet) | Framework-Update zu Ende bringen: `$cfmRelease`, Ringe befördern, bis der Manager selbst sie anwendet |
 | PPSK-Client landet nicht im richtigen VLAN | VLAN fehlt auf dem AP-Uplink (`trunk-ap`) oder AP ohne wifi-qcom | Warnung von `$cfmCheck` beachten, Profil erweitern |
 | „Hash stimmt nicht“ / „Download fehlgeschlagen“ | unvollständiges Archiv (z.B. auf dem Backup) | Primary prüfen, neu releasen |
 | Ergebnis `failed <datei>: …`, Version `bad` | Fehler in Daten/Template, Gerät hat zurückgerollt | Meldung lesen, beheben, releasen |
@@ -2099,7 +2099,7 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | `$cfmUpgrade`: „zu wenig Platz für die Pakete … kein Auftrag“, Agent: „Platz fehlt“ | Pakete + 1 MB Reserve passen nicht in den freien Speicher (16-MB-Geräte) | aufräumen (`/file`), dann neuer Auftrag; sonst das eingebaute Update mit Internet am Gerät (TODO 38) |
 | `$cfmUpgrade`: „Pakete fehlen oder sind ungültig“ | Manager ohne Internet oder Paket ohne NPK-Kennung (z.B. Fehlerseite) | die genannten Dateien von download.mikrotik.com nach `<pkgPath>/<ver>/` legen; vorab `check=yes` |
 | Onboarding `manual=yes` beendet, Gerät hängt weiter im Onboarding-VLAN | gewollt: cfm fasst den Port bei `manual=yes` nicht an | Port am Switch von Hand auf sein Profil zurückstellen (Log-Hinweis) |
-| `$cfmRelease`: „lib/<rolle>.<feature>.rsc fehlt, … nutzt das Feature (D104)“ | Feature erst nach dem letzten Framework-Upload eingeschaltet (z.B. im cfm-Editor); `upload-seed.sh` lädt nur Module hoch, die die Site nutzt | `tools/upload-seed.sh <user>@<manager> --overlay site` erneut aufrufen, dann releasen |
+| `$cfmRelease`: „lib/<rolle>.<feature>.rsc fehlt, … nutzt das Feature (DG4.6)“ | Feature erst nach dem letzten Framework-Upload eingeschaltet (z.B. im cfm-Editor); `upload-seed.sh` lädt nur Module hoch, die die Site nutzt | `tools/upload-seed.sh <user>@<manager> --overlay site` erneut aufrufen, dann releasen |
 | `upload-seed.sh`: „keine SFTP-Anmeldung per SSH-Key“ (früher nur „Connection closed“) | das Skript nutzt Batch-SFTP, das kein Passwort abfragt | Public Key für den User auf dem Gerät hinterlegen, `ssh-agent` laden oder `SFTP_OPTS="-i <key>"` setzen |
 | SSH-Anmeldung per Passwort wird abgelehnt, Winbox geht | der User hat einen SSH-Key (z.B. aus `authorized_keys.<user>`), RouterOS erlaubt dann per SSH nur noch den Key | mit dem Key anmelden; Key-Datei prüfen (Kapitel 4, `authorized_keys.<user>`) |
 | `upload-seed.sh`: „Seed unvollständig hochgeladen“ | einzelne Dateien auch nach drei Versuchen nicht übertragen | erneut aufrufen; Verbindung und freien Platz am Manager prüfen |

@@ -10,10 +10,10 @@
 #               198.51.100.1 auf inet (TEST-NET-2, also nicht in cfm-private).
 #   vm5 = sw1   Switch ohne Rolle router an cm1/ether5, eigener Ausgang über den Internet-Router (gw)
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
-# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, D83), DHCP und DNS der
-# Router im LAN, das zugleich ihr WAN ist (D86), TCP ins Internet über die VIP mit asymRouting (D100), WireGuard über die
-# VIP mit gemeinsamem Schlüssel (D84, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
-# (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (D85), Neustart des
+# Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, DR2.6), DHCP und DNS der
+# Router im LAN, das zugleich ihr WAN ist (DR3.1), TCP ins Internet über die VIP mit asymRouting (DR3.2), WireGuard über die
+# VIP mit gemeinsamem Schlüssel (DR4.2, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
+# (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (DR1.5), Neustart des
 # Masters, Ausfall von zwei Routern.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
@@ -44,19 +44,19 @@ ismaster() { r "$1" ':local n 0; :foreach v in={"vrrp10";"vrrp20";"vrrp30";"vrrp
 dhcpon() { r "$1" ':put ("D=" . [:len [/ip/dhcp-server/find where comment~"^cfm:dhcp" and !disabled]])' | grep -o 'D=[0-9]' | tr -dc 0-9; }
 invdrop() { r "$1" ':put ("I=" . [/ip/firewall/filter/get [find where chain=forward and action=drop and connection-state~"invalid" and comment~"^cfm:fw:"] packets])' | grep -o 'I=[0-9]*' | tr -dc 0-9; }
 natcnt() { r 4 ':put ("N=" . [/ip/firewall/filter/get [find comment=gastnat] packets])' | grep -o 'N=[0-9]*' | tr -dc 0-9; }
-# WireGuard (D84): wgstate <vm> -> "an/aus" für wg-admin und rt:wg; wgpub <vm>; tunnel <Ziel>: Ping über den
+# WireGuard (DR4.2): wgstate <vm> -> "an/aus" für wg-admin und rt:wg; wgpub <vm>; tunnel <Ziel>: Ping über den
 # Tunnel des Clients auf inet (/32-Routen über wgc), bis zu 40 s für einen neuen Handshake nach dem Umschalten
 wgstate() { r "$1" ':local s "an"; :if ([/interface/wireguard/get [find name=wg-admin] disabled]) do={ :set s "aus" }; :local t "-"; :foreach i in=[/ip/route/find where comment="cfm:rt:wg"] do={ :set t "an"; :if ([/ip/route/get $i disabled]) do={ :set t "aus" } }; :put ("WG=" . $s . "/" . $t)' | grep -o 'WG=.*' | cut -d= -f2; }
 wgpub() { r "$1" ':put ("K=" . [/interface/wireguard/get [find name=wg-admin] public-key])' | grep -o 'K=.*' | cut -d= -f2-; }
 tunnel() { local i; for i in $(seq 1 8); do [ "$(pings 4 "$1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
 wgep() { r 4 ':put ("E=" . [/interface/wireguard/peers/get [find interface=wgc] current-endpoint-address])' | grep -o 'E=.*' | cut -d= -f2; }
-# LAN-Client (D86): lanc -> "Status Adresse Gateway DNS Server" des DHCP-Clients mv20 auf inet; lanlease
+# LAN-Client (DR3.1): lanc -> "Status Adresse Gateway DNS Server" des DHCP-Clients mv20 auf inet; lanlease
 # <Host-Teil des Servers>: neu anfragen lassen und bis 30 s auf die feste Lease vom erwarteten Router warten;
 # dnsq <Name>: Antwort der VIP .20.2 auf eine Anfrage aus dem LAN (Absender .20.1)
 lanc() { r 4 ':local d [/ip/dhcp-client/get [find interface=mv20]]; :put ("C=" . ($d->"status") . " " . ($d->"address") . " " . ($d->"gateway") . " " . ($d->"primary-dns") . " " . ($d->"dhcp-server"))' | grep -o 'C=.*' | cut -d= -f2-; }
 lanlease() { local i; r 4 '/ip/dhcp-client/release [find interface=mv20]' >/dev/null; for i in $(seq 1 15); do [ "$(lanc)" = "bound 192.168.20.42/24 192.168.20.1 192.168.20.2 192.168.20.$1" ] && return 0; sleep 2; done; return 1; }
 dnsq() { r 4 ':onerror e in={ :put ("R=" . [:resolve domain-name="'"$1"'" server=192.168.20.2]) } do={ :put "R=-" }' | grep -o 'R=.*' | cut -d= -f2; }
-# Asymmetrisches Routing (D100): sw1 (.20.240) holt per TCP eine Seite vom "Internet" 198.51.100.1 über die
+# Asymmetrisches Routing (DR3.2): sw1 (.20.240) holt per TCP eine Seite vom "Internet" 198.51.100.1 über die
 # VIP .20.2 (Route lab-asym); die Antwort kommt vom Internet-Router direkt. asymtcp -> ok|err
 asymtcp() { r 5 ':onerror e in={ /tool/fetch url="http://198.51.100.1/" output=none idle-timeout=5s; :put "F=ok" } do={ :put "F=err" }' | grep -o 'F=[a-z]*' | cut -d= -f2; }
 # Lage aus Sicht der Clients: VIPs, Policy, NAT. Erwartet: $1 = Name des Masters
@@ -73,12 +73,12 @@ policy() {
   [ "$(pings 4 '198.51.100.1 vrf=guest')" -ge 4 ] && ok "$m: Gast -> Internet" || bad "$m: Gast -> Internet geht nicht"
   n1=$(natcnt)
   [ "${n1:-0}" -gt "${n0:-0}" ] && ok "$m: Gäste kommen beim Internet-Router als 192.168.20.199 an" || bad "$m: feste NAT-Adresse nicht gesehen ($n0 -> $n1)"
-  # LAN = WAN-VLAN (D86): Lease vom Master (Server = seine Adresse .250+routerId), DNS über die VIP
+  # LAN = WAN-VLAN (DR3.1): Lease vom Master (Server = seine Adresse .250+routerId), DNS über die VIP
   local s; case $m in r1) s=251;; r2) s=252;; cm1) s=253;; esac
   lanlease $s && ok "$m: LAN-Client bekommt seine feste Lease .20.42 (Gateway .1, DNS VIP .2)" || bad "$m: LAN-DHCP: $(lanc)"
   [ "$(dnsq labpc.internal)" = "192.168.20.42" ] && ok "$m: DNS an der VIP aus dem LAN (Name der festen Lease)" || bad "$m: DNS an der VIP aus dem LAN: $(dnsq labpc.internal)"
   if [ "${ASYM:-0}" = 1 ]; then
-    [ "$(asymtcp)" = ok ] && ok "$m: Client mit Gateway VIP erreicht das Internet per TCP (asymRouting, D100)" || bad "$m: TCP über die VIP ins Internet geht nicht (asymRouting)"
+    [ "$(asymtcp)" = ok ] && ok "$m: Client mit Gateway VIP erreicht das Internet per TCP (asymRouting, DR3.2)" || bad "$m: TCP über die VIP ins Internet geht nicht (asymRouting)"
   fi
 }
 state() { # state <master-vm> <name> [abgetrennte VMs]: genau dieser Router ist Master in allen VLANs und
@@ -101,7 +101,7 @@ step "1. Internet-Router inet (vm4, von Hand)"
 r 4 '/interface/vlan/add name=v30 vlan-id=30 interface=ether2; /interface/vlan/add name=v40 vlan-id=40 interface=ether2; /ip/vrf/add name=iot interfaces=v30; /ip/vrf/add name=guest interfaces=v40; /ip/address/add address=192.168.20.1/24 interface=ether2; /ip/address/add address=192.168.30.77/24 interface=v30; /ip/address/add address=192.168.40.77/24 interface=v40; /ip/address/add address=198.51.100.1/32 interface=lo' >/dev/null
 sleep 3
 r 4 '/ip/route/add dst-address=0.0.0.0/0 gateway=192.168.30.1@iot routing-table=iot; /ip/route/add dst-address=0.0.0.0/0 gateway=192.168.40.1@guest routing-table=guest; :foreach n in={"192.168.10.0/24";"192.168.30.0/24";"192.168.40.0/24"} do={ /ip/route/add dst-address=$n gateway=192.168.20.2 }; /ip/firewall/filter/add chain=input src-address=192.168.20.199 action=accept comment=gastnat; /system/identity/set name=inet' >/dev/null
-# LAN-Client (D86): eigene MAC (feste Lease labpc) in eigener VRF, damit seine Adresse nicht mit .20.1 konkurriert
+# LAN-Client (DR3.1): eigene MAC (feste Lease labpc) in eigener VRF, damit seine Adresse nicht mit .20.1 konkurriert
 r 4 '/interface/macvlan/add name=mv20 interface=ether2 mac-address=02:00:00:00:20:42; /ip/vrf/add name=lanc interfaces=mv20; :delay 2s; /ip/dhcp-client/add interface=mv20 add-default-route=no use-peer-dns=no use-peer-ntp=no' >/dev/null
 expect 4 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and routing-table="guest" and active]] = 1 and [:len [/ip/route/find where gateway="192.168.20.2"]] = 3 and [:len [/ip/address/find where address="198.51.100.1/32"]] = 1 and [:len [/ip/dhcp-client/find where interface=mv20]] = 1' "inet: LAN .1, VRF-Clients IoT/Gast/LAN, Internet-Adresse 198.51.100.1"
 
@@ -137,7 +137,7 @@ expect 5 '[:len [/ip/route/find where dst-address="0.0.0.0/0" and gateway="192.1
 for i in 1 2 3 5; do r $i '/ip/dhcp-client/set [find where interface=ether1] add-default-route=no' >/dev/null; done
 
 step "4. Rollen router (r1, r2) und switch,router,manager (cm1)"
-# Admin-PC im LAN (inet mit zweiter Adresse .20.10, in mgmtExtra der Hostfiles): erreicht r2 im MGMT-VLAN über den Master (D83)
+# Admin-PC im LAN (inet mit zweiter Adresse .20.10, in mgmtExtra der Hostfiles): erreicht r2 im MGMT-VLAN über den Master (DR2.6)
 r 4 '/ip/address/add address=192.168.20.10/24 interface=[/ip/address/get [find where address~"^192.168.20.1/"] interface]; /ip/route/set [find where dst-address="192.168.10.0/24"] pref-src=192.168.20.10' >/dev/null
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"r1"->"role") "switch,router"; :set ($i->"r2"->"role") "switch,router"; :set ($i->"cm1"->"role") "switch,router,manager"; $cfmInvSave $i; :global cfmManifests; $cfmManifests; $cfmPush' >/dev/null
 for n in r1 r2 cm1; do
@@ -156,7 +156,7 @@ expect 2 '[:tostr [/system/ntp/client/get servers]] = "192.168.20.1"' "r1: NTP-S
 step "5. Normalbetrieb: r1 ist Master"
 state 2 r1
 policy r1
-[ "$(pings 4 '192.168.10.22 src-address=192.168.20.10')" -ge 4 ] && ok "r1: Admin-PC aus mgmtExtra (LAN) erreicht r2 im MGMT-VLAN" || bad "r1: mgmtExtra -> MGMT gesperrt (D83)"
+[ "$(pings 4 '192.168.10.22 src-address=192.168.20.10')" -ge 4 ] && ok "r1: Admin-PC aus mgmtExtra (LAN) erreicht r2 im MGMT-VLAN" || bad "r1: mgmtExtra -> MGMT gesperrt (DR2.6)"
 # TCP: r2 antwortet über seine eigene LAN-Adresse direkt, der Master r1 sieht nur eine Richtung; die
 # Folgepakete dürfen bei ihm nicht als invalid verworfen werden (Befund am Standort, ssh hing im Banner)
 i0=$(invdrop 2)
@@ -165,7 +165,7 @@ i1=$(invdrop 2)
 [ "${i1:-x}" = "${i0:-y}" ] && ok "r1: TCP vom Admin-PC zu r2 (Antwort asymmetrisch) ohne invalid-Drop" || bad "r1: TCP zu r2 als invalid verworfen ($i0 -> $i1)"
 [ "$(pings 4 '192.168.10.22 src-address=192.168.20.1')" = 0 ] && ok "r1: übriges LAN erreicht das MGMT-VLAN nicht" || bad "r1: LAN -> MGMT offen"
 
-step "5b. WireGuard mit VRRP (D84): gemeinsamer Schlüssel, Tunnel am Master"
+step "5b. WireGuard mit VRRP (DR4.2): gemeinsamer Schlüssel, Tunnel am Master"
 # Bestehende Installation nachgestellt: r1 hat wg-admin schon mit eigenem Schlüssel -> den übernimmt der Manager
 r 2 '/interface/wireguard/add name=wg-admin listen-port=13231' >/dev/null
 k0=$(wgpub 2)
@@ -203,7 +203,7 @@ for _ in $(seq 1 60); do [ "$(stat r2 t)" != "$t0" ] && break; sleep 4; done
 mgr '$cfmSecretPush host=r2' >/dev/null; sleep 2
 [ "$(wgpub 3)" = "$k0" ] && ok "r2 hat nach dem Secret-Push wieder den gemeinsamen Schlüssel" || bad "r2 Schlüssel $(wgpub 3)"
 
-step "5c. Asymmetrisches Routing ins Internet (D100)"
+step "5c. Asymmetrisches Routing ins Internet (DR3.2)"
 # Ausgangslage ohne Schalter: Hinweg über die VIP, Antwort direkt vom Internet-Router -> r1 sieht nur
 # eine Richtung und verwirft die Folgepakete als invalid (Befund am Standort 2026-10-31)
 r 5 '/ip/route/add dst-address=198.51.100.1/32 gateway=192.168.20.2 comment=lab-asym' >/dev/null
@@ -224,7 +224,7 @@ i0=$(invdrop 2)
 ASYM=1
 
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"
-# DHCP/WG schaltet on-master erst nach 5 s ein (D85)
+# DHCP/WG schaltet on-master erst nach 5 s ein (DR1.5)
 r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 10
 state 3 r2 2
 policy r2
@@ -241,7 +241,7 @@ policy r1
 [ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && ok "Nach der Rückkehr: Tunnel wieder an r1, r2 mit Route" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3)"
 tunnel 192.168.10.22 && tunnel 192.168.10.21 && ok "Tunnel nach der Preemption: Client erreicht r1 und r2" || bad "Tunnel nach der Preemption tot"
 
-step "7b. Kurzer Master-Ausflug eines Backups (D85)"
+step "7b. Kurzer Master-Ausflug eines Backups (DR1.5)"
 # Wie beim Start eines Backups am Standort: r2 hört den Master 3 s nicht (VRRP-Werbung in raw verworfen),
 # wird selbst Master und hört ihn dann wieder. DHCP und WG dürfen dabei nicht angehen.
 x=$(r 3 '/ip/firewall/raw/add chain=prerouting protocol=vrrp action=drop comment=lab-split; :delay 3s; :local n 0; :foreach v in={"vrrp10";"vrrp20";"vrrp30";"vrrp40"} do={ :if ([/interface/vrrp/get [find name=$v] running]) do={ :set n ($n + 1) } }; :put ("M=" . $n . " D=" . [:len [/ip/dhcp-server/find where comment~"^cfm:dhcp" and !disabled]]); /ip/firewall/raw/remove [find comment=lab-split]')
@@ -273,7 +273,7 @@ for n in r1 r2 cm1 sw1; do
   stat $n stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "$n: zweiter Apply ohne Änderungen" || bad "$n idempotent: $(stat $n stats)"
 done
 
-step "11. asymRouting wieder aus (D100): raw-Regel verschwindet"
+step "11. asymRouting wieder aus (DR3.2): raw-Regel verschwindet"
 mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"\"\n")' >/dev/null
 mgr '$cfmRelease all=yes' >/dev/null
 for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 4 $n || bad "$n: v4 nicht angewendet"; done

@@ -7,21 +7,21 @@
 #  dhcp   "a-b" Host-Bereich des DHCP-Pools oder "no" (Default "no")
 #  dns    DNS-Server für DHCP-Clients (Default = Gateway)
 #  dhcpGw Host-Anteil des Gateways, das DHCP-Clients bekommen, wenn es nicht der Router sein soll -
-#         z.B. der Internet-Router im selben Netz (D82): "dhcpGw"=1; der Router bleibt Gateway (gw) für
+#         z.B. der Internet-Router im selben Netz (DN1.2): "dhcpGw"=1; der Router bleibt Gateway (gw) für
 #         die übrigen VLANs und DNS-Server, sofern dns nichts anderes sagt
 #  asymRouting "internet" = nur für das WAN-VLAN, wenn der Internet-Router im selben Netz steht: Clients
 #         mit Gateway VIP (statt dhcpGw) kommen ins Internet - Hinweg über den Router ohne conntrack,
-#         Antwort direkt vom Internet-Router. Übergangslösung bis zum Transfernetz (D100); Default aus
+#         Antwort direkt vom Internet-Router. Übergangslösung bis zum Transfernetz (DR3.2); Default aus
 #  lease  DHCP-Lease-Zeit (Default 30m)
 #  ntp    "redirect" = NTP (udp/123) an jedes Ziel außer dem Router landet beim Router - für Geräte mit
-#         fest eingebautem NTP-Server (D93)
+#         fest eingebautem NTP-Server (DN2.2)
 #  limit  Bandbreite des ganzen Netzes "Download/Upload" aus Sicht der Clients, z.B. "50M/10M" (k/M/G, ohne
-#         Komma); die Clients teilen sie gleich auf (PCQ). Gilt für allen gerouteten Verkehr des Netzes (D97)
+#         Komma); die Clients teilen sie gleich auf (PCQ). Gilt für allen gerouteten Verkehr des Netzes (DR2.7)
 #  limitClient  Obergrenze je Client, z.B. "10M/2M" - mit oder ohne limit
 #  l3     "no" = Router legt kein Interface/IP an (reines L2-VLAN)
 #  onboard "yes" = Onboarding-VLAN (genau eins, siehe unten)
 #  isolate "yes" = Clients erreichen nur Gateway und Broadcast, nicht einander - auch nicht über
-#         verschiedene APs oder Switches (D76)
+#         verschiedene APs oder Switches (DP3.1)
 #  isolateAllow  Ausnahmen der Isolation: Namen aus leases.rsc oder MACs, z.B. "drucker,02:00:00:00:00:30"
 # VLAN entfernen = Zeile löschen -> Reconciler räumt überall auf.
 # ============================================================

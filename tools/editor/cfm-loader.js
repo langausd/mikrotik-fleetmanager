@@ -1,4 +1,4 @@
-// cfm (TODO 52, D91): Lade-Lesezeichen für WebFig, einmal anlegen. Meldet an der REST-API derselben Adresse an
+// cfm (TODO 52, DT3.2): Lade-Lesezeichen für WebFig, einmal anlegen. Meldet an der REST-API derselben Adresse an
 // (wie cfm-Editor/cfm-Monitor) und startet deren aktuelle Fassung vom Gerät: web/cfm-editor.js,
 // web/cfm-monitor.js und web/cfm-dns.js kommen mit tools/upload-seed.sh auf den Manager und mit dem Release zu
 // den Rollen manager, capsman und router (cfm/dl/web/). Lädt nichts aus dem Netz. Bauen: tools/editor/build.py
@@ -106,7 +106,7 @@
       ? el('button', { class: 'prim', onclick: () => start(found[i], msg) }, a.title, el('br'), el('small', { style: 'color:#dfe' }, a.note))
       : el('button', { disabled: '', title: a.where }, a.title, el('br'), el('small', {}, 'nicht auf diesem Gerät (' + a.where + ')')));
     box(el('div', { class: 'k', style: 'display:grid;gap:8px' }, el('b', {}, 'cfm – ' + ident), ...knoepfe,
-      found.some(Boolean) ? '' : el('small', {}, 'Keine cfm-Lesezeichen auf diesem Gerät: Framework mit tools/upload-seed.sh hochladen und releasen (D91), oder die vollständigen Lesezeichen aus install.html nehmen.'),
+      found.some(Boolean) ? '' : el('small', {}, 'Keine cfm-Lesezeichen auf diesem Gerät: Framework mit tools/upload-seed.sh hochladen und releasen (DT3.2), oder die vollständigen Lesezeichen aus install.html nehmen.'),
       msg, el('button', { type: 'button', onclick: close }, 'Schließen')));
     // nur eine Fundstelle: gleich starten
     const n = found.filter(Boolean);

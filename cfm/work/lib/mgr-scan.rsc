@@ -1,15 +1,15 @@
 # ============================================================
-# cfm lib/mgr-scan.rsc – Manager-Funktionen: Kanal-Scan der APs und Pin-Vorschlag (D56, D60, D80)
+# cfm lib/mgr-scan.rsc – Manager-Funktionen: Kanal-Scan der APs und Pin-Vorschlag (DW3.2, DW3.3, DW3.5)
 #   $cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]
 #   (Übersicht aller Befehle: lib/mgr-core.rsc; Kanäle der APs: $cfmChannels in lib/mgr-net.rsc)
 # ============================================================
 
-# ---------- Kanalplan per Scan (TODO 41, D56) ----------
+# ---------- Kanalplan per Scan (TODO 41, DW3.2) ----------
 # $cfmWifiScan [host=<AP>] [band=2|5|6] [duration=10s] [data=yes]
 # Jeder AP (Rolle ap, aufgenommen) scannt nacheinander auf seinen Radios des Bands (Standard 2,4 GHz),
 # ebenso der CAPsMAN, wenn er mitfunkt (capsmanRadios, TODO 46)
 # (/interface/wifi/scan … as-value). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am CAP ab
-# ("not allowed") - gescannt wird deshalb auf dem CAPsMAN am Interface <AP>-<Band>g (D47, D60), erst
+# ("not allowed") - gescannt wird deshalb auf dem CAPsMAN am Interface <AP>-<Band>g (DU2.1, DW3.3), erst
 # ab ~10 s Dauer kommen dort Ergebnisse (5 s lieferten keine, Hardware 2026-10-03). Radios ohne
 # CAPsMAN scannen direkt am AP. Das Radio verlässt dafür den Kanal, verbundene Clients wechseln kurz
 # zum Nachbarn. Die BSSIDs der eigenen APs kennt der CAPsMAN (Interface-Namen <AP>-<Band>g).

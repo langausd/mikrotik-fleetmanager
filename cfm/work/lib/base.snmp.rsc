@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/base.snmp.rsc – Feature-Modul der Rolle base (D104): SNMPv3 nur lesend für LibreNMS (TODO 54, D99)
+# cfm lib/base.snmp.rsc – Feature-Modul der Rolle base (DG4.6): SNMPv3 nur lesend für LibreNMS (TODO 54, DU4.3)
 # base lädt es per $cfmFeat nur mit snmp.from in global.rsc. authPriv, nur von snmp.from (die MGMT-Adresse
 # des Servers; der input-Block lässt das MGMT-Netz ohnehin durch). Passwörter NUR im Vault (snmp.auth,
 # snmp.priv), per Secret-Push; bis dahin Zufallswerte. Die Standard-Community public (v1/v2c ohne Passwort, von

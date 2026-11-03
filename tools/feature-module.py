@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""feature-module – welche Feature-Module (lib/<Rolle>.<Feature>.rsc, D104) braucht eine Site?
+"""feature-module – welche Feature-Module (lib/<Rolle>.<Feature>.rsc, DG4.6) braucht eine Site?
 
 tools/upload-seed.sh lädt nur die Module hoch, deren Feature die Site-Daten nutzen, und entfernt die übrigen
 auf dem Manager. Dieses Skript liest dazu die Site-Daten (global.rsc, vlans.rsc, wifi.rsc, wireguard.rsc, dns.rsc,
@@ -158,7 +158,7 @@ def bedarf(site):
             grund.append("hosts/" + f + " bonds")
     r["base.bond"] = (bool(grund), ", ".join(grund) if grund else "keine bonds, mlag.rsc leer")
 
-    # schaltbare SSIDs (D64): Rümpfe von cfm-ssid-<key>-on/-off und cfm-ssid-check; cfm-reprov immer (CAPsMAN)
+    # schaltbare SSIDs (DW4.1): Rümpfe von cfm-ssid-<key>-on/-off und cfm-ssid-check; cfm-reprov immer (CAPsMAN)
     wi = tokens(lesen(site, "wifi.rsc") or "")
     sw = any(p is None or wert(wi, p) != "" for p in nennungen(wi, "switch"))
     for m in ("capsman.ssid", "capsman.ssidcheck"):

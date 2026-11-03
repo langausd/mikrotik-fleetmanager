@@ -1,8 +1,8 @@
 # ============================================================
 # cfm lib/mgr-vault.rsc – Manager-Funktionen: Vault, Secrets, Identitätsprüfung, Geräteschlüssel
 #   $cfmSecret key=<k> value=<v>, $cfmSecretPush [host=<n>], $cfmVaultBackup,
-#   $cfmRekey host=<n>|all=yes [sftp=yes]; intern $cfmVaultGet/$cfmVaultSet, $cfmChallenge (D28),
-#   $cfmWgKeyPair/$cfmWgKey (gemeinsamer WireGuard-Schlüssel der Router, D84)
+#   $cfmRekey host=<n>|all=yes [sftp=yes]; intern $cfmVaultGet/$cfmVaultSet, $cfmChallenge (DS1.4),
+#   $cfmWgKeyPair/$cfmWgKey (gemeinsamer WireGuard-Schlüssel der Router, DR4.2)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
 
@@ -25,7 +25,7 @@
   :local f ([$cfmMB] . "/meta/vault.dat")
   :local vj [$cfmJson $f]
   :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
-  # WireGuard-Schlüssel der Router (D84): öffentlichen Schlüssel für die Manifeste mitführen
+  # WireGuard-Schlüssel der Router (DR4.2): öffentlichen Schlüssel für die Manifeste mitführen
   :if ($key = "wg.admin") do={ :global cfmWgKeyPair; :set ($vj->"wgpub") ([$cfmWgKeyPair $value]->"pub") }
   $cfmWrite $f [:serialize to=json $vj]
   :put ("Vault: " . $key . " gesetzt (Vault-Version " . ($vj->"ver") . "). Verteilung folgt automatisch.")
@@ -44,7 +44,7 @@
   :return $r
 }
 
-# Gemeinsamer WireGuard-Schlüssel der Router (D84): Vault "wg.admin", öffentlicher Schlüssel in
+# Gemeinsamer WireGuard-Schlüssel der Router (DR4.2): Vault "wg.admin", öffentlicher Schlüssel in
 # meta/vault.dat ("wgpub"). Fehlt er, übernimmt der Manager den eines Routers, der wg-admin schon hat
 # (bestehende Installation: die Clients behalten den Server-Schlüssel), sonst erzeugt er einen neuen.
 # Liefert den öffentlichen Schlüssel.
@@ -63,13 +63,13 @@
         :local o [:tostr ([$cfmExec ip=($d->"ip") cmd=$wc]->"output")]
         :if ([:len $o] >= 44 and [:pick $o 43 44] = "=") do={
           :set priv [:pick $o 0 44]
-          :log info ("cfm: WireGuard-Schluessel der Router von " . $n . " uebernommen (D84)")
+          :log info ("cfm: WireGuard-Schluessel der Router von " . $n . " uebernommen (DR4.2)")
         }
       }
     }
   }
   :local kp [$cfmWgKeyPair $priv]
-  :if ([:len $priv] = 0) do={ :log info "cfm: WireGuard-Schluessel der Router neu erzeugt (D84)" }
+  :if ([:len $priv] = 0) do={ :log info "cfm: WireGuard-Schluessel der Router neu erzeugt (DR4.2)" }
   :if ($neu) do={
     $cfmVaultSet "wg.admin" ($kp->"priv")
     :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
@@ -112,7 +112,7 @@
         :set c ($c . ":if (\$ok) do={ /user/set [find where name=\"admin\"] disabled=yes };")
       }
       :local rl ("," . ($d->"role") . ",")
-      # Gemeinsamer WireGuard-Schlüssel der Router (D84); fehlt wg-admin noch, beim nächsten Mal
+      # Gemeinsamer WireGuard-Schlüssel der Router (DR4.2); fehlt wg-admin noch, beim nächsten Mal
       :if ($rl ~ ",router," and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
         :local wk [$cfmVaultGet "wg.admin"]
         :if ([:len $wk] > 0) do={
@@ -132,7 +132,7 @@
           }
         }
       }
-      # WLAN-Passphrasen: an den CAPsMAN (D45) und an die APs für ihren lokalen Fallback (D46)
+      # WLAN-Passphrasen: an den CAPsMAN (DW1.5) und an die APs für ihren lokalen Fallback (DW1.6)
       :local iscm false
       :foreach cm in=$cms do={ :if ([:tostr ($cm->"n")] = $name) do={ :set iscm true } }
       :if ($iscm or $rl ~ ",ap,") do={
@@ -161,7 +161,7 @@
           :set c ($c . "/ppp/secret/remove [find where name=\"" . $n . "\"]; /ppp/secret/add name=\"" . $n . "\" password=\"" . [$cfmEsc [/ppp/secret/get $i password]] . "\" disabled=yes service=any comment=\"cfm-sys:vault\";")
         }
       }
-      # Lese-User der API auf dem CAPsMAN (D47)
+      # Lese-User der API auf dem CAPsMAN (DU2.1)
       :local capi ($cfmG->"capsmanApi")
       :if ($iscm and [:typeof $capi] = "array") do={
         :if ([:len ($capi->"from")] > 0) do={
@@ -173,7 +173,7 @@
           }
         }
       }
-      # User der DNS-Selbstbedienung auf den Routern (D102); fehlt er noch (Apply steht aus), beim nächsten Mal
+      # User der DNS-Selbstbedienung auf den Routern (DN3.2); fehlt er noch (Apply steht aus), beim nächsten Mal
       :global cfmDns
       :if ($rl ~ ",router," and [:len ($cfmDns->"self"->"zones")] > 0) do={
         :local su [:tostr ($cfmDns->"self"->"user")]
@@ -221,7 +221,7 @@
   $cfmHook ev="vault"
 }
 
-# ---------- Identitätsprüfung (D28, vor jedem Secret-Push) ----------
+# ---------- Identitätsprüfung (DS1.4, vor jedem Secret-Push) ----------
 # ssh-exec prüft keine Host-Schlüssel. Deshalb beweist das Gerät, dass es seinen
 # Geräteschlüssel kennt: sha512(Schlüssel . Zufallswert). ip= serial= -> true/false
 :global cfmChallenge do={
@@ -234,7 +234,7 @@
   :return (($r->"output") ~ [:convert ($key . $n) transform=sha512 to=hex])
 }
 
-# ---------- Geräteschlüssel erneuern (D28, nur per Befehl) ----------
+# ---------- Geräteschlüssel erneuern (DS1.4, nur per Befehl) ----------
 # Nicht während eines Applys: dessen Rollback-Sicherung ist mit dem alten Schlüssel verschlüsselt.
 :global cfmRekey do={
   :global cfmInvLoad; :global cfmChallenge; :global cfmExec; :global cfmVaultSet; :global cfmManifests
@@ -242,7 +242,7 @@
   :if (![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
   :if ([:len $host] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmRekey host=<name> | all=yes [sftp=yes]" }
   :local n 0
-  # sftp=yes: SFTP-/Host-Schlüssel statt Geräteschlüssel (D67, lib/mgr-enroll.rsc); Manager zuletzt
+  # sftp=yes: SFTP-/Host-Schlüssel statt Geräteschlüssel (DS2.5, lib/mgr-enroll.rsc); Manager zuletzt
   :if ($sftp = "yes") do={
     :global cfmRekeySsh
     :foreach pass in={false;true} do={

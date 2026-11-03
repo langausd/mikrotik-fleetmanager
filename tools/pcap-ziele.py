@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pcap-ziele.py – Internet-Ziele von Geräten aus einem Mitschnitt (Fritz!Box, /tool/sniffer).
 
-Wofür: Ein Gerät soll ins IoT-VLAN, braucht aber die Cloud. Bevor es dort per allow-Liste (D39, D76)
+Wofür: Ein Gerät soll ins IoT-VLAN, braucht aber die Cloud. Bevor es dort per allow-Liste (DR2.4, DP3.1)
 freigegeben wird, muss man wissen, welche Namen und Ports es anspricht. Das Skript liest einen
 Mitschnitt (pcap oder pcapng, z.B. von http://fritz.box/html/capture.html) und zeigt je Gerät (MAC):
 DNS-Anfragen, TLS-Servernamen (SNI), HTTP-Host, Verbindungen ins Internet und im LAN – jeweils mit
@@ -355,7 +355,7 @@ def main():
             for (pr, ip, port), c in sorted(dv.lan.items()):
                 print(f"  {pr + '/' + str(port) if port else pr:9} {ip:39} ×{c}")
         if allow:
-            print('Vorschlag für global.rsc (allow, D39/D76) – prüfen, nicht blind übernehmen:')
+            print('Vorschlag für global.rsc (allow, DR2.4/DP3.1) – prüfen, nicht blind übernehmen:')
             ent = []
             for t in sorted(allow):
                 byp = defaultdict(list)

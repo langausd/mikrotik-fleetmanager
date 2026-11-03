@@ -1,6 +1,6 @@
 # ============================================================
 # cfm lib/mgr-check.rsc – Manager-Funktionen: inhaltliche Prüfung und Probelauf
-#   $cfmCheck            prüft die Daten in work/ (läuft auch bei jedem $cfmRelease, D27)
+#   $cfmCheck            prüft die Daten in work/ (läuft auch bei jedem $cfmRelease, DG2.4)
 #   $cfmPlan host=<n>    Probelauf: das Gerät zeigt, was ein Release von work/ ändern würde
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
@@ -33,10 +33,10 @@
     :set ($err->[:len $err]) "lib/lib.rsc nicht geladen: Prüfung von VLAN-Netzen und Policy-Zielen nicht möglich"
   }
   :if ([:len $le] > 0) do={ :set cfmMgrData 0; :set ($err->0) ("Daten in work/ nicht ladbar: " . $le); :return ({"err"=$err;"warn"=$warn}) }
-  # mlag.rsc (D75) selbst laden: $cfmLoadData des installierten Managers kennt sie vor D75 nicht
+  # mlag.rsc (DP2.2) selbst laden: $cfmLoadData des installierten Managers kennt sie vor DP2.2 nicht
   :set cfmMlag ({})
   :if ([$fex ($w . "/mlag.rsc")]) do={ :onerror e in={ /import file-name=($w . "/mlag.rsc") verbose=no } do={ :set ($err->[:len $err]) ("mlag.rsc: " . $e) } }
-  # dns.rsc (D101) ebenso
+  # dns.rsc (DN3.1) ebenso
   :set cfmDns ({})
   :if ([$fex ($w . "/dns.rsc")]) do={ :onerror e in={ /import file-name=($w . "/dns.rsc") verbose=no } do={ :set ($err->[:len $err]) ("dns.rsc: " . $e) } }
   # Profil gültig? -> "" oder Fehlertext (Hostfile-Ports, Bonds, MLAG-Bonds)
@@ -89,8 +89,8 @@
   :foreach k,s in=($cfmWifi->"ssids") do={
     :local vv [:tostr ($s->"vlan")]
     :if ([:len $vv] > 0 and [:typeof ($cfmVlans->$vv)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": VLAN " . $vv . " fehlt in vlans.rsc") }
-    :if ($k = "cap") do={ :set ($err->[:len $err]) "wifi.rsc: SSID-Schlüssel cap ist reserviert (Datapath cfm-cap der APs, D41)" }
-    # schaltbare SSID (D64): nicht die Master-SSID, Schlüssel wird Teil eines Variablennamens
+    :if ($k = "cap") do={ :set ($err->[:len $err]) "wifi.rsc: SSID-Schlüssel cap ist reserviert (Datapath cfm-cap der APs, DW1.3)" }
+    # schaltbare SSID (DW4.1): nicht die Master-SSID, Schlüssel wird Teil eines Variablennamens
     :local sw [:tostr ($s->"switch")]
     :if ([:len $sw] > 0) do={
       :if ($sw != "on" and $sw != "off") do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": switch = on oder off (Grundzustand)") }
@@ -119,7 +119,7 @@
   }
   :local mlo [:tostr ($cfmWifi->"mlo")]
   :if ([:len $mlo] > 0 and $mlo != "disabled" and $mlo != "auto" and $mlo != "all" and $mlo != "master") do={ :set ($err->[:len $err]) ("wifi.rsc: mlo=" . $mlo . " unbekannt (disabled|auto|all|master)") }
-  # PPSK (Multi-Passphrase, D32): nur WPA2-PSK, VLAN vorhanden und auf den AP-Uplinks (trunk-ap)
+  # PPSK (Multi-Passphrase, DW2.2): nur WPA2-PSK, VLAN vorhanden und auf den AP-Uplinks (trunk-ap)
   :local apTag [:tostr ($cfmProfiles->"trunk-ap"->"tag")]
   :foreach k,ents in=($cfmWifi->"ppsk") do={
     :local s ($cfmWifi->"ssids"->$k)
@@ -154,7 +154,7 @@
       :set ($wgAddrs->$ad) $k
     }
   }
-  # dhcpGw (D82): Host-Anteil, nur mit dhcp, nicht im Pool, nicht das Gateway selbst
+  # dhcpGw (DN1.2): Host-Anteil, nur mit dhcp, nicht im Pool, nicht das Gateway selbst
   :foreach vid,v in=$cfmVlans do={
     :local dg [:tostr ($v->"dhcpGw")]
     :if ([:len $dg] > 0) do={
@@ -174,7 +174,7 @@
       }
     }
   }
-  # Feste Leases (D62): VLAN mit DHCP der Router, Name als DNS-Label (eindeutig, kein Gerätename),
+  # Feste Leases (DN1.1): VLAN mit DHCP der Router, Name als DNS-Label (eindeutig, kein Gerätename),
   # MAC und Adresse je VLAN eindeutig, Adresse im Netz und nicht die des Gateways
   :local lName ({}); :local lWifi ({})
   :foreach vid,ls in=$cfmLeases do={
@@ -201,7 +201,7 @@
         :if (!($mac ~ "^([0-9A-F][0-9A-F]:){5}[0-9A-F][0-9A-F]\$")) do={ :set ($err->[:len $err]) ($w . "MAC fehlt oder ungültig (AA:BB:CC:DD:EE:FF)") } else={
           :if ([:typeof ($lMac->$mac)] != "nothing") do={ :set ($err->[:len $err]) ($w . "MAC schon bei " . ($lMac->$mac)) }
           :set ($lMac->$mac) $ln
-          # Client-VLAN je MAC (D95): ein Gerät mit zufälliger MAC je SSID landet nach einem Wechsel wieder im
+          # Client-VLAN je MAC (DW2.6): ein Gerät mit zufälliger MAC je SSID landet nach einem Wechsel wieder im
           # VLAN der SSID; das VLAN muss auf den AP-Uplinks liegen (wie bei PPSK)
           :if ([:tostr ($ld->"wifi")] = "yes") do={
             :if ([:typeof ($lWifi->$mac)] != "nothing") do={ :set ($err->[:len $err]) ($w . "wifi: MAC schon mit wifi in VLAN " . ($lWifi->$mac) . " - nur ein VLAN je MAC") }
@@ -226,13 +226,13 @@
   :foreach hn,hd in=[$cfmInvLoad] do={
     :if ([:typeof ($lName->$hn)] != "nothing") do={ :set ($err->[:len $err]) ("leases.rsc: Name " . $hn . " ist auch ein Gerät (gleicher DNS-Name)") }
   }
-  # NTP-Umleitung (D93): nur "redirect", braucht ein Router-Interface
+  # NTP-Umleitung (DN2.2): nur "redirect", braucht ein Router-Interface
   :foreach vid,v in=$cfmVlans do={
     :local nt [:tostr ($v->"ntp")]
     :if ([:len $nt] > 0 and $nt != "redirect") do={ :set ($err->[:len $err]) ("vlans.rsc: VLAN " . $vid . ": ntp " . $nt . " (nur redirect)") }
     :if ($nt = "redirect" and [:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": ntp redirect ohne Router (l3=no) wirkt nicht") }
   }
-  # DNS der Router (D101): Adressen gültig, Größe lesbar, Adlisten per https, Domains ohne Leerzeichen,
+  # DNS der Router (DN3.1): Adressen gültig, Größe lesbar, Adlisten per https, Domains ohne Leerzeichen,
   # Log-Schalter; unbekannte Schlüssel (Tippfehler) als Warnung
   :local dn "dns.rsc: "
   :local dnOk do={ :return ([:tostr $1] ~ "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+\\.?\$") }
@@ -259,7 +259,7 @@
   :local dls [:tostr ($cfmDns->"log"->"syslog")]
   :if ([:len $dls] > 0 and $dls != "yes" and $dls != "no") do={ :set ($err->[:len $err]) ($dn . "log syslog " . $dls . " (yes oder no)") }
   :if ($dls = "yes" and [:len [:tostr ($cfmG->"syslog")]] = 0) do={ :set ($warn->[:len $warn]) ($dn . "log syslog=yes wirkt nur mit syslog in global.rsc") }
-  # DNS-Selbstbedienung (D102): Zonen vorhanden, deny als Domainnamen, hours 1..168, User-Name, RAM-Log nötig
+  # DNS-Selbstbedienung (DN3.2): Zonen vorhanden, deny als Domainnamen, hours 1..168, User-Name, RAM-Log nötig
   :local ds ($cfmDns->"self")
   :if ([:typeof $ds] = "array") do={
     :foreach k,v in=$ds do={ :if (!($k ~ "^(zones|deny|hours|user)\$")) do={ :set ($warn->[:len $warn]) ($dn . "self: unbekannter Schlüssel " . $k . " (zones, deny, hours, user)") } }
@@ -282,7 +282,7 @@
       :if ([:len ($cfmDns->"servers")] = 0) do={ :set ($warn->[:len $warn]) ($dn . "self ohne servers: Freischaltungen gehen an wan.dns der Router, ein Router ohne wan.dns bekommt keine Selbstbedienung") }
     }
   }
-  # Asymmetrisches Routing (D100): nur "internet". Der Verkehr ins Internet läuft ohne conntrack - mit NAT
+  # Asymmetrisches Routing (DR3.2): nur "internet". Der Verkehr ins Internet läuft ohne conntrack - mit NAT
   # der Zone setzen die Router kein notrack (Warnung, Hostfiles können die policy überschreiben), NTP-Umleitung
   # und Limit greifen dafür nicht bzw. nur im Upload
   :foreach vid,v in=$cfmVlans do={
@@ -300,7 +300,7 @@
       }
     }
   }
-  # Bandbreitenlimit (D97): "Download/Upload" mit k/M/G, wirkt nur mit Router-Interface und Subnetz
+  # Bandbreitenlimit (DR2.7): "Download/Upload" mit k/M/G, wirkt nur mit Router-Interface und Subnetz
   :foreach vid,v in=$cfmVlans do={
     :local any false
     :foreach f in={"limit";"limitClient"} do={
@@ -312,7 +312,7 @@
     }
     :if ($any and ([:tostr ($v->"l3")] = "no" or [:len ([$cfmNet $vid]->"net")] = 0)) do={ :set ($warn->[:len $warn]) ("vlans.rsc: VLAN " . $vid . ": limit ohne Router-Interface (l3=no) oder Subnetz wirkt nicht") }
   }
-  # Isolierte VLANs (D76): isolate yes/no, Ausnahmen auflösbar (Name mit MAC in leases.rsc oder MAC),
+  # Isolierte VLANs (DP3.1): isolate yes/no, Ausnahmen auflösbar (Name mit MAC in leases.rsc oder MAC),
   # nicht das Onboarding-VLAN, ohne Router nur Broadcast und Ausnahmen
   :foreach vid,v in=$cfmVlans do={
     :local is [:tostr ($v->"isolate")]
@@ -336,7 +336,7 @@
     :local si ([:tostr ($cfmVlans->$sv->"isolate")] = "yes")
     :foreach e,o in=$ents do={
       :local gv [:tostr ($o->"vlan")]
-      :if (([:tostr ($cfmVlans->$gv->"isolate")] = "yes") != $si) do={ :set ($warn->[:len $warn]) ("wifi.rsc: ppsk " . $k . "." . $e . ": VLAN " . $gv . " anders isoliert als VLAN " . $sv . " der SSID - es gilt die Isolation der SSID (D76)") }
+      :if (([:tostr ($cfmVlans->$gv->"isolate")] = "yes") != $si) do={ :set ($warn->[:len $warn]) ("wifi.rsc: ppsk " . $k . "." . $e . ": VLAN " . $gv . " anders isoliert als VLAN " . $sv . " der SSID - es gilt die Isolation der SSID (DP3.1)") }
     }
   }
   # IP-Dienste: nur RouterOS-Namen (http/https blieben stillschweigend wirkungslos), jeder Port nur
@@ -360,7 +360,7 @@
       } else={
         :if ($t != "*" and $t != "wan" and $t != "mtupdate" and [:typeof ($zones->$t)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> unbekannte Zone " . $t) }
       }
-      # NAT-Kennzeichen (D38): nur für Ziele ins Internet bzw. Freigabelisten, Adresse gültig
+      # NAT-Kennzeichen (DR2.3): nur für Ziele ins Internet bzw. Freigabelisten, Adresse gültig
       :local nat [:tostr ($pt->"nat")]
       :if ([:len $nat] > 0) do={
         :if ($t != "wan" and $t != "mtupdate" and !$al) do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> " . $t0 . ": NAT nur für wan, mtupdate und allow:<Liste>") }
@@ -370,7 +370,7 @@
   }
   :foreach ln,lst in=($cfmG->"allow") do={
     :if ([:typeof $lst] != "array") do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . " ist keine Liste") } else={
-      # Ports je Eintrag (D76): "ziel:tcp/443,8883" bzw. "ziel:udp/123"; ein anderer Zusatz nach ":" ist ein
+      # Ports je Eintrag (DP3.1): "ziel:tcp/443,8883" bzw. "ziel:udp/123"; ein anderer Zusatz nach ":" ist ein
       # Tippfehler (sonst würde er als Hostname aufgelöst)
       :foreach h in=$lst do={
         :local e [:tostr $h]
@@ -390,7 +390,7 @@
   # Inventar + Hostfiles
   :local ips ({})
   :local inv [$cfmInvLoad]
-  # Feature-Module (D104): tools/upload-seed.sh lädt nur die hoch, die die Site-Daten nutzen. Schaltet eine Site ein
+  # Feature-Module (DG4.6): tools/upload-seed.sh lädt nur die hoch, die die Site-Daten nutzen. Schaltet eine Site ein
   # Feature danach ein (cfm-Editor, /file edit), fehlt sein Modul in work/ - die Geräte bekämen es nicht, ihr Apply
   # bräche ab (Rollback). Bedingungen wie in den Rollen (vor den Hostfiles: die ändern cfmG u.U.)
   :local fneed ({})
@@ -404,7 +404,7 @@
   :foreach u,g in=($cfmG->"users") do={ :if ([$fex ($w . "/authorized_keys." . $u)]) do={ :set ($fneed->"base.sshkeys") ("authorized_keys." . $u) } }
   :foreach vid,v in=$cfmVlans do={ :if ($rtr and ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0)) do={ :set ($fneed->"router.limit") ("vlans.rsc limit, VLAN " . $vid) } }
   :if ([:len $cfmMlag] > 0) do={ :set ($fneed->"base.bond") "mlag.rsc" }
-  # schaltbare SSIDs (D64): Rümpfe der Skripte auf dem CAPsMAN; cfm-reprov braucht er immer
+  # schaltbare SSIDs (DW4.1): Rümpfe der Skripte auf dem CAPsMAN; cfm-reprov braucht er immer
   :foreach k,s in=($cfmWifi->"ssids") do={
     :if ($k != [:tostr ($cfmWifi->"master")] and [:len [:tostr ($s->"switch")]] > 0) do={
       :set ($fneed->"capsman.ssid") ("wifi.rsc switch, SSID " . $k); :set ($fneed->"capsman.ssidcheck") ("wifi.rsc switch, SSID " . $k)
@@ -435,7 +435,7 @@
       :onerror e in={ /import file-name=$hf verbose=no } do={ :set he $e }
       :if ([:len $he] > 0) do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . $he) } else={
         :if ([:len ($cfmHost->"bonds")] > 0) do={ :set ($fneed->"base.bond") ("hosts/" . $n . ".rsc bonds") }
-        # stp="none" (Bridge ohne RSTP, D40): Dann faengt niemand eine Schleife ab. Zwei Ports im
+        # stp="none" (Bridge ohne RSTP, DP1.2): Dann faengt niemand eine Schleife ab. Zwei Ports im
         # selben VLAN oder mehrere Trunks sind dort ein Fehler - auf einem normalen Switch dagegen
         # ueblich, deshalb nur bei stp="none" pruefen.
         :local nostp ([:tostr ($cfmHost->"stp")] = "none")
@@ -452,7 +452,7 @@
           :local pr ($cfmProfiles->$pn)
           :if ([:typeof $pr] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": unbekanntes Port-Profil " . $sp) } else={
             :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": VLAN " . $arg . " fehlt in vlans.rsc") }
-            # isoliertes VLAN ungetaggt an einem Port mit weiteren getaggten VLANs: kein Client-Port (D76)
+            # isoliertes VLAN ungetaggt an einem Port mit weiteren getaggten VLANs: kein Client-Port (DP3.1)
             :if ([:tostr ($pr->"untag")] = "arg" and [:tostr ($cfmVlans->$arg->"isolate")] = "yes" and [:len [:tostr ($pr->"tag")]] > 0) do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": isoliertes VLAN " . $arg . " an einem Port mit getaggten VLANs - dort wird nicht isoliert (nur reine Access-Ports)") }
             :if ($nostp) do={
               :if ([:tostr ($pr->"untag")] = "arg") do={
@@ -467,7 +467,7 @@
         :if ([:len $trunks] > 1) do={
           :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: mehrere Ports mit getaggten VLANs bei stp=none; mit stp=none faengt keine Bridge die Schleife ab")
         }
-        # Bonds (D74): Modus, Slaves (nicht doppelt, nicht zugleich unter ports), Profil unter ports
+        # Bonds (DP2.1): Modus, Slaves (nicht doppelt, nicht zugleich unter ports), Profil unter ports
         :local hsl ({})
         :foreach bn,bd in=($cfmHost->"bonds") do={
           :local bw ("hosts/" . $n . ".rsc: bonds " . $bn . ": ")
@@ -483,7 +483,7 @@
           :if ([:len $pp] > 0 and [:typeof ($hsl->$pp)] = "nothing") do={ :set ($err->[:len $err]) ($bw . "primary " . $pp . " ist kein Slave") }
           :if ([:typeof ($cfmHost->"ports"->$bn)] = "nothing") do={ :set ($warn->[:len $warn]) ($bw . "kein Profil unter ports - der Bond kommt nicht in die Bridge") }
         }
-        # MLAG (D75): Ports aus mlag.rsc nicht zugleich im Hostfile, kein stp=none
+        # MLAG (DP2.2): Ports aus mlag.rsc nicht zugleich im Hostfile, kein stp=none
         :local hm [$cfmMlagOf $n]
         :if ([:len $hm] > 0) do={
           :local mw ("mlag.rsc: " . ($hm->"pair") . ": " . $n . ": ")
@@ -505,7 +505,7 @@
           :if ([:len $sp] = 0) do={ :set sp "0x8000" }
           :set ($mstp->$n) [:tonum $sp]
         }
-        # erwartete Verkabelung ("links", D33): Gegenstelle sollte im Inventar stehen
+        # erwartete Verkabelung ("links", DU1.1): Gegenstelle sollte im Inventar stehen
         :foreach lp,lw in=($cfmHost->"links") do={
           :local pe [:tostr $lw]
           :local c2 [:find $pe ":"]
@@ -520,7 +520,7 @@
       }
     }
   }
-  # MLAG-Paare (D75): zwei Knoten aus dem Inventar im selben Ring, Primary einer davon, Peer- und
+  # MLAG-Paare (DP2.2): zwei Knoten aus dem Inventar im selben Ring, Primary einer davon, Peer- und
   # Bond-Ports je Knoten, mlag-id eindeutig, gleiche STP-Priorität, Knoten nur in einem Paar
   :local mnode ({})
   :foreach pn,p in=$cfmMlag do={
@@ -554,15 +554,15 @@
       }
     }
   }
-  # CAPsMAN (D45): höchstens ein Gerät mit Rolle capsman (kein Standby: ein zweiter aktiver CAPsMAN
+  # CAPsMAN (DW1.5): höchstens ein Gerät mit Rolle capsman (kein Standby: ein zweiter aktiver CAPsMAN
   # verteilt eine zweite CA, CAPs hängen dann am falschen). Ohne übernimmt übergangsweise der Primary.
   :if ([:len ($cfmWifi->"ssids")] > 0) do={
     :local cmn ({})
     :foreach n,d in=$inv do={ :if (("," . [:tostr ($d->"role")] . ",") ~ ",capsman,") do={ :set ($cmn->[:len $cmn]) $n } }
-    :if ([:len $cmn] = 0) do={ :set ($warn->[:len $warn]) "inventory: kein Gerät mit Rolle capsman – CAPsMAN bleibt übergangsweise auf dem Primary-Manager (D45)" }
-    :if ([:len $cmn] > 1) do={ :set ($err->[:len $err]) ("inventory: Rolle capsman mehrfach vergeben (" . [:tostr $cmn] . ") – nur ein CAPsMAN vorgesehen (D45)") }
+    :if ([:len $cmn] = 0) do={ :set ($warn->[:len $warn]) "inventory: kein Gerät mit Rolle capsman – CAPsMAN bleibt übergangsweise auf dem Primary-Manager (DW1.5)" }
+    :if ([:len $cmn] > 1) do={ :set ($err->[:len $err]) ("inventory: Rolle capsman mehrfach vergeben (" . [:tostr $cmn] . ") – nur ein CAPsMAN vorgesehen (DW1.5)") }
   }
-  # Benachrichtigungen (D66): URL mit http(s)://, Zeiten lesbar
+  # Benachrichtigungen (DU4.1): URL mit http(s)://, Zeiten lesbar
   :local nfy ($cfmG->"notify")
   :if ([:typeof $nfy] = "array") do={
     :local nu [:tostr ($nfy->"url")]
@@ -574,7 +574,7 @@
       :if ([:len $nv] > 0 and !$tok) do={ :set ($err->[:len $err]) ("global.rsc: notify " . $nk . "=" . $nv . " ist keine Zeitangabe (z.B. 30m, 14d)") }
     }
   } else={ :if ([:typeof $nfy] != "nothing") do={ :set ($err->[:len $err]) "global.rsc: notify muss ein Array sein ({\"url\"=…})" } }
-  # API-Zugang auf dem CAPsMAN (D47): Adressen gültig, Passwort im Vault
+  # API-Zugang auf dem CAPsMAN (DU2.1): Adressen gültig, Passwort im Vault
   :local capi ($cfmG->"capsmanApi")
   :if ([:typeof $capi] = "array") do={
     :if ([:len ($capi->"from")] > 0) do={
@@ -671,7 +671,7 @@
   :foreach bb,st in=($cfmWifi->"steer") do={
     :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: steer: Band " . $bb . " fehlt in channels") }
     :local hasDr ([:len [:tostr ($st->"drop")]] > 0)
-    # threshold (Steering) oder drop (Trennschwelle, TODO 61, D92) - eines von beiden
+    # threshold (Steering) oder drop (Trennschwelle, TODO 61, DW2.5) - eines von beiden
     :if ([:len [:tostr ($st->"threshold")]] > 0 or !$hasDr) do={
       :local th [:tonum ($st->"threshold")]
       :if ([:typeof $th] != "num" or $th > -40 or $th < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": threshold " . [:tostr ($st->"threshold")] . " ist kein Pegel in dBm (-100..-40)") }
@@ -690,12 +690,12 @@
       :if ([:len [:tostr ($st->"join")]] > 0) do={ :set jn [:tonum ($st->"join")] }
       :if ([:typeof $jn] = "num" and [:typeof $dr] = "num") do={
         :if ($jn < $dr) do={ :set ($err->[:len $err]) ("wifi.rsc: steer " . $bb . ": join " . $jn . " liegt unter drop " . $dr . " - angemeldete Clients würden sofort getrennt") }
-        :if ($jn = $dr) do={ :set ($warn->[:len $warn]) ("wifi.rsc: steer " . $bb . ": join = drop - am Rand pendelt ein Client (getrennt, Sekunden später wieder angemeldet); join einige dB über drop setzen (D92)") }
+        :if ($jn = $dr) do={ :set ($warn->[:len $warn]) ("wifi.rsc: steer " . $bb . ": join = drop - am Rand pendelt ein Client (getrennt, Sekunden später wieder angemeldet); join einige dB über drop setzen (DW2.5)") }
       }
-      # isolierte VLANs (D76) bleiben ausgenommen: ihr datapath trägt schon in cfm-iso ein
+      # isolierte VLANs (DP3.1) bleiben ausgenommen: ihr datapath trägt schon in cfm-iso ein
       :foreach k,s in=($cfmWifi->"ssids") do={
         :if ([:tostr ($cfmVlans->[:tostr ($s->"vlan")]->"isolate")] = "yes" and ($k = [:tostr ($cfmWifi->"master")] or (("," . ($s->"bands") . ",") ~ ("," . $bb . ",")))) do={
-          :set ($warn->[:len $warn]) ("wifi.rsc: steer " . $bb . ": drop gilt nicht für SSID " . $k . " (VLAN " . [:tostr ($s->"vlan")] . " isoliert, D76/D92)")
+          :set ($warn->[:len $warn]) ("wifi.rsc: steer " . $bb . ": drop gilt nicht für SSID " . $k . " (VLAN " . [:tostr ($s->"vlan")] . " isoliert, DP3.1/DW2.5)")
         }
       }
     }
@@ -706,12 +706,12 @@
   }
   # Fallback weiterer SSIDs (TODO 40a): die Master-SSID hat ihn immer
   :foreach k,s in=($cfmWifi->"ssids") do={
-    :if ([:tostr ($s->"fallback")] = "yes" and $k = [:tostr ($cfmWifi->"master")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: fallback an der Master-SSID " . $k . " ist überflüssig (D46)") }
+    :if ([:tostr ($s->"fallback")] = "yes" and $k = [:tostr ($cfmWifi->"master")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: fallback an der Master-SSID " . $k . " ist überflüssig (DW1.6)") }
   }
-  # Persönliche Admin-SSH-Keys je User (work/authorized_keys.<user>, OpenSSH-Format, D65): optional,
+  # Persönliche Admin-SSH-Keys je User (work/authorized_keys.<user>, OpenSSH-Format, DS3.3): optional,
   # grobe Zeilenprüfung (kein RouterOS-Skript, daher kein :parse möglich). RouterOS kennt nur
-  # rsa, ed25519 und ed25519-sk. Die gemeinsame Datei authorized_keys (D35) gilt nicht mehr.
-  :if ([$fex ($w . "/authorized_keys")]) do={ :set ($err->[:len $err]) "authorized_keys: die gemeinsame Datei gilt nicht mehr (D65) - Keys je Person nach authorized_keys.<user> verschieben und die Datei löschen" }
+  # rsa, ed25519 und ed25519-sk. Die gemeinsame Datei authorized_keys (DS3.2) gilt nicht mehr.
+  :if ([$fex ($w . "/authorized_keys")]) do={ :set ($err->[:len $err]) "authorized_keys: die gemeinsame Datei gilt nicht mehr (DS3.3) - Keys je Person nach authorized_keys.<user> verschieben und die Datei löschen" }
   :foreach f in=[/file/find where name~("^" . $w . "/authorized_keys\\.") and type!="directory"] do={
     :local fn [/file/get $f name]
     :local rel [:pick $fn ([:len $w] + 1) [:len $fn]]
@@ -734,7 +734,7 @@
   }
 
   :foreach m,why in=$fneed do={
-    :if (![$fex ($w . "/lib/" . $m . ".rsc")]) do={ :set ($err->[:len $err]) ("lib/" . $m . ".rsc fehlt, " . $why . " nutzt das Feature (D104) - Framework hochladen: tools/upload-seed.sh") }
+    :if (![$fex ($w . "/lib/" . $m . ".rsc")]) do={ :set ($err->[:len $err]) ("lib/" . $m . ".rsc fehlt, " . $why . " nutzt das Feature (DG4.6) - Framework hochladen: tools/upload-seed.sh") }
   }
 
   # Hostfiles setzen u.U. Overrides in cfmG -> Daten neu laden
@@ -742,7 +742,7 @@
   :return ({"err"=$err;"warn"=$warn})
 }
 
-# ---------- Probelauf (D29) ----------
+# ---------- Probelauf (DG3.4) ----------
 # Schnappschuss von work/ nach plan/, signiertes Plan-Manifest für den Host; das Gerät führt
 # die Rollen im Trockenlauf aus (cfmDry, *.post.rsc übersprungen) und schreibt die Änderungen
 # nach cfm/out/plan.txt. Gestartet per :execute (ssh-exec bricht lange Befehle ab), das
@@ -787,7 +787,7 @@
   $cfmWrite ($b . "/plan/index.dat") [:serialize to=json ({"v"=0;"msg"="plan";"files"=$idx})]
   :if ([$cfmManifests plan=$host role=$role] = 0) do={ :error ("kein Plan-Manifest für " . $host . " (Geräteschlüssel oder Pflichtdateien fehlen, siehe Log)") }
   :local id [:rndstr length=12 from="0123456789abcdef"]
-  # show=yes: alle Soll-Objekte statt der Änderungen ($cfmShow objects=yes, D61)
+  # show=yes: alle Soll-Objekte statt der Änderungen ($cfmShow objects=yes, DU1.2)
   :local sh ""
   :if ($show = "yes") do={ :set sh ";\\\"show\\\"=\\\"yes\\\"" }
   :local c (":execute \":global cfmArg {\\\"mode\\\"=\\\"plan\\\";\\\"id\\\"=\\\"" . $id . "\\\"" . $sh . "}; /system script run cfm-agent\"")

@@ -1,5 +1,5 @@
 # Statische Prüfung aller RouterOS-Skripte auf bekannte Fallen (tools/rsc-check.py).
-# :parse und e2e.sh laufen bewusst lokal im CHR-Labor (tools/chr-lab), siehe docs/DECISIONS.md D34.
+# :parse und e2e.sh laufen bewusst lokal im CHR-Labor (tools/chr-lab), siehe docs/DECISIONS.md DT1.2.
 name: rsc-check
 
 on:
@@ -15,7 +15,7 @@ jobs:
         run: python3 tools/rsc-check-test.py -v
       - name: RouterOS-Fallen in allen .rsc-Dateien
         run: python3 tools/rsc-check.py
-      - name: Feature-Module je Site (D104)
+      - name: Feature-Module je Site (DG4.6)
         run: python3 tools/feature-module-test.py -v
       - name: upload-seed.sh gegen einen nachgebauten SFTP-Server
         run: python3 tools/upload-seed-test.py -v

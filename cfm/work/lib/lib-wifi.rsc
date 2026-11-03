@@ -1,18 +1,18 @@
 # ============================================================
-# cfm lib/lib-wifi.rsc – WLAN-Teil der Reconciler-Bibliothek (Geräteseite, D68)
+# cfm lib/lib-wifi.rsc – WLAN-Teil der Reconciler-Bibliothek (Geräteseite, DG4.3)
 # Nur im Manifest der Rollen ap, capsman und manager ($cfmManifests); der Agent importiert sie
 # direkt nach lib/lib.rsc. Switches, Router und der Backup-Manager laden sie nicht. Die Bausteine
 # ($cfmEnsure, $cfmBlock, $cfmSet …) und $cfmIsCapsman (braucht auch base) stehen in lib/lib.rsc;
 # deren Syntaxfallen gelten hier ebenso.
 # ============================================================
 
-# WLAN-Profile aus wifi.rsc (D45/D46), gemeinsam für den CAPsMAN und den lokalen Fallback der APs:
+# WLAN-Profile aus wifi.rsc (DW1.5/DW1.6), gemeinsam für den CAPsMAN und den lokalen Fallback der APs:
 # Steering, Kanal-Pools, je SSID Security (Passphrase nur per Secret-Push), Datapath (Bridge + VLAN)
 # und Konfiguration, PPSK-Einträge, dazu je Band die Master-Konfiguration mit dem Kanal.
 #  ohne ap    CAPsMAN: cfm-m<Band>, je gepinntem AP cfm-m<Band>-<AP> -> Liste der Provisioning-Regeln
 #  ap=<Name>  lokal auf dem AP: cfm-l<Band> mit dem Pin dieses APs bzw. dem Pool -> {Band=Konfiguration}
 :global cfmSsidState do={
-  # Schaltbare SSID (D64): Zustand "on"/"off" aus <cfm>/ssid-<key>.txt auf dem CAPsMAN (schreiben die
+  # Schaltbare SSID (DW4.1): Zustand "on"/"off" aus <cfm>/ssid-<key>.txt auf dem CAPsMAN (schreiben die
   # Skripte cfm-ssid-<key>-on/-off), ohne Datei der Grundzustand aus wifi.rsc ("switch")
   :global cfmDir; :global cfmWifi
   :local st [:tostr ($cfmWifi->"ssids"->$1->"switch")]
@@ -30,7 +30,7 @@
   :local mk ($w->"master")
   :local loc ([:len $ap] > 0)
   $cfmEnsure m="/interface/wifi/steering" k="wst" n=({"name"="cfm-steer"}) p=({"name"="cfm-steer";"rrm"=($d->"rrm");"wnm"=($d->"wnm")})
-  # Steering je Band (TODO 39, D55): Liegt ein Client länger als "after" unter "threshold" (dBm), schickt
+  # Steering je Band (TODO 39, DW2.4): Liegt ein Client länger als "after" unter "threshold" (dBm), schickt
   # der AP ihm unaufgefordert BSS-Transition-Requests (802.11v, RouterOS >= 7.21) mit den Nachbar-APs
   # derselben SSID; "kick" trennt ihn, wenn er danach immer noch bleibt (leer = nie trennen).
   # Eigenes Profil cfm-steer-<Band>g, die Konfigurationen dieses Bands zeigen darauf.
@@ -55,14 +55,14 @@
   :if ([:len $msg] > 0) do={
     $cfmEnsure m="/interface/wifi/access-list" k="wacl:min" p=({"signal-range"=("-120.." . ([:tonum $msg] - 1));"action"="reject"})
   }
-  # Trennschwelle je Band (TODO 61, D92): "drop" im steer-Eintrag. Anders als der Kick des Steerings
+  # Trennschwelle je Band (TODO 61, DW2.5): "drop" im steer-Eintrag. Anders als der Kick des Steerings
   # trennt sie auch Clients mit FT (Befund 2026-10-22). Zwei Regeln je Band, in dieser Reihenfolge:
   # Anmeldung unter "join" (Standard = drop) abweisen, sonst annehmen und laufend prüfen - liegt der
   # Client länger als "hold" (Standard 0s) unter "drop", trennt ihn der AP. join über drop = Abstand,
   # sonst pendelt ein Client am Rand (getrennt, Sekunden später wieder angemeldet). Die Regeln zeigen
   # auf die Liste cfm-wifi-<Band>g, nicht auf Interfaces: Ein Verweis auf ein Interface zeigt nach dem
   # Neu-Provisionieren ins Leere, in die Liste trägt RouterOS die Interfaces über den datapath je Band
-  # (unten) selbst ein. Isolierte VLANs (D76) haben schon die Liste cfm-iso und bleiben ausgenommen.
+  # (unten) selbst ein. Isolierte VLANs (DP3.1) haben schon die Liste cfm-iso und bleiben ausgenommen.
   :local cut ({})
   :local acl ({})
   :foreach b,c in=($w->"channels") do={
@@ -80,7 +80,7 @@
       :set ($acl->[:len $acl]) $ra
     }
   }
-  # Client-VLAN je MAC (TODO 65a, D95): Eine Lease mit "wifi"="yes" in leases.rsc schickt dieses Gerät an
+  # Client-VLAN je MAC (TODO 65a, DW2.6): Eine Lease mit "wifi"="yes" in leases.rsc schickt dieses Gerät an
   # jeder SSID in das VLAN der Lease (z.B. ein Firmen-Laptop mit der Haupt-SSID ins Gäste-VLAN). Die
   # Einträge stehen vorn im Block wcut, vor dessen Regeln und wacl:min (die Access-List nimmt den ersten
   # passenden Eintrag; im selben Block bleibt die Reihenfolge auch, wenn wcut später erst entsteht). Sie
@@ -111,7 +111,7 @@
   }
   :foreach r in=$acl do={ :set ($mac->[:len $mac]) $r }
   $cfmBlock m="/interface/wifi/access-list" k="wcut" l=$mac
-  # Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, D32), DFS-Kanäle optional meiden
+  # Kanal-Pools: RouterOS wählt selbst und prüft nachts neu (reselect, DW2.2), DFS-Kanäle optional meiden
   :foreach b,c in=($w->"channels") do={
     :local cp ({"name"=("cfm-" . $b . "g");"band"=($c->"band");"frequency"=($c->"freq");"width"=($c->"width")})
     # als HH:MM:SS angeben: "03:00" liest RouterOS als 3 Minuten, der Vergleich schlüge jedes Mal fehl
@@ -143,7 +143,7 @@
     }
     :local nm ("cfm-" . $k)
     :local sp ({"name"=$nm;"authentication-types"=($o->"sec");"ft"=($o->"ft");"ft-over-ds"=($o->"ftOverDs");"management-protection"=($o->"pmf")})
-    # PPSK (D32): Multi-Passphrase-Gruppe = Name des Profils; entfällt PPSK, wird sie gelöst
+    # PPSK (DW2.2): Multi-Passphrase-Gruppe = Name des Profils; entfällt PPSK, wird sie gelöst
     :local pp ([:typeof ($w->"ppsk"->$k)] = "array")
     :if ($pp) do={ :set ($sp->"multi-passphrase-group") $nm }
     $cfmEnsure m="/interface/wifi/security" k=("wsec:" . $k) n=({"name"=$nm}) p=$sp
@@ -156,9 +156,9 @@
       } do={}
     }
     # Beim CAPsMAN gehen davon vlan-id und client-isolation an die CAPs; "bridge" gilt nur für
-    # eigene Radios, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, D41)
+    # eigene Radios, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, DW1.3)
     :local dpp ({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
-    # Isoliertes VLAN (D76): Client-Isolation an, Interfaces in die Liste cfm-iso (dort filtert die Bridge
+    # Isoliertes VLAN (DP3.1): Client-Isolation an, Interfaces in die Liste cfm-iso (dort filtert die Bridge
     # des AP). Ob der CAPsMAN interface-list an die CAPs weitergibt, ist auf Hardware offen; die Rolle ap
     # trägt die Interfaces sonst selbst ein, lokale Datapaths (Fallback) haben die Liste ohnehin
     :local isoS ([:tostr ($cfmVlans->[:tostr ($s->"vlan")]->"isolate")] = "yes")
@@ -267,7 +267,7 @@
     $f
   } do={ :if ($e ~ "bad parameter") do={ :set mlOk false } }
   :local pl ({})
-  # Schaltbare SSIDs (D64): stehen seit D90 immer in den Regeln, mit festen Interfaces (create-enabled);
+  # Schaltbare SSIDs (DW4.1): stehen seit DW4.2 immer in den Regeln, mit festen Interfaces (create-enabled);
   # geschaltet werden ihre Interfaces am CAPsMAN (Skripte cfm-ssid-<key>-on/-off, $cfmCapsmanOn).
   # cfmSsidSw = Menge der schaltbaren Schlüssel
   :global cfmSsidSw; :set cfmSsidSw ({})
@@ -288,10 +288,10 @@
         }
       }
     }
-    # Feste Interfaces (create-enabled, D90): Anders als dynamische lassen sie sich einzeln ab- und
+    # Feste Interfaces (create-enabled, DW4.2): Anders als dynamische lassen sie sich einzeln ab- und
     # anschalten - eine SSID schaltet so, ohne alle Radios neu zu provisionieren. Interface-Namen aus
     # Identity und Band (z.B. ap1-2g) statt cap-wifiN - so ist in Registration-Tabelle und Monitoring der
-    # AP erkennbar (D47)
+    # AP erkennbar (DU2.1)
     :local pr ({"action"="create-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl;"name-format"=("%I-" . $b . "g")})
     :if ($mlOk) do={ :set ($pr->"multi-link-mode") $mlm }
     :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
@@ -322,10 +322,10 @@
   :return $miss
 }
 
-# CAPsMAN rendern und einschalten (Rolle capsman bzw. übergangsweise der Primary-Manager, D45).
+# CAPsMAN rendern und einschalten (Rolle capsman bzw. übergangsweise der Primary-Manager, DW1.5).
 # Ohne Passphrasen bliebe der Dienst an, die APs verteilten aber SSIDs, an denen sich niemand anmelden
 # kann – deshalb erst einschalten, wenn der Secret-Push sie gesetzt hat (er schaltet ihn dann selbst
-# ein). Bis dahin senden die APs mit ihrer lokalen Kopie weiter (D46).
+# ein). Bis dahin senden die APs mit ihrer lokalen Kopie weiter (DW1.6).
 :global cfmCapsmanOn do={
   :global cfmG; :global cfmWifiRender; :global cfmBlock; :global cfmSet; :global cfmPskMissing; :global cfmWarn; :global cfmEnsure
   :local pl [$cfmWifiRender]
@@ -336,16 +336,16 @@
     $cfmWarn "CAPsMAN bleibt aus, bis der Secret-Push die WLAN-Passphrasen gesetzt hat"
   }
   $cfmSet m="/interface/wifi/capsman" p=({"enabled"=$en;"interfaces"=("vlan" . [:tostr ($cfmG->"mgmtVlan")]);"certificate"="auto";"ca-certificate"="auto";"require-peer-certificate"="no";"upgrade-policy"="none"})
-  # Schaltbare SSIDs (D64, D90): Jede SSID mit "switch" hat feste Interfaces (Regeln mit create-enabled).
+  # Schaltbare SSIDs (DW4.1, DW4.2): Jede SSID mit "switch" hat feste Interfaces (Regeln mit create-enabled).
   # Die Skripte cfm-ssid-<key>-on/-off schalten nur deren Interfaces ab bzw. an - an allen CAPs und den
   # eigenen Radios; neu provisioniert wird dabei nichts. Zustand in <cfm>/ssid-<key>.txt, den jeder Apply
   # und cfm-ssid-check (alle 10 min, auch Auto-Aus) an den Interfaces durchsetzen - auch an denen eines neu
   # verbundenen CAP, die eingeschaltet entstehen. dont-require-permissions: der API-User aus capsmanApi
   # (Gruppe read,api,test) darf die Skripte starten, ohne selbst schreiben zu dürfen. :global
   # cfmSsid<key> ("on"/"off") gilt für die Konsole, HA liest Interfaces und Datei
-  # (tools/home-assistant/cfm_ssid.py). Übergang von den dynamischen Interfaces vor D90: Gibt es noch
+  # (tools/home-assistant/cfm_ssid.py). Übergang von den dynamischen Interfaces vor DW4.2: Gibt es noch
   # welche, provisioniert das erste Schalten die CAP-Radios einmal neu (~3 s ohne WLAN, früher jedes Mal).
-  # Die Skripte selbst stehen als Rumpf in lib/capsman.ssid.rsc und lib/capsman.ssidcheck.rsc (D104); hier
+  # Die Skripte selbst stehen als Rumpf in lib/capsman.ssid.rsc und lib/capsman.ssidcheck.rsc (DG4.6); hier
   # kommen nur die Werte als Locals davor und der Aufruf dahinter.
   :global cfmSsidSw; :global cfmSsidState; :global cfmDir; :global cfmWifi; :global cfmDry; :global cfmLog
   :global cfmStat; :global cfmBody
@@ -367,7 +367,7 @@
     :local aos 0
     :if ([:len [:tostr ($s->"autoOff")]] > 0) do={ :set aos ([:tonsec [:totime ($s->"autoOff")]] / 1000000000) }
     :foreach act in={"on";"off"} do={
-      :local src ("# cfm (Rolle capsman, D64/D90): SSID " . ($s->"ssid") . " " . $act . " - für Home Assistant, jeder Apply schreibt es neu\n")
+      :local src ("# cfm (Rolle capsman, DW4.1/DW4.2): SSID " . ($s->"ssid") . " " . $act . " - für Home Assistant, jeder Apply schreibt es neu\n")
       :set src ($src . ":local st \"" . $act . "\"\n:local k \"" . $k . "\"\n:local ssid " . [$esc [:tostr ($s->"ssid")]] . "\n:local sf " . [$esc $sf] . "\n:local aos " . $aos . "\n")
       :set src ($src . $bsw . "\n\$ssidsw st=\$st k=\$k ssid=\$ssid sf=\$sf aos=\$aos\n")
       $cfmEnsure m="/system/script" k=("sys:ssid-" . $k . "-" . $act) n=({"name"=("cfm-ssid-" . $k . "-" . $act)}) p=({"name"=("cfm-ssid-" . $k . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
@@ -412,7 +412,7 @@
     }
   }
   :if ([:len $ck] > 0) do={
-    :set ck ("# cfm (Rolle capsman, D64/D90): Zustand der schaltbaren SSIDs für Home Assistant, Auto-Aus, Interfaces\n:local ssids ({" . $ck . "})\n" . [$cfmBody "capsman.ssidcheck"] . "\n\$ssidcheck ssids=\$ssids\n")
+    :set ck ("# cfm (Rolle capsman, DW4.1/DW4.2): Zustand der schaltbaren SSIDs für Home Assistant, Auto-Aus, Interfaces\n:local ssids ({" . $ck . "})\n" . [$cfmBody "capsman.ssidcheck"] . "\n\$ssidcheck ssids=\$ssids\n")
     $cfmEnsure m="/system/script" k="sys:ssid-check" n=({"name"="cfm-ssid-check"}) p=({"name"="cfm-ssid-check";"source"=$ck;"policy"="ftp,read,write,test"})
     $cfmEnsure m="/system/scheduler" k="sys:ssid-check" n=({"name"="cfm-ssid-check"}) p=({"name"="cfm-ssid-check";"interval"="10m";"start-time"="startup";"on-event"="/system/script/run cfm-ssid-check";"disabled"="no"})
   }
@@ -420,7 +420,7 @@
   # SSID, Aufteilung nach Band), behalten die festen Interfaces der CAPs ihre alten, bis ihr Radio neu
   # provisioniert wird - der Apply provisioniert nur die eigenen Radios. Je CAP-Radio die erste passende
   # Regel (Identity, Band) gegen die Konfigurationen von Master und Slaves (nach Namen, also in der Folge
-  # aus slave-configurations bis 9 Slaves); dynamische Interfaces (vor D90) gelten auch als veraltet. Nur
+  # aus slave-configurations bis 9 Slaves); dynamische Interfaces (vor DW4.2) gelten auch als veraltet. Nur
   # melden und cfm-reprov mit den betroffenen APs schreiben: Wann die ~3 s je AP passen, entscheidet der
   # Mensch (Nutzer 2026-10-26). Neuprovisionieren legt die festen Interfaces neu an, eingeschaltet - das
   # Skript setzt danach gleich den Schaltzustand durch.
@@ -458,7 +458,7 @@
         :if ($have != $want or $dyn) do={
           :set ($stale->$id) 1
           :local why ("Konfigurationen " . $have . ", laut Regel " . $want)
-          :if ($dyn) do={ :set why "dynamische Interfaces (vor D90)" }
+          :if ($dyn) do={ :set why "dynamische Interfaces (vor DW4.2)" }
           $cfmWarn ("CAP-Radio " . $mi . " veraltet (" . $why . ") - neu provisionieren: /system/script/run cfm-reprov (~3 s ohne WLAN je AP)")
         }
       }
@@ -469,11 +469,11 @@
     :if ([:len $al] > 0) do={ :set al ($al . ";") }
     :set al ($al . [$esc $a])
   }
-  # Rumpf: lib/capsman.reprov.rsc (D104)
+  # Rumpf: lib/capsman.reprov.rsc (DG4.6)
   :local rp ("# cfm (Rolle capsman): CAPs mit veralteten Interfaces nacheinander neu provisionieren (~3 s ohne WLAN je AP),\n# danach den Schaltzustand der SSIDs durchsetzen. Die Liste schreibt jeder Apply neu.\n:local aps ({" . $al . "})\n")
   :set rp ($rp . [$cfmBody "capsman.reprov"] . "\n\$reprov aps=\$aps\n")
   $cfmEnsure m="/system/script" k="sys:reprov" n=({"name"="cfm-reprov"}) p=({"name"="cfm-reprov";"source"=$rp;"policy"="read,write,test"})
-  # Eigene Radios (TODO 24, D53): Ein CAPsMAN verwaltet sich laut MikroTik nicht selbst als CAP, kann
+  # Eigene Radios (TODO 24, DW1.7): Ein CAPsMAN verwaltet sich laut MikroTik nicht selbst als CAP, kann
   # seine Radios aber über /interface/wifi/radio/provision mit denselben Regeln provisionieren
   # (Profile, Pins, virtuelle APs; der Datapath trägt "bridge" für genau diesen Fall). Hostfile
   # capsmanRadios="yes". Neu provisioniert wird nur, wenn sich WLAN-Daten oder Regeln geändert haben
@@ -496,7 +496,7 @@
       } else={
         :if ($lr) do={
           # Wi-Fi 7 (hAP be³): ab Werk hängen die Radios am statischen, abgeschalteten MLD - ohne MLO
-          # blieben sie aus ("mld-interface not enabled"), wie bei den APs (D46) lösen
+          # blieben sie aus ("mld-interface not enabled"), wie bei den APs (DW1.6) lösen
           :if ([:len [:tostr ($cfmWifi->"mlo")]] = 0 or [:tostr ($cfmWifi->"mlo")] = "disabled") do={
             :local smld false
             :foreach x in=[/interface/wifi/find where !dynamic] do={ :if ([:len [:tostr ([/interface/wifi/get $x]->"mld-name")]] > 0) do={ :set smld true } }
@@ -505,7 +505,7 @@
           /interface/wifi/radio/provision [find where local]
           :if ([:len $old] = 0) do={ /file/add name=$sf contents=$h } else={ /file/set $sf contents=$h }
           $cfmLog ("eigene Radios (" . $nr . ") ueber den eigenen CAPsMAN provisioniert")
-          # Schaltbare SSIDs (D90): Die eigenen Radios haben jetzt neue feste Interfaces, alle eingeschaltet -
+          # Schaltbare SSIDs (DW4.2): Die eigenen Radios haben jetzt neue feste Interfaces, alle eingeschaltet -
           # den Schaltzustand gleich durchsetzen, nicht erst mit dem nächsten cfm-ssid-check (bis zu 10 min)
           :if ([:len $cfmSsidSw] > 0) do={ :delay 3s; :onerror e in={ /system/script/run [find name="cfm-ssid-check"] } do={} }
         } else={
@@ -521,7 +521,7 @@
       }
     }
   }
-  # Lese-Zugang per API (D47): Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault,
+  # Lese-Zugang per API (DU2.1): Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault,
   # user.<name>; bis dahin abgeschaltet), Freigabe in local-input nur für capsmanApi.from. Den
   # Dienst selbst öffnet base. Zieht der CAPsMAN um, räumt die GC das alte Gerät auf.
   :local capi ($cfmG->"capsmanApi")

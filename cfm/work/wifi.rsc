@@ -1,5 +1,5 @@
 # ============================================================
-# cfm – WLAN (gerendert vom CAPsMAN – Rolle capsman, D45 – und als lokaler Fallback auf den APs, D46)
+# cfm – WLAN (gerendert vom CAPsMAN – Rolle capsman, DW1.5 – und als lokaler Fallback auf den APs, DW1.6)
 #  ssids     Key = interner Name. vlan = Datapath-VLAN, bands = "2,5",
 #            sec/ft/ftOverDs/pmf/isolation überschreiben die defaults.
 #            Passphrase NUR im Vault: cfm:psk.<key> - <key> ist der SSID-Schlüssel unten in
@@ -23,31 +23,31 @@
 #            $cfmSecret key=ppsk.iot.kameras value=...
 #  radios    optionales Pinning pro AP-Identity: {"ap1"={"5"="5180";"2"="2412"}}
 #            (ohne Pin wählt der CAPsMAN bei jeder Neuverbindung neu; gilt auch für den Fallback)
-#  steer     Steering je Band (RouterOS >= 7.21, D55): Liegt ein Client länger als "after" unter
+#  steer     Steering je Band (RouterOS >= 7.21, DW2.4): Liegt ein Client länger als "after" unter
 #            "threshold" (dBm), schlägt ihm der AP per 802.11v die Nachbar-APs vor; "kick" trennt ihn,
 #            wenn er danach noch bleibt (leer = nie trennen). Optional "count"/"period" der Vorschläge
 #            (Standard 3 alle 30s). Schwellen vor Ort ermitteln, z.B.:
 #              "steer"={"2"={"threshold"=-78;"after"="10s";"kick"="5m"};"5"={"threshold"=-75;"after"="10s"}}
-#            Clients mit FT trennt "kick" nicht. Trennschwelle je Band (D92), auch mit FT: "drop" (dBm),
+#            Clients mit FT trennt "kick" nicht. Trennschwelle je Band (DW2.5), auch mit FT: "drop" (dBm),
 #            optional "join" (Anmeldung erst ab diesem Pegel, Standard = drop; einige dB darüber, sonst
 #            pendelt ein Client am Rand) und "hold" (so lange darf er unter drop liegen, Standard 0s):
 #              "6"={"threshold"=-72;"after"="5s";"drop"=-74;"join"=-68;"hold"="30s"}
-#            Nicht für SSIDs in isolierten VLANs (D76).
+#            Nicht für SSIDs in isolierten VLANs (DP3.1).
 #  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab;
 #            eine laufende Verbindung trennt er deshalb nicht (dafür drop in steer)
-#  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback (D54,
+#  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback (DW1.8,
 #            slaves-static; die Master-SSID tut das immer)
-#  switch    an einer weiteren SSID: "switch"="off"|"on" -> per Skript schaltbar (D64), Wert =
+#  switch    an einer weiteren SSID: "switch"="off"|"on" -> per Skript schaltbar (DW4.1), Wert =
 #            Grundzustand. Der CAPsMAN bekommt cfm-ssid-<key>-on/-off (z.B. für Home Assistant über
 #            capsmanApi), :global cfmSsid<key> zeigt den Zustand; Schlüssel nur a-z0-9
 #  autoOff   zu switch: nach dieser Dauer wieder aus, z.B. "autoOff"="50h"
-#  others    andere Funknetze im 2,4-GHz-Band für den Kanal-Vorschlag von $cfmWifiScan (D80):
+#  others    andere Funknetze im 2,4-GHz-Band für den Kanal-Vorschlag von $cfmWifiScan (DW3.5):
 #            "type" zigbee|thread (dazu "ch" 11-26 oder "auto" = Kanal vorschlagen) | milight-rgbw |
 #            milight-cct | milight-rgbcct | ble | bt; optional "near" (APs neben dem Sender, z.B.
 #            "ap1,ap2" - dort zählt das Netz dreifach) und "w" (Gewicht dort, Standard je Typ):
 #              "others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"};"otbr"={"type"="thread";"ch"="auto"}}
 #            $cfmCheck warnt, wenn ein Pin in radios einen festen Zigbee-/Thread-Kanal überdeckt.
-# Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (D53)
+# Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (DW1.7)
 # ============================================================
 :global cfmWifi {
   "country"="Germany";

@@ -1,8 +1,8 @@
 # ============================================================
 # Rolle router – Inter-VLAN-Routing, DHCP, Zonen-Firewall, NAT, VRRP
-#  NAT nur, wo die policy es kennzeichnet (D38): "*wan" = masquerade, "wan@a.b.c.d" = src-nat auf
+#  NAT nur, wo die policy es kennzeichnet (DR2.3): "*wan" = masquerade, "wan@a.b.c.d" = src-nat auf
 #  diese Adresse (liegt bei VRRP auf vrrp<VID> des WAN-VLANs und wandert mit dem Master).
-#  Freigabelisten (D39): policy-Ziel "allow:<Liste>" aus global.rsc "allow".
+#  Freigabelisten (DR2.4): policy-Ziel "allow:<Liste>" aus global.rsc "allow".
 #  Hostfile-Parameter:
 #   routerId=1..4   VRRP aktiv: reale IP .250+id, VIP .gw, Prio 210-10*id
 #                   (weglassen = Einzelrouter, bekommt .gw direkt)
@@ -17,7 +17,7 @@
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
 :local mv [:tostr ($cfmG->"mgmtVlan")]
-# WireGuard bei VRRP (D84): wg-admin läuft nur auf dem Master des WAN-VLANs (Endpoint = dessen VIP), alle
+# WireGuard bei VRRP (DR4.2): wg-admin läuft nur auf dem Master des WAN-VLANs (Endpoint = dessen VIP), alle
 # Router mit demselben Schlüssel aus dem Vault; die Backups routen das WG-Netz über die MGMT-VIP zum Master
 :local wgOn ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0)
 :local wgV ""
@@ -29,7 +29,7 @@
   }
 }
 
-# --- Switch-Chip (D37): Routing in der CPU. Mit l3-hw-offloading routet der Switch-Chip (CRS3xx/5xx)
+# --- Switch-Chip (DR1.2): Routing in der CPU. Mit l3-hw-offloading routet der Switch-Chip (CRS3xx/5xx)
 #     an der Zonen-Firewall vorbei, und VRRP funktioniert laut MikroTik nur mit l3-hw-offloading=no.
 #     Geräte ohne Switch-Menü (CHR) oder ohne die Eigenschaft bleiben unberührt. Nach Entfernen der
 #     Rolle bleibt es aus (von Hand wieder einschalten). ---
@@ -88,7 +88,7 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
           :set ob ($ob . "/interface/wireguard/disable [find name=wg-admin]; /ip/route/enable [find comment=\"cfm:rt:wg\"]")
         }
         # Erst nach 5 s und nur, wenn er dann noch Master ist: Ein startender Backup hört den Master
-        # anfangs nicht und ist für etwa 2 s selbst Master (Befund am Standort, D85); on-backup sofort
+        # anfangs nicht und ist für etwa 2 s selbst Master (Befund am Standort, DR1.5); on-backup sofort
         :if ([:len $om] > 0) do={ :set om (":delay 5s; :if ([/interface/vrrp/get [find name=vrrp" . $vid . "] running]) do={ " . $om . " }") }
         $cfmEnsure m="/interface/vrrp" k=("vrrp:" . $vid) n=({"name"=("vrrp" . $vid)}) p=({"name"=("vrrp" . $vid);"interface"=$ifn;"vrid"=$vrid;"priority"=(210 - 10 * $rid);"interval"="400ms";"version"=3;"on-master"=$om;"on-backup"=$ob})
         # Verkehr an die VIP (virtuelle MAC) kommt über vrrp<VID> herein, nicht über vlan<VID>: das
@@ -126,11 +126,11 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         $cfmSet m="/ip/dhcp-server" n=({"name"=("dhcp" . $vid)}) p=({"disabled"=$dis})
         :local dns [:tostr ($v->"dns")]
         :if ([:len $dns] = 0) do={ :set dns [:tostr $gw] }
-        # dhcpGw (D82): Clients bekommen ein anderes Gateway, z.B. den Internet-Router im selben Netz
+        # dhcpGw (DN1.2): Clients bekommen ein anderes Gateway, z.B. den Internet-Router im selben Netz
         :local dg [:tostr $gw]
         :if ([:len [:tostr ($v->"dhcpGw")]] > 0) do={ :set dg [:tostr (($nn->"addr") + [:tonum ($v->"dhcpGw")])] }
         $cfmEnsure m="/ip/dhcp-server/network" k=("dn:" . $vid) n=({"address"=($nn->"net")}) p=({"address"=($nn->"net");"gateway"=$dg;"dns-server"=$dns;"domain"=($cfmG->"domain")})
-        # feste Leases aus leases.rsc (D62); der Name ist Kommentar und DNS-Name
+        # feste Leases aus leases.rsc (DN1.1); der Name ist Kommentar und DNS-Name
         :if ([:typeof $cfmLeases] = "array") do={
           :foreach ln,ld in=($cfmLeases->$vid) do={
             :local la [:tostr (($nn->"addr") + [:tonum ($ld->"ip")])]
@@ -144,7 +144,7 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   }
 }
 
-# --- Bandbreitenlimit je VLAN (D97): Feature-Modul lib/router.limit.rsc (D104), nur wenn ein VLAN limit oder
+# --- Bandbreitenlimit je VLAN (DR2.7): Feature-Modul lib/router.limit.rsc (DG4.6), nur wenn ein VLAN limit oder
 #     limitClient trägt. Es liefert die Netze mit Limit zurück, der Firewall-Block nimmt sie vom Fasttrack aus ---
 :local limNets ({})
 :local limF false
@@ -162,7 +162,7 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 :local asymZ ""
 :if ([:typeof $wan] = "array") do={
   $cfmEnsure m="/interface/list/member" k="ilm:wan" n=({"list"="WAN";"interface"=($wan->"if")}) p=({"list"="WAN";"interface"=($wan->"if")})
-  # WAN in einem cfm-VLAN (Internet-Router im LAN): dessen Netz merken (Firewall, D86); bei VRRP zählt
+  # WAN in einem cfm-VLAN (Internet-Router im LAN): dessen Netz merken (Firewall, DR3.1); bei VRRP zählt
   # auch das VRRP-Interface als WAN
   :local wif [:tostr ($wan->"if")]
   :if ($wif ~ "^vlan[0-9]+\$") do={
@@ -186,20 +186,20 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
   }
   :set wdns [:tostr ($wan->"dns")]
 }
-# --- DNS der Router (D101, dns.rsc optional): Upstreams und Cache. Ohne dns.rsc fragen die Router wan.dns wie
+# --- DNS der Router (DN3.1, dns.rsc optional): Upstreams und Cache. Ohne dns.rsc fragen die Router wan.dns wie
 #     bisher ---
 :local dp ({"allow-remote-requests"="yes";"servers"=$wdns})
 :local dup $wdns
 :if ([:len ($cfmDns->"servers")] > 0) do={ :set dup ($cfmDns->"servers"); :set ($dp->"servers") $dup }
 :if ([:len [:tostr ($cfmDns->"cache")]] > 0) do={ :set ($dp->"cache-size") [:tostr [$cfmKib ($cfmDns->"cache")]] }
 $cfmSet m="/ip/dns" p=$dp
-# Forwarder cfm-upstream mit allen Upstreams für Ausnahmen (allow) und die Selbstbedienung (D102); er bleibt, solange
+# Forwarder cfm-upstream mit allen Upstreams für Ausnahmen (allow) und die Selbstbedienung (DN3.2); er bleibt, solange
 # Freischaltungen der Selbstbedienung (dnsui:) auf ihn zeigen - auch ohne dns.rsc
 :if (([:len ($cfmDns->"allow")] > 0 or [:len ($cfmDns->"self"->"zones")] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0) and [:len $dup] > 0) do={
   $cfmEnsure m="/ip/dns/forwarders" k="dnsfw:upstream" n=({"name"="cfm-upstream"}) p=({"name"="cfm-upstream";"dns-servers"=$dup})
 }
-# Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log und Selbstbedienung (D101, D102): Feature-Modul lib/router.dns.rsc
-# (D104), nur mit dns.rsc. Ohne baut die Rolle selbst ab, was die GC nicht kennt - so muss das Modul dafür nicht auf
+# Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log und Selbstbedienung (DN3.1, DN3.2): Feature-Modul lib/router.dns.rsc
+# (DG4.6), nur mit dns.rsc. Ohne baut die Rolle selbst ab, was die GC nicht kennt - so muss das Modul dafür nicht auf
 # dem Manager liegen (tools/upload-seed.sh lädt es nur für Sites mit dns.rsc hoch): Log-Regeln (ohne comment) der
 # Aktion cfmdns und dns,!packet an cfmremote, solange es die Aktion noch gibt (sonst blieben sie ungültig stehen,
 # und find action= träfe die Standardregeln), dazu befristete Freischaltungen (liefen sonst nie ab)
@@ -212,7 +212,7 @@ $cfmSet m="/ip/dns" p=$dp
     /ip/dns/static/remove [find where comment~"^dnsui:tmp:"]
   }
 }
-# DNS-Namen (D62): feste Leases und alle aufgenommenen Geräte (MGMT-Adresse, Liste im Manifest) als
+# DNS-Namen (DN1.1): feste Leases und alle aufgenommenen Geräte (MGMT-Adresse, Liste im Manifest) als
 # <name>.<domain>; bei gleichem Namen gilt die Lease ($cfmCheck meldet das als Fehler)
 :local dom [:tostr ($cfmG->"domain")]
 :if ([:len $dom] > 0) do={
@@ -235,7 +235,7 @@ $cfmSet m="/ip/dns" p=$dp
 $cfmSet m="/system/ntp/client" p=({"enabled"="yes";"servers"=$ntpSrv})
 $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 
-# --- WireGuard-Fernzugang (D36, D84): Feature-Modul lib/router.wg.rsc (D104), nur mit Peers in wireguard.rsc.
+# --- WireGuard-Fernzugang (DR4.1, DR4.2): Feature-Modul lib/router.wg.rsc (DG4.6), nur mit Peers in wireguard.rsc.
 #     Interface wg-admin zählt als Zone mgmt; Firewall und NAT unten kennen es über wgIf ---
 :local wgIf ""
 :if ($wgOn) do={
@@ -251,8 +251,8 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :foreach h in=($cfmG->"onboard"->"mtHosts") do={
   $cfmEnsure m="/ip/firewall/address-list" k=("al:mt:" . $h) p=({"list"="cfm-mtupdate";"address"=$h})
 }
-# Freigabelisten (D39): Hostnamen löst RouterOS dynamisch auf, IPs/Netze gelten direkt. Einträge mit
-# Ports ("ziel:tcp/443,8883", D76) kommen je Port-Kombination in eine eigene Liste mit eigener Regel
+# Freigabelisten (DR2.4): Hostnamen löst RouterOS dynamisch auf, IPs/Netze gelten direkt. Einträge mit
+# Ports ("ziel:tcp/443,8883", DP3.1) kommen je Port-Kombination in eine eigene Liste mit eigener Regel
 :global cfmAllowEntry
 :local alg ({})
 :foreach ln,lst in=($cfmG->"allow") do={
@@ -280,14 +280,14 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"src-address-list"="cfm-mgmt"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="!WAN";"protocol"="udp";"dst-port"="53,67,123"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="!WAN";"protocol"="tcp";"dst-port"="53"})
-# Internet-Router im LAN (D86): Das WAN-VLAN ist zugleich ein eigenes Netz mit Clients - DNS/DHCP/NTP
+# Internet-Router im LAN (DR3.1): Das WAN-VLAN ist zugleich ein eigenes Netz mit Clients - DNS/DHCP/NTP
 # aus diesem Netz wie aus den übrigen Zonen (der DHCP-Server bekommt seine Anfragen auch ohne Regel)
 :if ([:len $wanNet] > 0) do={
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="WAN";"src-address"=$wanNet;"protocol"="udp";"dst-port"="53,67,123"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"="WAN";"src-address"=$wanNet;"protocol"="tcp";"dst-port"="53"})
 }
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"dst-address"="127.0.0.1"})
-# DNS-Selbstbedienung (D102): WebFig/REST des Gateways aus den Zonen in dns.rsc self.zones (Dienst www, base)
+# DNS-Selbstbedienung (DN3.2): WebFig/REST des Gateways aus den Zonen in dns.rsc self.zones (Dienst www, base)
 :if ([:len ($cfmDns->"self"->"zones")] > 0) do={
   :local wp [:tostr ($cfmG->"services"->"www")]
   :if ([:len $wp] = 0) do={ :set wp "80" }
@@ -300,7 +300,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"src-address-type"="local"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="drop"})
-# Admin-PCs aus mgmtExtra (Adressliste cfm-mgmt) erreichen die Geräte im MGMT-VLAN auch geroutet (D83);
+# Admin-PCs aus mgmtExtra (Adressliste cfm-mgmt) erreichen die Geräte im MGMT-VLAN auch geroutet (DR2.6);
 # sonst ließe die Policy sie nur an die Dienste der Router selbst (input). Vor "drop invalid": Geräte mit
 # eigener Adresse im Netz des Admin-PCs (Backup-Router, Core) antworten direkt, der Master sieht nur eine
 # Richtung, die Folgepakete wären für ihn invalid
@@ -308,7 +308,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :if (($zones->$mz) = 1) do={
   :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"src-address-list"="cfm-mgmt";"out-interface-list"=("Z-" . $mz)})
 }
-# Netze mit Bandbreitenlimit (D97) nicht in den Fasttrack, sonst umgehen ihre Verbindungen die Queue
+# Netze mit Bandbreitenlimit (DR2.7) nicht in den Fasttrack, sonst umgehen ihre Verbindungen die Queue
 :foreach ln in=$limNets do={
   :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related";"src-address"=$ln})
   :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-state"="established,related";"dst-address"=$ln})
@@ -340,7 +340,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
         :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"in-interface-list"=("Z-" . $from);"out-interface-list"="WAN";"dst-address-list"=$dl})
       }
       # Freigabeliste: Ziele überall (Internet oder z.B. ein Proxy in einer anderen Zone); je Adressliste
-      # eine Regel, mit Ports nur für diese (D76). NAT-Regeln je Liste, siehe unten (dls)
+      # eine Regel, mit Ports nur für diese (DP3.1). NAT-Regeln je Liste, siehe unten (dls)
       :local dls ({})
       :if ([:pick $t 0 6] = "allow:") do={
         :foreach gl,gp in=($alg->[:pick $t 6 [:len $t]]) do={
@@ -367,7 +367,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
     }
   }
 }
-# Monitoring -> RouterOS-API des CAPsMAN (D47): Quellen aus capsmanApi.from, Ziel ist der CAPsMAN aus
+# Monitoring -> RouterOS-API des CAPsMAN (DU2.1): Quellen aus capsmanApi.from, Ziel ist der CAPsMAN aus
 # dem Manifest (cm), die Freigabe zieht also mit ihm um. Ist der Router selbst CAPsMAN, reicht die
 # Freigabe der Rolle capsman in local-input.
 :local capi ($cfmG->"capsmanApi")
@@ -387,7 +387,7 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="forward";"action"="drop"})
 $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
 
-# --- NAT (D38) ---
+# --- NAT (DR2.3) ---
 # Quellnetze je Zone mit NAT als Adressliste für die srcnat-Regeln
 :foreach vid,v in=$cfmVlans do={
   :local z [:tostr ($v->"zone")]
@@ -412,7 +412,7 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
     $cfmEnsure m="/ip/address" k=("ip:nat:" . $na) n=({"interface"=$nif;"address"=($na . "/32")}) p=({"address"=($na . "/32");"interface"=$nif})
   }
 }
-# DNS-Umleitung (D39) für Zonen ohne allgemeinen Internetzugang: fest eingebaute externe
+# DNS-Umleitung (DR2.4) für Zonen ohne allgemeinen Internetzugang: fest eingebaute externe
 # DNS-Server landen beim Router, der dieselben Antworten wie für die Freigabelisten nutzt
 :foreach z,x in=$zones do={
   :if ([:typeof ($inet->$z)] = "nothing") do={
@@ -421,7 +421,7 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
     }
   }
 }
-# NTP-Umleitung je VLAN (D93, "ntp"="redirect"): Geräte mit fest eingebautem NTP-Server (z.B. OpenBeken)
+# NTP-Umleitung je VLAN (DN2.2, "ntp"="redirect"): Geräte mit fest eingebautem NTP-Server (z.B. OpenBeken)
 # bekommen die Zeit vom Router - jedes Ziel außer dem Router selbst, auch private (Internet-Router im LAN).
 # Über das Quellnetz, weil der Verkehr an die VIP über vrrp<VID> hereinkommt, sonst über vlan<VID>
 :foreach vid,v in=$cfmVlans do={
@@ -432,7 +432,7 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
     }
   }
 }
-# WireGuard über die VIP (D84): RouterOS antwortet sonst von der eigenen Adresse im WAN-VLAN, der Client
+# WireGuard über die VIP (DR4.2): RouterOS antwortet sonst von der eigenen Adresse im WAN-VLAN, der Client
 # übernimmt sie als Endpoint und hängt nach einem Wechsel des Masters am alten Router. Mit dst-nat auf die
 # eigene Adresse gehört die Antwort zur Verbindung und geht von der VIP zurück (auch hinter einer Portfreigabe)
 :if ([:len $wgV] > 0) do={
@@ -441,7 +441,7 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
 }
 $cfmBlock m="/ip/firewall/nat" k="nat" l=$natR
 
-# --- Asymmetrisches Routing ins Internet (D100, "asymRouting"="internet" am WAN-VLAN) ---
+# --- Asymmetrisches Routing ins Internet (DR3.2, "asymRouting"="internet" am WAN-VLAN) ---
 # Clients im WAN-VLAN mit Gateway VIP: Hinweg über den Router zum Internet-Router im selben Netz, die
 # Antwort kommt von dort direkt. Ohne conntrack ist der Hinweg nicht "invalid"; "accept untracked" im
 # forward-Block lässt ihn durch. Ohne Schalter bleibt der Block leer (räumt eine alte Regel weg). NATet
@@ -449,7 +449,7 @@ $cfmBlock m="/ip/firewall/nat" k="nat" l=$natR
 :local rw ({})
 :if ($asym = "internet" and [:len $wanNet] > 0) do={
   :if (($natZ->$asymZ) = 1) do={
-    $cfmWarn ("asymRouting: Zone " . $asymZ . " hat NAT ins Internet (policy) - notrack nicht gesetzt (D100)")
+    $cfmWarn ("asymRouting: Zone " . $asymZ . " hat NAT ins Internet (policy) - notrack nicht gesetzt (DR3.2)")
   } else={
     :set ($rw->0) ({"chain"="prerouting";"action"="notrack";"in-interface-list"="WAN";"src-address"=$wanNet;"dst-address-list"="!cfm-private"})
   }

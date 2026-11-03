@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/mgr-notify.rsc – Manager-Funktionen: Benachrichtigungen (D66)
+# cfm lib/mgr-notify.rsc – Manager-Funktionen: Benachrichtigungen (DU4.1)
 #   $cfmNotify ev=<art> host=<n> st=on|off|once msg=<text> [key=<k>] [ver=<v>]   eine Meldung per HTTP-POST (JSON)
 #   $cfmNotify test=yes                                       Probemeldung an notify.url
 #   $cfmNotifyTick                                            Zustände prüfen, Wechsel melden
@@ -173,7 +173,7 @@
   :return ({"act"=$act;"n"=$n;"down"=$down;"chg"=$chg})
 }
 
-# ---------- Backup-Manager: Primary überwachen (D66, Nutzer 2026-10-11) ----------
+# ---------- Backup-Manager: Primary überwachen (DU4.1, Nutzer 2026-10-11) ----------
 # Zwei Meldungen (ev primary, level error): Der Spiegel-Abruf per SFTP scheitert seit notify.stale, oder
 # der Primary ist erreichbar, aber sein Tick steht - der neueste gespiegelte Gerätestatus ist älter als
 # notify.stale (der Primary holt die Status in jedem Tick ab). Zustand in meta/notify-b.dat (meta/notify.dat

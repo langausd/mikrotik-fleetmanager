@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/mgr-show.rsc – Manager: effektive Konfiguration und Unterschiede (TODO 12, D61)
+# cfm lib/mgr-show.rsc – Manager: effektive Konfiguration und Unterschiede (TODO 12, DU1.2)
 #   $cfmShow host=<n> [ver=<N>] [objects=yes]
 #     ohne objects: zusammengeführte Daten des Geräts aus work/ (ver=N: aus Release N) - Inventar,
 #     Rollen, Hostfile, Ports mit aufgelösten Profilen, VLANs auf dem Gerät, WLAN-Anteil, Leases
@@ -44,7 +44,7 @@
   :local def [:tostr ($cfmHost->"portDefault")]
   :if ([:len $def] > 0) do={ :set ($pl->"(übrige)") $def }
   :foreach p,spec in=($cfmHost->"ports") do={ :set ($pl->$p) $spec }
-  # Bonds (D74) und MLAG (D75)
+  # Bonds (DP2.1) und MLAG (DP2.2)
   :local hm [$cfmMlagOf $host]
   :if ([:len ($cfmHost->"bonds")] > 0 or [:len $hm] > 0) do={
     :put "Bonds"
@@ -94,21 +94,21 @@
   :foreach vid,why in=$vl do={
     :local vv ($cfmVlans->$vid)
     :local t ([$cfmPad $vid 6] . [$cfmPad [:tostr ($vv->"name")] 12] . [$cfmPad ("Zone " . [:tostr ($vv->"zone")]) 16] . "(" . $why . ")")
-    :if ([:tostr ($vv->"isolate")] = "yes") do={ :set t ($t . ", isoliert (D76)") }
+    :if ([:tostr ($vv->"isolate")] = "yes") do={ :set t ($t . ", isoliert (DP3.1)") }
     :if ($rl ~ ",router," and [:tostr ($vv->"l3")] != "no") do={
       :local nn [$cfmNet $vid]
       :if ([:len ($nn->"net")] > 0) do={ :set t ($t . "  " . ($nn->"net") . " Gateway " . [:tostr ($nn->"gw")]) }
       :if ([:len [:tostr ($vv->"dhcp")]] > 0) do={ :set t ($t . " DHCP " . ($vv->"dhcp")) }
       :if ([:len [:tostr ($vv->"dhcpGw")]] > 0) do={ :set t ($t . ", Gateway der Clients ." . ($vv->"dhcpGw")) }
-      :if ([:tostr ($vv->"ntp")] = "redirect") do={ :set t ($t . ", NTP zum Router (D93)") }
-      :if ([:tostr ($vv->"asymRouting")] = "internet") do={ :set t ($t . ", Internet asymmetrisch (D100)") }
+      :if ([:tostr ($vv->"ntp")] = "redirect") do={ :set t ($t . ", NTP zum Router (DN2.2)") }
+      :if ([:tostr ($vv->"asymRouting")] = "internet") do={ :set t ($t . ", Internet asymmetrisch (DR3.2)") }
       :if ([:len [:tostr ($vv->"limit")]] > 0) do={ :set t ($t . ", Limit " . ($vv->"limit")) }
       :if ([:len [:tostr ($vv->"limitClient")]] > 0) do={ :set t ($t . ", je Client " . ($vv->"limitClient")) }
     }
     :if ([:typeof $vv] != "array") do={ :set t ($t . "  fehlt in vlans.rsc!") }
     :put ("  " . $t)
   }
-  # --- Router: feste Leases, DNS-Namen (D62) ---
+  # --- Router: feste Leases, DNS-Namen (DN1.1) ---
   :if ($rl ~ ",router,") do={
     :local nl 0
     :foreach vid,ls in=$cfmLeases do={
@@ -122,7 +122,7 @@
     :local nd 0
     :foreach hn,hd in=[$cfmInvLoad] do={ :if ([$cfmEnrolled $hd] and [:len [:tostr ($hd->"ip")]] > 0) do={ :set nd ($nd + 1) } }
     :put ("DNS-Namen unter ." . [:tostr ($cfmG->"domain")] . ": " . $nd . " Geräte, " . $nl . " Leases")
-    # dns.rsc (D101)
+    # dns.rsc (DN3.1)
     :global cfmDns
     :if ([:len $cfmDns] > 0) do={
       :local t ("DNS (dns.rsc): Upstream " . [:tostr ($cfmDns->"servers")] . ", " . [:len ($cfmDns->"adlists")] . " Adlisten, " . [:len ($cfmDns->"allow")] . " Ausnahmen")
@@ -131,7 +131,7 @@
       :if ([:typeof $lm] = "num" and $lm > 0) do={ :set t ($t . ", Log im RAM " . $lm . " Zeilen") }
       :if ([:tostr ($cfmDns->"log"->"syslog")] = "yes") do={ :set t ($t . ", Log an Syslog") }
       :put $t
-      # Selbstbedienung (D102)
+      # Selbstbedienung (DN3.2)
       :local ds ($cfmDns->"self")
       :if ([:len ($ds->"zones")] > 0) do={
         :local sh [:tostr ($ds->"hours")]; :if ([:len $sh] = 0) do={ :set sh "2" }
@@ -287,7 +287,7 @@
   # betroffene Geräte - wie die Manifeste die Dateien zuordnen
   :local common {"global.rsc"=1;"vlans.rsc"=1;"profiles.rsc"=1;"wifi.rsc"=1;"wireguard.rsc"=1;"leases.rsc"=1;"mlag.rsc"=1;"dns.rsc"=1;"lib/lib.rsc"=1;"lib/agent.rsc"=1;"roles/base.rsc"=1}
   :local all false
-  # authorized_keys.<user> (D65): jedes Gerät mit diesem User; Feature-Module von base (D104) alle
+  # authorized_keys.<user> (DS3.3): jedes Gerät mit diesem User; Feature-Module von base (DG4.6) alle
   :foreach rel,t in=$ch do={ :if ([:typeof ($common->$rel)] != "nothing" or $rel ~ "^authorized_keys\\." or $rel ~ "^lib/base\\.") do={ :set all true } }
   :if ($all) do={ :put "betroffen: alle Geräte (gemeinsame Datei)" } else={
     :local aff ""
@@ -302,7 +302,7 @@
         }
         :if ($rel ~ "^lib/mgr-" and $rl ~ ",manager") do={ :set hit true }
         :if ($rel = "lib/lib-wifi.rsc" and $rl ~ ",(ap|capsman|manager),") do={ :set hit true }
-        # Feature-Module einer Rolle (D104): lib/<Rolle>.<Feature>.rsc
+        # Feature-Module einer Rolle (DG4.6): lib/<Rolle>.<Feature>.rsc
         :if ($rel ~ "^lib/[a-z-]+\\.[a-z0-9-]+\\.rsc\$") do={
           :local fr [:pick $rel 4 [:find $rel "." 4]]
           :if ($rl ~ ("," . $fr . ",") or ($fr = "capsman" and $rl ~ ",manager,")) do={ :set hit true }

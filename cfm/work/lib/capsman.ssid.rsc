@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/capsman.ssid.rsc – Rumpf der Skripte cfm-ssid-<key>-on/-off (schaltbare SSID, D64/D90, D104)
+# cfm lib/capsman.ssid.rsc – Rumpf der Skripte cfm-ssid-<key>-on/-off (schaltbare SSID, DW4.1/DW4.2, DG4.6)
 # Kein Import: $cfmCapsmanOn (lib/lib-wifi.rsc) setzt davor die Locals und dahinter den Aufruf. Als Funktion,
 # damit die Datei allein :parse besteht ($cfmRelease).
 #  st  "on"/"off"   k  Schlüssel der SSID in wifi.rsc (a-z0-9)   ssid  Name fürs Log
@@ -9,7 +9,7 @@
 # und den Apply.
 # ============================================================
 :local ssidsw do={
-  # Übergang von den dynamischen Interfaces vor D90: die CAP-Radios einmal neu provisionieren
+  # Übergang von den dynamischen Interfaces vor DW4.2: die CAP-Radios einmal neu provisionieren
   :if ([:len [/interface/wifi/find where dynamic and configuration~"^cfm-"]] > 0) do={ /interface/wifi/radio/provision [find where !local]; :delay 8s }
   :local dis "no"
   :if ($st = "off") do={ :set dis "yes" }

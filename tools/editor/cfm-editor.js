@@ -1,6 +1,6 @@
-// cfm-Editor (D73): Lesezeichen für WebFig des Managers. Läuft in der WebFig-Seite und spricht die
+// cfm-Editor (DT3.1): Lesezeichen für WebFig des Managers. Läuft in der WebFig-Seite und spricht die
 // REST-API derselben Adresse an (kein CORS, nichts auf dem Manager installiert). Bearbeitet die
-// Site-Daten in <mgrPath>/work/ (der Manager führt sie, D72); lib/, roles/ und web/ (D91) nur lesen, die kommen
+// Site-Daten in <mgrPath>/work/ (der Manager führt sie, DT2.2); lib/, roles/ und web/ (DT3.2) nur lesen, die kommen
 // per tools/upload-seed.sh. Befehle laufen per :execute im Hintergrund, die Ausgabe kommt aus einer
 // Datei (REST bricht lange Aufrufe sonst ab). Bauen: tools/editor/build.py -> install.html
 (() => {
@@ -297,7 +297,7 @@
   // ---------- Befehle des Managers ----------
   function check() {
     if (unsaved()) return;
-    // Prüfer aus work/ wie $cfmRelease (D59)
+    // Prüfer aus work/ wie $cfmRelease (DG4.1)
     run('Prüfen ($cfmParseWork, $cfmCheck)',
       ':onerror x in={ /import file-name=([$cfmMB] . "/work/lib/mgr-check.rsc") verbose=no } do={}; :global cfmCheck; ' +
       ':local p [$cfmParseWork]; :if ([:len $p] > 0) do={ :put ("Größe/Syntax:" . $p) } else={ :put "Größe und Syntax: ok" }; ' +

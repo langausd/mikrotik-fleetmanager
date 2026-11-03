@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests für tools/feature-module.py: welche Feature-Module (D104) eine Site braucht."""
+"""Tests für tools/feature-module.py: welche Feature-Module (DG4.6) eine Site braucht."""
 import importlib.util
 import os
 import pathlib

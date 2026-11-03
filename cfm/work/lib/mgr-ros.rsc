@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/mgr-ros.rsc – Manager-Funktionen: RouterOS-Pakete und -Updates (D30)
+# cfm lib/mgr-ros.rsc – Manager-Funktionen: RouterOS-Pakete und -Updates (DV1.2)
 #   $cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at="YYYY-MM-DD HH:MM"]
 #   $cfmUpgrade ver=<x.y.z> host=..|ring=..|all=yes check=yes   Probe ohne Auftrag und ohne Download:
 #                     Pakete, fehlende Dateien, Bedarf und freier Platz je Gerät
@@ -137,7 +137,7 @@
   :local chk ($check = "yes")
   :if (!$chk and ![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
   :if ([:len $host] = 0 and [:len [:tostr $ring]] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmUpgrade ver=<x.y.z> host=<n>|ring=<r>|all=yes [at=\"YYYY-MM-DD HH:MM\"] [via=internet|via=mirror mirror=<IP>] [check=yes]" }
-  # eingebautes Update (TODO 38, D63): das Gerät lädt selbst - aus dem Internet oder von einem Spiegel
+  # eingebautes Update (TODO 38, DV1.5): das Gerät lädt selbst - aus dem Internet oder von einem Spiegel
   :local vi [:tostr $via]
   :local mip [:tostr $mirror]
   :if ([:len $vi] > 0 and $vi != "internet" and $vi != "mirror") do={ :error "via=internet oder via=mirror mirror=<IP>" }

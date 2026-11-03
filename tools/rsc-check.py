@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """rsc-check – RouterOS-Skripte (.rsc) statisch auf bekannte Fallen prüfen.
 
-Die Regeln stammen aus den im CHR-Labor verifizierten RouterOS-Eigenheiten (docs/DECISIONS.md).
+Die Regeln stammen aus den im CHR-Labor verifizierten RouterOS-Eigenheiten (docs/ROUTEROS-EIGENHEITEN.md).
 Sie ergänzen den Syntaxcheck (:parse in $cfmRelease) um Fehler, die erst beim echten /import
 oder erst auf bestimmten Geräten auftreten.
 
@@ -54,7 +54,7 @@ REGELN = {
     "log-ascii": "Log-Meldung mit Umlaut oder anderem Nicht-ASCII-Zeichen: RouterOS schickt jedes solche "
                  "Byte als '?' an den Syslog (TODO 70). ae/oe/ue/ss und '-' schreiben. Fehler unter "
                  "cfm/work/, sonst Hinweis.",
-    "feature-modul": "$cfmFeat/$cfmBody \"<Rolle>.<Feature>\" (D104): Der Name passt nicht zu lib/<Rolle>.<Feature>.rsc "
+    "feature-modul": "$cfmFeat/$cfmBody \"<Rolle>.<Feature>\" (DG4.6): Der Name passt nicht zu lib/<Rolle>.<Feature>.rsc "
                      "(a-z, 0-9, '-'), die Rolle ist weder base noch die eigene (das Manifest liefert das Modul "
                      "dann nicht jedem Gerät, das es lädt) oder die Datei fehlt unter cfm/work/lib/.",
 }
@@ -73,7 +73,7 @@ JSON_FELD = re.compile(r':set\s+\(\$\w+->"[^"]*"\)\s+|(?<!\\)"[\w.-]+"=')
 # Log-Aufrufe (TODO 70): :log <topic>, $cfmLog, $cfmWarn - deren Texte gehen an den Syslog
 LOGRUF = re.compile(r":log\s+(?:info|warning|error|debug)\b|\$cfm(?:Log|Warn)\b")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
-# Feature-Module (D104): $cfmFeat "<Rolle>.<Feature>" lädt cfm/work/lib/<Rolle>.<Feature>.rsc, $cfmBody liest
+# Feature-Module (DG4.6): $cfmFeat "<Rolle>.<Feature>" lädt cfm/work/lib/<Rolle>.<Feature>.rsc, $cfmBody liest
 # einen Skript-Rumpf derselben Form
 FEATRUF = re.compile(r'\$cfmFeat\s+"([^"]*)"|\[\s*\$cfmBody\s+"([^"]*)"')
 FEATNAME = re.compile(r"[a-z-]+\.[a-z0-9-]+")
@@ -285,7 +285,7 @@ def check_rsc(path, text):
         if any(re.search(r"[^\x00-\x7f]", t) for t in STRING.findall(zeile)):
             add(no, "log-ascii", stufe)
 
-    # Feature-Module (D104): Name wie in $cfmMfWant, Rolle base oder die der Datei (roles/<r>.rsc,
+    # Feature-Module (DG4.6): Name wie in $cfmMfWant, Rolle base oder die der Datei (roles/<r>.rsc,
     # lib/<r>.<f>.rsc), Datei vorhanden (nur prüfbar, wenn cfm/work/ erreichbar ist)
     q = path.replace(os.sep, "/")
     m = re.search(r"(?:^|/)(?:roles/([a-z-]+)|lib/([a-z-]+)\.[a-z0-9-]+)\.rsc$", q)

@@ -1,12 +1,12 @@
 # ============================================================
-# cfm lib/router.dnsreq.rsc – Rumpf des Skripts cfm-dnsreq (Rolle router, DNS-Selbstbedienung D102)
+# cfm lib/router.dnsreq.rsc – Rumpf des Skripts cfm-dnsreq (Rolle router, DNS-Selbstbedienung DN3.2)
 # Kein Import: lib/router.dns.rsc setzt davor ":local dur/deny/nu/site" (cfm-dns.js liest dur und deny
 # daraus) und dahinter den Aufruf. Als Funktion, damit die Datei auch allein :parse besteht ($cfmRelease).
 #  dur   Dauer einer Freischaltung in s     deny  Domains, die nie freigeschaltet werden (samt Subdomains)
 #  nu    notify.url (leer = keine Meldung)  site  Name des Standorts für die Meldung
 # Anfrage = Log-Eintrag "cfm-dnsreq: <Domain> <IP>" (Lesezeichen cfm-DNS per /execute). Erledigt ist sie,
 # sobald die eigene Log-Zeile mit req=<id> dasteht. Freischaltung = FWD an cfm-upstream mit Kommentar
-# dnsui:tmp:<Ablauf> <IP> (die GC fasst nur cfm: an); Meldung ev=dnsreq an notify.url (D66)
+# dnsui:tmp:<Ablauf> <IP> (die GC fasst nur cfm: an); Meldung ev=dnsreq an notify.url (DU4.1)
 # ============================================================
 :local dnsreq do={
   :if ([:len [/system/script/job/find where script="cfm-dnsreq"]] < 2) do={
@@ -57,7 +57,7 @@
             /ip/dns/static/add name=$d type=FWD forward-to=cfm-upstream match-subdomain=yes comment=("dnsui:tmp:" . $until . " " . $ip)
           }
         }
-        # Log nur in ASCII (D103)
+        # Log nur in ASCII (DU3.4)
         :local msg ("DNS-Freischaltung " . $d)
         :if ($res = "allowed" or $res = "extended") do={ :set msg ($msg . " fuer " . ($dur / 3600) . " h") }
         :if ($res = "exists") do={ :set msg ($msg . ": schon frei") }
@@ -67,7 +67,7 @@
         :log info ("cfm: " . $msg . " req=" . $id)
         :if ([:len $nu] > 0 and $res != "invalid") do={
           :local t ($site . ": " . $ident . " - " . $msg)
-          # Felder wie die Meldungen des Managers (D66), Reihenfolge fest
+          # Felder wie die Meldungen des Managers (DU4.1), Reihenfolge fest
           :local j ("{\"site\":\"" . $site . "\",\"host\":\"" . $ident . "\",\"ev\":\"dnsreq\",\"state\":\"once\",\"msg\":\"" . $msg . "\",\"text\":\"" . $t . "\",\"time\":\"" . [/system/clock/get date] . " " . [/system/clock/get time] . "\",\"level\":\"action\",\"device\":\"" . $ident . "\",\"message\":\"" . $t . "\",\"key\":\"dnsreq:" . $d . "\",\"domain\":\"" . $d . "\",\"client\":\"" . $ip . "\",\"result\":\"" . $res . "\",\"until\":" . $until . "}")
           :onerror e in={ /tool/fetch url=$nu http-method=post http-header-field="Content-Type: application/json" http-data=$j output=none } do={ :log warning ("cfm: DNS-Freischaltung: Meldung nicht zugestellt: " . $e) }
         }

@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/mgr-net.rsc – Manager-Funktionen: Verkabelung (LLDP), WLAN-Kanäle, Gerätesuche (D32, D33, D81)
+# cfm lib/mgr-net.rsc – Manager-Funktionen: Verkabelung (LLDP), WLAN-Kanäle, Gerätesuche (DW2.2, DU1.1, DU1.4)
 #   $cfmLinks [accept=yes] [export=yes]
 #       Links aus den Nachbartabellen der Geräte (Status-Feld nb), Abgleich mit der Baseline
 #       (meta/links.dat; accept=yes friert den aktuellen Stand ein) und mit den Angaben "links"
@@ -9,7 +9,7 @@
 #                  denselben Kanal nutzen (Näherung für "benachbart")
 #   (Kanal-Scan der APs mit Pin-Vorschlag, $cfmWifiScan: lib/mgr-scan.rsc)
 #   $cfmNetTick    (aus $cfmTick, alle 15 min) meldet neue oder behobene Abweichungen im Log
-#   $cfmFind [text] [host=] [port=] [ap=] [ssid=] [vlan=] [signal=]   wo hängt ein Gerät? (D81)
+#   $cfmFind [text] [host=] [port=] [ap=] [ssid=] [vlan=] [signal=]   wo hängt ein Gerät? (DU1.4)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
 

@@ -1,5 +1,5 @@
 # ============================================================
-# Rolle capsman – wifi-CAPsMAN für alle APs (D45)
+# Rolle capsman – wifi-CAPsMAN für alle APs (DW1.5)
 #  Rendert die komplette CAPsMAN-Konfiguration aus wifi.rsc (SSIDs, Security, PPSK, Kanal-Pools,
 #  Pinning, Provisioning) und schaltet den Dienst im MGMT-VLAN ein. Die Passphrasen kommen per
 #  Secret-Push aus dem Vault. Unabhängig vom Config-Manager: Der CAPsMAN gehört auf ein Gerät,
@@ -8,5 +8,5 @@
 #  Ohne Gerät mit dieser Rolle bleibt der Primary-Manager CAPsMAN (Übergang, $cfmCheck warnt).
 # ============================================================
 :global cfmCapsmanOn
-:if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
+:if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (DG4.3)" }
 $cfmCapsmanOn

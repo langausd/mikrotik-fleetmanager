@@ -1,7 +1,7 @@
 # ============================================================
 # cfm lib/mgr-onboard.rsc – Manager-Funktionen: Onboarding per Push in die Werks-Config
 #   $cfmRegister, $cfmOnboard, $cfmOnboardStatus, $cfmOnboardAbort, $cfmPending, $cfmApprove
-#   Ablauf je Minute: $cfmOnbTick (aus $cfmOnbTickRun, Scheduler cfm-mgr-onb-tick, D57)
+#   Ablauf je Minute: $cfmOnbTick (aus $cfmOnbTickRun, Scheduler cfm-mgr-onb-tick, DM2.2)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
 # ---------- Onboarding: Push in die Werks-Config ----------

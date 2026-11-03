@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Befristeter Spiegel für das eingebaute RouterOS-Update (TODO 38, D63).
+"""Befristeter Spiegel für das eingebaute RouterOS-Update (TODO 38, DV1.5).
 
 Geräte ohne Internet aktualisieren sich mit `$cfmUpgrade ver=<x.y.z> host=… via=mirror mirror=<IP>`:
 Der Agent leitet upgrade.mikrotik.com per statischem DNS-Eintrag auf diesen Rechner um, stellt das

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Schaltbare SSID (D64) aus Home Assistant: ein- und ausschalten, Zustand und Clients abfragen.
+"""Schaltbare SSID (DW4.1) aus Home Assistant: ein- und ausschalten, Zustand und Clients abfragen.
 
-Spricht die RouterOS-API des CAPsMAN (Port 8728, unverschlüsselt, D47) mit dem Lese-User aus
+Spricht die RouterOS-API des CAPsMAN (Port 8728, unverschlüsselt, DU2.1) mit dem Lese-User aus
 capsmanApi (Gruppe read,api,test) und braucht nur die Python-Standardbibliothek; es läuft also im
 Container von Home Assistant ohne Zusatzpakete. Anleitung: docs/home-assistant.md.
 
@@ -15,8 +15,8 @@ Zugangsdaten in einer JSON-Datei (Standard: cfm_ssid.json neben diesem Skript, s
   {"host": "<MGMT-IP des CAPsMAN>", "user": "homeassistant", "password": "…"}   (optional "port")
 
 Der Zustand kommt aus den WLAN-Interfaces des CAPsMAN: "on", solange ein Interface mit der
-Konfiguration cfm-<key> bzw. cfm-<key>-<Band>g eingeschaltet ist (D90: feste Interfaces je SSID, die
-die Skripte an- und abschalten; vor D90 gab es dynamische Interfaces nur, solange die SSID an war - die
+Konfiguration cfm-<key> bzw. cfm-<key>-<Band>g eingeschaltet ist (DW4.2: feste Interfaces je SSID, die
+die Skripte an- und abschalten; vor DW4.2 gab es dynamische Interfaces nur, solange die SSID an war - die
 Regel gilt für beide Stände). Der Ablauf kommt aus <cfm>/ssid-<key>.txt. Die globale Variable
 cfmSsid<key> taugt dafür nicht: Die API zeigt /system/script/environment nur Usern mit write und
 policy, und ein über die API gestartetes Skript ändert sie nicht (Labor 7.24.5).
@@ -190,7 +190,7 @@ def clients(api, key):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Schaltbare SSID (D64) per RouterOS-API")
+    ap = argparse.ArgumentParser(description="Schaltbare SSID (DW4.1) per RouterOS-API")
     ap.add_argument("key", help="Schlüssel der SSID in wifi.rsc (z.B. guest)")
     ap.add_argument("action", choices=("on", "off", "state", "until", "clients"))
     ap.add_argument("--config", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "cfm_ssid.json"))

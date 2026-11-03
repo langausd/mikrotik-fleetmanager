@@ -1,12 +1,12 @@
 # ============================================================
-# cfm lib/router.wg.rsc – Feature-Modul der Rolle router (D104); router.rsc lädt es per $cfmFeat nur mit
+# cfm lib/router.wg.rsc – Feature-Modul der Rolle router (DG4.6); router.rsc lädt es per $cfmFeat nur mit
 # Peers in wireguard.rsc. Ohne Peers räumt die GC Interface, Peers, Adresse, Route und Listeneinträge weg.
-# WireGuard-Fernzugang (D36): eigenes, nicht überlappendes Subnetz (wireguard.rsc "net") -
+# WireGuard-Fernzugang (DR4.1): eigenes, nicht überlappendes Subnetz (wireguard.rsc "net") -
 # RouterOS legt sonst keine Route für "allowed-address" an, wenn sie in einem bereits
 # verbundenen Subnetz (z.B. MGMT) liegt, und ohne eigenes Subnetz bräuchte es zusätzlich
 # Proxy-ARP (frühere Version, siehe docs/TODO.md "Bekannte Fehler" zur Vorgeschichte). Peers
 # zählen trotzdem als Zone mgmt (volle mgmt-Rechte) über die Interface-Liste, unabhängig vom
-# Subnetz. Privater Schlüssel: alle Router denselben aus dem Vault (D84, Secret-Push); beim Anlegen
+# Subnetz. Privater Schlüssel: alle Router denselben aus dem Vault (DR4.2, Secret-Push); beim Anlegen
 # erzeugt RouterOS erst einen eigenen, weicht er vom Manifest ab ("wgpub"), fordert die Rolle den
 # Secret-Push an. Öffentlichen Schlüssel abrufen: /interface/wireguard/print. Leere peers-Liste =
 # Interface bleibt aus.
@@ -35,7 +35,7 @@ $cfmEnsure m="/interface/wireguard" k="wg:admin" n=({"name"=$wgIf}) p=({"name"=$
   :onerror e in={ :set cur [:tostr [/interface/wireguard/get [find where name=$wgIf] public-key]] } do={}
   :if ($cur != $wpub) do={
     :if ($cfmDry != true) do={ :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={} }
-    $cfmLog "WireGuard: Schluessel weicht vom gemeinsamen der Router ab - Secret-Push angefordert (D84)"
+    $cfmLog "WireGuard: Schluessel weicht vom gemeinsamen der Router ab - Secret-Push angefordert (DR4.2)"
   }
 }
 # Backups: Antworten ins WG-Netz über die MGMT-VIP zum Master, der den Tunnel hält

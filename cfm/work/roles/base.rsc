@@ -23,8 +23,8 @@ $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 #     je VLAN: Deren Ports führen alle zum selben Netz, RSTP hielte das für eine Schleife und würde
 #     Ports blockieren; die VM streute außerdem BPDUs in jedes dieser VLANs. Die Trennung leistet
 #     dort das VLAN-Filtering. $cfmCheck warnt, wenn zwei Ports desselben Geräts im selben VLAN
-#     liegen - dann wäre die Schleife echt (D40).
-# MLAG-Paar dieses Geräts (mlag.rsc, D75): beide Knoten brauchen dieselbe STP-Priorität, stpPrio des
+#     liegen - dann wäre die Schleife echt (DP1.2).
+# MLAG-Paar dieses Geräts (mlag.rsc, DP2.2): beide Knoten brauchen dieselbe STP-Priorität, stpPrio des
 # Paars gilt deshalb vor der aus dem Hostfile
 :local ml [$cfmMlagOf ($cfmMf->"name")]
 :local stp [:tostr ($cfmHost->"stpPrio")]
@@ -38,7 +38,7 @@ $cfmSet m="/system/identity" p=({"name"=($cfmMf->"name")})
 :if ($proto = "none") do={ :set brp ({"name"=$br;"protocol-mode"=$proto}) }
 $cfmEnsure m="/interface/bridge" k="br" n=({"name"=$br}) p=$brp a=({"vlan-filtering"="no"})
 
-# --- Bonds (D74) und MLAG (D75): Feature-Modul lib/base.bond.rsc (D104), nur mit bonds im Hostfile oder als
+# --- Bonds (DP2.1) und MLAG (DP2.2): Feature-Modul lib/base.bond.rsc (DG4.6), nur mit bonds im Hostfile oder als
 #     Knoten eines Paars in mlag.rsc. Bonds, die es nicht mehr geben soll, entfernt die Rolle selbst und schon
 #     hier, damit ihre Slaves unten bei den Ports wieder frei sind - auch ohne Modul (tools/upload-seed.sh lädt
 #     es nur für Sites mit Bonds oder MLAG hoch) ---
@@ -94,7 +94,7 @@ $cfmIndex "/interface/bridge/port"
 # für spätere Rollen (switch: DHCP-Snooping vertraut den Trunks)
 :global cfmPortMap; :set cfmPortMap $ports
 
-# --- Isolierte VLANs (D76): isolate="yes" in vlans.rsc ---
+# --- Isolierte VLANs (DP3.1): isolate="yes" in vlans.rsc ---
 #     Clients eines isolierten VLANs erreichen nur das Gateway (Adressen der Router im VLAN und alles
 #     außerhalb des eigenen Netzes), Broadcast (ARP, DHCP) und die Ausnahmen aus isolateAllow (Namen aus
 #     leases.rsc oder MAC-Adressen); Multicast zwischen Clients nicht. Gefiltert wird am Eingang der
@@ -112,7 +112,7 @@ $cfmIndex "/interface/list/member"
 :onerror e in={ :set hasHw ([:typeof ([/interface/bridge/port/get [:pick [/interface/bridge/port/find where !dynamic] 0]]->"hw")] != "nothing") } do={}
 :local nIso 0
 :local tagged ({}); :local untagged ({})
-# Nachbarsuche (LLDP/MNDP/CDP) auf allen Bridge-Ports + MGMT-VLAN: Grundlage für $cfmLinks (D33)
+# Nachbarsuche (LLDP/MNDP/CDP) auf allen Bridge-Ports + MGMT-VLAN: Grundlage für $cfmLinks (DU1.1)
 $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"})
 :foreach p,spec in=$ports do={
   :local pr
@@ -125,7 +125,7 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
     :local bpdu "no"
     :if (($pr->"edge") = "yes") do={ :set bpdu "yes" }
     :local bpp ({"bridge"=$br;"interface"=$p;"pvid"=$pv;"frame-types"=($pr->"frame");"ingress-filtering"="yes";"edge"=($pr->"edge");"bpdu-guard"=$bpdu})
-    # reiner Access-Port eines isolierten VLANs (D76): Client-Port, Verkehr über die CPU (Bridge-Filter)
+    # reiner Access-Port eines isolierten VLANs (DP3.1): Client-Port, Verkehr über die CPU (Bridge-Filter)
     :local isoP ([:len ($pr->"untag")] > 0 and [:typeof ($iso->[:tostr ($pr->"untag")])] != "nothing" and [:len [$cfmKeys ($pr->"tag")]] = 0)
     :if ($isoP) do={
       :set nIso ($nIso + 1)
@@ -160,7 +160,7 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
   }
 }
 
-# Filter der isolierten VLANs (D76): Feature-Modul lib/base.iso.rsc (D104), nur wo Client-Ports sein können
+# Filter der isolierten VLANs (DP3.1): Feature-Modul lib/base.iso.rsc (DG4.6), nur wo Client-Ports sein können
 # (Access-Ports, WLAN); sonst leerer Block (räumt alte Regeln weg)
 :if ([:len $iso] > 0 and ($nIso > 0 or [$cfmHas "ap"] or [$cfmHas "capsman"] or [$cfmHas "manager"])) do={
   :set cfmCtx ({"iso"=$iso}); $cfmFeat "base.iso"
@@ -198,8 +198,8 @@ $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($c
   :local ntp ($cfmG->"ntp")
   :if ([:len [:tostr ($cfmHost->"ntp")]] > 0) do={ :set ntp ($cfmHost->"ntp") }
   $cfmEnsure m="/ip/route" k="rt:default" n=({"dst-address"="0.0.0.0/0";"gateway"=$gw}) p=({"dst-address"="0.0.0.0/0";"gateway"=$gw})
-  # Eigener Ausgang: Antworten an WireGuard-Peers (D36) gingen sonst an diesen Gateway, der das
-  # WG-Netz nicht kennt -> WG-Netz über das MGMT-Gateway (bei VRRP die VIP, D84)
+  # Eigener Ausgang: Antworten an WireGuard-Peers (DR4.1) gingen sonst an diesen Gateway, der das
+  # WG-Netz nicht kennt -> WG-Netz über das MGMT-Gateway (bei VRRP die VIP, DR4.2)
   :if ($gw != [:tostr ($mn->"gw")] and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
     $cfmEnsure m="/ip/route" k="rt:wg" p=({"dst-address"=[:tostr ($cfmWg->"net")];"gateway"=[:tostr ($mn->"gw")];"disabled"="no"})
   }
@@ -210,7 +210,7 @@ $cfmEnsure m="/interface/list" k="il:MGMT" n=({"name"="MGMT"}) p=({"name"="MGMT"
 $cfmEnsure m="/interface/list/member" k="ilm:MGMT" n=({"list"="MGMT";"interface"=$mif}) p=({"list"="MGMT";"interface"=$mif})
 $cfmEnsure m="/interface/list/member" k="ilm:DISC:mgmt" n=({"list"="DISC";"interface"=$mif}) p=({"list"="DISC";"interface"=$mif})
 # Alle drei Protokolle auf allen Geräten: Winbox findet Geräte nur per MNDP. MNDP über Bridge-Ports
-# ohne Adresse (Quelle 0.0.0.0) verwirft der input-Block der Empfänger still (D78)
+# ohne Adresse (Quelle 0.0.0.0) verwirft der input-Block der Empfänger still (DR2.5)
 $cfmSet m="/ip/neighbor/discovery-settings" p=({"discover-interface-list"="DISC";"protocol"="cdp,lldp,mndp"})
 $cfmSet m="/tool/mac-server" p=({"allowed-interface-list"="none"})
 $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
@@ -224,13 +224,13 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
   }
 }
 :foreach x in=($cfmG->"mgmtExtra") do={ :set ($an->$x) 1 }
-# WireGuard-Peers (D36) zählen überall als mgmt, nicht nur beim Forwarding über den Router -
+# WireGuard-Peers (DR4.1) zählen überall als mgmt, nicht nur beim Forwarding über den Router -
 # sonst lässt zwar die Firewall SSH/Winbox-Pakete durch, aber der Dienst selbst (eigene
 # Adressliste, unabhängig von der Firewall) weist sie zurück.
 :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
   :set ($an->[:tostr ($cfmWg->"net")]) 1
 }
-# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN und nur für capsmanApi.from (D47, z.B. Home
+# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN und nur für capsmanApi.from (DU2.1, z.B. Home
 # Assistant: welcher Client an welchem AP) - unabhängig von services und den Management-Netzen
 :global cfmIsCapsman
 :local capi ($cfmG->"capsmanApi")
@@ -244,7 +244,7 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 } do={}
 # reverse-proxy (RouterOS 7.2x) ist ab Werk an, Port 443 ohne Adressbeschränkung (TODO 30); ältere
 # Versionen kennen den Dienst nicht, $cfmSet findet dann nichts
-# DNS-Selbstbedienung (D102): Auf Routern erreichen die Netze der Zonen aus dns.rsc self.zones WebFig/REST
+# DNS-Selbstbedienung (DN3.2): Auf Routern erreichen die Netze der Zonen aus dns.rsc self.zones WebFig/REST
 # zusätzlich zu den Management-Netzen (Dienst www, ohne Eintrag in services auf Port 80) - für das Lesezeichen
 # cfm-DNS am eigenen Gateway
 :global cfmDns
@@ -285,10 +285,10 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
 # Host-Key-Prüfung des SSH-Clients (RouterOS 7.25, nach Reset an) aus wie nach einem Update: Pull und
 # ssh-exec liefen sonst nur mit gepflegten known-hosts; Manifeste sind signiert, der Secret-Push prüft
-# die Identität (D28, D71)
+# die Identität (DS1.4, DS1.5)
 :if ([:typeof ([/ip/ssh/get]->"known-hosts-validation")] != "nothing") do={ $cfmSet m="/ip/ssh" p=({"known-hosts-validation"="no"}) }
 
-# --- Minimale Firewall (D31). Nicht-Router bekommen einen input-Block, Router haben die
+# --- Minimale Firewall (DR2.2). Nicht-Router bekommen einen input-Block, Router haben die
 #     Zonen-Firewall der Rolle router. Erlaubt: Antworten, ICMP, Management-Netze (MGMT-Netz,
 #     mgmtAccess-Zonen, mgmtExtra), auf Managern DHCP im Onboarding-VLAN. Eigene Regeln gehören
 #     in die Chain local-input; der Rest wird begrenzt geloggt (cfm-drop) und verworfen. ---
@@ -311,7 +311,7 @@ $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"dst-address"="127.0.0.1"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="jump";"jump-target"="local-input"})
   # MNDP über Bridge-Ports ohne Adresse (Quelle 0.0.0.0) still verwerfen, sonst füllt es das Log: Hinter
-  # einem Access-Port (z.B. die Karten einer VM, D40) erreicht es jedes Gerät im VLAN (D78)
+  # einem Access-Port (z.B. die Karten einer VM, DP1.2) erreicht es jedes Gerät im VLAN (DR2.5)
   :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"protocol"="udp";"dst-port"="5678";"src-address"="0.0.0.0"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="log";"log-prefix"="cfm-drop";"limit"="10/1m,5:packet"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="drop"})
@@ -356,12 +356,12 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
     /system/logging/remove [find where action="cfmremote"]
   }
 }
-# --- SNMPv3 nur lesend für LibreNMS (TODO 54, D99): Feature-Modul lib/base.snmp.rsc (D104), nur mit snmp.from.
+# --- SNMPv3 nur lesend für LibreNMS (TODO 54, DU4.3): Feature-Modul lib/base.snmp.rsc (DG4.6), nur mit snmp.from.
 #     Ohne snmp räumt die GC die Community weg, /snmp selbst bleibt unangetastet ---
 :local snmp ($cfmG->"snmp")
 :if ([:typeof $snmp] = "array") do={ :if ([:len ($snmp->"from")] > 0) do={ $cfmFeat "base.snmp" } }
 
-# RAM-Log ohne system,info (D79): RouterOS loggt jede Konfig-Änderung (bei Skripten samt Quelltext) und
+# RAM-Log ohne system,info (DU3.2): RouterOS loggt jede Konfig-Änderung (bei Skripten samt Quelltext) und
 # jede Anmeldung als system,info - ein Framework-Update verdrängte so die Hälfte der 1000 Zeilen des
 # Managers. logMemory = Topics der Regel info -> memory (RouterOS-Standard "info"); Syslog bekommt alles.
 :global cfmStat
@@ -381,8 +381,8 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
   $cfmEnsure m="/user" k=("user:" . $u) n=({"name"=$u}) p=({"name"=$u;"group"=$grp}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
 }
 
-# --- Persönliche Admin-SSH-Keys je User (TODO 19, D65): work/authorized_keys.<user> im OpenSSH-Format ist der
-#     vollständige Sollzustand der Keys dieses Users. Feature-Modul lib/base.sshkeys.rsc (D104), nur wenn es
+# --- Persönliche Admin-SSH-Keys je User (TODO 19, DS3.3): work/authorized_keys.<user> im OpenSSH-Format ist der
+#     vollständige Sollzustand der Keys dieses Users. Feature-Modul lib/base.sshkeys.rsc (DG4.6), nur wenn es
 #     die Datei für einen User aus users gibt - ohne Datei bleiben die Keys eines Users unangetastet ---
 :local akn 0
 :foreach u,grp in=($cfmG->"users") do={ :onerror e in={ :if ([:len [/file/get ($cfmDl . "/authorized_keys." . $u) name]] > 0) do={ :set akn ($akn + 1) } } do={} }
@@ -413,7 +413,7 @@ $cfmEnsure m="/system/scheduler" k="sys:agent-boot" n=({"name"="cfm-agent-boot"}
   :if ($act > 0) do={ $cfmSet m="/user" n=({"name"="admin"}) p=({"disabled"="yes"}) }
 }
 
-# --- Nur der cfm-CAPsMAN darf im MGMT-VLAN antworten (D45, TODO 26): Ein zweiter CAPsMAN lockt
+# --- Nur der cfm-CAPsMAN darf im MGMT-VLAN antworten (DW1.5, TODO 26): Ein zweiter CAPsMAN lockt
 #     frische CAPs per Discovery an und verteilt eine fremde CA. Auf Geräten, die nicht CAPsMAN sind
 #     (Manifest-Feld cm), den Dienst abschalten – auch nach einem Umzug der Rolle capsman ---
 :if (![$cfmIsCapsman]) do={

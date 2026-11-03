@@ -22,14 +22,14 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
   externe Git-Sicherung an.
 * **Benachrichtigungen:** Zustandswechsel (Apply-Fehler, stumme Geräte, APs ohne CAPsMAN,
   gescheiterte Updates und Onboardings, CHR-Lizenz) gehen per HTTP-POST an einen Webhook, z.B. von
-  Home Assistant (`notify` in `global.rsc`, D66).
+  Home Assistant (`notify` in `global.rsc`, DU4.1).
 * **WLAN:** Ein Gerät mit der Rolle `capsman` (ohne sie der Primary-Manager) ist wifi-CAPsMAN für
   alle SSIDs (lokales Forwarding mit VLAN, WPA2/WPA3, 802.11r/k/v, 6 GHz). Fällt er aus, senden die
   APs mit einer lokalen Kopie der Haupt-SSID weiter.
-* **Betrieb:** `$cfmFind` findet ein Gerät live nach MAC, IP, Name, Port, AP, SSID oder Signal (D81).
+* **Betrieb:** `$cfmFind` findet ein Gerät live nach MAC, IP, Name, Port, AP, SSID oder Signal (DU1.4).
   Im Browser startet ein Lesezeichen „cfm“ in WebFig den cfm-Editor (Site-Daten bearbeiten, Release)
   und den cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche), auf Routern cfm-DNS (Clients sehen gesperrte
-  Domains und schalten sie befristet frei, D102); den Code lädt es vom Gerät (D91).
+  Domains und schalten sie befristet frei, DN3.2); den Code lädt es vom Gerät (DT3.2).
 
 Alle Design-Entscheidungen samt verworfener Alternativen stehen in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Für den Einsatz in der eigenen Flotte:** [docs/admin-guide.md](docs/admin-guide.md) (Planung,
@@ -67,18 +67,18 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `cfm/work/wifi.rsc` | SSIDs, Security-Defaults, Kanal-Pools, AP-Pinning, andere Funknetze im 2,4-GHz-Band |
 | `cfm/work/wireguard.rsc` | optional: WireGuard-Fernzugang für Admins (Subnetz, Peers), nur mit Rolle `router` |
 | `cfm/work/leases.rsc` | feste DHCP-Leases je VLAN (MAC, Host-Anteil, Name = DNS-Name), nur mit Rolle `router` |
-| `cfm/work/mlag.rsc` | MLAG-Paare: zwei Switches, Peer-Ports, doppelt angebundene Geräte (D75) |
-| `cfm/work/dns.rsc` | optional: DNS der Router – Upstream, Adlisten, Ausnahmen, Weiterleitung je Domain, Abfrage-Log (D101), Selbstbedienung für Clients (D102) |
+| `cfm/work/mlag.rsc` | MLAG-Paare: zwei Switches, Peer-Ports, doppelt angebundene Geräte (DP2.2) |
+| `cfm/work/dns.rsc` | optional: DNS der Router – Upstream, Adlisten, Ausnahmen, Weiterleitung je Domain, Abfrage-Log (DN3.1), Selbstbedienung für Clients (DN3.2) |
 | `cfm/work/authorized_keys.<user>` | optional: persönliche Admin-SSH-Keys je User (OpenSSH-Format), siehe Sicherheitsmodell |
 | `cfm/work/roles/*.rsc` | Rollen `base`, `switch`, `ap`, `capsman`, `router`, `manager`, `manager-backup` |
 | `cfm/work/hosts/<name>.rsc` | Gerätespezifika (+ optional `<name>.post.rsc`) |
-| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Feature-Module `<rolle>.<feature>.rsc` (nur bei Nutzung geladen, D104), Agent, Manager-Funktionen (Module `mgr-*.rsc`, Manifest-Regeln je Version `mgr-mf.rsc`), Bootstrap-Rumpf, Onboarding-Stufen (`onboard-probe.rsc`, `onboard-go.rsc`) |
+| `cfm/work/lib/` | Reconciler (`lib.rsc`, WLAN-Teil `lib-wifi.rsc`), Feature-Module `<rolle>.<feature>.rsc` (nur bei Nutzung geladen, DG4.6), Agent, Manager-Funktionen (Module `mgr-*.rsc`, Manifest-Regeln je Version `mgr-mf.rsc`), Bootstrap-Rumpf, Onboarding-Stufen (`onboard-probe.rsc`, `onboard-go.rsc`) |
 | `cfm/meta/inventory.rsc` | Name → Seriennummer, Rolle(n), Ring, MGMT-IP |
 | `site/` (privat, von Git ignoriert) | eigene Standortdaten als Overlay für `tools/upload-seed.sh --overlay site` |
 | `bootstrap/bootstrap-manager.rsc` | Ersteinrichtung des Primary-Managers |
-| `tools/upload-seed.sh` | Vorlage auf den Manager laden: beim ersten Mal alles, danach nur Framework-Code (`--site` auch die Site-Daten, D72); Feature-Module nur, wenn die Site sie nutzt (`tools/feature-module.py`, D104) |
-| `tools/pull-site.sh` | Site-Daten und Inventar vom Manager ins Overlay holen (Sicherung, D72) |
-| `tools/editor/` | Lesezeichen „cfm“ für WebFig (REST-API, lädt den Code vom Gerät, D91): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (D73); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (D77), Gerätesuche (D81); cfm-DNS – gesperrte Domains sehen und befristet freischalten (D102); `build.py` erzeugt `install.html` und `cfm/work/web/` |
+| `tools/upload-seed.sh` | Vorlage auf den Manager laden: beim ersten Mal alles, danach nur Framework-Code (`--site` auch die Site-Daten, DT2.2); Feature-Module nur, wenn die Site sie nutzt (`tools/feature-module.py`, DG4.6) |
+| `tools/pull-site.sh` | Site-Daten und Inventar vom Manager ins Overlay holen (Sicherung, DT2.2) |
+| `tools/editor/` | Lesezeichen „cfm“ für WebFig (REST-API, lädt den Code vom Gerät, DT3.2): cfm-Editor – Site-Daten im Browser bearbeiten, prüfen, Probelauf, Release (DT3.1); cfm-Monitor – Clients je AP live und Roaming als Zeitleiste (DU2.2), Gerätesuche (DU1.4); cfm-DNS – gesperrte Domains sehen und befristet freischalten (DN3.2); `build.py` erzeugt `install.html` und `cfm/work/web/` |
 | `tools/new-site.py` | lokale Site (Overlay) aus den Beispieldaten anlegen, mit `STAND.md` (Stand, Logbuch, nächste Schritte) und ausgefülltem Bootstrap |
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
@@ -95,11 +95,11 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 
 | Rolle | Inhalt |
 |---|---|
-| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, SNMPv3 für LibreNMS (`snmp`, D99), RAM-Log ohne `system,info` (D79), Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Agent |
+| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, SNMPv3 für LibreNMS (`snmp`, DU4.3), RAM-Log ohne `system,info` (DU3.2), Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Trennschwelle je Band, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus; feste Interfaces, die übrigen SSIDs senden beim Schalten weiter) |
-| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, optional Upstream/Adlisten/Ausnahmen/Weiterleitungen/Abfrage-Log aus `dns.rsc` (D101) und DNS-Selbstbedienung für Clients (D102), NTP-Server, WireGuard-Fernzugang (optional) |
+| `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, optional Upstream/Adlisten/Ausnahmen/Weiterleitungen/Abfrage-Log aus `dns.rsc` (DN3.1) und DNS-Selbstbedienung für Clients (DN3.2), NTP-Server, WireGuard-Fernzugang (optional) |
 | `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only; Geräte ziehen erst nach `$cfmPromoteManager` von hier (SFTP-User bis dahin gesperrt) |
 
@@ -136,11 +136,11 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Effektive Konfiguration eines Geräts | `$cfmShow host=sw1` (Daten: Rollen, Ports mit Profil, VLANs, WLAN, Leases); `objects=yes`: alle Soll-Objekte vom Gerät |
 | Feste Adresse + DNS-Name für ein Gerät | `leases.rsc` → `$cfmRelease` (wirkt auf Routern) |
 | Uplink aus zwei Kabeln (LACP), redundant über zwei Switches (MLAG) | Hostfile `bonds` bzw. `mlag.rsc` → `$cfmRelease … all=yes` |
-| Zeit für IoT-Geräte mit fest eingebautem NTP-Server | `"ntp"="redirect"` am VLAN → `$cfmRelease` (D93) |
-| Werbung/Tracker blocken, Ausnahmen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → `$cfmRelease` (D101) |
+| Zeit für IoT-Geräte mit fest eingebautem NTP-Server | `"ntp"="redirect"` am VLAN → `$cfmRelease` (DN2.2) |
+| Werbung/Tracker blocken, Ausnahmen, Namen eines anderen Standorts | `dns.rsc` (`adlists`, `allow`, `forward`) → `$cfmRelease` (DN3.1) |
 | Syslog zentral (Graylog), DNS-Log mit kurzer Aufbewahrung, Meldungen je Gerät in LibreNMS | `global.rsc` `syslog`, `dns.rsc` `log.syslog` → `$cfmRelease`; Graylog/LibreNMS einrichten (Admin-Guide 8.15) |
-| Clients schalten gesperrte Domains selbst befristet frei | `dns.rsc` `self` → `$cfmRelease`, `$cfmSecret key=user.dns`; Lesezeichen „cfm“ → cfm-DNS (Admin-Guide 8.14, D102) |
-| Bandbreite eines Netzes begrenzen (z.B. Gast-WLAN) | `"limit"="50M/10M"`, optional `"limitClient"` je Client, am VLAN → `$cfmRelease` (D97) |
+| Clients schalten gesperrte Domains selbst befristet frei | `dns.rsc` `self` → `$cfmRelease`, `$cfmSecret key=user.dns`; Lesezeichen „cfm“ → cfm-DNS (Admin-Guide 8.14, DN3.2) |
+| Bandbreite eines Netzes begrenzen (z.B. Gast-WLAN) | `"limit"="50M/10M"`, optional `"limitClient"` je Client, am VLAN → `$cfmRelease` (DR2.7) |
 | IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
@@ -163,7 +163,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Gerät finden (MAC, IP, Name, Port, AP/SSID) | `$cfmFind <text>`, Filter `host=` `port=` `ap=` `ssid=` `vlan=` `signal=-75`; im Browser: cfm-Monitor in WebFig des Managers, Reiter Suche (Admin-Guide 8.11) |
 | Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (`tools/editor/install.html`, Admin-Guide 8.10) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
-| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, D80); `host=<ap>` misst nur einen AP neu |
+| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, DW3.5); `host=<ap>` misst nur einen AP neu |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 
@@ -198,7 +198,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Geräte authentifizieren sich am Manager per **ed25519-Host-Key** (Onboarding exportiert ihn; der
   Manager importiert nur den Public Key für den User `cfmd-<name>`, Gruppe `ssh,ftp,read`; der
   Backup-Manager hält dieselben User gesperrt bereit, bis er befördert wird). Erneuern: `$cfmRekey … sftp=yes`
-  (ändert den Host-Key mit; Manager-Schlüssel zweiphasig, D67).
+  (ändert den Host-Key mit; Manager-Schlüssel zweiphasig, DS2.5).
 * Der Manager steuert Geräte über den User `cfm` mit **seinem** Key (Push, Secrets, Audit, Enroll).
 * Geräte haben am Manager **nur Lesezugriff** (Schreiben würde `write` erfordern und damit
   SSH-Konfigurationsrechte). Status und Export holt der Manager selbst ab.
@@ -212,7 +212,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   (`adminUser` in `global.rsc`, Ausnahmen pro Gerät im Hostfile).
 * **Menschen** melden sich mit **Passwort** an (`$cfmSecret key=user.<name> value=…`, Push wie
   oben, nie als Datei). Optional zusätzlich eigene SSH-Keys je Person über
-  `cfm/work/authorized_keys.<user>` (OpenSSH-Format, eine Zeile je Key, D65): existiert die Datei
+  `cfm/work/authorized_keys.<user>` (OpenSSH-Format, eine Zeile je Key, DS3.3): existiert die Datei
   eines Users, ist sie dessen vollständiger Sollzustand – nicht mehr gelistete Keys verschwinden
   beim nächsten Apply, auch von Hand hinzugefügte; Users ohne Datei bleiben unangetastet. Entzug =
   Zeile löschen (alle Keys: Datei leeren) + `$cfmRelease`. Das Passwort gilt danach nur noch für
@@ -228,7 +228,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   das Gerät selbst, beim Spiegel befristet per HTTP über einen statischen DNS-Eintrag – die Signatur
   prüft RouterOS auch dann.
 * Die Nachbarsuche (LLDP/MNDP/CDP) läuft auf allen Bridge-Ports, auch an Access-Ports: Endgeräte
-  sehen Modell, Version und Identität des Switches (bewusste Entscheidung für den Netzplan, D33).
+  sehen Modell, Version und Identität des Switches (bewusste Entscheidung für den Netzplan, DU1.1).
 
 ## Grenzen & Hinweise
 
@@ -247,7 +247,7 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
   werden nicht auf den Backup-Manager gespiegelt; offene Aufträge brauchen den Primary.
 * **Eigene Templates schreiben:** Objekte mit `$cfmEnsure m=<menü> k=<key> p=({…})` anlegen
   (verwaltet inkl. Aufräumen), Singletons/Built-ins mit `$cfmSet`. Code, den nur manche Sites brauchen,
-  als Feature-Modul `lib/<rolle>.<feature>.rsc` und per `$cfmFeat` nur bei Nutzung laden (D104). Funktionen als Anweisung **ohne**
+  als Feature-Modul `lib/<rolle>.<feature>.rsc` und per `$cfmFeat` nur bei Nutzung laden (DG4.6). Funktionen als Anweisung **ohne**
   eckige Klammern aufrufen: Eine Zeile, die mit `[` beginnt, liest RouterOS u.U. als Fortsetzung
   der vorigen Anweisung. Strings mit Escape (`\n`, `\"`) als Funktionsargument in runde Klammern setzen,
   ein leeres Array nach `:global`/`:local` als `({})` schreiben – sonst Syntaxfehler. `tools/rsc-check.py`

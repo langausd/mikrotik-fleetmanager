@@ -2,9 +2,9 @@
 # cfm lib/lib.rsc – Reconciler-Bibliothek (Geräteseite)
 # Wird vom Agent bei jedem Apply als erstes importiert und definiert
 # globale Funktionen für die Rollen-Templates. Der WLAN-Teil (CAPsMAN, lokale WLAN-Profile der
-# APs) steht in lib/lib-wifi.rsc und kommt nur zu den Rollen ap, capsman und manager (D68). Code, den nur
+# APs) steht in lib/lib-wifi.rsc und kommt nur zu den Rollen ap, capsman und manager (DG4.3). Code, den nur
 # Sites mit einem bestimmten Feature brauchen, steht in Feature-Modulen lib/<Rolle>.<Feature>.rsc; die
-# Rolle lädt sie per $cfmFeat nur bei Nutzung (D104).
+# Rolle lädt sie per $cfmFeat nur bei Nutzung (DG4.6).
 #
 # Kommentar-Konvention an RouterOS-Objekten:
 #   "cfm:<key> [text]"  verwaltet: wird angelegt/angeglichen, verwaist -> entfernt
@@ -41,7 +41,7 @@
 #    Namen auch dynamisch gibt (z.B. /ip/service ssh) -> "and !dynamic" bzw. [:pick .. 0].
 #  * Globale Namen hier nicht doppelt zu mgr-*.rsc vergeben: Der Manager importiert
 #    diese Datei ebenfalls und überschreibt damit gleichnamige Manager-Befehle.
-#  * Weitere Eigenheiten (Dateiendungen, Vergleiche): docs/DECISIONS.md
+#  * Weitere Eigenheiten (Dateiendungen, Vergleiche): docs/ROUTEROS-EIGENHEITEN.md
 # ============================================================
 
 # Verwaltete Menüs in Abhängigkeitsreihenfolge (GC läuft rückwärts)
@@ -58,13 +58,13 @@
   "/system/logging/action";"/system/logging";"/snmp/community";"/user/group";"/user";
   "/system/script";"/system/scheduler";"/tool/netwatch"
 }
-# Menüs ohne "comment" (D97): Schlüssel ist der Name, cfm gehören die Objekte mit Namen "cfm-…"
+# Menüs ohne "comment" (DR2.7): Schlüssel ist der Name, cfm gehören die Objekte mit Namen "cfm-…"
 :global cfmByName {"/queue/type"=1}
 
 # Probelauf: cfmDry=true (setzt der Agent), Meldungen landen dann in cfmPlanOut statt im Log
 :global cfmDry
 :global cfmPlanOut
-# Soll-Objekte anzeigen ($cfmShow objects=yes, D61): im Probelauf zusätzlich cfmShowAll=true - jedes
+# Soll-Objekte anzeigen ($cfmShow objects=yes, DU1.2): im Probelauf zusätzlich cfmShowAll=true - jedes
 # Objekt, das $cfmEnsure/$cfmBlock/$cfmSet verlangt, landet (Werte gekürzt) in cfmShowOut
 :global cfmShowAll
 :global cfmShowOut
@@ -186,9 +186,9 @@
   :return ((("," . ($cfmMf->"role") . ",") ~ ("," . $1 . ",")) or ($1 = "base"))
 }
 
-# Ist dieses Gerät CAPsMAN? (D45) Rolle capsman oder im Manifest-Feld cm genannt – das setzt der
+# Ist dieses Gerät CAPsMAN? (DW1.5) Rolle capsman oder im Manifest-Feld cm genannt – das setzt der
 # Manager: alle Geräte mit Rolle capsman, ohne solche übergangsweise der Primary-Manager. Fehlt cm
-# (Manifest von einem Manager vor D45), gilt die alte Regel: Rolle manager = CAPsMAN.
+# (Manifest von einem Manager vor DW1.5), gilt die alte Regel: Rolle manager = CAPsMAN.
 :global cfmIsCapsman do={
   :global cfmMf
   :local rl ("," . [:tostr ($cfmMf->"role")] . ",")
@@ -398,28 +398,28 @@
   :return true
 }
 
-# Feature-Modul laden (D104): Code, den nur manche Sites brauchen, steht in lib/<Rolle>.<Feature>.rsc. Das
+# Feature-Modul laden (DG4.6): Code, den nur manche Sites brauchen, steht in lib/<Rolle>.<Feature>.rsc. Das
 # Manifest liefert die Module einer Rolle jedem Gerät mit dieser Rolle, ohne Import ($cfmMfWant); die Rolle
 # importiert eins per $cfmFeat "<Rolle>.<Feature>" nur, wenn das Gerät das Feature nutzt oder Reste davon
 # aufzuräumen sind. Locals der Rolle sieht ein Import nicht - Werte gehen über :global cfmCtx hinein. Fehlt
 # das Modul, bricht der Apply ab (Rollback), statt dass der Abgleich die Objekte des Features als verwaist
-# entfernt (wie D68)
+# entfernt (wie DG4.3)
 :global cfmFeat do={
   :global cfmDl
   :local f ($cfmDl . "/lib/" . $1 . ".rsc")
   :local ok false
   :onerror e in={ :set ok ([:len [/file/get $f name]] > 0) } do={}
-  :if (!$ok) do={ :error ("lib/" . $1 . ".rsc fehlt im Manifest (D104)") }
+  :if (!$ok) do={ :error ("lib/" . $1 . ".rsc fehlt im Manifest (DG4.6)") }
   /import file-name=$f verbose=no
   :return true
 }
-# Rumpf eines Skripts, das eine Rolle als /system/script anlegt (D104): lib/<Rolle>.<Name>.rsc, kommt wie ein
+# Rumpf eines Skripts, das eine Rolle als /system/script anlegt (DG4.6): lib/<Rolle>.<Name>.rsc, kommt wie ein
 # Feature-Modul per Manifest, wird aber als Text gelesen (die Rolle setzt Locals davor, den Aufruf dahinter)
 :global cfmBody do={
   :global cfmDl
   :local t ""
   :onerror e in={ :set t [/file/get ($cfmDl . "/lib/" . $1 . ".rsc") contents] } do={}
-  :if ([:len $t] = 0) do={ :error ("lib/" . $1 . ".rsc fehlt im Manifest (D104)") }
+  :if ([:len $t] = 0) do={ :error ("lib/" . $1 . ".rsc fehlt im Manifest (DG4.6)") }
   :return $t
 }
 
@@ -441,7 +441,7 @@
   :return {"net"=$net;"addr"=$a;"pfx"=[:pick $net ($s + 1) [:len $net]];"gw"=($a + [:tonum $g])}
 }
 
-# Größe in KiB (D101, DNS-Cache): "64M", "1G", "512k" oder eine Zahl (KiB); ungültig -> ""
+# Größe in KiB (DN3.1, DNS-Cache): "64M", "1G", "512k" oder eine Zahl (KiB); ungültig -> ""
 :global cfmKib do={
   :local t [:tostr $1]
   :local m 1
@@ -453,7 +453,7 @@
   :return ([:tonum $t] * $m)
 }
 
-# Bandbreite "Download/Upload" ($1, z.B. "50M/10M", Einheiten k/M/G ohne Komma, D97) -> {"d";"u"} in bit/s,
+# Bandbreite "Download/Upload" ($1, z.B. "50M/10M", Einheiten k/M/G ohne Komma, DR2.7) -> {"d";"u"} in bit/s,
 # "" wenn ungültig oder leer
 :global cfmLimit do={
   :local s [:tostr $1]
@@ -483,7 +483,7 @@
   :return ({"interface"="bridge";"vlan-id"=[:tonum $1]})
 }
 
-# Policy-Ziel zerlegen (D38): "*wan" = mit masquerade, "wan@192.0.2.5" = src-nat auf feste Adresse,
+# Policy-Ziel zerlegen (DR2.3): "*wan" = mit masquerade, "wan@192.0.2.5" = src-nat auf feste Adresse,
 # "wan" = geroutet ohne NAT -> {"t"=Ziel;"nat"=""|"masq"|Adresse|"invalid" (beides angegeben)}
 :global cfmTarget do={
   :local t [:tostr $1]
@@ -534,8 +534,8 @@
   :return {"tag"=$tg;"untag"=$u;"bridge"=$br;"edge"=$ed;"disabled"=$dis;"frame"=$fr}
 }
 
-# Eintrag einer Freigabeliste (global.rsc allow, D39) zerlegen: "ziel" oder "ziel:tcp/443,8883" (Ports je
-# Eintrag, D76) -> {"h"=Ziel;"p"=Protokoll|"";"d"=Ports|"";"l"=Adressliste}. $1 = Listenname, $2 = Eintrag.
+# Eintrag einer Freigabeliste (global.rsc allow, DR2.4) zerlegen: "ziel" oder "ziel:tcp/443,8883" (Ports je
+# Eintrag, DP3.1) -> {"h"=Ziel;"p"=Protokoll|"";"d"=Ports|"";"l"=Adressliste}. $1 = Listenname, $2 = Eintrag.
 # Einträge ohne Ports bleiben in cfm-allow-<Liste>, mit Ports je Kombination eine eigene Liste
 :global cfmAllowEntry do={
   :local e [:tostr $2]
@@ -556,7 +556,7 @@
   :return $r
 }
 
-# MLAG-Paar eines Geräts ($1 = Name) aus mlag.rsc (D75): ({}) oder {"pair";"partner";"primary" (bool);
+# MLAG-Paar eines Geräts ($1 = Name) aus mlag.rsc (DP2.2): ({}) oder {"pair";"partner";"primary" (bool);
 # "peer" (Name des Peer-Bonds);"peerSlaves";"stp";"fallback";"initDelay";"bonds"={Name={"id";"slaves";"profile"}}}.
 # Ports: Text = auf beiden Knoten gleich, Array = je Knoten ({"sw1"="ether1";"sw2"="ether3"})
 :global cfmMlagOf do={
@@ -589,7 +589,7 @@
   :local out ""; :local n 0
   :local skipNames {"read"=1;"write"=1;"full"=1}
   # von base verwaltet, aber ohne cfm-Tag: Syslog-Einträge (hAP lehnt dort "comment" ab) und der
-  # Werks-User admin (abgeschaltet oder bewusst behalten, D25) - keine Fehlalarme
+  # Werks-User admin (abgeschaltet oder bewusst behalten, DS3.1) - keine Fehlalarme
   :local skipLog "cfmremote"
   :foreach m in=$cfmMenus do={
     :onerror e in={

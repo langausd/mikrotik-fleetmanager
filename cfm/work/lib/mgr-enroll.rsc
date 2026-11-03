@@ -32,7 +32,7 @@
 }
 
 
-# ---------- SFTP-User eines Geräts (cfmd-<name>) aus meta/keys/<name>.pem (D67) ----------
+# ---------- SFTP-User eines Geräts (cfmd-<name>) aus meta/keys/<name>.pem (DS2.5) ----------
 # Primary: bei $cfmEnroll und $cfmRekey sftp=yes. Backup-Manager: nach jedem Spiegel - ohne die User
 # könnten die Geräte im Ernstfall nicht von ihm ziehen. Der Kommentar trägt einen Hash des Schlüssels;
 # stimmt er und hat der User genau einen Schlüssel, bleibt alles stehen. pem= statt der Datei,
@@ -97,14 +97,14 @@
   :return $r
 }
 
-# ---------- SFTP-/Host-Schlüssel erneuern ($cfmRekey sftp=yes, D67) ----------
-# Der SFTP-Schlüssel eines Geräts ist sein exportierter ed25519-Host-Key (D28): Die Erneuerung ändert
+# ---------- SFTP-/Host-Schlüssel erneuern ($cfmRekey sftp=yes, DS2.5) ----------
+# Der SFTP-Schlüssel eines Geräts ist sein exportierter ed25519-Host-Key (DS1.4): Die Erneuerung ändert
 # deshalb auch den Host-Key (SSH-Clients melden ihn einmal als geändert). Ablauf ohne Lücke:
 #  1. Gerät: neuen Host-Key erzeugen, exportieren, öffentlichen Teil ausgeben. Ein Manager gibt auch
 #     den privaten Teil aus und löscht die Dateien sofort (seine Geräte-User dürfen per SFTP lesen) -
 #     der private Schlüssel lebt danach nur in dieser Funktion.
 #  2. Manager: neuen Schlüssel zusätzlich bei cfmd-<name>. Bei einem Manager-Gerät zusätzlich beim
-#     User cfm ALLER aufgenommenen Geräte (er ist dort der Trust-Key, D35); fehlt auch nur eines,
+#     User cfm ALLER aufgenommenen Geräte (er ist dort der Trust-Key, DS3.2); fehlt auch nur eines,
 #     Abbruch: $cfmTrust stellt den alten Stand her, der alte Schlüssel gilt weiter.
 #  3. Gerät: neuen privaten Schlüssel importieren (cfm; bei Managern jeder User mit privatem Schlüssel,
 #     das sind alles Kopien des Host-Keys), die alten entfernen. Ein Manager exportiert dafür seinen

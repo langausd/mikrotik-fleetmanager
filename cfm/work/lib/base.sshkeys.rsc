@@ -1,7 +1,7 @@
 # ============================================================
-# cfm lib/base.sshkeys.rsc – Feature-Modul der Rolle base (D104); base lädt es per $cfmFeat nur, wenn es für
+# cfm lib/base.sshkeys.rsc – Feature-Modul der Rolle base (DG4.6); base lädt es per $cfmFeat nur, wenn es für
 # einen User aus users eine Datei authorized_keys.<user> gibt (das Manifest liefert es nur dann mit).
-# Persönliche Admin-SSH-Keys je User (TODO 19, D65): work/authorized_keys.<user> im OpenSSH-Format,
+# Persönliche Admin-SSH-Keys je User (TODO 19, DS3.3): work/authorized_keys.<user> im OpenSSH-Format,
 # eine Zeile je Key "<typ> <base64> [kommentar]" (ssh-ed25519, ssh-rsa, sk-ssh-ed25519@openssh.com;
 # keine OpenSSH-Optionen wie command=... davor; "#"-Zeilen und Leerzeilen zählen nicht).
 # Gibt es die Datei für einen User aus global.rsc users, ist sie SEIN vollständiger Sollzustand:
@@ -21,7 +21,7 @@
 :global cfmLog; :global cfmWarn; :global cfmShowAll; :global cfmShowObj
 :foreach u,grp in=($cfmG->"users") do={
   :local akf ($cfmDl . "/authorized_keys." . $u)
-  # per Name statt /file/find (D59, auf dem Manager Hunderte Dateien); eine gelöschte Datei liefert
+  # per Name statt /file/find (DG4.1, auf dem Manager Hunderte Dateien); eine gelöschte Datei liefert
   # /file/get u.U. weiter als Eintrag ohne Namen
   :local akx false
   :onerror e in={ :set akx ([:len [/file/get $akf name]] > 0) } do={}

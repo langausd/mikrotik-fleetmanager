@@ -33,7 +33,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 
 ## `upload-seed.sh`
 
-Lädt die Vorlage aus `cfm/` (plus dein Overlay) per SFTP auf den Primary-Manager. Seit D72 führt
+Lädt die Vorlage aus `cfm/` (plus dein Overlay) per SFTP auf den Primary-Manager. Seit DT2.2 führt
 der Manager die Site-Daten selbst. Ein normaler Upload bringt deshalb nur neuen Framework-Code
 (`lib/`, `roles/`) und lässt deine Daten auf dem Manager unangetastet.
 
@@ -49,7 +49,7 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
   bricht ab, sobald auf dem Manager echte Seriennummern stehen (`--force` überschreibt trotzdem).
 * `--bootstrap [datei]` legt die Bootstrap-Datei ins Wurzelverzeichnis des Geräts (ohne Angabe:
   `bootstrap-manager.rsc` aus dem Overlay). Weitere Optionen: `--port`, `--base flash/cfm`.
-* Feature-Module (`lib/<rolle>.<feature>.rsc`, D104) gehen nur hinüber, wenn die Site das Feature nutzt
+* Feature-Module (`lib/<rolle>.<feature>.rsc`, DG4.6) gehen nur hinüber, wenn die Site das Feature nutzt
   (SNMP, isolierte VLANs, Admin-SSH-Keys, Bonds/MLAG, DNS aus `dns.rsc`, DNS-Selbstbedienung,
   Bandbreitenlimit, WireGuard, schaltbare SSIDs); nicht gebrauchte entfernt das Skript auf dem Manager und
   nennt sie.
@@ -59,12 +59,12 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
 * Notizen (`STAND.md`, `BEFUNDE.md`, CSV-Listen) bleiben lokal. Jede Datei geht einzeln mit bis zu
   drei Versuchen hinüber. Am Ende steht `Seed hochgeladen nach … (N Dateien)`.
 * Danach auf dem Manager: `/system script run cfm-mgr`, dann `$cfmDiff` (was ist neu?) und
-  `$cfmRelease msg="…"`. Läuft auf dem Manager noch Code von vor D70 (vor 2026-10-11), gilt bis
+  `$cfmRelease msg="…"`. Läuft auf dem Manager noch Code von vor DG2.5 (vor 2026-10-11), gilt bis
   zu seinem eigenen Update der Handgriff aus [TODO 47](../docs/TODO.md).
 
 ## `feature-module.py`
 
-Sagt, welche Feature-Module (`cfm/work/lib/<rolle>.<feature>.rsc`, D104) eine Site braucht, aus ihren
+Sagt, welche Feature-Module (`cfm/work/lib/<rolle>.<feature>.rsc`, DG4.6) eine Site braucht, aus ihren
 Site-Daten (`global.rsc`, `vlans.rsc`, `wifi.rsc`, `wireguard.rsc`, `dns.rsc`, `mlag.rsc`, `hosts/`,
 `authorized_keys.<user>`). `upload-seed.sh` ruft es auf; von Hand zum Nachsehen:
 
@@ -142,14 +142,14 @@ Auf GitHub prüft zusätzlich die Action `rsc-check` (`.github/workflows/rsc-che
 ## `editor/`
 
 Drei Werkzeuge für WebFig, die über die REST-API derselben Adresse arbeiten. Gestartet werden sie über ein
-festes Lesezeichen „cfm“ (D91), das ihren Code vom Gerät lädt. Aus dem Netz wird nichts geladen.
+festes Lesezeichen „cfm“ (DT3.2), das ihren Code vom Gerät lädt. Aus dem Netz wird nichts geladen.
 
-* **cfm-Editor** (D73): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
+* **cfm-Editor** (DT3.1): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
   Release an Ring 0. Anmelden mit einem User der Gruppe `full`.
-* **cfm-Monitor** (D77, D81; früher cfm-WLAN): Reiter WLAN mit den Clients je AP live und Roaming als
+* **cfm-Monitor** (DU2.2, DU1.4; früher cfm-WLAN): Reiter WLAN mit den Clients je AP live und Roaming als
   Zeitleiste (in WebFig des CAPsMAN, Leserecht genügt); Reiter Suche findet Geräte nach MAC, IP, Name,
   Port, AP oder SSID (`$cfmFind`, in WebFig des Managers, Gruppe `full`).
-* **cfm-DNS** (D102): DNS-Selbstbedienung in WebFig eines Routers mit `self` in `dns.rsc` – gesperrte Namen
+* **cfm-DNS** (DN3.2): DNS-Selbstbedienung in WebFig eines Routers mit `self` in `dns.rsc` – gesperrte Namen
   der letzten Minuten, häufigste Abfragen, „Freischalten anfragen“. Der User `dns` sieht nur das eigene
   Gerät, ein Admin alle und macht Freischaltungen dauerhaft. Für die Clients: `install.html` weitergeben,
   „cfm“ ziehen, WebFig des eigenen Gateways öffnen.
@@ -171,7 +171,7 @@ vollständigen Lesezeichen (Code im Lesezeichen, nach jeder Fassung neu ziehen).
 
 ## `upgrade-mirror.py`
 
-Ein Spiegel für das eingebaute RouterOS-Update (D63). Damit aktualisieren sich Geräte, die selbst
+Ein Spiegel für das eingebaute RouterOS-Update (DV1.5). Damit aktualisieren sich Geräte, die selbst
 kein Internet haben (z.B. im MGMT-VLAN), von deinem Rechner aus.
 
 ```bash
@@ -229,7 +229,7 @@ WAN-VLANs, der Key ist auf allen Routern derselbe. Mehr dazu im Admin-Guide, Abs
 
 ## `git-host/cfm-git-sync`
 
-Externe Sicherung (D13): Nach Release, Rollback, Promote, Audit, Onboarding, Vault-Backup und neuen
+Externe Sicherung (DS2.4): Nach Release, Rollback, Promote, Audit, Onboarding, Vault-Backup und neuen
 Geräte-Exporten ruft der Manager per SSH dieses Skript auf einem Linux-Server auf. Es holt den
 Stand per SFTP und committet ihn in ein Git-Repo, auf Wunsch mit `git push`.
 
@@ -240,7 +240,7 @@ Stand per SFTP und committet ihn in ein Git-Repo, auf Wunsch mit `git push`.
 
 ## `home-assistant/cfm_ssid.py`
 
-Schaltet eine schaltbare SSID (D64, D90, z.B. das Gast-WLAN) aus Home Assistant und fragt ihren
+Schaltet eine schaltbare SSID (DW4.1, DW4.2, z.B. das Gast-WLAN) aus Home Assistant und fragt ihren
 Zustand (an den WLAN-Interfaces) und die eingebuchten Clients ab. Es spricht direkt die RouterOS-API
 des CAPsMAN an.
 

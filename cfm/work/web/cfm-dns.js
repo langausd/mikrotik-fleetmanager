@@ -1,6 +1,6 @@
-// cfm-dns.js a3942fd9c877 - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-dns.js ad880f4f1546 - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = 'a3942fd9c877';
+const STAND = 'ad880f4f1546';
 const alt = window.__cfmDns;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop) alt.drop();

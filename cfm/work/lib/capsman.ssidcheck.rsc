@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/capsman.ssidcheck.rsc – Rumpf des Skripts cfm-ssid-check (schaltbare SSIDs, D64/D90, D104)
+# cfm lib/capsman.ssidcheck.rsc – Rumpf des Skripts cfm-ssid-check (schaltbare SSIDs, DW4.1/DW4.2, DG4.6)
 # Kein Import: $cfmCapsmanOn (lib/lib-wifi.rsc) setzt davor ":local ssids" und dahinter den Aufruf. Als Funktion,
 # damit die Datei allein :parse besteht ($cfmRelease). Läuft alle 10 min (Scheduler cfm-ssid-check).
 #  ssids  je schaltbarer SSID {"k"=Schlüssel;"f"=Zustandsdatei;"d"=Grundzustand aus wifi.rsc;"a"=Auto-Aus in s}

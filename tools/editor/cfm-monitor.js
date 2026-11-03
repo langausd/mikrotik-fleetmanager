@@ -1,4 +1,4 @@
-// cfm-Monitor (D77, D81; bis 2026-10-16 „cfm-WLAN“): Lesezeichen für WebFig, zwei Reiter.
+// cfm-Monitor (DU2.2, DU1.4; bis 2026-10-16 „cfm-WLAN“): Lesezeichen für WebFig, zwei Reiter.
 // WLAN: die WLAN-Clients aller APs live (eine Kachel je AP) und als Zeitleiste je Client, damit sich Roaming
 // nachvollziehen lässt; nur in WebFig des CAPsMAN. Liest per REST derselben Adresse (kein CORS):
 // Registrierungstabelle, WLAN-Interfaces (Feld cap = AP), CAPs, DHCP-Leases (Namen) und das Log
@@ -433,7 +433,7 @@
     save(); render();
   }
 
-  // ---------- Suche ($cfmFind auf dem Manager, D81) ----------
+  // ---------- Suche ($cfmFind auf dem Manager, DU1.4) ----------
   const ENDE = '@@cfm-ende@@', JS = '@@cfm-json@@';
   // RouterOS-String: \ " $ maskieren, Zeilenumbruch als \n
   const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\r/g, '').replace(/\n/g, '\\n');
@@ -443,7 +443,7 @@
     const f = ((await rest('GET', '/file?name=' + encodeURIComponent(n))) || [])[0];
     return f ? String((await rest('POST', '/file/get', { '.id': f['.id'], 'value-name': 'contents' })).ret || '') : null;
   }
-  // CAPsMAN laut Manifest des Agents (Feld cm, D45: Name und Adresse); ohne Manifest: läuft hier der Dienst?
+  // CAPsMAN laut Manifest des Agents (Feld cm, DW1.5: Name und Adresse); ohne Manifest: läuft hier der Dienst?
   // Manager? Sonst die Adresse, von der dieses Gerät zuletzt gezogen hat (state.json des Agents)
   async function detect() {
     for (const n of ['cfm/mf.mf', 'flash/cfm/mf.mf']) {
@@ -465,7 +465,7 @@
     }
     S.mgr = ((await rest('GET', '/system/script?name=cfm-mgr').catch(() => [])) || []).length > 0;
     if (S.mgr) {
-      // Manager-Module vor D81: dort ist $cfmFind noch der alte interne Helfer (heute $cfmIds)
+      // Manager-Module vor DU1.4: dort ist $cfmFind noch der alte interne Helfer (heute $cfmIds)
       const net = ((await rest('GET', '/system/script?name=cfm-mgr-net').catch(() => [])) || [])[0];
       S.findOk = !net || net.source === undefined || String(net.source).includes(':global cfmFind do={');
       return;
@@ -519,7 +519,7 @@
       const jl = ls.find((l) => l.startsWith(JS));
       const jt = jl ? jl.slice(JS.length).trim() : '';
       F.hits = jt ? JSON.parse(jt) : null;
-      if (jl && !jt) ls.push('Der Manager lieferte nichts: $cfmFind fehlt dort (Framework vor D81?).');
+      if (jl && !jt) ls.push('Der Manager lieferte nichts: $cfmFind fehlt dort (Framework vor DU1.4?).');
       F.note = ls.filter((l) => !l.startsWith(JS)).join('\n') || (fertig ? '' : 'keine Rückmeldung nach 5 min');
       if (!Array.isArray(F.hits)) F.hits = [];
     } catch (e) {
@@ -558,7 +558,7 @@
       return;
     }
     if (!S.findOk) {
-      m.replaceChildren(el('div', { class: 'note' }, 'Dieser Manager hat die Suche noch nicht: Seine Manager-Module sind älter als D81 ' +
+      m.replaceChildren(el('div', { class: 'note' }, 'Dieser Manager hat die Suche noch nicht: Seine Manager-Module sind älter als DU1.4 ' +
         '(2026-10-16), dort ist $cfmFind noch ein interner Helfer. Sie kommt mit dem Framework-Update ' +
         '(upload-seed.sh, $cfmRelease), sobald der Manager die neue Version selbst angewendet hat (sein Ring).'));
       return;

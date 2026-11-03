@@ -12,7 +12,7 @@
 :if ([:len $snoop] = 0) do={ :set snoop "no" }
 $cfmSet m="/interface/bridge" n=({"name"="bridge"}) p=({"igmp-snooping"=$igmp;"dhcp-snooping"=$snoop})
 
-# Ports samt Bonds und MLAG-Peer aus der Rolle base (cfmPortMap, D74/D75)
+# Ports samt Bonds und MLAG-Peer aus der Rolle base (cfmPortMap, DP2.1/DP2.2)
 :global cfmPortMap
 :if ($snoop = "yes" and [:typeof $cfmPortMap] = "array") do={
   :foreach p,spec in=$cfmPortMap do={

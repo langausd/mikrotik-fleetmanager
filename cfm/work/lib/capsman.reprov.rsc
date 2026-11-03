@@ -1,5 +1,5 @@
 # ============================================================
-# cfm lib/capsman.reprov.rsc – Rumpf des Skripts cfm-reprov (veraltete CAP-Interfaces, D104)
+# cfm lib/capsman.reprov.rsc – Rumpf des Skripts cfm-reprov (veraltete CAP-Interfaces, DG4.6)
 # Kein Import: $cfmCapsmanOn (lib/lib-wifi.rsc) setzt davor ":local aps" (Identities der CAPs mit veralteten
 # Interfaces, jeder Apply neu) und dahinter den Aufruf. Als Funktion, damit die Datei allein :parse besteht.
 # Startet der Mensch, wann die ~3 s ohne WLAN je AP passen: neu provisionieren, danach den Schaltzustand der

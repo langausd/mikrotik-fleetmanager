@@ -7,7 +7,7 @@
 #   ./lab.sh status
 #
 # Netz: nic0 = QEMU-User-Net (ether1, DHCP 10.0.2.x, SSH-Forward auf 22<i>0; 10.0.2.100:80 führt zu
-#       127.0.0.1:LABPORT+90 auf dem Host, dort lauscht im Test tools/upgrade-mirror.py, D63),
+#       127.0.0.1:LABPORT+90 auf dem Host, dort lauscht im Test tools/upgrade-mirror.py, DV1.5),
 #       Stern: vm1 ether2..etherN <-> vm2..vmN ether2 (Trunks), andere Topologien per LABLINKS (topo()).
 #       vm1 muss zuerst starten (lauscht), "start" startet in dieser Reihenfolge.
 # Voraussetzung: CHR-Image (raw .img) in $CHR_IMG oder im Arbeitsverzeichnis $LAB.

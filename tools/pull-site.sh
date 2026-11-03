@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Holt die Site-Daten vom Manager ins Overlay (D72): Der Manager führt sie (bearbeitet mit dem
+# Holt die Site-Daten vom Manager ins Overlay (DT2.2): Der Manager führt sie (bearbeitet mit dem
 # cfm-Editor, tools/editor/, oder per /file edit), das Overlay ist Sicherung und Referenz. Geholt werden die Dateien
 # direkt in work/ (global.rsc, vlans.rsc, …, authorized_keys.<user>), work/hosts/ und
 # meta/inventory.rsc; lib/, roles/ und web/ (Framework-Code) bleiben, wie sie sind.

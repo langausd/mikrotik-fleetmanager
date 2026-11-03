@@ -2,7 +2,7 @@
 # Rolle manager – Config-Manager (Primary)
 #  * installiert/aktualisiert die Manager-Funktionen (Module lib/mgr-*.rsc, Lader cfm-mgr)
 #  * SFTP-Gruppe für Geräte, Verzeichnisstruktur
-#  * CAPsMAN nur übergangsweise, solange kein Gerät die Rolle capsman hat (D45)
+#  * CAPsMAN nur übergangsweise, solange kein Gerät die Rolle capsman hat (DW1.5)
 # Wird von manager-backup.rsc mit cfmIsBackup=true wiederverwendet.
 # ============================================================
 :global cfmG; :global cfmMf; :global cfmDl
@@ -41,7 +41,7 @@ $cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm
 # Warnung trotzdem) und setzt während seiner Arbeit cfmTickBusy. Der Onboarding-Tick wartet bis zu
 # 30 s, solange cfmTickBusy gesetzt ist, und lässt danach seine Minute aus. Er wartet nie auf einen
 # allgemeinen Tick, der selbst noch wartet (sonst warteten beide aufeinander), und kommt auch bei
-# mgrTick=1m (Labor) zum Zug. Jeder überspringt sich außerdem, solange sein Vorlauf läuft (D42).
+# mgrTick=1m (Labor) zum Zug. Jeder überspringt sich außerdem, solange sein Vorlauf läuft (DM2.1).
 $cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] < 2) do={ :local w 0; :while ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] > 0 and \$w < 30) do={ :delay 2s; :set w (\$w + 1) }; :if (\$w >= 30) do={ :log warning \"cfm: mgr-tick laeuft trotz Onboarding-Tick (60 s gewartet)\" }; :global cfmTickBusy; :set cfmTickBusy true; :onerror e in={ /system script run cfm-mgr; :global cfmTick; \$cfmTick } do={ :log warning (\"cfm: mgr-tick: \" . \$e) }; :set cfmTickBusy false } else={ :log warning \"cfm: mgr-tick uebersprungen (Vorlauf haengt)\" }"})
 # Aufträge in meta/onboard.dat? Über den Namen statt /file/find (TODO 21: eine Suche über alle
 # Dateien kostete auf Hardware jede Minute über 100 ms). Ablage wie $cfmMB.
@@ -110,11 +110,11 @@ $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-de
   }
 }
 
-# --- CAPsMAN (D45): eigene Rolle capsman. Hat im Inventar noch kein Gerät diese Rolle, bleibt der
+# --- CAPsMAN (DW1.5): eigene Rolle capsman. Hat im Inventar noch kein Gerät diese Rolle, bleibt der
 #     Primary übergangsweise CAPsMAN (der Manager nennt ihn dann im Manifest-Feld cm). Der Backup
 #     rendert keinen CAPsMAN mehr – bei einem Ausfall zieht die Rolle capsman auf ein anderes Gerät ---
 :global cfmIsCapsman; :global cfmCapsmanOn
 :if (!$backup and [$cfmIsCapsman] and ![$cfmHas "capsman"]) do={
-  :if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (D68)" }
+  :if ([:typeof $cfmCapsmanOn] = "nothing") do={ :error "lib/lib-wifi.rsc fehlt im Manifest (DG4.3)" }
   $cfmCapsmanOn
 }

@@ -1,15 +1,17 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-03)
+## Übersicht offener Punkte (Stand 2026-11-04)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 74). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 75). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
+* **Zuerst: drei Fehler aus dem Hardware-Test 2026-11-04** (unter „Bekannte Fehler“): Fallback-Kopie (DW1.8),
+  normale Passphrase bei PPSK (DW2.2), `cfm-iso` nach `slaves-static` (DP3.1); danach Test vor Ort (74).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
-  DW1.8). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
+  DW1.8; erster Versuch 2026-11-04 scheiterte am Fehler unten). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
   ([TESTSTAND.md](TESTSTAND.md#bestanden)).
 * **Nur mit Hardware:** die Punkte unter „Offen auf Hardware“ in [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware). Das eingebaute Update
   (38, DV1.5) lief über den Spiegel (hEX) und per `via=internet` (CRS, 7.25).
@@ -18,10 +20,11 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant; *seit 2026-11-01 an einem Standort in Betrieb, Graylog 8.15*).
 * **Vorbereitet, Test nur mit Hardware:** MLAG auf CRS3xx (Hardware-Offload, Ausfall eines Knotens,
-  Umbau im laufenden Betrieb), isolierte VLANs an echten APs (gibt der CAPsMAN `interface-list` an die
-  CAPs weiter? Wie sieht der Bridge-Filter WLAN-Frames?) und an Switch-Ports mit `hw=no`.
+  Umbau im laufenden Betrieb), isolierte VLANs an echten APs (seit 2026-11-04 im Betrieb an einem Standort; der
+  CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
+  Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 7, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62–65, 67–69, 72, 73.
+* **Offen im Verbesserungsplan:** 6, 7, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62–65, 67–69, 72–74.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -68,6 +71,33 @@ Steht seit 2026-11-03 in [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware) („Off
 was auf Hardware und im Labor schon bestanden hat.
 
 ## Bekannte Fehler
+
+Drei Fehler aus dem Hardware-Test vom 2026-11-04 (CRS418 als CAPsMAN, hAP ax² als CAPs, 7.25; Eigenheiten dazu in
+[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). Im Labor
+nicht nachstellbar (kein Funk); Fix mit Labortest der Darstellung, dann Test vor Ort (74).
+
+* **`fallback="yes"` hängt keine lokale Kopie an** (DW1.8, `roles/ap.rsc`): Die Rolle erkennt die SSID eines vom
+  CAPsMAN angelegten virtuellen AP an `configuration.ssid` bzw. `monitor`→`ssid` – am CAP ist beides leer, die SSID
+  steht nur in `monitor`→`about` („mode: AP, SSID: Gast“). Folge: Nur `slaves-static` wirkt, im Fallback fällt die
+  SSID weiter aus. Fix: SSID ersatzweise aus `about` lesen (Text nach `SSID: ` bis `,`/`;` – wie schon der Kanal
+  im Agent), im Probelauf melden, wenn ein virtueller AP ohne erkennbare SSID bleibt.
+* **Mit PPSK geht die normale Passphrase der SSID nicht mehr** (DW2.2, `lib/lib-wifi.rsc`, Secret-Push): RouterOS
+  ignoriert die `passphrase` eines Profils mit `multi-passphrase-group`. Fix: Für jede SSID mit `ppsk` einen
+  Gruppeneintrag ohne `vlan-id` (Kommentar z.B. `cfm:mpp:<ssid>`) mit der Passphrase aus `psk.<ssid>` anlegen – auf
+  dem CAPsMAN und im lokalen Fallback der APs; der Secret-Push setzt ihn wie die übrigen Einträge. Weil Ändern oder
+  Entfernen eines Eintrags dessen Clients trennt: Secret-Push und Rolle setzen die Passphrase nur, wenn sie sich
+  ändert (Vergleich vor dem `set`; ob ein `set` mit gleichem Wert trennt, ist offen), und legen Einträge nicht neu an.
+  Admin-Guide (PPSK) und DW2.2 ergänzen. Bis dahin ist die betroffene SSID an einem Standort aus.
+* **`cfm-iso` nach dem Umstellen auf `slaves-static` veraltet** (DP3.1/DW1.8, `roles/ap.rsc`): Der Apply, der
+  `slaves-static` setzt, trennt den CAP vom CAPsMAN; der CAP legt die virtuellen APs danach mit neuen Namen an. Die
+  Rolle trug im selben Lauf noch das alte Interface ein (`wifi3`), erst der zweite Apply die neuen – dazwischen
+  (12 min) griff der Bridge-Filter für Gäste vermutlich nicht. Dieselbe Lücke hat die Fallback-Kopie (braucht ohnehin
+  den zweiten Apply). Fix: Nach einer Änderung von `slaves-static` stößt der Agent selbst einen zweiten Apply an,
+  sobald der CAP wieder verbunden ist (ähnlich dem Nachfassen in DW1.11), statt auf `$cfmPush … force=yes` zu bauen.
+  Dazu die Frage, ob isolierte SSIDs ohne `slaves-static` sicher sind: Dynamische Interfaces entstehen bei jedem
+  Neuverbinden des CAP neu, das statische Mitglied in `cfm-iso` zeigt dann bis zum nächsten Apply ins Leere
+  (Eigenheit „Verweis auf ein Interface“). Vorschlag zur Entscheidung: `isolate` an einer SSID setzt `slaves-static`
+  mit, oder der Agent prüft `cfm-iso` bei jedem Lauf.
 
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
@@ -156,7 +186,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     SSID schaltet `slaves-static` ein und hängt den virtuellen APs eine lokale Kopie an. Offen ist der Test vor
     Ort (CAPsMAN-Dienst kurz aus): Lässt `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten
     virtuellen APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen? Erst mit einer zweiten aktiven
-    SSID auf Hardware testbar; bis dahin fallen Gast/IoT im Fallback aus. Die erledigten Teile (b)–(e) stehen
+    SSID auf Hardware testbar; bis dahin fallen Gast/IoT im Fallback aus. *2026-11-04:* an einem Standort aktiv
+    (`slaves-static` gesetzt, virtuelle APs statisch), die lokale Kopie fehlt wegen eines Fehlers („Bekannte Fehler“);
+    Test nach dem Fix (74). Die erledigten Teile (b)–(e) stehen
     in [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
 <!-- -->
 48. **RouterOS 7.25 – Rest** (Befunde und Changelog-Durchsicht: [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen),
@@ -196,8 +228,8 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
       führt die Site-Daten, der cfm-Editor schreibt hinein) – bräuchte eine neue Entscheidung, wer gewinnt.
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
-    Rückweg im Admin-Guide 6.8). Auf Hardware klären: Startet das Abschalten eines virtuellen AP das Radio
-    neu? Aufräumen der festen Interfaces eines abgebauten AP (bisher von Hand, Admin-Guide 7.4); bleiben beim
+    Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein
+    startet das Radio nicht neu – andere SSIDs ohne Unterbrechung). Offen: Aufräumen der festen Interfaces eines abgebauten AP (bisher von Hand, Admin-Guide 7.4); bleiben beim
     Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen? Zusammenspiel mit
     `slaves-static` (DW1.8). Rückfall, falls feste Interfaces nicht tragen: nacheinander provisionieren (je AP
     `/interface/wifi/radio/provision` mit einigen Sekunden Abstand; die Unterbrechung je AP bleibt).
@@ -259,3 +291,10 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     * Weitere Kandidaten: `mgr-check.rsc` (57 KB) aufteilen, bevor die
       60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht empfohlen:
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
+74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04** (an dem Standort mit CRS418 als CAPsMAN und zwei hAP ax²,
+    nächster Termin vor Ort): (a) Fallback einer Gast-SSID – CAPWAP zu einem AP sperren, sendet die SSID lokal weiter,
+    Lease, Isolation, Rückkehr (40, DW1.8); (b) PPSK: normale Passphrase und PPSK nebeneinander, FT-Roaming zwischen
+    den APs mit PPSK, gibt der CAPsMAN die Gruppe an die CAPs weiter (oder gelten die lokalen Einträge), trennt der
+    Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
+    der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
+    nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.

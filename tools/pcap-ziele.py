@@ -38,16 +38,25 @@ def mac_str(b):
 
 # ---------- Dateiformate ----------
 
+# "Modifiziertes" pcap (Magic a1b2cd34, z.B. Fritz!Box capture.html): je Paket 8 Byte mehr im Kopf
+# (Interface-Index, Protokoll, Pakettyp, Füllbyte)
+MAGIC_MOD = (b"\xa1\xb2\xcd\x34", b"\x34\xcd\xb2\xa1")
+
+
 def read_pcap(f, hdr):
-    e = "<" if hdr[:4] in (b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1") else ">"
+    e = "<" if hdr[:4] in (b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1", b"\x34\xcd\xb2\xa1") else ">"
     nano = hdr[:4] in (b"\x4d\x3c\xb2\xa1", b"\xa1\xb2\x3c\x4d")
+    extra = 8 if hdr[:4] in MAGIC_MOD else 0
     link = struct.unpack(e + "I", hdr[20:24])[0] & 0xFFFF
     while True:
-        rh = f.read(16)
-        if len(rh) < 16:
+        rh = f.read(16 + extra)
+        if len(rh) < 16 + extra:
             return
-        ts, tf, incl, _ = struct.unpack(e + "IIII", rh)
-        yield ts + tf / (1e9 if nano else 1e6), link, f.read(incl)
+        ts, tf, incl, _ = struct.unpack(e + "IIII", rh[:16])
+        data = f.read(incl)
+        if len(data) < incl:
+            return  # abgebrochener Mitschnitt (.part): letztes Paket unvollständig
+        yield ts + tf / (1e9 if nano else 1e6), link, data
 
 
 def read_pcapng(f, first):
@@ -92,7 +101,7 @@ def frames(path):
     if hdr[:4] == b"\x0a\x0d\x0d\x0a":
         f.seek(0)
         return read_pcapng(f, f.read(12))
-    if hdr[:4] in (b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1", b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d"):
+    if hdr[:4] in (b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1", b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d") + MAGIC_MOD:
         return read_pcap(f, hdr)
     sys.exit(f"{path}: weder pcap noch pcapng")
 

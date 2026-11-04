@@ -5,6 +5,7 @@
 #   mgr-core     Hilfsfunktionen, Daten, Release/Ringe, Archiv, Push, Status, Audit
 #   mgr-vault    Vault, Secrets und Secret-Push, Identitätsprüfung, Geräteschlüssel ($cfmRekey)
 #   mgr-check    inhaltliche Prüfung von work/ ($cfmCheck), Probelauf ($cfmPlan)
+#   mgr-checkw   WLAN-Teil der Prüfung ($cfmCheckWifi, lädt $cfmCheck aus demselben Stand nach)
 #   mgr-show     effektive Konfiguration ($cfmShow) und Unterschiede zweier Stände ($cfmDiff)
 #   mgr-enroll   Geräte aufnehmen, Bootstrap-Datei, Manager-Schlüssel verteilen
 #   mgr-onboard  Onboarding per Push in die Werks-Config
@@ -399,7 +400,7 @@
   # inhaltliche Prüfung (mgr-check): Fehler stoppen das Release, force=yes übergeht sie.
   # Der Prüfer kommt aus work/ (TODO 21): Nach einem Framework-Update kennt der installierte die
   # neuen Kennzeichen noch nicht und hielte das erste Release auf. Lädt die neue Fassung nicht,
-  # prüft die installierte.
+  # prüft die installierte. Den WLAN-Teil (lib/mgr-checkw.rsc) lädt $cfmCheck selbst aus work/.
   :onerror e in={ /import file-name=($b . "/work/lib/mgr-check.rsc") verbose=no } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
   :global cfmCheck
   :local ck [$cfmCheck]

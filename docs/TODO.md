@@ -256,6 +256,6 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     * Hardware an einem Router mit `dns.rsc`: `/system/script/get cfm-dnsreq source` prüfen
       (Kopf `:local dur …`/`:local deny …` für cfm-DNS, Rumpf als Funktion `$dnsreq`), cfm-DNS-Freischaltung einmal
       durchspielen; dort auch die Listen „nicht hochgeladen“/„entfernt“ von `upload-seed.sh`.
-    * Weitere Kandidaten: `mgr-check.rsc` (57 KB) aufteilen, bevor die
-      60-KB-Grenze greift (`$cfmRelease` lädt den Prüfer aus `work/` – dann beide Dateien). Nicht empfohlen:
+    * *2026-11-04:* WLAN-Prüfung aus `mgr-check.rsc` nach `mgr-checkw.rsc` ausgelagert (DM1.1; 57,4 → 46,9 KB),
+      Labor 7.25 ok (Gesamttest und Übergang, TESTSTAND), Hardware offen: erstes Release nach dem Update (der WLAN-Teil kommt aus `work/`). Nicht empfohlen:
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).

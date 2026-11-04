@@ -61,7 +61,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **7.25, mit den folgenden Ausbauten:** `e2e.sh` 341 (2026-10-26, DW4.3), 347 und 354 (2026-10-27, DW2.6, DU4.2),
   359 (2026-10-28, DR2.7), 373 (2026-10-29, DU4.3), 374 und `e2e-vrrp.sh` 137 (2026-10-31, DR3.2), 402 (2026-10-31,
   DN3.1/DN3.2), 405 (2026-11-02, DU3.4), zuletzt 410 mit `e2e-vrrp.sh` 137, `e2e-mlag.sh` 72 und Onboarding 14
-  (2026-11-02, DG4.6) – alles grün.
+  (2026-11-02, DG4.6) – alles grün. 2026-11-04 (TODO 73, WLAN-Prüfung in `mgr-checkw.rsc`): 409 von 410, ein ✘
+  in der Primary-Überwachung des Backups (Entwarnung „Tick“ blieb aus; vermutlich überschneidet sich der echte Tick
+  von cm2 mit dem Test, Code unverändert, bisher nie aufgetreten). Übergang von Hand nachgestellt: ohne installiertes
+  `cfm-mgr-checkw` lädt `$cfmCheck` die Datei aus `work/`, ein WLAN-Fehler kommt an, fehlt die Datei: Fehler statt
+  ungeprüft.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

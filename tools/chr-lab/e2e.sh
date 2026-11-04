@@ -58,7 +58,7 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 12' "cm1: 12 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 13' "cm1: 13 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (DT3.2)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"

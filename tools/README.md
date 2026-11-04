@@ -196,7 +196,8 @@ welche Namen und Ports das Gerät anspricht. Das Skript liest dazu einen Mitschn
 
 1. Mitschnitt aufnehmen, während das Gerät arbeitet (App bedienen, Programm starten), am besten
    einige Stunden: an einer Fritz!Box unter `http://fritz.box/html/capture.html` die Schnittstelle,
-   an der das Gerät hängt (WLAN oder LAN); an einem MikroTik `/tool/sniffer` mit `file-name`.
+   an der das Gerät hängt (WLAN oder LAN) – der Mitschnitt ist ein Download im Browser und reißt ab, sobald der
+   Rechner das Netz wechselt; an einem MikroTik `/tool/sniffer` mit `file-name` (läuft ohne Rechner).
 2. Auswerten:
 
 ```bash
@@ -206,7 +207,7 @@ tools/pcap-ziele.py mitschnitt.eth --mac 02:00:00:00:00:AA --liste waschmaschine
 
 Je Gerät siehst du die DNS-Anfragen, die Verbindungen ins Internet (Port, Adresse, Name aus DNS,
 TLS oder HTTP) und im LAN, am Ende einen Vorschlag wie `"waschmaschine"={"api.example.com:tcp/443"}`.
-Prüfe ihn: Einträge mit einer IP statt eines Namens können sich ändern. Liest pcap und pcapng, ohne
+Prüfe ihn: Einträge mit einer IP statt eines Namens können sich ändern. Liest pcap (auch das „modifizierte“ der Fritz!Box) und pcapng, auch abgebrochene `.part`-Dateien, ohne
 Fremdpakete. Verschlüsseltes QUIC (`udp/443`) zeigt nur die Adresse, den Namen dann aus den DNS-Anfragen.
 
 ## `wg-client-setup.sh`

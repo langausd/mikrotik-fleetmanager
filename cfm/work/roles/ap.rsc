@@ -187,8 +187,8 @@ $cfmPskMissing
 }
 
 # Isolierte VLANs (DP3.1): WLAN-Interfaces, deren Bridge-Port in einem isolierten VLAN liegt, in die Liste
-# cfm-iso - sofern der Datapath sie nicht schon selbst einträgt (ob der CAPsMAN interface-list an die CAPs
-# weitergibt, zeigt erst der Test vor Ort). Gilt für Interfaces, die beim Apply bestehen.
+# cfm-iso - sofern der Datapath sie nicht schon selbst einträgt (der CAPsMAN gibt interface-list nicht an die CAPs
+# weiter, Hardware 2026-11-04). Gilt für Interfaces, die beim Apply bestehen.
 :global cfmVlans
 :local isv ({})
 :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($isv->$vid) 1 } }

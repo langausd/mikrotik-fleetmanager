@@ -4,11 +4,11 @@
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 75). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 76). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
-* **Zuerst: drei Fehler aus dem Hardware-Test 2026-11-04** (unter „Bekannte Fehler“): Fallback-Kopie (DW1.8),
-  normale Passphrase bei PPSK (DW2.2), `cfm-iso` nach `slaves-static` (DP3.1); danach Test vor Ort (74).
+* **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
+  (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   DW1.8; erster Versuch 2026-11-04 scheiterte am Fehler unten). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
@@ -24,7 +24,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 7, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62–65, 67–69, 72–74.
+* **Offen im Verbesserungsplan:** 6, 7, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62–65, 67–69, 72–75.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -73,8 +73,9 @@ was auf Hardware und im Labor schon bestanden hat.
 ## Bekannte Fehler
 
 Drei Fehler aus dem Hardware-Test vom 2026-11-04 (CRS418 als CAPsMAN, hAP ax² als CAPs, 7.25; Eigenheiten dazu in
-[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). Im Labor
-nicht nachstellbar (kein Funk); Fix mit Labortest der Darstellung, dann Test vor Ort (74).
+[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). *Im Code behoben
+2026-11-05 (DW1.8.1, DW2.2.1, DP3.1.1), im Labor geprüft soweit ohne Funk möglich ([TESTSTAND.md](TESTSTAND.md)); der
+Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
 
 * **`fallback="yes"` hängt keine lokale Kopie an** (DW1.8, `roles/ap.rsc`): Die Rolle erkennt die SSID eines vom
   CAPsMAN angelegten virtuellen AP an `configuration.ssid` bzw. `monitor`→`ssid` – am CAP ist beides leer, die SSID
@@ -298,3 +299,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
     der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
     nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.
+75. **`$cfmSniff` bei gebrücktem Verkehr** (DU2.3, 2026-11-05): Der Sniffer sieht nur Verkehr über die CPU. An einem
+    Standort routet die Fritz!Box das LAN, der CRS (Router und Manager) brückt es nur; Clients an den CAPs gehen über den
+    Switch-Chip direkt zur Fritz!Box und fehlen im Mitschnitt. Optionen zur Entscheidung: (a) nur Geräte an Radios des
+    Geräts selbst; (b) für die Dauer `hw=no` am Uplink-Port (alles über die CPU, Handeintrag bzw. Option `hw=no` im
+    Befehl mit Rückbau am Ende); (c) Port-Mirror des Switch-Chips auf die CPU (`mirror-target=cpu`); (d) Mitschnitt
+    auf dem AP erlauben (Rolle `ap`, Gerät des Clients). Erst auf Hardware prüfen, was der Sniffer dort wirklich sieht.

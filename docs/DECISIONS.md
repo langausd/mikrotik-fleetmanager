@@ -712,6 +712,25 @@ Versionsangaben überstehen den JSON-Umlauf nur geschützt (`:deserialize` macht
 
 **Begründung:** Client-Isolation am WLAN trennt nur Clients am selben Interface – auf Hardware nicht einmal die beiden Radios eines Geräts (2026-11-04, [Eigenheiten](ROUTEROS-EIGENHEITEN.md)). Der Filter sitzt am Eingang jedes Client-Ports (Liste `cfm-iso`): Erlaubt sind Broadcast (ARP, DHCP), die Ausnahmen (Quell- oder Ziel-MAC), Frames an die VRRP-MAC (`00:00:5E:00:01:xx`) und an die Bridge-MACs der Router, IP aus dem eigenen Netz nach außerhalb und zu den Adressen der Router im VLAN (`.gw`, `.251`–`.254`, DR1.1) sowie ARP zu ihnen; Multicast wird vorher verworfen, alles andere am Ende. Ein Frame von Client zu Client endet so schon am Gerät des Absenders, auch wenn beide am selben Switch hängen. *Korrektur bei der Umsetzung:* Zuerst kam der Filter ohne Router-MACs aus (nur IP-Matcher). Mit e1000-Karten sah der Bridge-Filter die ungetaggt angekommenen Frames aber als `vlan`, die IP-Regeln griffen nicht, und die Clients erreichten das Gateway nicht ([Eigenheiten](ROUTEROS-EIGENHEITEN.md)). Seitdem meldet der Agent die MAC seiner Bridge im Status (VLAN-Interfaces haben keine eigene), der Manager schreibt die MACs aller Geräte mit Rolle `router` ins Manifest (`rmac`, nur wenn ein VLAN isoliert ist), und MAC-Matcher greifen unabhängig von dieser Sicht; die IP-Regeln bleiben als Ergänzung. Nach einem Router-Tausch braucht es deshalb ein Release. Am Trunk-Eingang zu filtern ging nicht: Getaggte Frames erlauben keine IP-Matcher. Client-Ports sind reine Access-Ports eines isolierten VLANs (Hybrid-Ports: Warnung) und die WLAN-Interfaces isolierter SSIDs (Client-Isolation wird dort mit eingeschaltet). Der CAPsMAN gibt `interface-list` nicht an die CAPs weiter (Hardware 2026-11-04), es gelten die Einträge der Rolle `ap`; nach dem Umstellen auf `slaves-static` stimmen sie erst im zweiten Apply ([TODO.md](TODO.md), Bekannte Fehler); im lokalen Fallback (DW1.8) gilt der lokale Datapath ohnehin. IPv6 geht in isolierten VLANs nicht (cfm routet noch kein IPv6, TODO 13). Labor: `e2e-mlag.sh` Schritt 10
 
+**Status:** ergänzt durch DP3.1.1 (2026-11-04): Der Agent trägt WLAN-Interfaces bei jedem Lauf in `cfm-iso` nach.
+
+##### <a id="dp3.1.1"></a>DP3.1.1 · Agent trägt WLAN-Interfaces bei jedem Lauf in `cfm-iso` nach
+
+*2026-11-04 · Nachtrag, Hardware-Test*
+
+**Frage:** Der CAPsMAN gibt `interface-list` nicht an die CAPs weiter (Hardware 7.25), die Rolle `ap` trägt die
+Interfaces isolierter VLANs selbst ein. Ein CAP legt seine virtuellen APs aber bei jedem Neuverbinden bzw. mit
+`slaves-static` neu an (neue Namen) – bis zum nächsten Apply zeigt `cfm-iso` dann ins Leere, Gäste sind nicht getrennt.
+
+**Optionen (gewählt fett):** **Agent prüft bei jedem Lauf (plus zweiter Apply nach `slaves-static`, DW1.8.1)** ·
+`isolate` erzwingt `slaves-static` · nur der zweite Apply
+
+**Entscheidung:** Der Agent eines AP merkt sich beim Apply die isolierten VLANs (`iso` im Zustand) und gleicht bei jedem
+Lauf ab: dynamische Bridge-Ports von WLAN-Interfaces mit deren PVID kommen in `cfm-iso` (Schlüssel `ilm:ISO:<Interface>`
+wie die Rolle), Einträge auf verschwundene Interfaces fliegen raus. Die Lücke ist damit höchstens ein Agent-Intervall.
+
+**Begründung:** Deckt auch CAPs ohne `slaves-static` ab, ohne vollen Apply. Rückbau: Abschnitt im Agent entfernen.
+
 ## <a id="dr"></a>DR · Routing und Firewall
 
 ### <a id="dr1"></a>DR1 · Gateway und VRRP
@@ -1044,6 +1063,26 @@ Ab Werk hängen die Radios des hAP be³ am statischen, abgeschalteten MLD `mld1`
 
 **Begründung:** Wie bei der Master-SSID (DW1.6), wenig Code. Ob RouterOS statische virtuelle APs im Fallback weitersenden lässt, zeigt nur der Test vor Ort. Bei ausgeschaltetem Schalter bleiben schon angelegte statische virtuelle APs stehen (der CAPsMAN legt sie beim Verbinden ohnehin neu an).
 
+**Status:** ergänzt durch DW1.8.1 (2026-11-04): SSID der CAP-Slaves aus `about`, zweiter Apply vom Agent.
+
+##### <a id="dw1.8.1"></a>DW1.8.1 · Zweiter Apply nach `slaves-static` kommt vom Agent
+
+*2026-11-04 · Nachtrag, Hardware-Test*
+
+**Frage:** Wer sorgt für den zweiten Apply, den die Fallback-Kopie braucht? Bisher von Hand (`$cfmPush host=<AP> force=yes`).
+
+**Entscheidung:** Stellt die Rolle `ap` `slaves-static` um, legt der Agent nach dem Apply den Scheduler `cfm-apfollow` an
+(alle 30 s, höchstens 20 Versuche): Ist der CAP wieder mit einem CAPsMAN verbunden, wartet er 20 s (der CAPsMAN legt die
+virtuellen APs neu an) und startet einen erzwungenen Apply, dann entfernt er sich. Die SSID eines virtuellen AP liest die
+Rolle zusätzlich aus `monitor`→`about` („mode: AP, SSID: …“): Konfiguration und Monitor liefern sie am CAP nicht
+(Hardware 7.25); bleibt sie unerkennbar, warnt der Lauf.
+
+**Verworfen:** zweiter Apply vom Manager aus (der weiß nicht, wann der CAP wieder verbunden ist) · zweiter Apply
+sofort im selben Lauf (die Interfaces entstehen erst nach dem Neuverbinden)
+
+**Begründung:** Am 2026-11-04 hing ohne den zweiten Apply weder die Fallback-Kopie an noch stimmte `cfm-iso` (DP3.1.1).
+Rückbau: Scheduler-Anlage im Agent entfernen, dann gilt wieder der Push von Hand.
+
 #### <a id="dw1.9"></a>DW1.9 · `slaves-static` nur bei Bedarf setzen
 
 *2026-10-04 · technisch, nicht abgefragt*
@@ -1089,6 +1128,29 @@ Die Rolle `ap` und `$cfmCheck` warnen bei CAPs mit `wifi-qcom-ac`: Das Paket üb
 **Optionen (gewählt fett):** Enterprise: externer RADIUS · User Manager auf dem Manager · **vorerst kein Enterprise**; PPSK: **Multi-Passphrase-Gruppen** · Access-List je MAC; Kanäle: **RouterOS-Auswahl + Bericht** · zentrale Planung in cfm · nur RouterOS-Auswahl
 
 **Umsetzung:** `wifi.rsc` → `ppsk`: je SSID Einträge mit `vlan` (optional `isolation`, `expires`). Die Rolle `manager` legt `/interface/wifi/security/multi-passphrase`-Einträge (Gruppe = Security-Profil) mit Zufallswert an, die echte Passphrase kommt per Secret-Push aus dem Vault (`ppsk.<ssid>.<name>`) und steht nie in Daten, Log oder Probelauf. `$cfmCheck` verlangt WPA2-PSK (RouterOS: kein Multi-Passphrase mit WPA3) und warnt, wenn das VLAN nicht auf den AP-Uplinks (`trunk-ap`) liegt. Kanäle: `reselect` (nächtliche Neuwahl) und je Band `skipDfs`; APs melden ihre Kanäle, `$cfmChannels` warnt bei gleichem Kanal an einem Switch (Näherung für „benachbart“). Kanalplan per Scan: DW3.2/DW3.3; andere Funknetze im 2,4-GHz-Band: DW3.5. Enterprise steht in [TODO.md](TODO.md) Punkt 16.
+
+**Status:** ergänzt durch DW2.2.1 (2026-11-04): normale Passphrase als Gruppeneintrag, `ppskOnly`, Setzen nur bei Abweichung.
+
+##### <a id="dw2.2.1"></a>DW2.2.1 · Normale Passphrase bei PPSK als Gruppeneintrag, `ppskOnly`
+
+*2026-11-04 · Nachtrag, Hardware-Test*
+
+**Frage:** Mit `multi-passphrase-group` am Profil nimmt RouterOS dessen `passphrase` nicht mehr an (Hardware 7.25,
+[Eigenheiten](ROUTEROS-EIGENHEITEN.md)) – Clients mit der normalen Passphrase der SSID kamen nicht mehr hinein.
+Soll es SSIDs geben, die nur PPSK-Passphrasen annehmen?
+
+**Optionen (gewählt fett):** immer mitführen · **mitführen, abschaltbar per `"ppskOnly"="yes"` an der SSID**
+
+**Entscheidung:** Jede SSID mit `ppsk` bekommt einen Gruppeneintrag `cfm:mpp:<ssid>` ohne `vlan-id` (VLAN der SSID,
+Isolation wie die SSID) mit ihrer normalen Passphrase – auf dem CAPsMAN und im lokalen Fallback der APs. Die Rolle legt
+ihn mit dem Wert des Profils an und gleicht ihn bei Abweichung an, der Secret-Push setzt ihn mit `psk.<ssid>`.
+`"ppskOnly"="yes"`: kein solcher Eintrag, `$cfmCheck` verlangt dann kein `psk.<ssid>`, aber mindestens einen
+`ppsk`-Eintrag; nicht an der Master-SSID (der CAPsMAN schaltet sich ohne ihre Passphrase ab, DW1.5).
+Secret-Push und Rolle setzen Passphrasen und Schlüssel nur bei Abweichung (WLAN-Profile, PPSK-Einträge, SNMP,
+WireGuard; Benutzerpasswörter lassen sich nicht lesen): Jede Änderung eines PPSK-Eintrags trennt dessen Clients.
+
+**Begründung:** So verhält sich eine SSID mit PPSK wie erwartet (normale Passphrase → VLAN der SSID); der Handtest
+am 2026-11-04 bestätigte den Eintrag ohne VLAN. Rückbau: Eintrag und Schlüssel entfernen, dann gilt wieder nur PPSK.
 
 #### <a id="dw2.3"></a>DW2.3 · Wi-Fi 7 (MLO) und 6 GHz
 
@@ -1301,6 +1363,29 @@ Kanal-Pools zentral in `wifi.rsc`, optionales Pinning pro AP ebenfalls in `wifi.
 **Optionen (gewählt fett):** Ort: **Lesezeichen „cfm-WLAN“ (seit DU1.4 „cfm-Monitor“, Reiter WLAN) für WebFig des CAPsMAN (wie DT3.1, `tools/editor/`)** · Python-Skript auf dem Laptop mit eigener Seite · Mitschnitt per Scheduler auf dem CAPsMAN; Darstellung: **AP-Kacheln live und Zeitleiste je Client** · Grundriss mit AP-Positionen; Ablage: **allgemein in `tools/`** · nur im Site-Overlay
 
 **Begründung:** Die Registrierungstabelle des CAPsMAN enthält alle Clients aller APs (DU2.1). Das Lesezeichen fragt sie per REST derselben Adresse ab (alle 5/10/30 s) und ändert nichts am Gerät. Den AP eines Interface liefert das Feld `cap` (`<Identity>@<MAC>%…`, Hardware), unabhängig vom Namen – auch `cap-wifiN` vor dem Provisionieren mit `name-format` (DU2.1). Die `uptime` der Verbindung gibt den Beginn eines Abschnitts, ein Wechsel des Interface ist ein Roaming. Die Zeit vor dem Öffnen kommt aus dem Log des Geräts (`<MAC>@<Interface> connected/disconnected`), das nur bis zum Ende seines RAM-Puffers reicht. Der Verlauf liegt 24 h im Browser (`localStorage`), Namen aus den DHCP-Leases des Geräts (cfm-Lease, sonst `host-name`) oder per Klick. Ein Mitschnitt auf dem Gerät hätte auch ohne offenen Browser aufgezeichnet, aber regelmäßig in den Flash geschrieben. Getestet gegen eine Attrappe der REST-API (Firefox headless) und die REST-Formate an einer CHR, mit echten Clients am 2026-10-13/14 (zwei Standorte, vier bzw. zwei APs). Dabei korrigiert: Roaming-Zeilen des CAPsMAN tragen die SSID am Interface (`<MAC>@ap1-5g(SSID) roamed to <MAC>@ap2-5g(SSID), signal strength …`); alle Abfragen mit `cache: 'no-store'` ([Eigenheiten](ROUTEROS-EIGENHEITEN.md): REST und `Cache-Control`). Die REST-Ausgabe von `/interface/wifi` enthält die Passphrasen – nie ablegen
+
+#### <a id="du2.3"></a>DU2.3 · Mitschnitt einzelner Geräte auf dem Router (`$cfmSniff`)
+
+*2026-11-04*
+
+**Frage:** Für eine `allow`-Liste (DR2.4) braucht man die Internet-Ziele eines IoT-Geräts über Stunden. Der
+Mitschnitt an der Fritz!Box ist ein Download im Browser und riss am 2026-11-04 nach einer Minute ab (Laptop wechselte
+die SSID). Wo soll cfm mitschneiden und wohin mit der Datei?
+
+**Optionen (gewählt fett):** jedes Gerät, Datei dort, Abholen per scp · **nur Geräte mit Rolle `router` oder
+`manager`, der Manager holt die Datei nach dem Ende selbst ab** · Streaming per TZSP an einen Rechner
+
+**Entscheidung:** `$cfmSniff host=<n> mac=…|lease=… [dauer=2h] [max=20] [iface=…]` startet per SSH `/tool/sniffer` auf
+dem Gerät, nur die genannten MACs (höchstens 16), Datei `cfm/out/sniff.pcap` mit Grenze `max` MB; ein Scheduler
+`cfm-sniff-stop` stoppt nach `dauer`. Der Auftrag steht in `meta/sniff.dat`; der Manager-Tick (`$cfmSniffTick`) holt
+die Datei eine Minute nach dem Ende per SFTP nach `sniff/<n>-<Datum>-<Zeit>.pcap` und löscht sie auf dem Gerät.
+Platz wird vorher auf Gerät und Manager geprüft. Ist das Gerät der Manager selbst (Router und Manager in einem), schreibt der Sniffer gleich nach `sniff/` (Abholen verdoppelte die Datei auf demselben Speicher). Auswerten mit `tools/pcap-ziele.py`.
+
+**Begründung:** Durch den Router läuft der Verkehr der Clients ins Internet, egal an welchem AP sie hängen; kein
+Rechner muss laufen. Grenze: Der Sniffer sieht nur, was über die CPU läuft – geroutete Pakete und die eigenen
+Radios. Brückt das Gerät nur (der Router ist ein anderer, z.B. eine Fritz!Box) und der Switch-Chip leitet zwischen
+den Ports selbst weiter, fehlt dieser Verkehr ([TODO.md](TODO.md) Punkt 75). Rückbau: Modul `lib/mgr-sniff.rsc` und
+der Aufruf im Tick entfallen.
 
 ### <a id="du3"></a>DU3 · Logs
 
@@ -1770,3 +1855,10 @@ Anlass: siehe DN3.1.
 Entscheidungen: DG4.6 (D104)
 
 Anlass: siehe DG4.6.
+
+### Hardware-Test WLAN (2026-11-04)
+
+Entscheidungen: DW1.8.1, DW2.2.1, DP3.1.1, DU2.3
+
+Anlass: Hardware-Test an einem Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25): Fallback-Kopie fehlte, normale
+Passphrase galt mit PPSK nicht mehr, `cfm-iso` zeigte nach `slaves-static` auf alte Interfaces.

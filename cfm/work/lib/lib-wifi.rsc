@@ -159,8 +159,8 @@
     # eigene Radios, die CAPs hängen ihre Radios selbst an die Bridge (Rolle ap, DW1.3)
     :local dpp ({"name"=$nm;"bridge"="bridge";"vlan-id"=($s->"vlan");"client-isolation"=($o->"isolation")})
     # Isoliertes VLAN (DP3.1): Client-Isolation an, Interfaces in die Liste cfm-iso (dort filtert die Bridge
-    # des AP). Ob der CAPsMAN interface-list an die CAPs weitergibt, ist auf Hardware offen; die Rolle ap
-    # trägt die Interfaces sonst selbst ein, lokale Datapaths (Fallback) haben die Liste ohnehin
+    # des AP). Der CAPsMAN gibt interface-list nicht an die CAPs weiter (Hardware 2026-11-04): Dort tragen Rolle ap
+    # und Agent die Interfaces selbst ein (DP3.1.1), lokale Datapaths (Fallback) haben die Liste ohnehin
     :local isoS ([:tostr ($cfmVlans->[:tostr ($s->"vlan")]->"isolate")] = "yes")
     :if ($isoS) do={ :set ($dpp->"client-isolation") "yes"; :set ($dpp->"interface-list") "cfm-iso" }
     $cfmEnsure m="/interface/wifi/datapath" k=("wdp:" . $k) n=({"name"=$nm}) p=$dpp
@@ -212,6 +212,30 @@
       :if ([:len [:tostr ($o->"isolation")]] > 0) do={ :set ($mp->"isolation") ($o->"isolation") }
       :if ([:len [:tostr ($o->"expires")]] > 0) do={ :set ($mp->"expires") ($o->"expires") }
       $cfmEnsure m="/interface/wifi/security/multi-passphrase" k=("mpp:" . $k . "." . $e) p=$mp a=({"passphrase"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
+    }
+    # Normale Passphrase der SSID als Eintrag ohne vlan-id (VLAN der SSID): Mit multi-passphrase-group nimmt
+    # RouterOS die passphrase des Profils nicht mehr an (Hardware 7.25, 2026-11-04). Wert aus dem Profil (dort
+    # setzt ihn der Secret-Push); nur bei Abweichung setzen - jede Änderung trennt die Clients des Eintrags.
+    # "ppskOnly"="yes" an der SSID: nur die PPSK-Passphrasen gelten, kein solcher Eintrag
+    :local ss ($w->"ssids"->$k)
+    :if ([:typeof $ss] = "array" and [:tostr ($ss->"ppskOnly")] != "yes") do={
+      :local iso [:tostr ($d->"isolation")]
+      :if ([:len [:tostr ($ss->"isolation")]] > 0) do={ :set iso [:tostr ($ss->"isolation")] }
+      :if ([:tostr ($cfmVlans->[:tostr ($ss->"vlan")]->"isolate")] = "yes") do={ :set iso "yes" }
+      :if ($iso != "yes") do={ :set iso "no" }
+      :local ppw ""
+      :onerror e in={ :set ppw [:tostr [/interface/wifi/security/get [find where name=("cfm-" . $k)] passphrase]] } do={}
+      :local ini $ppw
+      :if ([:len $ini] = 0) do={ :set ini [:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"] }
+      :local mid [$cfmEnsure m="/interface/wifi/security/multi-passphrase" k=("mpp:" . $k) p=({"group"=("cfm-" . $k);"isolation"=$iso}) a=({"passphrase"=$ini})]
+      :if ($cfmDry != true and [:len $ppw] > 0 and [:typeof $mid] = "id") do={
+        :onerror e in={
+          :if ([:tostr [/interface/wifi/security/multi-passphrase/get $mid passphrase]] != $ppw) do={
+            /interface/wifi/security/multi-passphrase/set $mid passphrase=$ppw
+            $cfmLog ("PPSK " . $k . ": Eintrag der normalen Passphrase an das Profil angeglichen")
+          }
+        } do={ $cfmLog ("PPSK " . $k . ": Passphrase nicht angeglichen: " . $e) }
+      }
     }
   }
   # Master-Konfiguration je Band (trägt den Kanal; Security und datapath des Bands, s.o.)

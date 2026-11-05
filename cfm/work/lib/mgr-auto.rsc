@@ -207,6 +207,8 @@
       $cfmHookState
       :log info "cfm: tick notify"
       :global cfmNotifyTick; $cfmNotifyTick
+      # beendete Mitschnitte abholen ($cfmSniff, lib/mgr-sniff.rsc)
+      :global cfmSniffTick; $cfmSniffTick
       :local vj [$cfmJson ([$cfmMB] . "/meta/vault.dat")]
       # als String vergleichen: [:tonum nothing] ist nil, und "3 != nil" ist weder wahr noch falsch
       :if ([:tostr ($vj->"ver")] != [:tostr ($vj->"bver")] and [:len [$cfmVaultGet "vaultpw"]] > 0) do={ $cfmVaultBackup }

@@ -42,7 +42,15 @@
       :if (!$ok) do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": autoOff " . $ao . " ist keine Dauer (z.B. 50h)") }
       :if ([:len $sw] = 0) do={ :set ($warn->[:len $warn]) ("wifi.rsc: SSID " . $k . ": autoOff wirkt nur mit switch") }
     }
-    :if ([:len [$cfmVaultGet ("psk." . $k)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: WLAN-Passphrase fehlt, \$cfmSecret key=psk." . $k . " value=...") }
+    # nur PPSK-Passphrasen (DW2.2): keine gemeinsame Passphrase, also auch kein psk.<SSID>
+    :local po [:tostr ($s->"ppskOnly")]
+    :if ([:len $po] > 0 and $po != "yes" and $po != "no") do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": ppskOnly = yes oder no") }
+    :if ($po = "yes") do={
+      :if ([:len ($cfmWifi->"ppsk"->$k)] = 0) do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": ppskOnly braucht mindestens einen Eintrag unter ppsk") }
+      :if ($k = [:tostr ($cfmWifi->"master")]) do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": die Master-SSID braucht eine eigene Passphrase (kein ppskOnly)") }
+    } else={
+      :if ([:len [$cfmVaultGet ("psk." . $k)]] = 0) do={ :set ($warn->[:len $warn]) ("Vault: WLAN-Passphrase fehlt, \$cfmSecret key=psk." . $k . " value=...") }
+    }
   }
   # 6 GHz verlangt WPA3 mit PMF (kein WPA2-Übergang): Security je Band im Kanal-Eintrag (sec/pmf)
   :foreach b,c in=($cfmWifi->"channels") do={

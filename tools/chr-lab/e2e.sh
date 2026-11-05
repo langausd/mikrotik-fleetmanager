@@ -58,7 +58,7 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 13' "cm1: 13 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 14' "cm1: 14 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (DT3.2)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
@@ -397,6 +397,19 @@ kill $mpid 2>/dev/null
 mgr ':global cfmInvLoad; :global cfmInvSave; :local i [$cfmInvLoad]; :set ($i->"ph1"); $cfmInvSave $i' >/dev/null
 
 step "14. Verkabelung (LLDP, Netzplan) und WLAN (PPSK, Kanäle)"
+applied() { # applied <name>: Lauf erzwingen und abwarten, true bei res=ok. Vorher warten, bis kein
+  # Agent-Lauf mehr läuft (sonst "Agent läuft bereits", der erzwungene Lauf kommt erst per Retry).
+  # Bis zu 3 Versuche: Synchronisiert cm2 als Backup gerade seinen Spiegel, läuft der Abruf des
+  # Agenten vom Primary gelegentlich in einen Timeout ("kein Manager erreichbar", kein Report).
+  local vm t0 n; case $1 in cm1) vm=1;; sw1) vm=2;; cm2) vm=3;; esac
+  for n in 1 2 3; do
+    for _ in $(seq 1 40); do r "$vm" ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+    t0=$(stat "$1" t); mgr "\$cfmPush host=$1 force=yes" >/dev/null
+    for _ in $(seq 1 60); do [ "$(stat "$1" t)" != "$t0" ] && break; sleep 4; done
+    [ "$(stat "$1" t)" != "$t0" ] && break
+    echo "    ($1: kein Report nach dem Push, Versuch $n)"
+  done
+  [ "$(stat "$1" t)" != "$t0" ] && [ "$(stat "$1" res)" = ok ]; }
 # alle Geräte melden ihre Nachbarn mit dem nächsten Lauf
 for h in sw1 cm2 cm1; do mgr "\$cfmPush host=$h force=yes" >/dev/null; done
 for _ in $(seq 1 40); do [ -n "$(stat sw1 nb)" ] && [ -n "$(stat cm2 nb)" ] && [ -n "$(stat cm1 nb)" ] && break; sleep 5; done
@@ -474,6 +487,21 @@ agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (PPSK) angewendet" || { bad "cm1 Apply
 expect 1 '[:len [/interface/wifi/security/multi-passphrase/find where comment="cfm:mpp:iot.gast" and vlan-id=40]] = 1 and [/interface/wifi/security/get [find name="cfm-iot"] multi-passphrase-group] = "cfm-iot"' "cm1: Multi-Passphrase für VLAN 40 an der IoT-SSID"
 mgr '$cfmSecret key=ppsk.iot.gast value="PPSK-Gast-2026"; :global cfmSecretPush; $cfmSecretPush host=cm1' >/dev/null
 expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot.gast"] passphrase] = "PPSK-Gast-2026"' "PPSK-Passphrase per Secret-Push gesetzt"
+# Normale Passphrase der SSID als Gruppeneintrag ohne VLAN (DW2.2.1): RouterOS ignoriert sonst die des Profils
+expect 1 '[:len [/interface/wifi/security/multi-passphrase/find where comment="cfm:mpp:iot" and group="cfm-iot"]] = 1 and [:len [:tostr [/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot"] vlan-id]]] = 0' "cm1: PPSK-Gruppe enthält die normale Passphrase (Eintrag ohne vlan-id)"
+mgr '$cfmSecret key=psk.iot value="lab-iot-psk-1"; :global cfmSecretPush; $cfmSecretPush host=cm1' >/dev/null
+expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot"] passphrase] = "lab-iot-psk-1" and [/interface/wifi/security/get [find name="cfm-iot"] passphrase] = "lab-iot-psk-1"' "Secret-Push setzt die normale Passphrase in Profil und Gruppeneintrag"
+# Rolle gleicht einen abweichenden Eintrag an das Profil an; ein zweiter Lauf ändert nichts mehr
+r 1 '/interface/wifi/security/multi-passphrase/set [find comment="cfm:mpp:iot"] passphrase="falsch-12345"' >/dev/null
+applied cm1 && ok "cm1 erneut angewendet (Eintrag abweichend)" || bad "cm1: $(stat cm1 res)"
+expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot"] passphrase] = "lab-iot-psk-1" and [:len [/log/find where message~"PPSK iot: Eintrag der normalen Passphrase an das Profil angeglichen"]] >= 1' "cm1: Rolle gleicht den Gruppeneintrag an das Profil an"
+# ppskOnly: kein Eintrag für die normale Passphrase (Probelauf zeigt das Entfernen); Prüfungen
+mgr ':global e2eWp [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eWp . ":set (\$cfmWifi->\"ssids\"->\"iot\"->\"ppskOnly\") \"yes\"\n")' >/dev/null
+out=$(mgr '$cfmPlan host=cm1')
+echo "$out" | grep -q "entfernt: /interface/wifi/security/multi-passphrase mpp:iot$" && ! echo "$out" | grep -q "mpp:iot.gast$" && ok "ppskOnly: Probelauf entfernt nur den Eintrag der normalen Passphrase" || { bad "ppskOnly im Probelauf"; echo "$out" | grep -i "mpp\|Plan" | tail -5; }
+out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ssids\"->\"main\"->\"ppskOnly\") \"yes\"\n:set (\$cfmWifi->\"ssids\"->\"guest\"->\"ppskOnly\") \"ja\"\n"); :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }')
+echo "$out" | grep -q "ERR wifi.rsc: SSID main: ppskOnly braucht mindestens einen Eintrag unter ppsk" && echo "$out" | grep -q "ERR wifi.rsc: SSID main: die Master-SSID braucht eine eigene Passphrase" && echo "$out" | grep -q "ERR wifi.rsc: SSID guest: ppskOnly = yes oder no" && ok "\$cfmCheck: ppskOnly an Master, ohne ppsk, falscher Wert" || { bad "Prüfung ppskOnly"; echo "$out" | grep ERR | tail -4; }
+mgr ':global e2eWp; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eWp' >/dev/null
 # 6 GHz: Security je Band (nur WPA3, PMF required) für Master und Slave-SSID, MLO aus (TODO 32)
 mgr '/file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5955,5975\";\"width\"=\"20/40/80mhz\";\"sec\"=\"wpa3-psk\";\"pmf\"=\"required\"}\n:set (\$cfmWifi->\"ssids\"->\"guest\"->\"bands\") \"2,5,6\"\n")' >/dev/null
 # Neues Band-Profil ohne Passphrase: Der Apply schaltet den CAPsMAN aus und meldet SV 0, $cfmFollow (Scheduler
@@ -571,6 +599,28 @@ out=$(mgr '$cfmPlan host=cm1')
 echo "$out" | grep -q "Regelblock /interface/wifi/provisioning" && { bad "Nach dem Schalten baut der Plan wprov neu"; echo "$out" | grep -E "Regelblock|Plan cm1"; } || ok "Nach dem Schalten kein Neuaufbau von wprov"
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 
+# Mitschnitt einzelner Geräte (DU2.3): nur auf Router/Manager, Datei auf dem Gerät, der Manager holt sie ab
+out=$(mgr '$cfmSniff host=cm2 mac=02:00:00:00:00:01')
+echo "$out" | grep -q "weder Rolle router noch manager" && ok "\$cfmSniff: nicht auf einem Gerät ohne Rolle router/manager" || { bad "\$cfmSniff ohne Router-Rolle"; echo "$out" | tail -2; }
+smac=$(r 2 ':put [/interface/bridge/get [find name="bridge"] mac-address]' | tail -1 | tr -d '\r ')
+out=$(mgr '$cfmSniff host=sw1 mac='"$smac"' dauer=20s max=2')
+echo "$out" | grep -q "Mitschnitt auf sw1" && ok "\$cfmSniff startet auf sw1 ($smac, 20 s)" || { bad "\$cfmSniff Start"; echo "$out" | tail -3; }
+expect 2 '[/tool/sniffer/get running] and [:len [/system/scheduler/find where name="cfm-sniff-stop"]] = 1 and [/tool/sniffer/get file-name] = "cfm/out/sniff.pcap"' "sw1: Sniffer läuft mit MAC-Filter, Datei unter cfm/out, Stopp per Scheduler"
+r 1 '/ping 192.168.10.21 count=10 interval=200ms' >/dev/null
+sleep 85
+mgr '$cfmSniffTick' >/dev/null
+expect 1 '[:len [/file/find where name~"^cfm/sniff/sw1-.*\\.pcap\$" and size>24]] = 1 and [:len [/file/find where name="cfm/meta/sniff.dat"]] = 0' "cm1: Mitschnitt nach Ablauf abgeholt (cfm/sniff/sw1-…pcap), Auftrag erledigt"
+expect 2 '![/tool/sniffer/get running] and [:len [/file/find where name="cfm/out/sniff.pcap"]] = 0 and [:len [/system/scheduler/find where name="cfm-sniff-stop"]] = 0' "sw1: Sniffer gestoppt, Datei und Scheduler weg"
+mgr '$cfmSniff' | grep -q "cfm/sniff/sw1-" && ok "\$cfmSniff ohne host: Übersicht nennt den Mitschnitt" || bad "\$cfmSniff Übersicht"
+# Auf dem Manager selbst (Router und Manager in einem): Datei gleich unter cfm/sniff/, nichts abzuholen
+out=$(mgr '$cfmSniff host=cm1 mac='"$smac"' dauer=15s max=1')
+expect 1 '[/tool/sniffer/get running] and [/tool/sniffer/get file-name] ~ "^cfm/sniff/cm1-.*\\.pcap\$"' "cm1 (Manager): Sniffer schreibt direkt nach cfm/sniff/"
+r 1 '/ping 192.168.10.21 count=5 interval=200ms' >/dev/null
+sleep 80
+mgr '$cfmSniffTick' >/dev/null
+expect 1 '![/tool/sniffer/get running] and [:len [/file/find where name~"^cfm/sniff/cm1-.*\\.pcap\$"]] = 1 and [:len [/file/find where name="cfm/meta/sniff.dat"]] = 0 and [:len [/system/scheduler/find where name="cfm-sniff-stop"]] = 0' "cm1: Mitschnitt auf dem Manager selbst beendet, Datei in cfm/sniff/, Auftrag erledigt"
+r 1 '/file/remove [find where name~"^cfm/sniff/"]' >/dev/null
+
 step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enroll ohne Apply (sw1)"
 # cm2 ist kein Router und per Bootstrap aufgenommen: prüft zugleich, dass die Rolle base die
 # Bootstrap-Route übernimmt (Tag cfm:rt:default) statt eine zweite Default-Route anzulegen
@@ -602,19 +652,6 @@ step "14c. CAPsMAN als eigene Rolle (DW1.5), AP mit lokalem Fallback ohne Radios
 invrole() { # invrole <alt> <neu>: Rolle im Inventar ersetzen (Wert muss eindeutig sein), Manifeste neu bauen
   local o="\\\"role\\\"=\\\"$1\\\"" n="\\\"role\\\"=\\\"$2\\\"" l=$(( ${#1} + 9 ))
   mgr ':local f [/file/find name="cfm/meta/inventory.rsc"]; :local c [/file/get $f contents]; :local p [:find $c "'"$o"'"]; /file/set $f contents=([:pick $c 0 $p] . "'"$n"'" . [:pick $c ($p + '"$l"') [:len $c]]); :global cfmManifests; $cfmManifests' >/dev/null; }
-applied() { # applied <name>: Lauf erzwingen und abwarten, true bei res=ok. Vorher warten, bis kein
-  # Agent-Lauf mehr läuft (sonst "Agent läuft bereits", der erzwungene Lauf kommt erst per Retry).
-  # Bis zu 3 Versuche: Synchronisiert cm2 als Backup gerade seinen Spiegel, läuft der Abruf des
-  # Agenten vom Primary gelegentlich in einen Timeout ("kein Manager erreichbar", kein Report).
-  local vm t0 n; case $1 in cm1) vm=1;; sw1) vm=2;; cm2) vm=3;; esac
-  for n in 1 2 3; do
-    for _ in $(seq 1 40); do r "$vm" ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
-    t0=$(stat "$1" t); mgr "\$cfmPush host=$1 force=yes" >/dev/null
-    for _ in $(seq 1 60); do [ "$(stat "$1" t)" != "$t0" ] && break; sleep 4; done
-    [ "$(stat "$1" t)" != "$t0" ] && break
-    echo "    ($1: kein Report nach dem Push, Versuch $n)"
-  done
-  [ "$(stat "$1" t)" != "$t0" ] && [ "$(stat "$1" res)" = ok ]; }
 mgr ':global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put $e }' | grep -q "kein Gerät mit Rolle capsman" && ok "Prüfung: Übergang ohne Rolle capsman gemeldet (cm1 bleibt CAPsMAN)" || bad "Übergangswarnung fehlt"
 # API-Lesezugang auf dem CAPsMAN (DU2.1): erst auf cm1 (Übergangsregel), wandert mit der Rolle capsman
 mgr ':global e2eG [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"capsmanApi\") {\"from\"={\"10.0.2.2/32\"};\"user\"=\"hatest\"}\n")' >/dev/null
@@ -661,6 +698,41 @@ fi
 applied cm2 || true
 stat cm2 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Rolle ap idempotent" || bad "ap idempotent: $(stat cm2 stats)"
 expect 3 '[:len [/log/find where message~"slaves-static"]] = 0' "cm2: slaves-static ohne fallback nicht gesetzt (kein Abriss zum CAPsMAN, TODO 40)"
+# Gast-SSID mit fallback, Gast-VLAN isoliert (DW1.8.1, DP3.1.1): slaves-static umgestellt -> der Agent stößt den
+# zweiten Apply an, sobald der CAP verbunden ist (Scheduler cfm-apfollow); er merkt sich die isolierten VLANs und
+# räumt bei jedem Lauf Einträge in cfm-iso ab, deren Interface verschwunden ist (CHR ohne Radios: nur das)
+mgr ':global e2eWf [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; :global e2eVf [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eWf . ":set (\$cfmWifi->\"ssids\"->\"guest\"->\"fallback\") \"yes\"\n"); /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eVf . ":set (\$cfmVlans->\"40\"->\"isolate\") \"yes\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" Gast fallback+isolate" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 3 "$rv" cm2 && ok "cm2 (ap) hat v$rv (Gast fallback, VLAN 40 isoliert) angewendet" || { bad "cm2 Apply v$rv"; r 3 '/log/print where message~"^cfm: "' | tail -6; }
+agentwait 1 "$rv" cm1 || true; agentwait 2 "$rv" sw1 || true
+expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "yes|true" and [:len [/log/find where message~"slaves-static umgestellt - zweiter Apply folgt"]] >= 1' "cm2: slaves-static an, zweiter Apply angekündigt (DW1.8.1)"
+expect 3 '[:typeof ([:deserialize from=json [/file/get cfm/state.json contents]]->"iso"->"40")] != "nothing" and [:len [/interface/list/find where name="cfm-iso"]] = 1' "cm2: Agent merkt sich das isolierte VLAN 40 (DP3.1.1)"
+if [ "${conn:-0}" != 0 ]; then
+  for _ in $(seq 1 30); do r 3 ':put [:len [/system/scheduler/find where name="cfm-apfollow"]]' | tail -1 | grep -qx 0 && break; sleep 4; done
+  expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow"]] = 0 and [:len [/log/find where message~"zweiter Apply nach slaves-static"]] >= 1' "cm2: CAP verbunden -> zweiter Apply von selbst, Scheduler weg"
+else
+  expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow" and interval=30s]] = 1' "cm2: Scheduler cfm-apfollow wartet auf die CAPsMAN-Verbindung"
+  r 3 ':global cfmApN 20; :local f [:parse [/system/scheduler/get [find name="cfm-apfollow"] on-event]]; $f' >/dev/null
+  expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow"]] = 0' "cm2: cfm-apfollow gibt nach 20 Versuchen ohne CAPsMAN auf"
+fi
+# Erst den zweiten Apply (cfm-apfollow startet ihn 20 s nach dem Verbinden) abwarten - sonst räumt dessen GC den
+# Testeintrag ab, nicht der Agent-Abgleich (Labor 2026-11-04)
+sleep 30
+for _ in $(seq 1 60); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+r 3 '/interface/bridge/add name=isotmp; /interface/list/member/add list=cfm-iso interface=isotmp comment="cfm:ilm:ISO:isotmp"; /interface/bridge/remove [find name=isotmp]' >/dev/null
+# Agent-Lauf per $cfmPush: Als admin (SSH) holt er kein Manifest und bricht vor dem Abgleich ab (Labor 2026-11-05)
+for _ in 1 2 3; do
+  for _ in $(seq 1 30); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+  mgr '$cfmPush host=cm2' >/dev/null
+  for _ in $(seq 1 12); do r 3 ':put [:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]]' | tail -1 | grep -qx 0 && break 2; sleep 5; done
+done
+expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 0 and [:len [/log/find where message~"cfm-iso: Verweis auf isotmp entfernt"]] >= 1' "cm2: Agent entfernt den cfm-iso-Eintrag eines verschwundenen Interface (DP3.1.1)"
+mgr ':global e2eWf; :global e2eVf; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eWf; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eVf' >/dev/null
+rv=$(mgr '$cfmRelease msg=" Gast fallback+isolate aus" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 3 "$rv" cm2 && ok "cm2 hat v$rv (ohne fallback/isolate) angewendet" || bad "cm2 Apply v$rv"
+agentwait 1 "$rv" cm1 || true; agentwait 2 "$rv" sw1 || true
+expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "no|false" and [:len [/interface/list/find where name="cfm-iso"]] = 0' "cm2: slaves-static wieder aus, cfm-iso abgeräumt"
+r 3 '/system/scheduler/remove [find where name="cfm-apfollow"]' >/dev/null
 # AP mit wifi-qcom-ac (TODO 23): \$cfmCheck warnt anhand der gemeldeten Pakete (Status kurz verändert)
 out=$(mgr ':local f [/file/find name="cfm/state/cm2/status.dat"]; :local c [/file/get $f contents]; :local j [:deserialize from=json $c]; :set ($j->"pkgs") ({"routeros";"wifi-qcom-ac"}); /file/set $f contents=[:serialize to=json $j]; :global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put ("W " . $e) }; /file/set $f contents=$c')
 echo "$out" | grep -q "W inventory: cm2 hat das Paket wifi-qcom-ac" && ok "\$cfmCheck warnt vor wifi-qcom-ac am AP (TODO 23)" || { bad "Warnung wifi-qcom-ac fehlt"; echo "$out" | tail -3; }
@@ -823,6 +895,10 @@ mirror() { local f="e2e-mir-$RANDOM.txt"
 # Uhr künstlich versetzt; der echte Tick von cm2 kann dazwischen funken, deshalb nur auf Inhalte prüfen
 bk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.3 cmd=("/system script run cfm-mgr; :global cfmMirLast; :set cfmMirLast ([:tonsec [:timestamp]] / 1000000000 + '"$1"'); :global cfmNotifyBackupTick; :put (\"NB=\" . [\$cfmNotifyBackupTick skew='"$2"'])")]; :put ($r->"output")' | grep -o 'NB=[0-9]*'; }
 mirror | grep -q MIR=true || bad "Spiegel auf cm2 vor der Primary-Überwachung"   # cm2 braucht das Release mit notify
+# Den echten Tick von cm2 währenddessen anhalten: Er setzt cfmMirLast per Spiegel-Abruf neu und schreibt dieselbe
+# Zustandsdatei - lief er zwischen zwei bk-Aufrufen, blieb die Entwarnung aus (Labor 2026-11-04)
+r 3 '/system/scheduler/disable [find name="cfm-mgr-tick"]' >/dev/null
+for _ in $(seq 1 40); do r 3 ':put [:len [/system/script/job/find where script="cfm-mgr-tick"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
 bk -7200 0 >/dev/null
 nwait '"ev": "primary", "state": "on"' && grep '"ev": "primary", "state": "on"' "$NL" | grep -q '"host": "cm1".*"msg": "Primary nicht erreichbar: Spiegel-Abruf per SFTP seit 120 min.*"level": "error", "device": "cm1"' && ok "Backup: Primary per SFTP nicht erreichbar gemeldet (error)" || { bad "Meldung Primary nicht erreichbar"; grep '"ev": "primary' "$NL" | tail -2 | cut -c1-220; }
 bk 3600 3600 >/dev/null
@@ -830,6 +906,7 @@ nwait '"ev": "primary-tick", "state": "on"' && grep '"ev": "primary-tick", "stat
 bk 0 0 >/dev/null
 nwait '"ev": "primary-tick", "state": "off"' && expect 3 '[:len ([:deserialize from=json [/file/get cfm/meta/notify-b.dat contents]]->"act")] = 0' "Backup: Tick wieder ok, keine offenen Zustände" || bad "Backup: Entwarnung Tick fehlt"
 expect 1 '[:len [/file/find where name="cfm/meta/notify-b.dat"]] = 0' "Primary: keine Zustandsdatei des Backups"
+r 3 '/system/scheduler/enable [find name="cfm-mgr-tick"]' >/dev/null
 mgr ':global e2eG; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG' >/dev/null
 
 step "14g. SFTP-User auf dem Backup, Ernstfall, Schlüssel erneuern (DS2.5)"

@@ -197,7 +197,9 @@ welche Namen und Ports das Gerät anspricht. Das Skript liest dazu einen Mitschn
 1. Mitschnitt aufnehmen, während das Gerät arbeitet (App bedienen, Programm starten), am besten
    einige Stunden: an einer Fritz!Box unter `http://fritz.box/html/capture.html` die Schnittstelle,
    an der das Gerät hängt (WLAN oder LAN) – der Mitschnitt ist ein Download im Browser und reißt ab, sobald der
-   Rechner das Netz wechselt; an einem MikroTik `/tool/sniffer` mit `file-name` (läuft ohne Rechner).
+   Rechner das Netz wechselt. Besser am cfm-Router: `$cfmSniff host=<router> lease=<name> dauer=12h` auf dem
+   Manager (Admin-Guide, DU2.3) schneidet nur dieses Gerät mit, der Manager legt die Datei unter `sniff/` ab
+   (`scp <user>@<manager>:cfm/sniff/<datei>.pcap .`).
 2. Auswerten:
 
 ```bash

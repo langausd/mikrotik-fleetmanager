@@ -116,7 +116,7 @@
       :if ($rl ~ ",router," and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
         :local wk [$cfmVaultGet "wg.admin"]
         :if ([:len $wk] > 0) do={
-          :set c ($c . ":if ([:len [/interface/wireguard/find where name=\"wg-admin\"]] > 0) do={ /interface/wireguard/set [find where name=\"wg-admin\"] private-key=\"" . [$cfmEsc $wk] . "\" } else={ :set ok false };")
+          :set c ($c . "{ :local i [/interface/wireguard/find where name=\"wg-admin\"]; :if ([:len \$i] > 0) do={ :if ([/interface/wireguard/get \$i private-key] != \"" . [$cfmEsc $wk] . "\") do={ /interface/wireguard/set \$i private-key=\"" . [$cfmEsc $wk] . "\" } } else={ :set ok false } };")
         }
       }
       # SNMPv3 (TODO 54): ein Satz für alle Geräte; fehlt die Community noch (Apply steht aus), beim nächsten Mal
@@ -128,7 +128,7 @@
           :local pa [$cfmVaultGet "snmp.auth"]
           :local pv [$cfmVaultGet "snmp.priv"]
           :if ([:len $pa] > 0 and [:len $pv] > 0) do={
-            :set c ($c . ":if ([:len [/snmp/community/find where name=\"" . $su . "\"]] > 0) do={ /snmp/community/set [find where name=\"" . $su . "\"] authentication-password=\"" . [$cfmEsc $pa] . "\" encryption-password=\"" . [$cfmEsc $pv] . "\" } else={ :set ok false };")
+            :set c ($c . "{ :local i [/snmp/community/find where name=\"" . $su . "\"]; :if ([:len \$i] > 0) do={ :if ([/snmp/community/get \$i authentication-password] != \"" . [$cfmEsc $pa] . "\" or [/snmp/community/get \$i encryption-password] != \"" . [$cfmEsc $pv] . "\") do={ /snmp/community/set \$i authentication-password=\"" . [$cfmEsc $pa] . "\" encryption-password=\"" . [$cfmEsc $pv] . "\" } } else={ :set ok false } };")
           }
         }
       }
@@ -139,9 +139,15 @@
         :foreach k,s in=($cfmWifi->"ssids") do={
           :local psk [$cfmVaultGet ("psk." . $k)]
           :if ([:len $psk] > 0) do={
-            :set c ($c . ":if ([:len [/interface/wifi/security/find where name=\"cfm-" . $k . "\"]] > 0) do={ /interface/wifi/security/set [find where name=\"cfm-" . $k . "\"] passphrase=\"" . [$cfmEsc $psk] . "\" } else={ :set ok false };")
+            :local ep [$cfmEsc $psk]
+            :set c ($c . "{ :local i [/interface/wifi/security/find where name=\"cfm-" . $k . "\"]; :if ([:len \$i] > 0) do={ :if ([/interface/wifi/security/get \$i passphrase] != \"" . $ep . "\") do={ /interface/wifi/security/set \$i passphrase=\"" . $ep . "\" } } else={ :set ok false } };")
             # Profile je Band (z.B. 6 GHz nur WPA3: cfm-<SSID>-6g) mit derselben Passphrase
-            :set c ($c . ":foreach i in=[/interface/wifi/security/find where name~\"^cfm-" . $k . "-[0-9]+g\\\$\"] do={ /interface/wifi/security/set \$i passphrase=\"" . [$cfmEsc $psk] . "\" };")
+            :set c ($c . ":foreach i in=[/interface/wifi/security/find where name~\"^cfm-" . $k . "-[0-9]+g\\\$\"] do={ :if ([/interface/wifi/security/get \$i passphrase] != \"" . $ep . "\") do={ /interface/wifi/security/set \$i passphrase=\"" . $ep . "\" } };")
+            # PPSK an der SSID (DW2.2): die normale Passphrase steht zusätzlich als Gruppeneintrag cfm:mpp:<SSID>
+            # (ohne ihn gilt sie nicht); fehlt er, legt ihn der nächste Apply mit dem Wert des Profils an
+            :if ([:typeof ($cfmWifi->"ppsk"->$k)] = "array" and [:tostr ($s->"ppskOnly")] != "yes") do={
+              :set c ($c . ":foreach i in=[/interface/wifi/security/multi-passphrase/find where comment=\"cfm:mpp:" . $k . "\"] do={ :if ([/interface/wifi/security/multi-passphrase/get \$i passphrase] != \"" . $ep . "\") do={ /interface/wifi/security/multi-passphrase/set \$i passphrase=\"" . $ep . "\" } };")
+            }
           }
         }
         # PPSK-Passphrasen (CAPsMAN bzw. Fallback legen die Multi-Passphrase-Einträge mit Zufallswert an)
@@ -150,7 +156,8 @@
             :local pp [$cfmVaultGet ("ppsk." . $k . "." . $e)]
             :if ([:len $pp] > 0) do={
               :local tg ("cfm:mpp:" . $k . "." . $e)
-              :set c ($c . ":if ([:len [/interface/wifi/security/multi-passphrase/find where comment=\"" . $tg . "\"]] > 0) do={ /interface/wifi/security/multi-passphrase/set [find where comment=\"" . $tg . "\"] passphrase=\"" . [$cfmEsc $pp] . "\" } else={ :set ok false };")
+              # nur bei Abweichung setzen: jede Änderung eines Eintrags trennt dessen Clients (Hardware 7.25)
+              :set c ($c . "{ :local i [/interface/wifi/security/multi-passphrase/find where comment=\"" . $tg . "\"]; :if ([:len \$i] > 0) do={ :foreach j in=\$i do={ :if ([/interface/wifi/security/multi-passphrase/get \$j passphrase] != \"" . [$cfmEsc $pp] . "\") do={ /interface/wifi/security/multi-passphrase/set \$j passphrase=\"" . [$cfmEsc $pp] . "\" } } } else={ :set ok false } };")
             }
           }
         }

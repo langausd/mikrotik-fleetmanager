@@ -21,6 +21,8 @@
 #              "ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"};"gast"={"vlan"=40}}}
 #            optional "expires"="2026-12-31 23:59:59". Passphrasen NUR im Vault:
 #            $cfmSecret key=ppsk.iot.kameras value=...
+#            Die normale Passphrase der SSID gilt weiter (VLAN der SSID, DW2.2.1); nur PPSK:
+#            "ppskOnly"="yes" an der SSID (nicht an der Master-SSID)
 #  radios    optionales Pinning pro AP-Identity: {"ap1"={"5"="5180";"2"="2412"}}
 #            (ohne Pin wählt der CAPsMAN bei jeder Neuverbindung neu; gilt auch für den Fallback)
 #  steer     Steering je Band (RouterOS >= 7.21, DW2.4): Liegt ein Client länger als "after" unter

@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-03).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-05).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -12,15 +12,15 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25 (zuvor 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-02 der Gesamttest (410 Prüfungen), drei VRRP-Router (137),
-  LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14); im CAPs-Modus (15) und hinter einem nicht
-  verwalteten Switch (18) zuletzt am 2026-10-25. Funkteile lassen sich auf CHR nicht testen.
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-05 der Gesamttest (431 Prüfungen), drei VRRP-Router (137),
+  LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
+  verwalteten Switch (18). Funkteile lassen sich auf CHR nicht testen.
 * **Hardware:** cfm läuft an zwei Standorten mit 13 Geräten, alle mit RouterOS 7.25; an einem davon routen seit dem
   17.10. vier Geräte alle VLANs per VRRP hinter einer Fritz!Box. Die gefundenen Fehler sind behoben
   ([ERLEDIGT.md](ERLEDIGT.md#behobene-fehler)) oder stehen in [TODO.md](TODO.md#bekannte-fehler) unter „Bekannte Fehler“.
 * **Noch nicht auf Hardware:** Backup-Manager (Test geplant 2026-11-07/08), Onboarding gegen Werks-Configs von Routern
-  und CRS-Switches, PPSK-VLANs, weitere SSIDs im lokalen Fallback, LACP-Bonds, MLAG und isolierte VLANs (DP2.1,
-  DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
+  und CRS-Switches, die Fixes vom 2026-11-04 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im lokalen
+  Fallback, `cfm-iso` nach `slaves-static`), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
   Gerätetyp einen Pilotbetrieb mit einem Testgerät ein.
 
 ## Labor (CHR)
@@ -29,8 +29,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 * `e2e.sh` (Gesamttest): Manager-Bootstrap mit Reset, Aufnahme, Firewall, Probelauf, `$cfmShow`/`$cfmDiff`,
   Prüfung, Rollback und Watchdog-Rollback, Backup-Manager, Schlüsselwechsel, Archiv, Router-Rolle mit festen
-  Leases, DNS-Namen, NTP-Umleitung und Bandbreitenlimit, DNS der Router samt Selbstbedienung, Netzplan, PPSK,
-  WLAN-Scan, CAPsMAN-Rolle und -Umzug, Bestandsgeräte, Admin-Keys je User, Benachrichtigungen, Gerätesuche,
+  Leases, DNS-Namen, NTP-Umleitung und Bandbreitenlimit, DNS der Router samt Selbstbedienung, Netzplan, PPSK
+  (mit normaler Passphrase und `ppskOnly`), WLAN-Scan, CAPsMAN-Rolle und -Umzug, AP-Rolle mit `slaves-static`
+  (zweiter Apply, Abgleich von `cfm-iso`), Mitschnitt per `$cfmSniff`, Bestandsgeräte, Admin-Keys je User, Benachrichtigungen, Gerätesuche,
   SNMPv3, Syslog-Inhalt, Feature-Module, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
   Spiegel.
 * `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15) und hinter
@@ -66,6 +67,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   von cm2 mit dem Test, Code unverändert, bisher nie aufgetreten). Übergang von Hand nachgestellt: ohne installiertes
   `cfm-mgr-checkw` lädt `$cfmCheck` die Datei aus `work/`, ein WLAN-Fehler kommt an, fehlt die Datei: Fehler statt
   ungeprüft.
+  2026-11-05 (Fixes aus dem Hardware-Test: DW1.8.1, DW2.2.1, DP3.1.1, `$cfmSniff` DU2.3, Backup-Test ohne echten
+  Tick von cm2): `e2e-vrrp.sh` 137, `e2e-mlag.sh` 72, Onboarding 14/15/18 grün; `e2e.sh` 430 von 431 – das ✘ lag
+  am Test (startete den Agent für den Abgleich von `cfm-iso` per SSH als admin – so holt er kein Manifest und bricht
+  vorher ab; jetzt per `$cfmPush`), danach 431 von 431.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -171,6 +176,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Feature-Module** (DG4.6) – 2026-11-02 am ersten Standort: Upload nur der genutzten Module, Release ringweise und
   ein zweites Release mit dem neuen Manager-Code, alle Geräte ohne Rollback, auf dem Manager genau die erwarteten
   Module.
+* **WLAN-Hardware-Test** – 2026-11-04 am ersten Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25):
+  **Gast-Limit** (DR2.7) mit zwei Clients je ≈ 20/5 Mbit/s; Gegenprobe ohne die Fasttrack-Ausnahmen 46/6 mit
+  Verbindungen im Fasttrack – die Ausnahmen sind nötig. **Schaltbare SSID** (DW4.1/DW4.2): Grundzustand aus,
+  Einschalten mit Ablauf, Aus/Ein startet das Radio nicht neu, andere SSIDs laufen ohne Unterbrechung. **PPSK**
+  (DW2.2): Eintrag mit eigener Passphrase landet im VLAN des Eintrags, auch mit FT. Drei Fehler gefunden (Fallback,
+  normale Passphrase bei PPSK, `cfm-iso` nach `slaves-static`), Fixes DW1.8.1, DW2.2.1, DP3.1.1 (TODO 74).
 
 ## Offen auf Hardware
 
@@ -181,7 +192,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Bridge nach Neustart/Rollback:** Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot sporadisch keine
   getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte mit Switch-Chip? Auf Hardware
   prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt (bisher ein Datenpunkt ohne, siehe oben).
-* **PPSK-VLANs** (DW2.2).
+* **PPSK** (DW2.2): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). Offen: die normale Passphrase als
+  Gruppeneintrag (DW2.2.1, Fix 2026-11-05, nur Labor), Roaming mit PPSK zwischen CAPs, `ppskOnly`.
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5) – bisher nur im Labor (`e2e.sh`: cm2, auch als
   `manager-backup,ap`). Offen: Spiegel-Abruf und Platz, gesperrte Geräte-User, Meldung `primary` an den Webhook bei
   ausgeschaltetem Primary, Geräte ziehen bis zur Beförderung nicht vom Backup, zweiphasiger Rekey mit zwei echten
@@ -195,10 +207,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   abgeglichen)?
 * **Feste Leases** (DN1.1): Stört eine schon dynamisch vergebene Lease derselben MAC das Anlegen der festen? (Am
   Standort vorher von Hand gelöscht.)
-* **Schaltbare SSID** (DW4.1/DW4.2, TODO 58): Startet das Abschalten eines virtuellen AP das Radio neu? Aufräumen der
-  festen Interfaces eines abgebauten AP; bleiben beim Abschalten von `capsmanRadios` feste Interfaces der eigenen
-  Radios stehen? Zusammenspiel mit `slaves-static` (DW1.8).
-* **Weitere SSIDs im lokalen Fallback** (DW1.8, TODO 40a) und der Client-Test im Fallback.
+* **Schaltbare SSID** (DW4.1/DW4.2, TODO 58): Aufräumen der festen Interfaces eines abgebauten AP; bleiben beim
+  Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen? Zusammenspiel mit `slaves-static`
+  (DW1.8).
+* **Weitere SSIDs im lokalen Fallback** (DW1.8, TODO 40a) und der Client-Test im Fallback. 2026-11-04 hing keine
+  lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent, nur Labor.
 * **MLO mit FT** unter 7.25 („wifi - add fast transition support for MLD devices“, DW2.3, TODO 48).
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
@@ -208,10 +221,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **MLAG** (DP2.2) auf CRS3xx: Offload im Switch-Chip, Ausfall eines Knotens (Strom aus, nicht nur Link), Umbau eines
   Uplinks, über den der Weg zum Manager läuft (Labor: ein 802.3ad-Port ohne Gegenstelle leitet weiter),
   `mlag-lacp-fallback` ab 7.25. Ebenso LACP-Bonds (DP2.1).
-* **Isolierte VLANs** (DP3.1) an echten APs: Gibt der CAPsMAN `interface-list` des Datapath an die CAPs weiter (sonst
-  trägt die Rolle `ap` die Interfaces beim Apply ein – neu verbundene erst beim nächsten Apply)? Sieht der
+* **Isolierte VLANs** (DP3.1) an echten APs: Der CAPsMAN gibt `interface-list` nicht an die CAPs weiter, und
+  Client-Isolation trennt nicht zwischen den Radios eines AP (beides 2026-11-04). Offen: der Abgleich von `cfm-iso`
+  durch den Agent (DP3.1.1, nur Labor) und der Test mit zwei Gästen an verschiedenen Radios. Sieht der
   Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000 `vlan`; die MAC-Regeln greifen in
-  beiden Fällen)? Trennt Client-Isolation auch zwischen den Radios eines AP? An Switches: `hw=no` an isolierten
+  beiden Fällen)? An Switches: `hw=no` an isolierten
   Access-Ports (Durchsatz über die CPU).
 * **Bandbreitenlimit** (DR2.7): zwei Clients gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der
   MikroTik-Doku – Ausnahme kurz abschalten, läuft der Gast dann ungebremst?; CPU-Last der CRS418 unter Volllast.

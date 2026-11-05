@@ -11,7 +11,8 @@
 #  6. Erreichbarkeit bestätigen -> Watchdog aus; sonst Rollback nach Timeout
 #  7. RouterOS-Auftrag im Manifest ("ros", $cfmUpgrade)? -> Pakete vom Manager laden,
 #     Neustart sofort oder zum Zeitpunkt at (Scheduler cfm-upgrade)
-#  8. Status (JSON) + Export (ohne Secrets) nach cfm/out/ – der Manager holt sie ab
+#  8. AP mit isolierten VLANs: neu angelegte WLAN-Interfaces in cfm-iso nachtragen (DP3.1.1)
+#  9. Status (JSON) + Export (ohne Secrets) nach cfm/out/ – der Manager holt sie ab
 #
 # Modus über :global cfmArg (wird vom Aufrufer gesetzt, hier gelöscht):
 #   ""  normal | "force" erzwingt Apply (auch "bad") | "wd" Watchdog
@@ -522,6 +523,20 @@
     # effektiver adminUser-Wert (inkl. Hostfile-Ausnahme), danach richtet sich der Secret-Push
     :global cfmAU
     :set ($st->"au") [:tostr $cfmAU]
+    # isolierte VLANs der Rolle ap (DP3.1), für das Nachtragen in cfm-iso zwischen zwei Applys (unten)
+    :global cfmIsoV
+    :set ($st->"iso")
+    :if ([:typeof $cfmIsoV] = "array" and [:len $cfmIsoV] > 0) do={ :set ($st->"iso") $cfmIsoV }
+    :set cfmIsoV
+    # slaves-static umgestellt (Rolle ap): zweiter Apply, sobald der CAP wieder am CAPsMAN hängt und seine
+    # virtuellen APs neu angelegt hat - erst dann hängen Fallback-Kopie und cfm-iso an den richtigen Interfaces
+    :global cfmApFollow
+    :if ($cfmApFollow = true) do={
+      /system/scheduler/remove [find where name="cfm-apfollow"]
+      /system/scheduler/add name="cfm-apfollow" interval=30s comment="cfm-sys:apfollow" on-event=":global cfmApN; :if ([:typeof \$cfmApN] != \"num\") do={ :set cfmApN 0 }; :set cfmApN (\$cfmApN + 1); :local c false; :onerror e in={ :set c ([:len [:tostr [/interface/wifi/cap/get current-caps-man-identity]]] > 0) } do={}; :if (\$c or \$cfmApN > 20) do={ /system/scheduler/remove [find where name=\"cfm-apfollow\"]; :set cfmApN; :if (\$c) do={ :delay 20s; :log info \"cfm: CAP wieder verbunden - zweiter Apply nach slaves-static\"; :global cfmArg \"force\"; /system script run cfm-agent } }"
+      :log info "cfm: slaves-static umgestellt - zweiter Apply folgt, sobald der CAP wieder verbunden ist"
+    }
+    :set cfmApFollow
     :set applied true
     # Erreichbarkeit direkt bestätigen (sonst entscheidet der Watchdog)
     :if ([$cfmFetch r=$mfr l=($dir . "/mf2.mf") prefer=$mgr] != "") do={
@@ -697,6 +712,34 @@
         :set boot "/system/reboot"
       }
     } else={ :set ($st->"fw"); :set ($st->"fwe") }
+  }
+
+  # --- Isolierte VLANs (DP3.1) an einem AP: Der CAP legt seine WLAN-Interfaces bei jedem Neuverbinden bzw.
+  #     mit slaves-static neu an (neue Namen); der CAPsMAN gibt interface-list nicht weiter (Hardware 2026-11-04).
+  #     Deshalb hier bei jedem Lauf: Interfaces der isolierten VLANs in cfm-iso nachtragen, Verweise auf
+  #     verschwundene Interfaces entfernen. Gleiche Schlüssel wie die Rolle ap (ilm:ISO:<Interface>).
+  :if (("," . [:tostr ($mf->"role")] . ",") ~ ",ap," and [:typeof ($st->"iso")] = "array" and [:len [/interface/list/find where name="cfm-iso"]] > 0) do={
+    :onerror e in={
+      :foreach bp in=[/interface/bridge/port/find where dynamic] do={
+        :local nm [:tostr [/interface/bridge/port/get $bp interface]]
+        :local pv [:tostr [/interface/bridge/port/get $bp pvid]]
+        :if ([:typeof (($st->"iso")->$pv)] != "nothing" and [:len [/interface/wifi/find where name=$nm]] > 0) do={
+          :if ([:len [/interface/list/member/find where list="cfm-iso" and interface=$nm]] = 0) do={
+            /interface/list/member/add list="cfm-iso" interface=$nm comment=("cfm:ilm:ISO:" . $nm)
+            :log info ("cfm: " . $nm . " (VLAN " . $pv . ") in cfm-iso nachgetragen")
+          }
+        }
+      }
+      :foreach mi in=[/interface/list/member/find where list="cfm-iso" and comment~"^cfm:ilm:ISO:" and !dynamic] do={
+        :local inm [:tostr [/interface/list/member/get $mi interface]]
+        :if ([:len [/interface/find where name=$inm]] = 0) do={
+          # Name aus dem Kommentar - das Interface selbst zeigt nur noch *<Nummer>
+          :local cm [:tostr [/interface/list/member/get $mi comment]]
+          /interface/list/member/remove $mi
+          :log info ("cfm: cfm-iso: Verweis auf " . [:pick $cm 12 [:len $cm]] . " entfernt (Interface neu angelegt)")
+        }
+      }
+    } do={ :log warning ("cfm: cfm-iso nicht nachgetragen: " . $e) }
   }
 
   # --- Bericht ---

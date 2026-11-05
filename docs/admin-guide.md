@@ -245,7 +245,7 @@ Schlüssel ist die VLAN-ID als String.
 | `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (DR2.7) |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
-| `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (DP3.1) |
+| `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (DP3.1). Die Client-Isolation einer SSID allein trennt nur Clients am selben Radio. Neu angelegte WLAN-Interfaces der APs trägt der Agent bei jedem Lauf nach (DP3.1.1) |
 | `isolateAllow` | Ausnahmen der Isolation: Namen aus `leases.rsc` (desselben VLANs) oder MAC-Adressen, z.B. `"zigbee-hub,drucker"`; diese Geräte erreichen alle Clients und umgekehrt |
 
 **Isolierte VLANs (DP3.1).** Gefiltert wird am Eingang jedes Client-Ports: reine Access-Ports des
@@ -335,8 +335,10 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   Kanal-Vorschlag von `$cfmWifiScan` (DW3.5), z.B. `"others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"}}`.
   Wirkt nur auf den Vorschlag und die Prüfung, nicht auf die Geräte; Typen und Gewichte in 8.7.
 * `fallback="yes"` an einer weiteren SSID (z.B. Gast): Sie sendet auch im lokalen Fallback der APs
-  weiter (DW1.8, `slaves-static`). Die `master`-SSID tut das immer (DW1.6). Noch nicht auf Hardware
-  geprüft – nach dem Einschalten den CAPsMAN-Dienst kurz abschalten und nachsehen.
+  weiter (DW1.8, `slaves-static`). Die `master`-SSID tut das immer (DW1.6). Das Einschalten trennt jeden
+  AP einmal kurz vom CAPsMAN; danach legt der Agent selbst einen zweiten Apply nach, der die lokale Kopie
+  anhängt (Log „virtueller AP … lokaler Fallback“, DW1.8.1). Im Fallback selbst noch nicht auf Hardware
+  geprüft – nach dem Einschalten den CAPsMAN eines AP kurz sperren und nachsehen.
 * `switch="off"|"on"` an einer weiteren SSID: schaltbar per Skript, der Wert ist der Grundzustand
   (DW4.1, siehe 6.8); dazu optional `autoOff` (z.B. `"50h"`): so lange nach dem Einschalten schaltet
   der CAPsMAN sie selbst wieder ab. Schlüssel der SSID nur aus Kleinbuchstaben und Ziffern.
@@ -346,7 +348,11 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 * `ppsk`: mehrere Passphrasen mit eigenem VLAN je SSID, z.B.
   `"ppsk"={"iot"={"kameras"={"vlan"=31;"isolation"="yes"}}}` (optional `expires`). Geht nur mit
   `sec="wpa2-psk"`, die VLAN-Zuordnung nur auf wifi-qcom-APs (RouterOS ≥ 7.17). Passphrase:
-  `$cfmSecret key=ppsk.iot.kameras value=…`.
+  `$cfmSecret key=ppsk.iot.kameras value=…`. Die normale Passphrase der SSID (`psk.<ssid>`) gilt weiter
+  und führt ins VLAN der SSID: cfm legt sie als eigenen Eintrag in die Gruppe, weil RouterOS die Passphrase
+  des Profils mit PPSK sonst ignoriert (DW2.2.1). Soll eine SSID **nur** PPSK-Passphrasen annehmen:
+  `"ppskOnly"="yes"` an der SSID (nicht an der Master-SSID; `psk.<ssid>` ist dann nicht nötig).
+  Achtung: Ändern oder Entfernen einer PPSK-Passphrase trennt die Clients, die sie nutzen.
 
 ### `wireguard.rsc`
 
@@ -577,7 +583,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 |---|---|
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog (`syslogFormat`), SNMPv3 nur lesend für LibreNMS (`snmp`, DU4.3), RAM-Log ohne `system,info` (`logMemory`, DU3.2); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (DP2.1), MLAG aus `mlag.rsc` (DP2.2); Filter isolierter VLANs an den Client-Ports (DP3.1); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, DW1.5); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, DW1.6); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (DP3.1); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, DW1.8 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN); Warnung bei `wifi-qcom-ac` |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, DW1.5); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, DW1.6); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (DP3.1); weitere SSIDs mit `fallback="yes"` auch im Fallback (`slaves-static`, DW1.8 – gesetzt nur, wenn ein `fallback` es verlangt oder der Wert an ist: jedes Setzen trennt den CAP kurz vom CAPsMAN, danach legt der Agent einen zweiten Apply nach, DW1.8.1); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (DW1.5). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (DW1.7); Provisioning mit festen Interfaces (DW4.2); Schalt-Skripte für SSIDs mit `switch` (DW4.1, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, DR3.1); DNS (Upstream, Adlisten, Ausnahmen, Weiterleitungen und Abfrage-Log aus `dns.rsc`, DN3.1; Selbstbedienung mit User, Skript `cfm-dnsreq` und WebFig-Zugang aus `self.zones`, DN3.2); NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, DN2.1); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (DR3.2); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (DN1.1); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (DM2.2) |
@@ -1080,7 +1086,7 @@ Datendateien (`global`, `vlans`, `profiles`, `wifi`, `wireguard`, `leases`, `mla
 | SSH-Key einer Person hinzufügen/entziehen | Zeile in `authorized_keys.<user>` ergänzen bzw. löschen → Release; alle Keys entziehen: Datei leeren, nicht löschen (Kapitel 4) |
 | Firewall-Freigabe zwischen Zonen | `policy` in `global.rsc` → Release |
 | Internet für eine Zone | `policy`: `wan` (geroutet, Upstream kennt das Netz), `*wan` (masquerade) oder `wan@<Adresse>` (feste NAT-Adresse im WAN-Netz) → Release |
-| Zone nur zu bestimmten Internet-Zielen (z.B. IoT-Cloud) | Ziele aus einem Mitschnitt mit `tools/pcap-ziele.py` ermitteln, Liste in `allow` anlegen, `policy` z.B. `"iot"="allow:tuya"` (mit NAT `*allow:tuya`) → Release. Feiner als je Zone geht es über kleinere Zonen (eigenes VLAN je Gerätegruppe) |
+| Zone nur zu bestimmten Internet-Zielen (z.B. IoT-Cloud) | Mitschnitt der Geräte am Router: `$cfmSniff host=<router> lease=<name> dauer=12h` (DU2.3), Datei aus `sniff/` per scp holen, Ziele mit `tools/pcap-ziele.py` ermitteln, Liste in `allow` anlegen, `policy` z.B. `"iot"="allow:tuya"` (mit NAT `*allow:tuya`) → Release. Feiner als je Zone geht es über kleinere Zonen (eigenes VLAN je Gerätegruppe) |
 | Eigene Firewall-Regel | Chain `local-input`/`local-forward` per `hosts/<router>.post.rsc` |
 | Gerät sofort aktualisieren | `$cfmPush host=<name>`; Voll-Apply trotz gleicher Version: `force=yes` |
 | Ring eines Geräts ändern | Inventar editieren (wirkt sofort) |
@@ -1711,7 +1717,7 @@ steht die Zeile in LibreNMS beim Gerät (Logs → Graylog) und in Graylog unter 
 | Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (DS2.5) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
 | Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
 | Ein Switch eines MLAG-Paars fällt aus | doppelt angebundene Geräte laufen über den anderen Knoten weiter (LACP, DP2.2; auf Hardware noch nicht geprüft) | Gerät tauschen bzw. aufnehmen (7.4), beide Knoten im selben Ring lassen |
-| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, DW1.8, auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
+| CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, DW1.8, im Fallback auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
 | Onboarding hängt | Sitzung endet nach `onboard.timeout`, der Port fällt zurück | `$cfmOnboardStatus`, Log, ggf. `$cfmOnboardAbort` |
 | Release stoppt mit „Prüfung“ | nichts wurde ausgerollt | Fehler beheben oder bewusst `force=yes` |
 | RouterOS-Update schlägt fehl | Gerät bleibt auf der alten Version, Status `fehlgeschlagen`, kein weiterer Neustart | Log am Gerät lesen, `$cfmUpgrade cancel=yes host=<name>`, neuen Auftrag erteilen |
@@ -1976,6 +1982,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
+| `$cfmSniff host=<router> mac=<MAC,…>\|lease=<Name,…> [dauer=2h] [max=20] [iface=…]` | Mitschnitt nur dieser Geräte auf einem Gerät mit Rolle `router`/`manager` (DU2.3); nach `dauer` holt der Manager-Tick die Datei nach `sniff/` (abholen per scp, auswerten mit `tools/pcap-ziele.py`); `stop=yes` beendet vorzeitig, ohne Argumente Übersicht. Sieht nur Verkehr über die CPU (geroutet oder eigene Radios), nicht vom Switch-Chip gebrückten |
 | `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |

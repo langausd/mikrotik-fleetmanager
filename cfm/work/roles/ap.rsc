@@ -151,7 +151,13 @@ $cfmPskMissing
 :local cst ""
 :onerror e in={ :set cst [:tostr [/interface/wifi/cap/get slaves-static]] } do={}
 :if ($sst = "yes" or $cst = "true" or $cst = "yes") do={
-  :onerror e in={ $cfmSet m="/interface/wifi/cap" p=({"slaves-static"=$sst}) } do={ $cfmLog ("slaves-static nicht gesetzt: " . $e) }
+  :onerror e in={
+    $cfmSet m="/interface/wifi/cap" p=({"slaves-static"=$sst})
+    # Umgestellt: Der CAP baut seine virtuellen APs nach dem Neuverbinden neu auf (mit slaves-static als feste
+    # Interfaces mit neuen Namen). Fallback-Kopie und cfm-iso stimmen erst danach - der Agent stößt dafür einen
+    # zweiten Apply an, sobald der CAP wieder verbunden ist (Hardware 2026-11-04)
+    :if ($cfmDry != true and (($sst = "yes") != ($cst = "true" or $cst = "yes"))) do={ :global cfmApFollow; :set cfmApFollow true }
+  } do={ $cfmLog ("slaves-static nicht gesetzt: " . $e) }
 }
 :if ([:len $fbk] > 0) do={
   :foreach i in=[/interface/wifi/find where !dynamic] do={
@@ -162,6 +168,20 @@ $cfmPskMissing
       :local sid ""
       :onerror e in={ :set sid [:tostr [/interface/wifi/get $i configuration.ssid]] } do={}
       :if ([:len $sid] = 0) do={ :onerror e in={ :set sid [:tostr ([/interface/wifi/monitor $i once as-value]->"ssid")] } do={} }
+      # Virtuelle APs vom CAPsMAN: SSID steht nur in about ("...;mode: AP, SSID: Gast", hAP ax², 7.25,
+      # 2026-11-04) - bis zum nächsten Feld (", channel: ") bzw. Eintrag (";")
+      :if ([:len $sid] = 0) do={
+        :onerror e in={
+          :local ab [:tostr ([/interface/wifi/monitor $i once as-value]->"about")]
+          :local p [:find $ab "SSID: "]
+          :if ([:typeof $p] = "num") do={
+            :set sid [:pick $ab ($p + 6) [:len $ab]]
+            :foreach t in={";";", channel: "} do={ :local q [:find $sid $t]; :if ([:typeof $q] = "num") do={ :set sid [:pick $sid 0 $q] } }
+          }
+        } do={}
+      }
+      # abgeschaltete (schaltbare SSID, DW4.1) liefern kein about - nur laufende melden
+      :if ([:len $sid] = 0 and ![/interface/wifi/get $i disabled]) do={ $cfmWarn ("virtueller AP " . $vn . ": SSID nicht erkennbar - keine lokale Fallback-Kopie") }
       :local k [:tostr ($fbk->$sid)]
       :if ([:len $k] > 0) do={
         # Band über das Radio des Masters; je Band eigene Konfiguration, wenn wifi.rsc sie vorsieht
@@ -192,6 +212,9 @@ $cfmPskMissing
 :global cfmVlans
 :local isv ({})
 :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($isv->$vid) 1 } }
+# für den Agent: Er trägt neu entstandene Interfaces dieser VLANs auch zwischen zwei Applys nach
+:global cfmIsoV
+:set cfmIsoV $isv
 :if ([:len $isv] > 0) do={
   :foreach bp in=[/interface/bridge/port/find where dynamic] do={
     :local nm [:tostr [/interface/bridge/port/get $bp interface]]

@@ -561,7 +561,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
 | `bonds` | Link-Bündel (DP2.1): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
-| `portSwitch` | umschaltbarer Port (DP1.4), z.B. Dockingstation: `{"dock"={"port"="ether5";"alt"="access:175";"button"="reset"}}`. Normal gilt das Profil aus `ports`/`portDefault`; die Skripte `cfm-port-dock-alt`, `-normal` und `-toggle` (Terminal: `/system script run cfm-port-dock-toggle`) schalten nur diesen Port in Sekunden um, ohne Release, und trennen danach den Link für 3 s (das Gerät am Port holt eine neue Adresse); jeder Apply behält den Zustand (`<cfm>/port-dock.txt`). `button="mode"` bzw. `"reset"`: der Mode- bzw. Reset-Taster des Geräts startet `-toggle` (ein Eintrag je Gerät; beim Einschalten gehalten setzt der Reset-Taster weiter zurück). Im alt-Zustand fehlen dem Port die übrigen VLANs – z.B. MGMT für den Admin-Laptop am Dock (Rückfall WLAN/Konsole). Entfernen: Eintrag löschen, Release |
+| `portSwitch` | umschaltbarer Port (DP1.4), z.B. Dockingstation: `{"dock"={"port"="ether5";"alt"="access:175";"button"="reset"}}`. Normal gilt das Profil aus `ports`/`portDefault`; die Skripte `cfm-port-dock-alt`, `-normal` und `-toggle` (Terminal: `/system script run cfm-port-dock-toggle`) schalten nur diesen Port in Sekunden um, ohne Release, und trennen danach den Link für 3 s (das Gerät am Port holt eine neue Adresse); jeder Apply behält den Zustand (`<cfm>/port-dock.txt`). `button="mode"` bzw. `"reset"`: der Mode- bzw. Reset-Taster des Geräts startet `-toggle`, ein kurzer Druck genügt (ein Eintrag je Gerät; beim Einschalten gehalten setzt der Reset-Taster weiter zurück). Die Belegung von Hand nur zusammen mit `hold-time` ändern, sonst wirkt sie nicht (ROUTEROS-EIGENHEITEN). Im alt-Zustand fehlen dem Port die übrigen VLANs – z.B. MGMT für den Admin-Laptop am Dock (Rückfall WLAN/Konsole). Entfernen: Eintrag löschen, Release |
 | `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe DP1.2). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
@@ -999,12 +999,14 @@ Das lokale Overlay (`site-…/`) ist Sicherung und Referenz: `tools/pull-site.sh
 --overlay site-…` holt Site-Daten und Inventar vom Manager (geänderte lokale Fassungen bleiben als
 `datei~`, `--dry-run` zeigt nur die Unterschiede). `tools/upload-seed.sh` lädt ohne `--site` nur den
 Framework-Code (`lib/`, `roles/`) hoch; `--site` ersetzt die Site-Daten auf dem Manager und nennt
-vorher, welche Dateien dort anders sind.
+vorher, welche Dateien dort anders sind. Vorher prüft es alles mit `tools/rsc-check.py` und bricht bei einem
+Fehler ab (`--no-check` überspringt das).
 
 **Geänderte Manager-Bibliothek (`lib/mgr-*.rsc`):** `/system script run cfm-mgr` lädt die Skripte `cfm-mgr-*`, die
 der Manager zuletzt selbst angewendet hat – nicht `work/`. Das erste Release nach einem Framework-Update läuft
 also noch mit dem alten Manager-Code; ein Fix darin (z.B. am Release selbst) wirkt erst ab dem nächsten. Soll er
-schon beim ersten wirken: direkt vor `$cfmRelease` in derselben Sitzung `/import cfm/work/lib/<modul>.rsc verbose=no`.
+schon beim ersten wirken: direkt vor `$cfmRelease` in derselben Sitzung `/import cfm/work/lib/<modul>.rsc verbose=no` –
+und danach **nicht** mehr `/system script run cfm-mgr`, das lädt wieder die alten Skripte.
 
 ### 8.2 Release und Rollout
 

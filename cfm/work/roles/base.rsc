@@ -231,7 +231,7 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
       $cfmEnsure m="/system/script" k=("sys:port-" . $nm . "-" . $act) n=({"name"=("cfm-port-" . $nm . "-" . $act)}) p=({"name"=("cfm-port-" . $nm . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
     }
     :if (($x->"st") = "alt") do={ $cfmLog ("Port " . ($x->"port") . " (" . $nm . ") steht auf alt: " . ($x->"alt")) }
-    :if (($x->"button") = "mode" or ($x->"button") = "reset") do={ :set btn ("cfm-port-" . $nm . "-toggle"); :set cfmPortBtn $btn; :set btk ($x->"button") }
+    :if (($x->"button") = "mode" or ($x->"button") = "reset") do={ :set btn ("cfm-port-" . $nm . "-toggle"); :set cfmPortBtn ("/system script run " . $btn); :set btk ($x->"button") }
   }
 }
 # Zustandsdateien entfernter Einträge löschen (ihr Port hat schon wieder sein Profil aus ports)
@@ -245,17 +245,19 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
 }
 # Taster (button="mode" bzw. "reset"): startet das toggle-Skript; nicht (mehr) belegte Taster mit cfm-Belegung wieder
 # lösen. Der Reset-Taster setzt beim Einschalten weiter zurück (RouterBOOT), im Betrieb startet er nur das Skript.
-# Die Menüs fehlen auf Geräten ohne Taster (CHR) - deshalb per :parse, sonst wäre schon das Laden ein Syntaxfehler
+# Die Menüs fehlen auf Geräten ohne Taster (CHR) - deshalb per :parse, sonst wäre schon das Laden ein Syntaxfehler.
+# on-event ist Code (nicht der Skriptname wie in der MikroTik-Doku), und eine geänderte Belegung wirkt erst, wenn
+# hold-time mitgesetzt wird (hAP be³ Media, 7.25, 2026-11-06)
 :foreach bk in={"mode";"reset"} do={
   :local mn ("/system routerboard " . $bk . "-button")
   :onerror e in={
     :local ev [[:parse (":return [:tostr [" . $mn . " get on-event]]")]]
     :local en [[:parse (":return [" . $mn . " get enabled]")]]
-    :if ($btk = $bk and ($ev != $btn or !$en)) do={
-      :if ($cfmDry != true) do={ :local f [:parse (":global cfmPortBtn; " . $mn . " set enabled=yes on-event=\$cfmPortBtn")]; $f }
+    :if ($btk = $bk and ($ev != $cfmPortBtn or !$en)) do={
+      :if ($cfmDry != true) do={ :local f [:parse (":global cfmPortBtn; " . $mn . " set enabled=yes on-event=\$cfmPortBtn hold-time=0s..1m")]; $f }
       $cfmLog ($bk . "-Taster startet " . $btn)
     }
-    :if ($btk != $bk and $ev ~ "^cfm-port-") do={
+    :if ($btk != $bk and $ev ~ "cfm-port-") do={
       :if ($cfmDry != true) do={ :local f [:parse ($mn . " set enabled=no on-event=\"\"")]; $f }
       $cfmLog ($bk . "-Taster: cfm-Belegung entfernt")
     }

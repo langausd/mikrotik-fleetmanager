@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests für tools/upload-seed.sh gegen einen nachgebauten SFTP-Server (ein lokales Verzeichnis als Manager):
-Feature-Module (DG4.6) nur hochladen, wenn die Site-Daten sie nutzen, nicht gebrauchte auf dem Manager entfernen."""
+Feature-Module (DG4.6) nur hochladen, wenn die Site-Daten sie nutzen, nicht gebrauchte auf dem Manager entfernen;
+rsc-check vor dem Upload."""
 import os
 import pathlib
 import shutil
@@ -150,6 +151,23 @@ class UploadSeed(unittest.TestCase):
         out = self.upload("--all-features")
         self.assertNotIn("nicht hochgeladen (die Site", out)
         self.assertEqual(self.lib(), MODULE)
+
+    def test_rsc_check_bricht_ab(self):
+        # Kommentar in einem Array-Literal (Hostfile, 2026-11-06): Abbruch vor dem ersten put, --no-check lädt
+        ov = os.path.join(self.tmp, "site")
+        os.makedirs(os.path.join(ov, "hosts"))
+        with open(os.path.join(ov, "hosts", "ap9.rsc"), "w", encoding="utf-8") as fh:
+            fh.write(':global cfmHost {\n  "location"="x";\n  # Kommentar\n  "stpPrio"="0xE000"\n}\n')
+        r = subprocess.run([str(ROOT / "tools/upload-seed.sh"), "admin@manager", "--overlay", ov, "--site"],
+                           env=self.env, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("kommentar-im-array", r.stderr)
+        self.assertIn("nichts hochgeladen", r.stderr)
+        with open(self.log) as fh:
+            self.assertNotIn("put ", fh.read())
+        out = self.upload("--overlay", ov, "--site", "--no-check")
+        self.assertIn("Seed hochgeladen", out)
+        self.assertTrue(os.path.isfile(os.path.join(self.mgr, "cfm/work/hosts/ap9.rsc")))
 
 
 if __name__ == "__main__":

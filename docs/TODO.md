@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-05)
+## Übersicht offener Punkte (Stand 2026-11-06)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
@@ -8,7 +8,8 @@ Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 77). Was
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
-  (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1).
+  (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
+  2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   DW1.8; erster Versuch 2026-11-04 scheiterte am Fehler unten). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
@@ -110,6 +111,13 @@ Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein
   WLAN-Interface unter dem Werksnamen (cfm benennt sie um). Ohne erkennbare Folge; Ursache offen.
+
+* **Labor-Wackler MNDP mit Quelle 0.0.0.0** (`e2e.sh` Abschnitt 14, DR2.5): Die Prüfung „cm1: MNDP mit Quelle
+  0.0.0.0 still verworfen“ erwartet nach höchstens 70 s einen Treffer im Zähler der Drop-Regel. Der als erledigt
+  geführte Fix vom 2026-10-27 (Warteschleife statt fester 40 s) reicht nicht: Fehlschlag noch am 2026-10-31 und
+  2026-11-06 (7.25.1). Das Verhalten stimmt jeweils, denn die Prüfung danach (kein `cfm-drop` im Log) ist grün; nur
+  das Paket kam im Zeitfenster nicht (`discover-interval` 30 s). Fix: länger warten (etwa 120 s) oder das
+  Senden anstoßen, z. B. MNDP an cm2 aus- und wieder einschalten, nachdem `pvid=10` gesetzt ist.
 
 ## Verbesserungsplan (Stand 2026-09-12)
 
@@ -266,8 +274,10 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
       MAC-Passthrough). Den Port ungetaggt ins Gäste-VLAN zu legen (`hybrid:<gast>`, Admin-Laptop dann
       mit getaggtem Haupt-VLAN) wäre ohne Code möglich, schickt aber jedes Gerät ohne NM-Profil ins
       Gastnetz. **Rückfall umgesetzt 2026-11-05 (DP1.4):** Hostfile `portSwitch`, Skripte
-      `cfm-port-<name>-normal/-alt/-toggle`, optional am Mode-Taster; Zustand in einer Datei, die jeder Apply
-      übernimmt. Auf Hardware offen. Ohne Umschalten bleibt (b) bei 802.1X.
+      `cfm-port-<name>-normal/-alt/-toggle`, optional am Reset- oder Mode-Taster; Zustand in einer Datei, die jeder
+      Apply übernimmt. Seit 2026-11-06 an einem Standort im Betrieb (hAP be³ Media): per Skript bestanden (Firmen-Laptop
+      am Dock: Pool-Adresse in 175, Internet ja, LAN nein); Reset-Taster nach dem Fix (Code + `hold-time`, von Hand
+      gesetzt) startet Skripte. Offen: Release mit dem Fix, dann Umschalten per Taster in beide Richtungen. Ohne Umschalten bleibt (b) bei 802.1X.
 <!-- -->
 67. **VIP als Gateway – Rest** (umgesetzt: `asymRouting`, DR3.2, Admin-Guide 8.13; TCP ins Internet auf
     Hardware bestanden 2026-10-31): **Offen:** Ausfall des Internet-Routers – bleiben die internen Wege?;

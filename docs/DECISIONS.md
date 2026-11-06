@@ -717,6 +717,8 @@ Dock fehlt ihm im Gast-Zustand das MGMT-VLAN (Rückfall WLAN oder Konsole). Rüc
 der nächste Apply entfernt Skripte, Zustandsdatei und Taster-Belegung, der Port bekommt sein normales Profil.
 Labor: `e2e.sh` Schritt 14 (EoIP-Interface als Port, CHR hat keinen Taster); auf Hardware offen.
 
+**Nachtrag 2026-11-06 (Hardware):** Der Taster startet das Skript über `on-event="/system script run cfm-port-<name>-toggle"` (Code statt Name), und die Rolle setzt `hold-time=0s..1m` immer mit – sonst wirkt eine geänderte Belegung nicht (ROUTEROS-EIGENHEITEN). Umschalten per Skript an einem hAP be³ Media bestanden (Gast-Adresse aus dem Pool am Dock, LAN gesperrt).
+
 ### <a id="dp2"></a>DP2 · Bonds und MLAG
 
 #### <a id="dp2.1"></a>DP2.1 · Bonds im Hostfile
@@ -1580,6 +1582,8 @@ Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie
 
 **Begründung:** Eine Änderung im Browser darf der nächste Framework-Upload nicht still überschreiben. Site-Daten sind die Dateien direkt in `work/` und `work/hosts/`
 
+**Nachtrag 2026-11-06:** `upload-seed.sh` prüft vor dem Upload alles, was hinübergeht, mit `tools/rsc-check.py` und bricht bei einem Fehler ab, ohne etwas hochzuladen (`--no-check` überspringt das). Anlass: Ein Hostfile mit Kommentar im Array-Literal kam auf den Manager, erst `$cfmCheck` meldete den Syntaxfehler – rsc-check kennt die Regel, lief aber nur von Hand und in der CI.
+
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
 
 #### <a id="dt3.1"></a>DT3.1 · Editor im Browser: Lesezeichen für WebFig
@@ -1932,7 +1936,7 @@ Passphrase galt mit PPSK nicht mehr, `cfm-iso` zeigte nach `slaves-static` auf a
 
 ### Vorbereitung Rollout: Dock-Port, Spiegel, Pakete (2026-11-05)
 
-Entscheidungen: DP1.4, DU2.3.1; Nachträge DV1.2 (TODO 7), DU4.2 (TODO 64), DU4.1 (Sperre des Notify-Ticks, 2026-11-06)
+Entscheidungen: DP1.4, DU2.3.1; Nachträge DV1.2 (TODO 7), DU4.2 (TODO 64), DU4.1 (Sperre des Notify-Ticks, 2026-11-06), DT2.2 (rsc-check vor dem Upload, 2026-11-06), DP1.4 (Taster: Code und hold-time, 2026-11-06)
 
 Anlass: Rollout an einem Standort mit RouterOS 7.25.1, Backup-Manager und dem Hardware-Test aus TODO 74 (Nutzer,
 2026-11-05).

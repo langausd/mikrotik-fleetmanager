@@ -56,6 +56,9 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
   Maßgeblich sind die Site-Daten auf dem Manager, mit `--site` die hochgeladenen. Schaltest du ein
   Feature später ein (z.B. im cfm-Editor), stoppt `$cfmCheck` das Release mit „lib/… fehlt“ – dann
   das Skript erneut aufrufen. `--all-features` lädt alle hoch (Testlabor).
+* Vor dem Upload prüft `rsc-check.py` alles, was hinübergeht (auch die Bootstrap-Datei). Bei einem Fehler,
+  z.B. einem Kommentar in einem Array-Literal, bricht das Skript ab, ohne etwas hochzuladen;
+  `--no-check` überspringt die Prüfung.
 * Notizen (`STAND.md`, `BEFUNDE.md`, CSV-Listen) bleiben lokal. Jede Datei geht einzeln mit bis zu
   drei Versuchen hinüber. Am Ende steht `Seed hochgeladen nach … (N Dateien)`.
 * Danach auf dem Manager: `/system script run cfm-mgr`, dann `$cfmDiff` (was ist neu?) und

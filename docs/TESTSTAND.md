@@ -210,8 +210,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   ausgeschaltetem Primary, Geräte ziehen bis zur Beförderung nicht vom Backup, zweiphasiger Rekey mit zwei echten
   Managern; `$cfmPromoteManager` nur im Ernstfall. *Geplant an einem Standort (hAP be³ als
   `switch,ap,manager-backup`, 2026-11-07/08).*
-* **Umschaltbarer Port** (DP1.4): Skripte und Mode-Taster an einem echten Gerät (Dockingstation), Bridge-Port mit
-  Switch-Chip (`hw`), DHCP des Geräts am Port nach dem Umschalten. *Geplant an einem Standort (2026-11-06).*
+* **Umschaltbarer Port** (DP1.4): Skripte und Taster an einem echten Gerät (Dockingstation), Bridge-Port mit
+  Switch-Chip (`hw`), DHCP des Geräts am Port nach dem Umschalten. *2026-11-06 an einem Standort (hAP be³ Media, v100):
+  Umschalten per Skript bestanden – Link-Abriss, Firmen-Laptop am Dock mit Pool-Adresse in VLAN 175 (MAC des Docks),
+  Internet ja, LAN nein. Reset-Taster: startet Skripte erst mit Code in `on-event` und gesetzter `hold-time` (von Hand
+  geprüft, Rolle angepasst). Offen: Release mit dem Fix, Umschalten per Taster in beide Richtungen, Zurückschalten
+  auf normal, Bridge-Port mit `hw` an einem CRS.*
 * **`$cfmSniff mirror=<Port>`** (DU2.3.1): Eigenschaftsnamen je Switch-Chip, CPU als Spiegelziel, CPU-Last, sieht
   der Sniffer die gespiegelten Frames (TODO 75).
 * **Pakete auf dem Backup-Manager** (TODO 7): Spiegel offener Aufträge und Laden nach einer Beförderung.

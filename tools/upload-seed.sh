@@ -30,15 +30,19 @@
 #            des Managers, mit --site darüber die hochgeladenen. Schaltet die Site ein Feature später ein (z.B. im
 #            cfm-Editor), lehnt $cfmCheck das Release ab, bis das Modul hochgeladen ist.
 # --all-features: alle Feature-Module hochladen (Testlabor: es schaltet Features auf dem Manager ein).
+# Vor dem Upload prüft tools/rsc-check.py alle hochzuladenden .rsc (auch die Bootstrap-Datei); bei einem
+#            Fehler (z.B. Kommentar in einem Array-Literal) bricht das Skript ab, ohne etwas hochzuladen.
+# --no-check: diese Prüfung überspringen.
 set -euo pipefail
 dest=${1:?Ziel user@host fehlt}; shift
-port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""; site=""; all_features=""
+port=22; overlay=""; base=cfm; seed_inventory=""; bootstrap=""; force=""; site=""; all_features=""; no_check=""
 while [ $# -gt 0 ]; do case $1 in
   --port) port=$2; shift 2;; --overlay) overlay=$2; shift 2;; --base) base=$2; shift 2;;
   --seed-inventory) seed_inventory=1; site=1; shift;;
   --site) site=1; shift;;
   --force) force=1; shift;;
   --all-features) all_features=1; shift;;
+  --no-check) no_check=1; shift;;
   # --bootstrap ohne Pfad: Datei aus dem Overlay nehmen (erst nach dem Parsen auflösbar)
   --bootstrap) if [ $# -ge 2 ] && [ -f "$2" ]; then bootstrap=$2; shift 2; else bootstrap="-"; shift; fi;;
   *) echo "unbekannt: $1"; exit 1;; esac; done
@@ -155,6 +159,20 @@ fi
 if [ -z "$seed_inventory" ] && [ -f "$stage/meta/inventory.rsc" ]; then
   rm -f "$stage/meta/inventory.rsc"
   echo "meta/inventory.rsc nicht hochgeladen (lebt auf dem Gerät, siehe --seed-inventory)"
+fi
+# Statische Prüfung (tools/rsc-check.py) des Stands, der hochgeht: Fehler wie ein Kommentar in einem Array-Literal
+# fielen sonst erst bei $cfmCheck auf dem Manager auf (Hostfile, 2026-11-06). Hinweise brechen nicht ab.
+if [ -z "$no_check" ]; then
+  if ! command -v python3 >/dev/null; then
+    echo "rsc-check: python3 fehlt - nicht geprüft" >&2
+  else
+    bs=""; [ -n "$bootstrap" ] && bs=$(cd "$(dirname "$bootstrap")" && pwd)/$(basename "$bootstrap")
+    if ! rc_out=$(cd "$stage" && python3 "$root/tools/rsc-check.py" work meta ${bs:+"$bs"} 2>&1); then
+      printf '%s\n' "$rc_out" | grep -v ' HINWEIS ' >&2 || true
+      echo "ABBRUCH: rsc-check meldet Fehler (siehe oben) - nichts hochgeladen. --no-check überspringt die Prüfung." >&2
+      exit 1
+    fi
+  fi
 fi
 # Verzeichnisse in einem Batch anlegen (idempotent). Für ein schon vorhandenes Verzeichnis meldet
 # der SFTP-Server von RouterOS 'remote mkdir "…": Unknown status' (mit CR am Zeilenende) statt

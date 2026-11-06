@@ -10,10 +10,22 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-06 (Abschluss der Vorbereitung, Rollout an einem Standort):** Labor 7.25.1 grün (`e2e.sh` 447,
+  vrrp 137, mlag 72, Onboarding 14/15/18), Commit `673a944`. Dabei behoben: doppelte Benachrichtigungen bei zwei
+  gleichzeitigen `$cfmNotifyTick` (Sperre `cfmNotBusy`, Nachtrag DU4.1, unten unter „Behobene Fehler“); der e2e-Test
+  „ppskOnly im Probelauf“ wartet, bis der Agent frei ist. Neu: `upload-seed.sh` prüft vor dem Upload mit
+  `rsc-check.py` und bricht bei Fehlern ab (`--no-check`, Nachtrag DT2.2) – Anlass: ein Hostfile mit Kommentar im
+  Array-Literal erreichte den Manager, erst `$cfmCheck` fing es ab. Admin-Guide 8.1: Nach dem Import der neuen
+  Manager-Bibliothek nicht mehr `cfm-mgr` starten (lädt die alten Skripte zurück). Hardware: Framework als v99 an
+  allen 10 Geräten `ok` (v98 lief noch mit dem alten Manager-Code), Dock-Port (65b, DP1.4) als v100 an einem
+  hAP be³ Media: Umschalten per Skript bestanden (Pool-Adresse in 175, Internet ja, LAN nein). Der Reset-Taster löste zunächst
+  nicht aus; eingegrenzt mit Log-Befehl und Probe-Skript: `on-event` ist Code (nicht der Skriptname), und eine
+  geänderte Belegung wirkt erst mit `hold-time` – Rolle entsprechend geändert (Nachtrag DP1.4, EIGENHEITEN), unten
+  unter „Behobene Fehler“.
 * **Umgesetzt am 2026-11-05 (Vorbereitung eines Standort-Rollouts):** 7 (Nachtrag DV1.2) – der Backup-Manager
   spiegelt offene RouterOS-Aufträge samt Paketen; 64 (Nachtrag DU4.2) – ein später aufgenommenes oder
   zurückgestuftes Gerät öffnet die `ros`-Meldung wieder; 65b-Rückfall (DP1.4) – umschaltbarer Port per Skript und
-  Mode-Taster; 75 (DU2.3.1) – `$cfmSniff mirror=<Port>` spiegelt gebrückten Verkehr zur CPU. Labor: `e2e.sh`;
+  Reset- oder Mode-Taster; 75 (DU2.3.1) – `$cfmSniff mirror=<Port>` spiegelt gebrückten Verkehr zur CPU. Labor: `e2e.sh`;
   Hardware offen.
 * **Umgesetzt am 2026-11-02:** 73 (DG4.6) – Feature-Module: Code einzelner Features (DNS,
   WireGuard, Bandbreitenlimit, Bonds/MLAG, isolierte VLANs, SNMP, Admin-SSH-Keys) und die Skripte des CAPsMAN in
@@ -940,6 +952,16 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* ~~**Taster startet das Umschalt-Skript nicht**~~ – *im Code behoben 2026-11-06 (Nachtrag DP1.4), Release offen:*
+  Die Rolle setzt `on-event="/system script run cfm-port-<name>-toggle"` zusammen mit `hold-time=0s..1m`. (Befund
+  hAP be³ Media, 7.25: Mit `on-event=<Skriptname>`, wie die MikroTik-Doku es beschreibt, startete kein Druck etwas,
+  `run-count` blieb 0, kein Log; auch von Hand gesetzter Code wirkte erst nach einem `set hold-time=…`.)
+
+* ~~**Benachrichtigung doppelt, wenn `$cfmNotifyTick` zweimal zugleich läuft**~~ – *behoben 2026-11-06 (Nachtrag
+  DU4.1):* Sperre `cfmNotBusy`, ein zweiter Aufruf wartet bis 60 s, eine Sperre älter als 5 min verfällt. (Befund
+  Labor 7.25.1, `e2e.sh` „kein zweites Mal“: Ein Aufruf von Hand neben dem Scheduler-Tick las dasselbe
+  `notify.dat`, jede Meldung ging gut eine Sekunde versetzt zweimal hinaus.)
 
 * ~~**Apply scheitert am Manager-Modul: „no such item (/file/get)“ in `roles/manager.rsc`**~~ – *behoben 2026-10-29:*
   `$cfmGetFiles` überschreibt geänderte Dateien per `/tool/fetch`, gelöscht werden nur Dateien, die das Manifest

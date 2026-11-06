@@ -91,6 +91,22 @@ $cfmIndex "/interface/bridge/port"
   }
 }
 :foreach bn,sp in=$bspec do={ :set ($ports->$bn) $sp }
+# Umschaltbare Ports (DP1.4): Hostfile portSwitch={"<name>"={"port"=…;"alt"=<Profil>;"button"="mode"|"reset"}}. Steht in
+# <cfm>/port-<name>.txt "alt" (schreiben die Skripte cfm-port-<name>-*), gilt das alt-Profil - ein Release
+# schaltet nicht zurück. Ohne Datei bzw. mit "normal" das Profil aus ports/portDefault
+:global cfmDir; :global cfmWarn; :global cfmBody
+:local psw ({})
+:if ([:typeof ($cfmHost->"portSwitch")] = "array") do={
+  :foreach nm,x in=($cfmHost->"portSwitch") do={
+    :local p [:tostr ($x->"port")]
+    :if ([:typeof ($ports->$p)] = "nothing") do={ $cfmWarn ("portSwitch " . $nm . ": Port " . $p . " hat kein Profil - nicht umschaltbar") } else={
+      :local st "normal"
+      :onerror e in={ :if ([:tostr [/file/get ($cfmDir . "/port-" . $nm . ".txt") contents]] = "alt") do={ :set st "alt" } } do={}
+      :set ($psw->$nm) ({"port"=$p;"normal"=($ports->$p);"alt"=[:tostr ($x->"alt")];"st"=$st;"button"=[:tostr ($x->"button")]})
+      :if ($st = "alt") do={ :set ($ports->$p) [:tostr ($x->"alt")] }
+    }
+  }
+}
 # für spätere Rollen (switch: DHCP-Snooping vertraut den Trunks)
 :global cfmPortMap; :set cfmPortMap $ports
 
@@ -181,6 +197,69 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
   :if (([:len $tg] + [:len $ut]) > 0) do={
     $cfmEnsure m="/interface/bridge/vlan" k=("bv:" . $vid) n=({"bridge"=$br;"vlan-ids"=[:tonum $vid]}) p=({"bridge"=$br;"vlan-ids"=[:tonum $vid];"tagged"=[$cfmKeys $tg];"untagged"=[$cfmKeys $ut]})
   }
+}
+
+# --- Umschaltbare Ports (DP1.4): Skripte cfm-port-<name>-normal/-alt/-toggle, optional am Mode- oder Reset-Taster ---
+#     Die Skripte schalten nur diesen Port um (Rumpf lib/base.portsw.rsc, DG4.6), ohne Apply und ohne Manager -
+#     auch vom Taster aus. Die Werte je Zustand rechnet der Apply hier vor; jeder Apply schreibt sie neu.
+:local btn ""
+:local btk ""
+:global cfmPortBtn
+:if ([:len $psw] > 0) do={
+  :local body [$cfmBody "base.portsw"]
+  :foreach nm,x in=$psw do={
+    :local c ""
+    :foreach s in={"normal";"alt"} do={
+      :local sp [:tostr ($x->$s)]
+      :local pr [$cfmProfile $sp]
+      :local tl ""
+      :foreach vid,m in=($pr->"tag") do={ :if ($m = 1) do={ :if ([:len $tl] > 0) do={ :set tl ($tl . ",") }; :set tl ($tl . $vid) } }
+      :local u [:tostr ($pr->"untag")]
+      :local pv 1
+      :if ([:len $u] > 0) do={ :set pv [:tonum $u] }
+      :local bg "no"
+      :if (($pr->"edge") = "yes") do={ :set bg "yes" }
+      :local isoP ([:len $u] > 0 and [:typeof ($iso->$u)] != "nothing" and [:len $tl] = 0)
+      :if ([:len $c] > 0) do={ :set c ($c . ";") }
+      :set c ($c . "\"" . $s . "\"={\"pv\"=" . $pv . ";\"ft\"=\"" . ($pr->"frame") . "\";\"ed\"=\"" . ($pr->"edge") . "\";\"bg\"=\"" . $bg . "\";\"tg\"=\"" . $tl . "\";\"ut\"=\"" . $u . "\";\"iso\"=" . [:tostr $isoP] . ";\"spec\"=\"" . $sp . "\"}")
+    }
+    :local sf ($cfmDir . "/port-" . $nm . ".txt")
+    :foreach act in={"normal";"alt";"toggle"} do={
+      :local src ("# cfm (DP1.4): Port " . ($x->"port") . " (" . $nm . ") " . $act . " - jeder Apply schreibt es neu\n")
+      :set src ($src . ":local st \"" . $act . "\"\n:local nm \"" . $nm . "\"\n:local p \"" . ($x->"port") . "\"\n:local br \"" . $br . "\"\n:local sf \"" . $sf . "\"\n:local hw " . [:tostr $hasHw] . "\n:local c {" . $c . "}\n")
+      :set src ($src . $body . "\n\$portsw st=\$st nm=\$nm p=\$p br=\$br sf=\$sf hw=\$hw c=\$c\n")
+      $cfmEnsure m="/system/script" k=("sys:port-" . $nm . "-" . $act) n=({"name"=("cfm-port-" . $nm . "-" . $act)}) p=({"name"=("cfm-port-" . $nm . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
+    }
+    :if (($x->"st") = "alt") do={ $cfmLog ("Port " . ($x->"port") . " (" . $nm . ") steht auf alt: " . ($x->"alt")) }
+    :if (($x->"button") = "mode" or ($x->"button") = "reset") do={ :set btn ("cfm-port-" . $nm . "-toggle"); :set cfmPortBtn $btn; :set btk ($x->"button") }
+  }
+}
+# Zustandsdateien entfernter Einträge löschen (ihr Port hat schon wieder sein Profil aus ports)
+:foreach f in=[/file/find where name~("^" . $cfmDir . "/port-[a-z0-9]+\\.txt\$")] do={
+  :local fn [/file/get $f name]
+  :local nm [:pick $fn ([:len $cfmDir] + 6) ([:len $fn] - 4)]
+  :if ([:typeof ($psw->$nm)] = "nothing") do={
+    :if ($cfmDry != true) do={ /file/remove $f }
+    $cfmLog ("portSwitch " . $nm . " entfernt: Zustandsdatei geloescht")
+  }
+}
+# Taster (button="mode" bzw. "reset"): startet das toggle-Skript; nicht (mehr) belegte Taster mit cfm-Belegung wieder
+# lösen. Der Reset-Taster setzt beim Einschalten weiter zurück (RouterBOOT), im Betrieb startet er nur das Skript.
+# Die Menüs fehlen auf Geräten ohne Taster (CHR) - deshalb per :parse, sonst wäre schon das Laden ein Syntaxfehler
+:foreach bk in={"mode";"reset"} do={
+  :local mn ("/system routerboard " . $bk . "-button")
+  :onerror e in={
+    :local ev [[:parse (":return [:tostr [" . $mn . " get on-event]]")]]
+    :local en [[:parse (":return [" . $mn . " get enabled]")]]
+    :if ($btk = $bk and ($ev != $btn or !$en)) do={
+      :if ($cfmDry != true) do={ :local f [:parse (":global cfmPortBtn; " . $mn . " set enabled=yes on-event=\$cfmPortBtn")]; $f }
+      $cfmLog ($bk . "-Taster startet " . $btn)
+    }
+    :if ($btk != $bk and $ev ~ "^cfm-port-") do={
+      :if ($cfmDry != true) do={ :local f [:parse ($mn . " set enabled=no on-event=\"\"")]; $f }
+      $cfmLog ($bk . "-Taster: cfm-Belegung entfernt")
+    }
+  } do={ :if ($btk = $bk) do={ $cfmWarn ($bk . "-Taster nicht belegt (" . $e . ") - " . $btn . " von Hand starten") } }
 }
 
 # --- Management: VLAN-Interface, IP, Route, DNS ---

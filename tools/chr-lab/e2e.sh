@@ -17,7 +17,17 @@ O=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR
 pass=0; fail=0
 ok()   { echo "  ✔ $*"; pass=$((pass+1)); }
 bad()  { echo "  ✘ $*"; fail=$((fail+1)); }
-step() { echo; echo "== $*"; }
+# E2E_BIS=<Schrittanfang> (z.B. "14d."): vor diesem Schritt anhalten, VMs laufen weiter (Fehlersuche von Hand).
+# E2E_DISKLOG=1: cm2 schreibt cfm-Meldungen ab Schritt 9 zusätzlich auf die Disk (e2elog.*.txt, übersteht Neustarts)
+step() {
+  if [ -n "${E2E_BIS:-}" ] && [[ "$1" == "$E2E_BIS"* ]]; then
+    echo; echo "== Halt vor: $* (E2E_BIS)"; echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; exit 0
+  fi
+  echo; echo "== $*"
+  if [ -n "${E2E_DISKLOG:-}" ] && [[ "$1" == "9."* ]]; then
+    r 3 '/system/logging/action/add name=e2edisk target=disk disk-file-name=e2elog disk-lines-per-file=10000 disk-file-count=2; /system/logging/add topics=script action=e2edisk; /system/logging/add topics=warning action=e2edisk' >/dev/null
+  fi
+}
 r()    { ./lab.sh ssh "$@" 2>&1 | tr -d '\r'; }        # r <vm> '<ros cmd>'
 put()  { printf '#!/bin/sh\necho ""\n' > "$LAB/askpass"
          SSH_ASKPASS="$LAB/askpass" SSH_ASKPASS_REQUIRE=force sftp -q -b - -P $((LABPORT+$1*10)) "${O[@]}" -i "$LAB/lab_key" admin@127.0.0.1 >/dev/null; }
@@ -27,6 +37,11 @@ waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; 
 expect() { # expect <vm> '<ros-ausdruck, der true liefert>' <beschreibung>
   if r "$1" ":put ($2)" | grep -q true; then ok "$3"; else bad "$3"; fi; }
 stat() { mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$1"'/status.dat"]->"'"$2"'")]' | tail -1; }
+# Spiegel auf cm2 sofort anstoßen: als User cfm (dessen Schlüssel braucht der SFTP-Abruf) im Hintergrund,
+# ssh-exec selbst liefe vorher in seine Zeitgrenze; Ergebnis in e2e-mir.txt auf cm2. $1 = Versuche à 4 s (120)
+mirror() { local f="e2e-mir-$RANDOM.txt"
+  mgr ':global cfmExec; $cfmExec ip=192.168.10.3 cmd=(":execute script=\"/system script run cfm-mgr; :global cfmMirT; :set cfmMirT 0; :global cfmMirror; /file/add name='"$f"' contents=(\\\"MIR=\\\" . [\\\$cfmMirror wait=yes])\"")' >/dev/null
+  for _ in $(seq 1 "${1:-120}"); do o=$(r 3 ':onerror e in={ :put ("F=" . [/file/get '"$f"' contents]) } do={ :put none }' | tail -1); [ "${o#F=}" != "$o" ] && { echo "${o#F=}"; r 3 "/file/remove $f" >/dev/null; return; }; sleep 4; done; echo MIR=timeout; }
 diag() { # diag <name>: Zustand von cm1 und sw1 nach $LAB/diag-<name>.txt (über ether1, unabhängig vom MGMT-Netz)
   { echo "### cm1 -> sw1"; r 1 ':put ("ping: " . [/ping 192.168.10.21 count=3]); /ip/arp/print where address~"192.168.10."; /interface/bridge/port/print; /interface/bridge/host/print where vid=10; /log/print where !(topics~"debug")'
     echo; echo "### sw1"; r 2 ':put ("ping: " . [/ping 192.168.10.2 count=3]); /ip/address/print; /interface/bridge/print; /interface/bridge/port/print; /interface/bridge/vlan/print; /ip/service/print; /system/script/job/print; /system/scheduler/print; /user/print; /log/print'
@@ -346,6 +361,11 @@ mgr ':global cfmPkgOk; :put ("NPK=" . [$cfmPkgOk "cfm/pkg/7.24.1/routeros-7.24.1
 out=$(mgr ':global cfmJson; :global cfmWrite; :global cfmRead; :local f "cfm/state/cm2/status.dat"; :local raw [$cfmRead $f]; :local s [$cfmJson $f]; :set ($s->"fs") 5000000; $cfmWrite $f [:serialize to=json $s]; :onerror e in={ $cfmUpgrade ver=7.24.1 host=cm2 check=yes; $cfmUpgrade ver=7.24.1 host=cm2 } do={ :put ("ERR " . $e) }; $cfmWrite $f $raw')
 echo "$out" | grep "^cm2 " | grep -q "zu wenig Platz" && echo "$out" | grep -q "cm2: zu wenig Platz für die Pakete" && echo "$out" | grep -q "kein Gerät mit genug Platz" && ok "Manager: kein Auftrag bei zu wenig Platz" || { bad "Platzprüfung am Manager"; echo "$out" | tail -4; }
 mgr ':global cfmJson; :put ("N=" . [:len [$cfmJson "cfm/meta/upgrade.dat"]])' | grep -q "N=1" && ok "nur der Auftrag für sw1 offen" || bad "Aufträge nach der Platzprüfung: $(mgr ':global cfmJson; :put [:tostr [$cfmJson "cfm/meta/upgrade.dat"]]' | tail -1 | cut -c1-80)"
+# Pakete offener Aufträge auf den Backup spiegeln (TODO 7): nach einer Beförderung laden die Geräte dort
+psz=$(r 1 ':put [/file/get [find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"] size]' | tail -1 | tr -dc 0-9)
+mirror 150 | grep -q MIR=true || echo "    (Spiegel-Lauf auf cm2 ohne Rückmeldung)"
+for _ in $(seq 1 60); do [ "$(r 3 ':onerror e in={ :put [/file/get [find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"] size] } do={ :put 0 }' | tail -1 | tr -dc 0-9)" = "$psz" ] && break; sleep 5; done
+expect 3 '[/file/get [find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"] size] = '"$psz"' and [:tostr ([:deserialize from=json [/file/get cfm/meta/upgrade.dat contents]]->"sw1"->"path")] = "cfm/pkg/7.24.1"' "cm2 (Backup): Paket des offenen Auftrags gespiegelt, Auftrag mit eigener Ablage"
 # (b) cm2: sofort -> Download, Neustart, Downgrade, Rückmeldung
 out=$(mgr '$cfmUpgrade ver=7.24.1 host=cm2')
 echo "$out" | grep -q "Auftrag cm2: downgrade auf 7.24.1 (sofort)" && ok "Auftrag cm2 (sofort)" || { bad "Auftrag cm2"; echo "$out" | tail -3; }
@@ -497,8 +517,10 @@ applied cm1 && ok "cm1 erneut angewendet (Eintrag abweichend)" || bad "cm1: $(st
 expect 1 '[/interface/wifi/security/multi-passphrase/get [find comment="cfm:mpp:iot"] passphrase] = "lab-iot-psk-1" and [:len [/log/find where message~"PPSK iot: Eintrag der normalen Passphrase an das Profil angeglichen"]] >= 1' "cm1: Rolle gleicht den Gruppeneintrag an das Profil an"
 # ppskOnly: kein Eintrag für die normale Passphrase (Probelauf zeigt das Entfernen); Prüfungen
 mgr ':global e2eWp [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eWp . ":set (\$cfmWifi->\"ssids\"->\"iot\"->\"ppskOnly\") \"yes\"\n")' >/dev/null
+# Agent auf cm1 erst frei werden lassen (Folge-Apply/Secret-Push nach dem Apply): sonst "keine Antwort vom Probelauf"
+for _ in $(seq 1 40); do r 1 ':put ([:len [/system/script/job/find where script="cfm-agent"]] + [:len [/system/scheduler/find where name~"^cfm-(apfollow|mgr-follow)"]])' | tail -1 | grep -qx 0 && break; sleep 3; done
 out=$(mgr '$cfmPlan host=cm1')
-echo "$out" | grep -q "entfernt: /interface/wifi/security/multi-passphrase mpp:iot$" && ! echo "$out" | grep -q "mpp:iot.gast$" && ok "ppskOnly: Probelauf entfernt nur den Eintrag der normalen Passphrase" || { bad "ppskOnly im Probelauf"; echo "$out" | grep -i "mpp\|Plan" | tail -5; }
+echo "$out" | grep -q "entfernt: /interface/wifi/security/multi-passphrase mpp:iot$" && ! echo "$out" | grep -q "mpp:iot.gast$" && ok "ppskOnly: Probelauf entfernt nur den Eintrag der normalen Passphrase" || { bad "ppskOnly im Probelauf"; echo "$out" | grep -i "mpp\|Plan\|Probelauf\|Fehler\|failure" | tail -5; echo "$out" | tail -3; }
 out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ssids\"->\"main\"->\"ppskOnly\") \"yes\"\n:set (\$cfmWifi->\"ssids\"->\"guest\"->\"ppskOnly\") \"ja\"\n"); :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }')
 echo "$out" | grep -q "ERR wifi.rsc: SSID main: ppskOnly braucht mindestens einen Eintrag unter ppsk" && echo "$out" | grep -q "ERR wifi.rsc: SSID main: die Master-SSID braucht eine eigene Passphrase" && echo "$out" | grep -q "ERR wifi.rsc: SSID guest: ppskOnly = yes oder no" && ok "\$cfmCheck: ppskOnly an Master, ohne ppsk, falscher Wert" || { bad "Prüfung ppskOnly"; echo "$out" | grep ERR | tail -4; }
 mgr ':global e2eWp; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eWp' >/dev/null
@@ -558,6 +580,27 @@ expect 2 '[/interface/bridge/get [find comment~"^cfm:br( |\$)"] priority] = "0xa
 out=$(mgr '$cfmPlan host=sw1')
 echo "$out" | grep -q "priority" && { bad "stpPrio 0xA000 erscheint im Probelauf als Änderung"; echo "$out" | grep priority; } || ok "stpPrio in Großbuchstaben ohne Scheinänderung"
 mgr ':global e2eP; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eP' >/dev/null
+# Umschaltbarer Port (DP1.4): Ersatz-Port "dock" (EoIP, CHR hat keine freien Ports), normal hybrid:20, alt access:40;
+# Skripte schalten ohne Apply, der nächste Apply übernimmt den Zustand, button=reset warnt auf CHR (kein Taster)
+r 2 '/interface/eoip/add name=dock remote-address=127.0.0.2 tunnel-id=77 local-address=127.0.0.1' >/dev/null
+mgr ':global e2eP [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eP . ":set (\$cfmHost->\"ports\"->\"dock\") \"hybrid:20\"\n:set (\$cfmHost->\"portSwitch\") {\"dock\"={\"port\"=\"dock\";\"alt\"=\"access:40\";\"button\"=\"reset\"}}\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" portSwitch" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (portSwitch dock) angewendet" || { bad "sw1 Apply v$rv (portSwitch)"; r 2 '/log/print where message~"^cfm: "' | tail -5; }
+expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 20 and [:len [/system/script/find where name~"^cfm-port-dock-(normal|alt|toggle)\$"]] = 3 and [:len [/log/find where message~"reset-Taster nicht belegt"]] >= 1' "sw1: Dock-Port normal (PVID 20), drei Skripte, Warnung ohne Reset-Taster (DP1.4)"
+r 2 '/system script run cfm-port-dock-toggle' >/dev/null
+expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 40 and [/interface/bridge/port/get [find interface=dock] frame-types] = "admit-only-untagged-and-priority-tagged" and [:tostr [/interface/bridge/vlan/get [find comment="cfm:bv:40"] untagged]] ~ "dock" and !([:tostr [/interface/bridge/vlan/get [find comment="cfm:bv:30"] tagged]] ~ "dock") and [/file/get cfm/port-dock.txt contents] = "alt"' "sw1: toggle schaltet auf access:40 (PVID, VLAN-Tabelle, Zustandsdatei)"
+applied sw1 && expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 40' "sw1: Apply behält den Zustand alt bei" || bad "sw1 Apply mit Port auf alt"
+stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Apply nach dem Umschalten ohne Änderungen" || bad "portSwitch nicht idempotent: $(stat sw1 stats)"
+r 2 '/system script run cfm-port-dock-normal' >/dev/null
+expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 20 and [:tostr [/interface/bridge/vlan/get [find comment="cfm:bv:30"] tagged]] ~ "dock" and !([:tostr [/interface/bridge/vlan/get [find comment="cfm:bv:40"] untagged]] ~ "dock") and [/file/get cfm/port-dock.txt contents] = "normal"' "sw1: normal stellt hybrid:20 wieder her"
+applied sw1 && stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Apply nach dem Zurückschalten ohne Änderungen" || bad "portSwitch normal nicht idempotent: $(stat sw1 stats)"
+out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eP . ":set (\$cfmHost->\"portSwitch\") {\"Dock\"={\"port\"=\"ether9\";\"alt\"=\"nix:1\";\"button\"=\"ja\"}}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
+echo "$out" | grep -q "portSwitch Dock: Name nur a-z0-9" && echo "$out" | grep -q "Port ether9 hat kein Profil" && echo "$out" | grep -q "button = mode, reset oder no" && echo "$out" | grep -q "portSwitch Dock: unbekanntes Port-Profil nix:1" && ok "Prüfung: portSwitch (Name, Port, Profil, button)" || { bad "Prüfung portSwitch"; echo "$out" | tail -5; }
+mgr ':global e2eP; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eP' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne portSwitch" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (ohne portSwitch) angewendet" || bad "sw1 Apply v$rv (ohne portSwitch)"
+expect 2 '[:len [/system/script/find where name~"^cfm-port-"]] = 0 and [:len [/file/find where name="cfm/port-dock.txt"]] = 0 and [:len [/interface/bridge/port/find where interface=dock]] = 0' "sw1: ohne portSwitch Skripte, Zustandsdatei und Port weg"
+r 2 '/interface/eoip/remove [find name=dock]' >/dev/null
 out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=([/file/get [/file/find name="cfm/work/wifi.rsc"] contents] . ":set (\$cfmWifi->\"ppsk\"->\"main\") {\"x\"={\"vlan\"=20}}\n:set (\$cfmWifi->\"ssids\"->\"cap\") {\"ssid\"=\"x\";\"vlan\"=20}\n:set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5955\";\"width\"=\"20mhz\"}\n"); :foreach e in=([$cfmCheck]->"err") do={ :put $e }')
 echo "$out" | grep -q "PPSK auf SSID main braucht sec=wpa2-psk" && ok "Prüfung: PPSK nur mit WPA2-PSK" || { bad "PPSK/WPA3 nicht erkannt"; echo "$out" | tail -3; }
 echo "$out" | grep -q "cap ist reserviert" && ok "Prüfung: SSID-Schlüssel cap reserviert (DW1.3)" || { bad "SSID-Schlüssel cap nicht erkannt"; echo "$out" | tail -3; }
@@ -620,6 +663,11 @@ sleep 80
 mgr '$cfmSniffTick' >/dev/null
 expect 1 '![/tool/sniffer/get running] and [:len [/file/find where name~"^cfm/sniff/cm1-.*\\.pcap\$"]] = 1 and [:len [/file/find where name="cfm/meta/sniff.dat"]] = 0 and [:len [/system/scheduler/find where name="cfm-sniff-stop"]] = 0' "cm1: Mitschnitt auf dem Manager selbst beendet, Datei in cfm/sniff/, Auftrag erledigt"
 r 1 '/file/remove [find where name~"^cfm/sniff/"]' >/dev/null
+# mirror= (TODO 75): CHR hat keinen Switch-Chip - beide Varianten scheitern, nichts startet
+out=$(mgr ':onerror e in={ $cfmSniff host=sw1 mac='"$smac"' dauer=15s max=1 mirror=ether2 } do={ :put ("ERR " . $e) }')
+echo "$out" | grep -q "Spiegeln von ether2 auf sw1 geht nicht" && ok "\$cfmSniff mirror=: ohne Switch-Chip klare Meldung" || { bad "\$cfmSniff mirror ohne Switch-Chip"; echo "$out" | tail -3; }
+expect 2 '![/tool/sniffer/get running] and [:len [/system/scheduler/find where name="cfm-sniff-stop"]] = 0' "sw1: ohne Spiegel kein Mitschnitt gestartet"
+expect 1 '[:len [/file/find where name="cfm/meta/sniff.dat"]] = 0' "cm1: kein Auftrag ohne Spiegel"
 
 step "14b. Bestandsgeräte: Hostfile gw/dns/ntp/cpuVlans/bridgeFrames (cm2), Enroll ohne Apply (sw1)"
 # cm2 ist kein Router und per Bootstrap aufgenommen: prüft zugleich, dass die Rolle base die
@@ -708,7 +756,9 @@ agentwait 1 "$rv" cm1 || true; agentwait 2 "$rv" sw1 || true
 expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "yes|true" and [:len [/log/find where message~"slaves-static umgestellt - zweiter Apply folgt"]] >= 1' "cm2: slaves-static an, zweiter Apply angekündigt (DW1.8.1)"
 expect 3 '[:typeof ([:deserialize from=json [/file/get cfm/state.json contents]]->"iso"->"40")] != "nothing" and [:len [/interface/list/find where name="cfm-iso"]] = 1' "cm2: Agent merkt sich das isolierte VLAN 40 (DP3.1.1)"
 if [ "${conn:-0}" != 0 ]; then
-  for _ in $(seq 1 30); do r 3 ':put [:len [/system/scheduler/find where name="cfm-apfollow"]]' | tail -1 | grep -qx 0 && break; sleep 4; done
+  # bis Scheduler und Agent-Läufe ruhen: auf 7.25.1 stellt der zweite Apply slaves-static gelegentlich noch einmal
+  # um (TODO, Bekannte Fehler) - dann folgt eine weitere Runde
+  for _ in $(seq 1 60); do r 3 ':put ([:len [/system/scheduler/find where name="cfm-apfollow"]] + [:len [/system/script/job/find where script="cfm-agent"]])' | tail -1 | grep -qx 0 && break; sleep 4; done
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow"]] = 0 and [:len [/log/find where message~"zweiter Apply nach slaves-static"]] >= 1' "cm2: CAP verbunden -> zweiter Apply von selbst, Scheduler weg"
 else
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow" and interval=30s]] = 1' "cm2: Scheduler cfm-apfollow wartet auf die CAPsMAN-Verbindung"
@@ -872,13 +922,19 @@ grep '"ev": "apply", "state": "on"' "$NL" | grep -q '"key": "apply:sw1"' && grep
 expect 1 '[:tostr ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"roso")] = "v7.99.1"' "notify.dat: roso v7.99.1 offen"
 rost 7.99.2 >/dev/null
 nwait 'RouterOS 7.99.2 (stable)' && grep -n '"ev": "ros"' "$NL" | grep -A1 '"msg": "RouterOS 7.99.1 überholt durch 7.99.2"' | grep -q '"state": "on", "msg": "RouterOS 7.99.2' && grep 'überholt durch 7.99.2' "$NL" | grep -q '"state": "off".*"key": "ros:7.99.1", "ver": "7.99.1"' && ok "neuere Version: erst off für 7.99.1 (überholt), dann on für 7.99.2" || { bad "überholte Version"; grep '"ev": "ros"' "$NL" | tail -3 | cut -c1-200; }
-mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso") "v7.0"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null
+mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso") "v7.0"; :set ($j->"rosv") "v7.0"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null
 nwait 'RouterOS 7.0 auf allen Geräten' && grep 'RouterOS 7.0 auf allen Geräten' "$NL" | grep -q '"state": "off".*"key": "ros:7.0", "ver": "7.0"' && ok "alle Geräte aktuell: off mit key ros:7.0 im nächsten Tick" || { bad "off für erledigte Version"; grep '"ev": "ros"' "$NL" | tail -2 | cut -c1-200; }
 expect 1 '[:tostr ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"roso")] = ""' "notify.dat: roso danach leer"
 mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso"); :set ($j->"rosv") "v7.1"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null
 nwait 'RouterOS 7.1 auf allen Geräten' && ok "Übergang vom Stand vor TODO 64: zuletzt gemeldete Version (rosv) gilt als offen, off" || { bad "Übergang rosv -> roso"; grep '"ev": "ros"' "$NL" | tail -2 | cut -c1-200; }
 n1=$(grep -c '"ev": "ros"' "$NL"); mgr ':global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null; sleep 2
 [ "$(grep -c '"ev": "ros"' "$NL")" = "$n1" ] && ok "danach keine weitere ros-Meldung" || bad "weitere ros-Meldung: $(grep '"ev": "ros"' "$NL" | tail -1 | cut -c1-160)"
+# später aufgenommenes Gerät mit älterer Version (TODO 64): zuletzt gesehene Version 7.99.3 ohne offene Meldung,
+# Geräte älter -> "on" im nächsten Tick, ohne upgrade.mikrotik.com; danach wieder auf 7.1 (alle aktuell)
+mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso") ""; :set ($j->"rosv") "v7.99.3"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])' >/dev/null
+nwait 'RouterOS 7.99.3 (stable)' && grep 'RouterOS 7.99.3' "$NL" | grep -q '"state": "on".*älter: .*"key": "ros:7.99.3"' && ok "älteres Gerät nach dem off: Meldung wieder offen (TODO 64)" || { bad "keine erneute ros-Meldung"; grep '"ev": "ros"' "$NL" | tail -1 | cut -c1-200; }
+expect 1 '[:tostr ([:deserialize from=json [/file/get cfm/meta/notify.dat contents]]->"roso")] = "v7.99.3"' "notify.dat: roso v7.99.3 wieder offen"
+mgr ':global cfmJson; :global cfmWrite; :local j [$cfmJson "cfm/meta/notify.dat"]; :set ($j->"roso") ""; :set ($j->"rosv") "v7.1"; $cfmWrite "cfm/meta/notify.dat" [:serialize to=json $j]' >/dev/null
 # Empfänger weg: nichts gilt als gemeldet, der nächste Tick holt es nach
 kill $npid 2>/dev/null; wait $npid 2>/dev/null; n0=$(grep -c . "$NL")
 setst >/dev/null
@@ -886,11 +942,6 @@ expect 1 '[:len [/log/find where message~"^cfm: Meldung nicht zugestellt"]] >= 1
 sink; setst >/dev/null
 nwait "$ON" 8 && ok "Empfänger zurück: Meldungen nachgeholt" || bad "nicht nachgeholt: $(grep -c "$ON" "$NL")"
 rest >/dev/null; nwait "$OFF" 8 || bad "wieder ok nach dem Nachholen fehlt"
-# Spiegel auf cm2 sofort anstoßen: als User cfm (dessen Schlüssel braucht der SFTP-Abruf) im Hintergrund,
-# ssh-exec selbst liefe vorher in seine Zeitgrenze; Ergebnis in e2e-mir.txt auf cm2
-mirror() { local f="e2e-mir-$RANDOM.txt"
-  mgr ':global cfmExec; $cfmExec ip=192.168.10.3 cmd=(":execute script=\"/system script run cfm-mgr; :global cfmMirT; :set cfmMirT 0; :global cfmMirror; /file/add name='"$f"' contents=(\\\"MIR=\\\" . [\\\$cfmMirror])\"")' >/dev/null
-  for _ in $(seq 1 60); do o=$(r 3 ':onerror e in={ :put ("F=" . [/file/get '"$f"' contents]) } do={ :put none }' | tail -1); [ "${o#F=}" != "$o" ] && { echo "${o#F=}"; r 3 "/file/remove $f" >/dev/null; return; }; sleep 4; done; echo MIR=timeout; }
 # Backup überwacht den Primary (ev primary, level error): auf cm2 als User cfm, letzter Spiegel-Abruf bzw.
 # Uhr künstlich versetzt; der echte Tick von cm2 kann dazwischen funken, deshalb nur auf Inhalte prüfen
 bk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.3 cmd=("/system script run cfm-mgr; :global cfmMirLast; :set cfmMirLast ([:tonsec [:timestamp]] / 1000000000 + '"$1"'); :global cfmNotifyBackupTick; :put (\"NB=\" . [\$cfmNotifyBackupTick skew='"$2"'])")]; :put ($r->"output")' | grep -o 'NB=[0-9]*'; }

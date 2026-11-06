@@ -1,9 +1,12 @@
 # ============================================================
 # cfm lib/mgr-sniff.rsc – Manager-Funktionen: Mitschnitt einzelner Geräte (MACs) auf einem Router
-#   $cfmSniff host=<n> mac=<MAC[,MAC…]>|lease=<Name[,Name…]> [dauer=2h] [max=20] [iface=<Interface>]
+#   $cfmSniff host=<n> mac=<MAC[,MAC…]>|lease=<Name[,Name…]> [dauer=2h] [max=20] [iface=<Interface>] [mirror=<Port>]
 #                                   startet /tool/sniffer auf <n> (Rolle router oder manager: dort läuft der
 #                                   Verkehr der Clients ins Internet durch), nur Pakete dieser MACs, in eine Datei
 #                                   auf dem Gerät (max MB); nach dauer stoppt das Gerät selbst
+#                                   mirror=<Port>: Verkehr dieses Ports zusätzlich per Switch-Chip zur CPU spiegeln
+#                                   (TODO 75) - sonst fehlt, was der Chip am Router vorbei vermittelt (Gerät brückt
+#                                   nur, Router ist z.B. die Fritz!Box); am Ende zurückgebaut
 #   $cfmSniff host=<n> stop=yes     vorzeitig beenden
 #   $cfmSniff                       laufende und abgeholte Mitschnitte
 #   $cfmSniffTick                   (Manager-Tick) holt beendete Mitschnitte nach cfm/sniff/<n>-<Zeit>.pcap
@@ -29,7 +32,9 @@
   :if (!(("," . [:tostr ($d->"role")] . ",") ~ ",(router|manager),")) do={ :error ("cfmSniff: " . $host . " hat weder Rolle router noch manager - dort läuft der Verkehr der Clients nicht durch") }
   :local ip [:tostr ($d->"ip")]
   :if ($stop = "yes") do={
-    :local r [$cfmExec ip=$ip cmd=("/tool/sniffer/stop; /system/scheduler/remove [find where name=\"cfm-sniff-stop\"]; :put ok")]
+    :local um ""
+    :if ([:typeof ($jobs->$host)] = "array") do={ :set um [:tostr ($jobs->$host->"um")] }
+    :local r [$cfmExec ip=$ip cmd=("/tool/sniffer/stop; /system/scheduler/remove [find where name=\"cfm-sniff-stop\"]; " . $um . "; :put ok")]
     :if (!(($r->"output") ~ "ok")) do={ :error ("cfmSniff: " . $host . " nicht erreichbar: " . [:pick ($r->"output") 0 120]) }
     :if ([:typeof ($jobs->$host)] = "array") do={ :set ($jobs->$host->"bis") [$cfmNow]; $cfmWrite $jf [:serialize to=json $jobs] }
     :put ("Mitschnitt auf " . $host . " beendet - der nächste Manager-Tick holt ihn ab (oder \$cfmSniffTick)")
@@ -47,7 +52,7 @@
       :set ($macs->[:len $macs]) $hit
     }
   }
-  :if ([:len $macs] = 0) do={ :error "Aufruf: \$cfmSniff host=<n> mac=<MAC[,MAC]>|lease=<Name[,Name]> [dauer=2h] [max=20] [iface=<Interface>]" }
+  :if ([:len $macs] = 0) do={ :error "Aufruf: \$cfmSniff host=<n> mac=<MAC[,MAC]>|lease=<Name[,Name]> [dauer=2h] [max=20] [iface=<Interface>] [mirror=<Port>]" }
   :if ([:len $macs] > 16) do={ :error "cfmSniff: höchstens 16 MACs (Grenze von /tool/sniffer)" }
   :foreach m in=$macs do={ :if (!($m ~ "^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}\$")) do={ :error ("cfmSniff: " . $m . " ist keine MAC-Adresse") } }
   :local du 7200
@@ -82,13 +87,44 @@
   :set c ($c . "/system/scheduler/remove [find where name=\"cfm-sniff-stop\"]; ")
   :set c ($c . "/system/scheduler/add name=\"cfm-sniff-stop\" interval=" . $du . "s comment=\"cfm-sys:sniff\" on-event=\"/tool/sniffer/stop; /system/scheduler/remove [find where name=\\\"cfm-sniff-stop\\\"]\"; ")
   :set c ($c . "/tool/sniffer/start; :put (\"OK \" . \$o) }")
+  # Spiegeln zur CPU (TODO 75, auf Hardware ungetestet): zwei Varianten je nach Switch-Chip - CRS3xx/5xx ab 7.15
+  # je Port (mirror-ingress/-egress, Ziel switch1-cpu mit mirror-target), ältere Chips (QCA/Atheros, MT7621) am
+  # Switch (mirror-source, mirror-target=cpu). Fehlt das Menü oder die Eigenschaft, scheitert der Befehl schon beim
+  # Einlesen - deshalb nacheinander probieren. Vorher belegte Spiegel nicht anfassen (Handeinstellung)
+  :local um ""
+  :if ([:len $mirror] > 0) do={
+    :local mp [:tostr $mirror]
+    :if (!($mp ~ "^[A-Za-z0-9._-]+\$")) do={ :error ("cfmSniff: mirror=" . $mp . " ist kein Port-Name") }
+    :local v ({
+      {"set"=("/interface ethernet switch port set [find where name=\"" . $mp . "\"] mirror-ingress=yes mirror-egress=yes; /interface ethernet switch port set [find where name~\"cpu\"] mirror-target=yes");
+       "chk"=(":if ([:len [/interface ethernet switch port find where name=\"" . $mp . "\"]] = 0) do={ :error kein-port }; :if ([:len [/interface ethernet switch port find where mirror-target=yes or mirror-ingress=yes or mirror-egress=yes]] > 0) do={ :error belegt }");
+       "um"=("/interface ethernet switch port set [find where name=\"" . $mp . "\"] mirror-ingress=no mirror-egress=no; /interface ethernet switch port set [find where name~\"cpu\"] mirror-target=no")};
+      {"set"=("/interface ethernet switch set [find] mirror-source=" . $mp . " mirror-target=cpu");
+       "chk"=(":if ([:tostr [/interface ethernet switch get [:pick [find] 0] mirror-source]] != \"none\") do={ :error belegt }");
+       "um"="/interface ethernet switch set [find] mirror-source=none mirror-target=none"}
+    })
+    :local why ""
+    :foreach x in=$v do={
+      :if ([:len $um] = 0) do={
+        :local r [$cfmExec ip=$ip cmd=(($x->"chk") . "; " . ($x->"set") . "; :put MIRROK")]
+        :local o [:tostr ($r->"output")]
+        :if ($o ~ "MIRROK") do={ :set um ($x->"um") } else={ :set why ($why . " | " . [:pick $o 0 80]) }
+        :if ($o ~ "belegt") do={ :error ("cfmSniff: auf " . $host . " ist schon ein Spiegel eingestellt - erst von Hand loesen") }
+      }
+    }
+    :if ([:len $um] = 0) do={ :error ("cfmSniff: Spiegeln von " . $mp . " auf " . $host . " geht nicht (kein Switch-Chip, Port nicht am Chip oder andere RouterOS-Eigenschaften):" . $why) }
+    :log info ("cfm: Mitschnitt " . $host . ": " . $mp . " wird zur CPU gespiegelt")
+  }
   :local r [$cfmExec ip=$ip cmd=$c]
   :local out [:tostr ($r->"output")]
-  :if (!($out ~ "OK ")) do={ :error ("cfmSniff: Start auf " . $host . " gescheitert: " . [:pick $out 0 160]) }
+  :if (!($out ~ "OK ")) do={
+    :if ([:len $um] > 0) do={ $cfmExec ip=$ip cmd=$um }
+    :error ("cfmSniff: Start auf " . $host . " gescheitert: " . [:pick $out 0 160])
+  }
   :local p [:find $out "OK "]
   :local od [:pick $out ($p + 3) [:len $out]]
   :foreach t in={"\r";"\n"} do={ :local q [:find $od $t]; :if ([:typeof $q] = "num") do={ :set od [:pick $od 0 $q] } }
-  :set ($jobs->$host) ({"bis"=([$cfmNow] + $du);"mac"=$ml;"dir"=$od;"max"=$mx;"self"=$self;"fn"=$fn})
+  :set ($jobs->$host) ({"bis"=([$cfmNow] + $du);"mac"=$ml;"dir"=$od;"max"=$mx;"self"=$self;"fn"=$fn;"um"=$um})
   $cfmWrite $jf [:serialize to=json $jobs]
   :log info ("cfm: Mitschnitt auf " . $host . " gestartet (" . $ml . ", " . ($du / 60) . " min, max " . $mx . " MB)")
   :put ("Mitschnitt auf " . $host . " läuft " . ($du / 60) . " min (" . $ml . ", höchstens " . $mx . " MB). Danach holt ihn der Manager-Tick nach " . $b . "/sniff/; vorzeitig beenden: \$cfmSniff host=" . $host . " stop=yes")
@@ -118,16 +154,17 @@
       :local dst ($b . "/sniff/" . $h . "-" . $ts . "-" . [:pick $tm 0 2] . [:pick $tm 3 5] . ".pcap")
       :local ok false
       :if (($j->"self") = true) do={
-        # auf dem Manager selbst: Datei liegt schon unter sniff/, nur stoppen
+        # auf dem Manager selbst: Datei liegt schon unter sniff/, nur stoppen (und den Spiegel zurückbauen)
         /tool/sniffer/stop
         /system/scheduler/remove [find where name="cfm-sniff-stop"]
+        :if ([:len [:tostr ($j->"um")]] > 0) do={ $cfmExec ip=$ip cmd=[:tostr ($j->"um")] }
         :log info ("cfm: Mitschnitt " . $h . " fertig: " . $od . "/" . [:tostr ($j->"fn")])
         :set n ($n + 1)
         :set ($fertig->[:len $fertig]) $h
       } else={
       :if ([:len $ip] > 0) do={
         # Sniffer sicher stoppen (er schreibt die Datei dabei zu Ende), dann abholen und dort löschen
-        $cfmExec ip=$ip cmd=("/tool/sniffer/stop; /system/scheduler/remove [find where name=\"cfm-sniff-stop\"]")
+        $cfmExec ip=$ip cmd=("/tool/sniffer/stop; /system/scheduler/remove [find where name=\"cfm-sniff-stop\"]; " . [:tostr ($j->"um")])
         :onerror e in={ /tool/fetch url=("sftp://" . $ip . "/" . $od . "/sniff.pcap") user="cfm" dst-path=$dst as-value; :set ok true } do={ :log warning ("cfm: Mitschnitt " . $h . " nicht abgeholt: " . $e) }
       }
       :if ($ok) do={

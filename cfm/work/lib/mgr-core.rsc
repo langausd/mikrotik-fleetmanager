@@ -53,7 +53,7 @@
 #                                      Gerät suchen (MAC, IP, Name, Port, AP/SSID/Signal), live
 #   $cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]
 #                                      Kanal-Scan aller APs nacheinander, Pin-Vorschlag für 2,4 GHz
-#   $cfmSniff host=<router> mac=<MAC,..>|lease=<Name,..> [dauer=2h] [max=20] [iface=..]
+#   $cfmSniff host=<router> mac=<MAC,..>|lease=<Name,..> [dauer=2h] [max=20] [iface=..] [mirror=<Port>]
 #                                      Mitschnitt nur dieser Geräte, der Tick holt ihn nach sniff/ (DU2.3)
 #   $cfmSniff host=<n> stop=yes | $cfmSniff   vorzeitig beenden | Übersicht
 #   $cfmBootstrap                      bootstrap.rsc für neue Geräte erzeugen
@@ -145,7 +145,7 @@
 :global cfmInvLoad do={
   :global cfmMB; :global cfmInv
   :set cfmInv ({})
-  :onerror e in={ /import file-name=([$cfmMB] . "/meta/inventory.rsc") verbose=no } do={ :log warning ("cfm: inventory.rsc: " . $e) }
+  :onerror e in={ [[:parse [/file/get ([$cfmMB] . "/meta/inventory.rsc") contents]]] } do={ :log warning ("cfm: inventory.rsc: " . $e) }
   :return $cfmInv
 }
 :global cfmInvSave do={
@@ -203,17 +203,19 @@
   # ($cfmNet, $cfmTarget). Global sind sie sonst erst nach einem Apply des Agents - direkt nach
   # Bootstrap oder Neustart fehlen sie, und RouterOS meldet den Aufruf einer unbekannten Funktion
   # nicht, sondern liefert stillschweigend "nothing" (siehe docs/ROUTEROS-EIGENHEITEN.md).
-  :onerror e in={ /import file-name=($d . "/lib/lib.rsc") verbose=no } do={}
-  :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ /import file-name=($d . "/" . $f) verbose=no }
+  # Laden per :parse statt /import: /import schreibt je Datei "Script file loaded and executed successfully" ins
+  # Terminal (bei $cfmCheck/$cfmPlan Dutzende Zeilen); /file/get liest bis ~60 KB - mehr lässt $cfmRelease nicht zu
+  :onerror e in={ [[:parse [/file/get ($d . "/lib/lib.rsc") contents]]] } do={}
+  :foreach f in={"global.rsc";"vlans.rsc";"profiles.rsc";"wifi.rsc";"wireguard.rsc"} do={ [[:parse [/file/get ($d . "/" . $f) contents]]] }
   # leases.rsc (DN1.1) ist optional: ältere Versionen im Archiv haben sie nicht
   :global cfmLeases; :set cfmLeases ({})
-  :onerror e in={ /import file-name=($d . "/leases.rsc") verbose=no } do={}
+  :onerror e in={ [[:parse [/file/get ($d . "/leases.rsc") contents]]] } do={}
   # mlag.rsc (DP2.2) ebenso optional
   :global cfmMlag; :set cfmMlag ({})
-  :onerror e in={ /import file-name=($d . "/mlag.rsc") verbose=no } do={}
+  :onerror e in={ [[:parse [/file/get ($d . "/mlag.rsc") contents]]] } do={}
   # dns.rsc (DN3.1) ebenso optional
   :global cfmDns; :set cfmDns ({})
-  :onerror e in={ /import file-name=($d . "/dns.rsc") verbose=no } do={}
+  :onerror e in={ [[:parse [/file/get ($d . "/dns.rsc") contents]]] } do={}
   :if ($hold != "yes") do={ :set cfmMgrData 0 }
   :return $v
 }
@@ -316,14 +318,14 @@
     :local how ""
     :local mf ($b . "/" . $src . "/lib/mgr-mf.rsc")
     :if ([$cfmFileEx $mf]) do={
-      :onerror e in={ /import file-name=$mf verbose=no; :set how $src } do={ :log warning ("cfm: Manifest-Regeln aus " . $src . " nicht geladen: " . $e) }
+      :onerror e in={ [[:parse [/file/get $mf contents]]]; :set how $src } do={ :log warning ("cfm: Manifest-Regeln aus " . $src . " nicht geladen: " . $e) }
     }
     :if ([:len $how] = 0 and [:len [/system/script/find where name="cfm-mgr-mf"]] > 0) do={
       :onerror e in={ /system/script/run cfm-mgr-mf; :set how "installiert" } do={}
     }
     :if ([:len $how] = 0) do={
       :local lf ($b . "/archive/v" . ($rg->"latest") . "/lib/mgr-mf.rsc")
-      :if ([$cfmFileEx $lf]) do={ :onerror e in={ /import file-name=$lf verbose=no; :set how "neueste" } do={} }
+      :if ([$cfmFileEx $lf]) do={ :onerror e in={ [[:parse [/file/get $lf contents]]]; :set how "neueste" } do={} }
     }
     :global cfmMfWant
     :if ([:len $how] = 0 or [:typeof $cfmMfWant] = "nothing") do={
@@ -406,7 +408,7 @@
   # Der Prüfer kommt aus work/ (TODO 21): Nach einem Framework-Update kennt der installierte die
   # neuen Kennzeichen noch nicht und hielte das erste Release auf. Lädt die neue Fassung nicht,
   # prüft die installierte. Den WLAN-Teil (lib/mgr-checkw.rsc) lädt $cfmCheck selbst aus work/.
-  :onerror e in={ /import file-name=($b . "/work/lib/mgr-check.rsc") verbose=no } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
+  :onerror e in={ [[:parse [/file/get ($b . "/work/lib/mgr-check.rsc") contents]]] } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
   :global cfmCheck
   :local ck [$cfmCheck]
   :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
@@ -440,7 +442,10 @@
   }
   $cfmWrite ($b . "/meta/rings.dat") [:serialize to=json $rg]
   :local n [$cfmManifests]
-  :put ("Release v" . $v . " erstellt (" . [:len $idx] . " Dateien, " . $n . " Manifeste) -> Ring 0" . [:tostr $msg])
+  # Kommentar mit Leerzeichen absetzen (msg="Text" wie msg=" Text")
+  :local mt [:tostr $msg]
+  :if ([:len $mt] > 0 and [:pick $mt 0 1] != " ") do={ :set mt (" " . $mt) }
+  :put ("Release v" . $v . " erstellt (" . [:len $idx] . " Dateien, " . $n . " Manifeste) -> Ring 0" . $mt)
   :log info ("cfm: Release v" . $v . " " . [:tostr $msg])
   :local pr [$cfmArchivePrune]
   :if ($pr > 0) do={ :put ("Archiv: " . $pr . " alte Versionen gelöscht") }

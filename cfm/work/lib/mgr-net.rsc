@@ -52,7 +52,7 @@
     :local hf ($b . "/work/hosts/" . $name . ".rsc")
     :if ([$cfmFileEx $hf]) do={
       :set cfmHost ({})
-      :onerror e in={ /import file-name=$hf verbose=no } do={}
+      :onerror e in={ [[:parse [/file/get $hf contents]]] } do={}
       :local ex ($cfmHost->"links")
       :if ([:typeof $ex] = "array") do={
         :local nb ([$cfmJson ($b . "/state/" . $name . "/status.dat")]->"nb")

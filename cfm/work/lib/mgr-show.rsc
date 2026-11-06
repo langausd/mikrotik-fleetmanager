@@ -27,7 +27,7 @@
   $cfmLoadData ver=$v hold="yes"
   :set cfmHost ({})
   :local hasHf [$cfmFileEx ($dir . "/hosts/" . $host . ".rsc")]
-  :if ($hasHf) do={ /import file-name=($dir . "/hosts/" . $host . ".rsc") verbose=no }
+  :if ($hasHf) do={ [[:parse [/file/get ($dir . "/hosts/" . $host . ".rsc") contents]]] }
   :local rl ("," . [:tostr ($d->"role")] . ",")
   :local ring [:tostr ($d->"ring")]
   :if ([:len $ring] = 0) do={ :set ring "2" }

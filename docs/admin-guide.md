@@ -561,6 +561,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
 | `bonds` | Link-Bündel (DP2.1): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
+| `portSwitch` | umschaltbarer Port (DP1.4), z.B. Dockingstation: `{"dock"={"port"="ether5";"alt"="access:175";"button"="reset"}}`. Normal gilt das Profil aus `ports`/`portDefault`; die Skripte `cfm-port-dock-alt`, `-normal` und `-toggle` (Terminal: `/system script run cfm-port-dock-toggle`) schalten nur diesen Port in Sekunden um, ohne Release, und trennen danach den Link für 3 s (das Gerät am Port holt eine neue Adresse); jeder Apply behält den Zustand (`<cfm>/port-dock.txt`). `button="mode"` bzw. `"reset"`: der Mode- bzw. Reset-Taster des Geräts startet `-toggle` (ein Eintrag je Gerät; beim Einschalten gehalten setzt der Reset-Taster weiter zurück). Im alt-Zustand fehlen dem Port die übrigen VLANs – z.B. MGMT für den Admin-Laptop am Dock (Rückfall WLAN/Konsole). Entfernen: Eintrag löschen, Release |
 | `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe DP1.2). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
@@ -1750,7 +1751,8 @@ Schlüssel übernommen werden, ist nicht getestet. Andernfalls musst du die Ger�
   den neuen Manager-Schlüssel von Hand (`meta/keys/<manager>.pem`, umwandeln mit
   `ssh-keygen -i -m PKCS8 -f <datei>`). Der Backup-Manager übernimmt neue Geräteschlüssel mit seinem
   nächsten Spiegel (spätestens nach etwa 10 min); seine Geräte-User bleiben bis zu einer Beförderung
-  gesperrt.
+  gesperrt. Offene RouterOS-Aufträge (`$cfmUpgrade`) spiegelt er samt Paketen in seine eigene Ablage – nach
+  einer Beförderung laden die Geräte dort (Platz: so viel wie die Pakete der offenen Aufträge).
 * **Minimale Firewall:** Switches, APs und Manager lassen nur Antworten, ICMP und Verbindungen aus
   den Management-Netzen zu (MGMT, `mgmtAccess`, `mgmtExtra`), Manager zusätzlich DHCP für das
   Onboarding. MNDP mit Quelle `0.0.0.0` (Bridge-Ports ohne Adresse, z.B. hinter den Karten einer VM)
@@ -1982,7 +1984,7 @@ Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
-| `$cfmSniff host=<router> mac=<MAC,…>\|lease=<Name,…> [dauer=2h] [max=20] [iface=…]` | Mitschnitt nur dieser Geräte auf einem Gerät mit Rolle `router`/`manager` (DU2.3); nach `dauer` holt der Manager-Tick die Datei nach `sniff/` (abholen per scp, auswerten mit `tools/pcap-ziele.py`); `stop=yes` beendet vorzeitig, ohne Argumente Übersicht. Sieht nur Verkehr über die CPU (geroutet oder eigene Radios), nicht vom Switch-Chip gebrückten |
+| `$cfmSniff host=<router> mac=<MAC,…>\|lease=<Name,…> [dauer=2h] [max=20] [iface=…] [mirror=<Port>]` | Mitschnitt nur dieser Geräte auf einem Gerät mit Rolle `router`/`manager` (DU2.3); nach `dauer` holt der Manager-Tick die Datei nach `sniff/` (abholen per scp, auswerten mit `tools/pcap-ziele.py`); `stop=yes` beendet vorzeitig, ohne Argumente Übersicht. Sieht nur Verkehr über die CPU (geroutet oder eigene Radios); vom Switch-Chip gebrückten Verkehr holt `mirror=<Port>` dazu (Port zur CPU spiegeln, DU2.3.1, auf Hardware ungetestet; Last auf der CPU, am Ende zurückgebaut) |
 | `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |

@@ -158,6 +158,11 @@ def bedarf(site):
             grund.append("hosts/" + f + " bonds")
     r["base.bond"] = (bool(grund), ", ".join(grund) if grund else "keine bonds, mlag.rsc leer")
 
+    # umschaltbare Ports (DP1.4): Rumpf der Skripte cfm-port-<name>-* auf dem Gerät mit portSwitch
+    ps = [f for f in (sorted(os.listdir(hd)) if os.path.isdir(hd) else [])
+          if f.endswith(".rsc") and genutzt_wenn_nicht_leer(tokens(lesen(hd, f) or ""), "portSwitch")]
+    r["base.portsw"] = (bool(ps), ", ".join("hosts/" + f + " portSwitch" for f in ps) if ps else "kein portSwitch")
+
     # schaltbare SSIDs (DW4.1): Rümpfe von cfm-ssid-<key>-on/-off und cfm-ssid-check; cfm-reprov immer (CAPsMAN)
     wi = tokens(lesen(site, "wifi.rsc") or "")
     sw = any(p is None or wert(wi, p) != "" for p in nennungen(wi, "switch"))

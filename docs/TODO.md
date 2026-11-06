@@ -1,10 +1,10 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-04)
+## Übersicht offener Punkte (Stand 2026-11-05)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 76). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 77). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
@@ -24,7 +24,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 7, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62–65, 67–69, 72–75.
+* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–76.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -77,6 +77,12 @@ Drei Fehler aus dem Hardware-Test vom 2026-11-04 (CRS418 als CAPsMAN, hAP ax² a
 2026-11-05 (DW1.8.1, DW2.2.1, DP3.1.1), im Labor geprüft soweit ohne Funk möglich ([TESTSTAND.md](TESTSTAND.md)); der
 Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
 
+* **Zweiter Apply nach `slaves-static` stellt noch einmal um** (DW1.8.1, Labor 7.25.1, 2026-11-05): Nach dem
+  Umstellen startet `cfm-apfollow` den zweiten Apply; der setzt `slaves-static` erneut („gesetzt: /interface/wifi/cap:
+  slaves-static“) und legt `cfm-apfollow` noch einmal an – ein zusätzliches Neuverbinden des CAP, danach ist Ruhe.
+  In zwei Läufen gesehen, in den Läufen auf 7.25 nicht. Von Hand nicht nachgestellt: Mit zwei VMs (CAPsMAN + CAP,
+  7.25.1) bleibt der Wert nach dem Neuverbinden `true`. Ursache offen; bis dahin `fallback` an weiteren SSIDs nur zu
+  ruhiger Zeit einschalten. Der e2e-Test traf das Zeitfenster nur manchmal (wackelt).
 * **`fallback="yes"` hängt keine lokale Kopie an** (DW1.8, `roles/ap.rsc`): Die Rolle erkennt die SSID eines vom
   CAPsMAN angelegten virtuellen AP an `configuration.ssid` bzw. `monitor`→`ssid` – am CAP ist beides leer, die SSID
   steht nur in `monitor`→`about` („mode: AP, SSID: Gast“). Folge: Nur `slaves-static` wirkt, im Fallback fällt die
@@ -122,7 +128,6 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 ### Mittelfristig
 
 6. **Plan-Modus – Rest** (umgesetzt: DG3.4): Grenze der Berichtsgröße bei sehr großen Plänen prüfen.
-7. **RouterOS-Versionspflege – Rest** (umgesetzt: DV1.2): Pakete auf den Backup-Manager spiegeln.
 
 ### Größere Ausbauten
 
@@ -248,23 +253,21 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Verbindung, ein Wechsel per FT fast nichts.
 63. **NTP-Umleitung – Rest** (umgesetzt: DN2.2, seit 2026-10-24 an einem Standort): Uhrzeit in der
     Weboberfläche einer OpenBeken-Lampe prüfen.
-64. **„Erledigt“-Meldung für RouterOS-Versionen – Rest** (umgesetzt: DU4.2): Ein später aufgenommenes Gerät
-    mit älterer Version öffnet heute keine neue `ros`-Meldung.
 65. **Fremdgerät mit der Haupt-SSID bzw. am gemeinsamen Dock ins Gäste-VLAN** (Wunsch des Nutzers, 2026-10-26)
     – *Anlass:* Ein Firmen-Laptop soll nicht ins Hauptnetz, ist aber kein richtiger Gast (kennt die
     Haupt-SSID). Er hängt zeitweise an derselben Dockingstation wie der Admin-Laptop, der dort über
     NetworkManager das ungetaggte Haupt-VLAN und getaggt alle übrigen VLANs nutzt (auch MGMT). Zwei Teile:
-    * **(a) WLAN** ist umgesetzt (DW2.6); Hardware-Test: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware).
+    * **(a) WLAN** ist umgesetzt (DW2.6), auf Hardware seit 2026-11-05 an einem Standort im Betrieb (an einem CAP:
+      VLAN, Lease, Internet ja, LAN nein); offen: Roaming ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
     * **(b) Kabel am gemeinsamen Dock** – *wartet auf 802.1X* (WPA-Enterprise/RADIUS, TODO 16): Port mit
       dot1x und MAC-Auth, VLAN vom RADIUS. Die einfachen Wege tragen nicht: Eine Switch-Regel je MAC
       (`src-mac-address` + `new-vlan-id`; das Menü gibt es auf dem QCA-8386 eines hAP be³, Wirkung
       ungetestet) scheitert, wenn das Dock für beide Laptops mit seiner eigenen MAC sendet (ohne
       MAC-Passthrough). Den Port ungetaggt ins Gäste-VLAN zu legen (`hybrid:<gast>`, Admin-Laptop dann
       mit getaggtem Haupt-VLAN) wäre ohne Code möglich, schickt aber jedes Gerät ohne NM-Profil ins
-      Gastnetz. **Rückfall, wenn 802.1X zu lange dauert oder zu aufwändig wird:** das Port-Profil des
-      Dock-Ports umschalten – von Hand oder automatisiert über Home Assistant, z.B. nach dem Muster der
-      Schalt-Skripte (DW4.1/DW4.2: Skript `cfm-port-<name>-<profil>` mit `dont-require-permissions`, Zustand
-      in einer Datei, die jeder Apply übernimmt, damit ein Release nicht zurückschaltet).
+      Gastnetz. **Rückfall umgesetzt 2026-11-05 (DP1.4):** Hostfile `portSwitch`, Skripte
+      `cfm-port-<name>-normal/-alt/-toggle`, optional am Mode-Taster; Zustand in einer Datei, die jeder Apply
+      übernimmt. Auf Hardware offen. Ohne Umschalten bleibt (b) bei 802.1X.
 <!-- -->
 67. **VIP als Gateway – Rest** (umgesetzt: `asymRouting`, DR3.2, Admin-Guide 8.13; TCP ins Internet auf
     Hardware bestanden 2026-10-31): **Offen:** Ausfall des Internet-Routers – bleiben die internen Wege?;
@@ -292,16 +295,18 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     * *2026-11-04:* WLAN-Prüfung aus `mgr-check.rsc` nach `mgr-checkw.rsc` ausgelagert (DM1.1; 57,4 → 47,1 KB),
       Labor 7.25 ok (Gesamttest und Übergang, TESTSTAND), Hardware offen: erstes Release nach dem Update (der WLAN-Teil kommt aus `work/`). Nicht empfohlen:
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
-74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04** (an dem Standort mit CRS418 als CAPsMAN und zwei hAP ax²,
-    nächster Termin vor Ort): (a) Fallback einer Gast-SSID – CAPWAP zu einem AP sperren, sendet die SSID lokal weiter,
+74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04** (an beiden Standorten: CRS418 bzw. hAP be³ als CAPsMAN,
+    nächste Termine vor Ort): (a) Fallback einer Gast-SSID – CAPWAP zu einem AP sperren, sendet die SSID lokal weiter,
     Lease, Isolation, Rückkehr (40, DW1.8); (b) PPSK: normale Passphrase und PPSK nebeneinander, FT-Roaming zwischen
     den APs mit PPSK, gibt der CAPsMAN die Gruppe an die CAPs weiter (oder gelten die lokalen Einträge), trennt der
     Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
     der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
     nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.
-75. **`$cfmSniff` bei gebrücktem Verkehr** (DU2.3, 2026-11-05): Der Sniffer sieht nur Verkehr über die CPU. An einem
-    Standort routet die Fritz!Box das LAN, der CRS (Router und Manager) brückt es nur; Clients an den CAPs gehen über den
-    Switch-Chip direkt zur Fritz!Box und fehlen im Mitschnitt. Optionen zur Entscheidung: (a) nur Geräte an Radios des
-    Geräts selbst; (b) für die Dauer `hw=no` am Uplink-Port (alles über die CPU, Handeintrag bzw. Option `hw=no` im
-    Befehl mit Rückbau am Ende); (c) Port-Mirror des Switch-Chips auf die CPU (`mirror-target=cpu`); (d) Mitschnitt
-    auf dem AP erlauben (Rolle `ap`, Gerät des Clients). Erst auf Hardware prüfen, was der Sniffer dort wirklich sieht.
+75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
+    prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
+    CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
+76. **Zustand eines umschaltbaren Ports anzeigen** (DP1.4, Wunsch des Nutzers 2026-11-05) – Der Link-Abriss nach dem
+    Umschalten zeigt nur, dass geschaltet wurde, nicht ob der Port gerade im Gastnetz oder privilegiert ist. Ideen:
+    Home Assistant liest den Zustand (Datei `<cfm>/port-<name>.txt` bzw. PVID des Bridge-Ports per API, wie bei der
+    schaltbaren SSID) und zeigt ihn an; das Skript meldet jeden Wechsel an den HA-Webhook (`notify`); eine LED am
+    Gerät (`/system/leds`, je Modell verschieden). Entscheidung offen.

@@ -214,7 +214,21 @@
   :return ($sr->"n")
 }
 
+# Nie zwei Läufe zugleich (Sperre cfmNotBusy): ein Aufruf von Hand neben dem Scheduler-Tick las sonst dasselbe
+# notify.dat und schickte jede Meldung doppelt (Labor 2026-11-06). Wartet bis 60 s, eine Sperre älter als 5 min
+# gilt als liegengeblieben
 :global cfmNotifyTick do={
+  :global cfmNotifyTick0; :global cfmNotBusy; :global cfmNow
+  :local i 0
+  :while ([:typeof $cfmNotBusy] = "num" and ([$cfmNow] - $cfmNotBusy) < 300 and $i < 60) do={ :delay 1s; :set i ($i + 1) }
+  :if ([:typeof $cfmNotBusy] = "num" and ([$cfmNow] - $cfmNotBusy) < 300) do={ :return 0 }
+  :set cfmNotBusy [$cfmNow]
+  :local n 0
+  :onerror e in={ :set n [$cfmNotifyTick0] } do={ :log warning ("cfm: notify: " . $e) }
+  :set cfmNotBusy
+  :return $n
+}
+:global cfmNotifyTick0 do={
   :global cfmG; :global cfmLoadData; :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmNow
   :global cfmEnrolled; :global cfmRings; :global cfmWrite; :global cfmNotify; :global cfmNotifyLic
   :global cfmRosLatest; :global cfmVerGe; :global cfmNotifySync
@@ -287,6 +301,19 @@
     :if ([:len [$older $ov b=$b]] = 0) do={
       :if ([$cfmNotify ev="ros" host="" st="off" msg=("RouterOS " . $ov . " auf allen Geräten") key=("ros:" . $ov) ver=$ov]) do={
         :set ($nj->"roso") ""; :set ro ""; :set n ($n + 1); :set chg true
+      } else={ :set down true }
+    }
+  }
+  # Ein später aufgenommenes (oder zurückgestuftes) Gerät ist älter als die zuletzt gesehene Version: Meldung wieder
+  # öffnen (TODO 64) - in jedem Tick, ohne upgrade.mikrotik.com; das "off" kommt wie oben, sobald alle sie haben
+  :local sv [:tostr ($nj->"rosv")]
+  :if (!$down and [:len $ro] <= 1 and [:len $sv] > 1) do={
+    :local nv [:pick $sv 1 [:len $sv]]
+    :local old [$older $nv b=$b]
+    :if ([:len $old] > 0) do={
+      :local ch [:tostr ($cfmG->"rosChannel")]; :if ([:len $ch] = 0) do={ :set ch "stable" }
+      :if ([$cfmNotify ev="ros" host="" st="on" msg=("RouterOS " . $nv . " (" . $ch . ") verfügbar, älter:" . $old . " - prüfen mit \$cfmUpgrade ver=" . $nv . " all=yes check=yes") key=("ros:" . $nv) ver=$nv]) do={
+        :set ($nj->"roso") $sv; :set ro $sv; :set n ($n + 1); :set chg true
       } else={ :set down true }
     }
   }

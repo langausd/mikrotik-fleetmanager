@@ -35,10 +35,10 @@
   :if ([:len $le] > 0) do={ :set cfmMgrData 0; :set ($err->0) ("Daten in work/ nicht ladbar: " . $le); :return ({"err"=$err;"warn"=$warn}) }
   # mlag.rsc (DP2.2) selbst laden: $cfmLoadData des installierten Managers kennt sie vor DP2.2 nicht
   :set cfmMlag ({})
-  :if ([$fex ($w . "/mlag.rsc")]) do={ :onerror e in={ /import file-name=($w . "/mlag.rsc") verbose=no } do={ :set ($err->[:len $err]) ("mlag.rsc: " . $e) } }
+  :if ([$fex ($w . "/mlag.rsc")]) do={ :onerror e in={ [[:parse [/file/get ($w . "/mlag.rsc") contents]]] } do={ :set ($err->[:len $err]) ("mlag.rsc: " . $e) } }
   # dns.rsc (DN3.1) ebenso
   :set cfmDns ({})
-  :if ([$fex ($w . "/dns.rsc")]) do={ :onerror e in={ /import file-name=($w . "/dns.rsc") verbose=no } do={ :set ($err->[:len $err]) ("dns.rsc: " . $e) } }
+  :if ([$fex ($w . "/dns.rsc")]) do={ :onerror e in={ [[:parse [/file/get ($w . "/dns.rsc") contents]]] } do={ :set ($err->[:len $err]) ("dns.rsc: " . $e) } }
   # Profil gültig? -> "" oder Fehlertext (Hostfile-Ports, Bonds, MLAG-Bonds)
   :local profOk do={
     :global cfmProfiles; :global cfmVlans
@@ -374,9 +374,27 @@
       :set cfmMgrData ([:tonsec [:timestamp]] / 1000000000)
       :set cfmHost ({})
       :local he ""
-      :onerror e in={ /import file-name=$hf verbose=no } do={ :set he $e }
+      :onerror e in={ [[:parse [/file/get $hf contents]]] } do={ :set he $e }
       :if ([:len $he] > 0) do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . $he) } else={
         :if ([:len ($cfmHost->"bonds")] > 0) do={ :set ($fneed->"base.bond") ("hosts/" . $n . ".rsc bonds") }
+        # umschaltbare Ports (DP1.4): Name a-z0-9, Port mit Profil, alt-Profil gültig (unten mit den übrigen)
+        :local psx ({})
+        :if ([:typeof ($cfmHost->"portSwitch")] = "array") do={ :set psx ($cfmHost->"portSwitch") }
+        :if ([:len $psx] > 0) do={ :set ($fneed->"base.portsw") ("hosts/" . $n . ".rsc portSwitch") }
+        :local nbt 0
+        :foreach nm,x in=$psx do={
+          :local pw ("hosts/" . $n . ".rsc: portSwitch " . $nm . ": ")
+          :if (!($nm ~ "^[a-z0-9]+\$")) do={ :set ($err->[:len $err]) ($pw . "Name nur a-z0-9") }
+          :local pp [:tostr ($x->"port")]
+          :if ([:len $pp] = 0) do={ :set ($err->[:len $err]) ($pw . "port fehlt") } else={
+            :if ([:typeof ($cfmHost->"ports"->$pp)] = "nothing" and [:len [:tostr ($cfmHost->"portDefault")]] = 0) do={ :set ($err->[:len $err]) ($pw . "Port " . $pp . " hat kein Profil (ports/portDefault)") }
+          }
+          :if ([:len [:tostr ($x->"alt")]] = 0) do={ :set ($err->[:len $err]) ($pw . "alt fehlt") }
+          :local bt [:tostr ($x->"button")]
+          :if ([:len $bt] > 0 and $bt != "mode" and $bt != "reset" and $bt != "no") do={ :set ($err->[:len $err]) ($pw . "button = mode, reset oder no") }
+          :if ($bt = "mode" or $bt = "reset") do={ :set nbt ($nbt + 1) }
+        }
+        :if ($nbt > 1) do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: portSwitch: button nur an einem Eintrag") }
         # stp="none" (Bridge ohne RSTP, DP1.2): Dann faengt niemand eine Schleife ab. Zwei Ports im
         # selben VLAN oder mehrere Trunks sind dort ein Fehler - auf einem normalen Switch dagegen
         # ueblich, deshalb nur bei stp="none" pruefen.
@@ -386,6 +404,7 @@
         :local specs ({})
         :foreach p,sp in=($cfmHost->"ports") do={ :set ($specs->[:len $specs]) ({$p;$sp}) }
         :if ([:len [:tostr ($cfmHost->"portDefault")]] > 0) do={ :set ($specs->[:len $specs]) ({"portDefault";($cfmHost->"portDefault")}) }
+        :foreach nm,x in=$psx do={ :if ([:len [:tostr ($x->"alt")]] > 0) do={ :set ($specs->[:len $specs]) ({("portSwitch " . $nm);($x->"alt")}) } }
         :foreach ps in=$specs do={
           :local sp [:tostr ($ps->1)]
           :local pn $sp; :local arg ""
@@ -555,7 +574,7 @@
   # WLAN (lib/mgr-checkw.rsc, TODO 73): aus demselben Stand wie die Daten laden - $cfmRelease importiert
   # nur diese Datei aus work/, die installierte WLAN-Prüfung wäre nach einem Framework-Update veraltet.
   # Fehlt die Datei im Stand (Probelauf aus einem alten Verzeichnis), prüft die installierte.
-  :if ([$fex ($w . "/lib/mgr-checkw.rsc")]) do={ :onerror e in={ /import file-name=($w . "/lib/mgr-checkw.rsc") verbose=no } do={ :set ($err->[:len $err]) ("lib/mgr-checkw.rsc: " . $e) } }
+  :if ([$fex ($w . "/lib/mgr-checkw.rsc")]) do={ :onerror e in={ [[:parse [/file/get ($w . "/lib/mgr-checkw.rsc") contents]]] } do={ :set ($err->[:len $err]) ("lib/mgr-checkw.rsc: " . $e) } }
   :global cfmCheckWifi
   :if ([:typeof $cfmCheckWifi] = "nothing") do={ :set ($err->[:len $err]) "lib/mgr-checkw.rsc fehlt: WLAN-Daten nicht geprüft - Framework hochladen: tools/upload-seed.sh" } else={
     :local cw [$cfmCheckWifi inv=$inv]

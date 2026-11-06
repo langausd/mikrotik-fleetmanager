@@ -10,6 +10,11 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Umgesetzt am 2026-11-05 (Vorbereitung eines Standort-Rollouts):** 7 (Nachtrag DV1.2) – der Backup-Manager
+  spiegelt offene RouterOS-Aufträge samt Paketen; 64 (Nachtrag DU4.2) – ein später aufgenommenes oder
+  zurückgestuftes Gerät öffnet die `ros`-Meldung wieder; 65b-Rückfall (DP1.4) – umschaltbarer Port per Skript und
+  Mode-Taster; 75 (DU2.3.1) – `$cfmSniff mirror=<Port>` spiegelt gebrückten Verkehr zur CPU. Labor: `e2e.sh`;
+  Hardware offen.
 * **Umgesetzt am 2026-11-02:** 73 (DG4.6) – Feature-Module: Code einzelner Features (DNS,
   WireGuard, Bandbreitenlimit, Bonds/MLAG, isolierte VLANs, SNMP, Admin-SSH-Keys) und die Skripte des CAPsMAN in
   eigenen Dateien, nur bei Nutzung geladen; `upload-seed.sh` lädt nur, was die Site nutzt. Labor 7.25 grün
@@ -189,6 +194,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 5. ~~**Inhaltliche Prüfung beim Release**~~ – *erledigt (DG2.4):* `$cfmCheck`, Fehler stoppen das
    Release (`force=yes` übergeht sie), fehlende Hostfiles sind Warnungen.
 <!-- -->
+7. ~~**RouterOS-Versionspflege – Rest: Pakete auf den Backup-Manager**~~ – *umgesetzt 2026-11-05 (Nachtrag DV1.2):*
+   `$cfmMirror` holt `meta/upgrade.dat` und die Pakete offener Aufträge in die eigene Ablage (Pfad umgeschrieben),
+   löscht Versionen ohne Auftrag. Labor: `e2e.sh` Schritt 13.
 8. ~~**Identitätsprüfung vor dem Secret-Push**~~ – *erledigt (DS1.4):* Challenge-Response mit dem
    Geräteschlüssel; Erneuerung per `$cfmRekey`. ~~Offen: SFTP-Schlüssel (`cfmd-<name>`) rotieren
    (bisher nur per `$cfmEnroll … rekey=yes`).~~ – *erledigt (DS2.5):* `$cfmRekey … sftp=yes`, bei
@@ -570,6 +578,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     action=accept comment=test place-before=0`, Client mit FT dorthin wechseln lassen und entfernen. Im Labor
     nicht prüfbar (CHR ohne Radios).
 <!-- -->
+64. ~~**„Erledigt“-Meldung für RouterOS-Versionen – Rest**~~ – *umgesetzt 2026-11-05 (Nachtrag DU4.2):* Ist keine
+    Meldung offen, aber ein Gerät älter als die zuletzt gesehene Version, öffnet der nächste Tick sie wieder. Labor:
+    `e2e.sh` Schritt 14f.
 66. ~~**Bandbreitenlimit je Zone/VLAN (Gast-WLAN)**~~ (Wunsch des Nutzers, 2026-10-28) – *umgesetzt am selben Tag
     (DR2.7):* `vlans.rsc` → `"limit"="50M/10M"` (ganzes Netz, PCQ teilt gleich auf) und/oder `"limitClient"` (je
     Client, eigene PCQ-Typen); Fasttrack-Ausnahme je Netz (`src-`/`dst-address` vor der Fasttrack-Regel); gilt für

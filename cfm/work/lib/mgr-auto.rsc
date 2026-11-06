@@ -122,12 +122,23 @@
   }
 }
 
+# Spiegel des Backup-Managers. Höchstens alle 5 min; nie zwei Läufe zugleich (Sperre cfmMirBusy: zwei Abrufe in
+# dieselbe Datei - z.B. ein großes Paket - löschen sich gegenseitig die Teildatei, Labor 2026-11-05). Der Tick
+# überspringt den Lauf dann, wait=yes (Aufruf von Hand) wartet; eine Sperre älter als 30 min gilt als liegengeblieben
 :global cfmMirror do={
   :global cfmFileEx; :global cfmMB; :global cfmConf; :global cfmJson; :global cfmInvLoad; :global cfmNow; :global cfmMirT; :global cfmRings
-  :global cfmDevUser
+  :global cfmDevUser; :global cfmMirBusy
   :local now [$cfmNow]
   :if (($now - [:tonum $cfmMirT]) < 300) do={ :return false }
+  :if ([:typeof $cfmMirBusy] = "num" and ($now - $cfmMirBusy) < 1800) do={
+    :if ($wait != "yes") do={ :return false }
+    :while ([:typeof $cfmMirBusy] = "num" and ([$cfmNow] - $cfmMirBusy) < 1800) do={ :delay 5s }
+    :set now [$cfmNow]
+  }
+  :set cfmMirBusy $now
   :set cfmMirT $now
+  :local ok true
+  :onerror me in={
   /system/script/run cfm-conf
   :local b [$cfmMB]
   :local src ("sftp://" . [:pick ($cfmConf->"mgrs") 0] . "/" . ($cfmConf->"path") . "/")
@@ -165,9 +176,55 @@
     :if ([$get s=$src u=$u r=("meta/keys/" . $name . ".pem") l=($b . "/meta/keys/" . $name . ".pem")] and !$own) do={ $cfmDevUser name=$name serial=($d->"serial") dis=yes }
     :foreach f in={"status.dat";"export.rsc";"audit.txt"} do={ $get s=$src u=$u r=("state/" . $name . "/" . $f) l=($b . "/state/" . $name . "/" . $f) }
   }
+  # RouterOS-Aufträge und ihre Pakete (TODO 7): Nach einer Beförderung bauen die Manifeste auf meta/upgrade.dat
+  # auf, die Geräte laden die Pakete dann hier. Pfad im Auftrag auf die eigene Ablage umschreiben (pkgPath kann
+  # abweichen). Nur Pakete offener Aufträge, je Datei nur einmal (Größe stimmt); zu wenig Platz: Warnung, der
+  # Auftrag selbst wird trotzdem gespiegelt (die Geräte melden dann den fehlenden Download)
+  :global cfmPkgDir; :global cfmWrite
+  :local uf ($b . "/meta/upgrade-mirror.dat")
+  :local got [$get s=$src u=$u r="meta/upgrade.dat" l=$uf]
+  # Primary erreichbar (rings.dat kam eben), aber keine Auftragsdatei: keine offenen Aufträge
+  :if ($got or $cfmMirLast = $now) do={
+    :local ord ({})
+    :if ($got) do={ :set ord [$cfmJson $uf] }
+    :local pd [$cfmPkgDir]
+    :local need ({})
+    :foreach name,o in=$ord do={
+      :local rp [:tostr ($o->"path")]
+      :if ([:len $rp] > 0 and [:typeof ($o->"files")] = "array") do={
+        :local ver [:pick [:tostr ($o->"rv")] 1 99]
+        :local lp ($pd . "/" . $ver)
+        :set ($need->$ver) 1
+        :foreach pf in=($o->"files") do={
+          :local fn [:tostr ($pf->0)]
+          :local sz [:tonum ($pf->1)]
+          :local have 0
+          :onerror e in={ :set have [/file/get [find where name=($lp . "/" . $fn)] size] } do={}
+          :if ($have != $sz) do={
+            :if (([/system/resource/get free-hdd-space] - $sz) < 10485760) do={
+              :log warning ("cfm: Spiegel: kein Platz fuer " . $fn . " (" . ($sz / 1048576) . " MB) - Geraete laden es nach einer Befoerderung nicht")
+            } else={
+              :if (![$get s=("sftp://" . [:pick ($cfmConf->"mgrs") 0] . "/") u=$u r=($rp . "/" . $fn) l=($lp . "/" . $fn)]) do={ :log warning ("cfm: Spiegel: Paket " . $fn . " nicht abgerufen") }
+            }
+          }
+        }
+        :set ($o->"path") $lp
+        :set ($ord->$name) $o
+      }
+    }
+    :if ([:len $ord] > 0) do={ $cfmWrite ($b . "/meta/upgrade.dat") [:serialize to=json $ord] } else={ :onerror e in={ /file/remove [find where name=($b . "/meta/upgrade.dat")] } do={} }
+    :onerror e in={ /file/remove [find where name=$uf] } do={}
+    # Paketversionen ohne offenen Auftrag löschen (der Primary räumt seine eigene Ablage selbst auf)
+    :foreach f in=[/file/find where name~("^" . $pd . "/[^/]+\$") and type="directory"] do={
+      :local fv [:pick [/file/get $f name] ([:len $pd] + 1) 99]
+      :if ([:typeof ($need->$fv)] = "nothing") do={ /file/remove $f; :log info ("cfm: Spiegel: Pakete " . $fv . " entfernt (kein offener Auftrag)") }
+    }
+  }
   # der Spiegel wächst sonst unbegrenzt (gleiche Regel wie auf dem Primary)
   :global cfmArchivePrune; $cfmArchivePrune
-  :return true
+  } do={ :set ok false; :log warning ("cfm: Spiegel abgebrochen: " . $me) }
+  :set cfmMirBusy
+  :return $ok
 }
 
 :global cfmPromoteManager do={

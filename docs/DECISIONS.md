@@ -602,6 +602,12 @@ Stufe 1 (Probe) liest Seriennummer/Modell/Version und stößt ggf. das Update an
 
 **Umsetzung:** `$cfmUpgrade ver=… host=|ring=|all=yes [at=…]`. Der Manager lädt vor dem Rollout alle Pakete (routeros + Zusatzpakete) für alle betroffenen Architekturen nach `pkgPath/<ver>/`; fehlt eins, startet nichts. Der Auftrag steht im signierten Manifest (Feld `ros`, zählt nicht zum Manifest-Hash). Der Agent lädt per SFTP, prüft die Größe (Hashes gehen nicht: `/file get` liest nur ~60 KB; die Signatur prüft RouterOS beim Installieren) und startet sofort oder per Scheduler neu. Ältere Zielversion = `/system/package/downgrade`. Ein erfolgloser Neustart wird nicht wiederholt (`fehlgeschlagen`). Versionen, die kein Gerät installiert hat und kein Auftrag nennt, löscht der Manager. Platzprüfung: DV1.3, Probe ohne Auftrag: DV1.4, Geräte mit wenig Flash: eingebautes Update (DV1.5).
 
+*Nachtrag 2026-11-05 (TODO 7, technisch, nicht abgefragt):* Der Backup-Manager spiegelt `meta/upgrade.dat` und die
+Pakete der offenen Aufträge in seine eigene Ablage (Pfad im Auftrag umgeschrieben, je Datei nur bei abweichender Größe,
+Versionen ohne offenen Auftrag gelöscht; zu wenig Platz: Warnung). Nach einer Beförderung laden die Geräte dort. Nie zwei
+Spiegel-Läufe zugleich (Sperre `cfmMirBusy`, verfällt nach 30 min): Zwei Abrufe in dieselbe Datei löschten sich im
+Labor gegenseitig die Teildatei; der Tick überspringt dann, `$cfmMirror wait=yes` wartet. Labor: `e2e.sh` Schritt 13.
+
 #### <a id="dv1.3"></a>DV1.3 · Platz für Pakete auf kleinen Geräten
 
 *2026-09-30 · alt D51*
@@ -679,6 +685,37 @@ Versionsangaben überstehen den JSON-Umlauf nur geschützt (`:deserialize` macht
 **Verworfen:** weiter nur über den Namen · nur über Bridge und VLAN-ID
 
 **Begründung:** Verweise auf das Interface (Adressen, DHCP-Server, Listen, Firewall) gehen in RouterOS über die ID und bleiben am umbenannten Interface. Der Name bleibt der erste Schlüssel, damit nichts anderes als bisher übernommen wird. Im Probelauf unterbleibt das Umbenennen: Objekte am Interface erscheinen dort noch als „neu“, der Apply übernimmt sie. Labor: `e2e.sh` Schritt 9 (Interface `GAST` mit VID 40 und Router-Adresse).
+
+#### <a id="dp1.4"></a>DP1.4 · Umschaltbarer Port (Dockingstation)
+
+*2026-11-05*
+
+**Frage:** An einer Dockingstation hängen abwechselnd der Admin-Laptop (Haupt-VLAN ungetaggt, alle anderen getaggt) und
+ein Firmen-Laptop, der nur ins Gäste-VLAN darf (TODO 65b). 802.1X steht aus (TODO 16). Wie schaltet man den Port um,
+ohne jedes Gerät ohne Profil ins Gastnetz zu schicken?
+
+**Optionen (gewählt fett):** Port fest auf Gast (`hybrid:<gast>`) · Port-Profil per Skript, Aufruf aus Home Assistant
+(API-User am Gerät) · **Port-Profil per Skript, Aufruf von Hand oder am Mode-Taster des Geräts**; Profil im Zustand
+Gast: `hybrid:<gast>` · **`access:<gast>`**; selbst zurückschalten nach einer Zeit: ja · **nein**
+
+**Entscheidung:** Hostfile `"portSwitch"={"<name>"={"port"="ether5";"alt"="access:175";"button"="reset"}}`: Der Port
+hat sein Profil aus `ports`/`portDefault` („normal“) und das `alt`-Profil. Die Rolle `base` legt die Skripte
+`cfm-port-<name>-normal`, `-alt` und `-toggle` an (Rumpf `lib/base.portsw.rsc`, DG4.6); sie ändern nur diesen Port
+(Bridge-Port, seine Einträge in den Bridge-VLANs, ggf. `cfm-iso` und `hw`), trennen danach den Link für 3 s und
+schreiben den Zustand nach `<cfm>/port-<name>.txt`. Jeder Apply übernimmt den Zustand – ein Release schaltet nicht
+zurück. `button="mode"` bzw. `"reset"` legt den Mode- bzw. Reset-Taster auf das toggle-Skript (ein Eintrag je Gerät;
+ohne Taster eine Warnung; der Reset-Taster setzt beim Einschalten weiter zurück, das macht RouterBOOT). Kein
+Auto-Zurück, kein API-Zugang (Nutzer, 2026-11-05; Reset-Taster: Nutzer, Geräte ohne Mode-Taster wie hAP be³ Media).
+
+**Begründung:** Wie die schaltbare SSID (DW4.1): Schalten ohne Manager und ohne Apply (Sekunden statt eines Releases),
+der Apply kennt den Zustand. Der Link-Abriss lässt das Gerät am Port per DHCP eine Adresse im neuen VLAN holen
+(sonst behielte es die alte bis zum Ablauf der Lease) und ist zugleich die Rückmeldung – ein Summer fehlt vielen
+Geräten. Ein Skript, das einen Apply anstieße, ginge vom Taster aus nicht: Der Agent holt das
+Manifest nur als User `cfm` (Labor 2026-11-05). Die Werte je Zustand rechnet der Apply vor, das Skript liest nichts
+aus den Site-Daten. `access:<gast>` statt `hybrid:<gast>`: Der Admin-Laptop braucht kein zweites Profil; am
+Dock fehlt ihm im Gast-Zustand das MGMT-VLAN (Rückfall WLAN oder Konsole). Rückbau: `portSwitch` aus dem Hostfile –
+der nächste Apply entfernt Skripte, Zustandsdatei und Taster-Belegung, der Port bekommt sein normales Profil.
+Labor: `e2e.sh` Schritt 14 (EoIP-Interface als Port, CHR hat keinen Taster); auf Hardware offen.
 
 ### <a id="dp2"></a>DP2 · Bonds und MLAG
 
@@ -1194,7 +1231,8 @@ am 2026-11-04 bestätigte den Eintrag ohne VLAN. Rückbau: Eintrag und Schlüsse
 
 **Verworfen:** eigener Eintrag `"clients"` in `wifi.rsc` · nur für angegebene SSIDs · PPSK auf der Haupt-SSID
 
-**Begründung:** Lease statt `wifi.rsc`: Die MAC steht nur einmal, das Gerät bekommt zugleich feste IP und DNS-Namen, `$cfmFind` kennt es. PPSK scheidet für eine Haupt-SSID mit WPA3 aus (Multi-Passphrase nur mit WPA2, DW2.2); die Access-List hängt nur an der MAC und geht mit WPA3 und FT. Die Access-List nimmt den ersten passenden Eintrag: Ein einzelner MAC-Eintrag mit Signal-Grenze ließe das Gerät bei schwachem Signal zu den allgemeinen Regeln durchfallen, die ohne `vlan-id` annehmen – es landete doch im VLAN der SSID. Deshalb je MAC die vollständige Kette mit eigenem Abschluss. Im selben Block wie die Trennschwelle (DW2.5), nicht in einem eigenen: Ein später neu entstehender Block `wcut` käme sonst vor die MAC-Einträge (`$cfmBlock` setzt einen neuen Block an den Anfang). Ohne solche Leases bleibt der Block unverändert (gleiche Signatur). Gilt auch im lokalen Fallback der APs (DW1.6), dort baut dieselbe Funktion die Access-List. `$cfmCheck`: `wifi` nur `yes`/`no`; Fehler, wenn dieselbe MAC in zwei VLANs `wifi` hat; Hinweis bei lokal verwalteter (zufälliger) MAC und wenn das VLAN nicht auf den AP-Uplinks (`trunk-ap`) liegt. Auf Hardware offen: Gibt der CAPsMAN `vlan-id` aus der Access-List an die CAPs weiter (wie bei PPSK)? Roaming mit FT. Kabel am gemeinsamen Dock bleibt offen (TODO 65b, wartet auf 802.1X). Labor: `e2e.sh` Schritt 14 (Reihenfolge, Probelauf ohne Scheinänderung, Prüfungen).
+**Begründung:** Lease statt `wifi.rsc`: Die MAC steht nur einmal, das Gerät bekommt zugleich feste IP und DNS-Namen, `$cfmFind` kennt es. PPSK scheidet für eine Haupt-SSID mit WPA3 aus (Multi-Passphrase nur mit WPA2, DW2.2); die Access-List hängt nur an der MAC und geht mit WPA3 und FT. Die Access-List nimmt den ersten passenden Eintrag: Ein einzelner MAC-Eintrag mit Signal-Grenze ließe das Gerät bei schwachem Signal zu den allgemeinen Regeln durchfallen, die ohne `vlan-id` annehmen – es landete doch im VLAN der SSID. Deshalb je MAC die vollständige Kette mit eigenem Abschluss. Im selben Block wie die Trennschwelle (DW2.5), nicht in einem eigenen: Ein später neu entstehender Block `wcut` käme sonst vor die MAC-Einträge (`$cfmBlock` setzt einen neuen Block an den Anfang). Ohne solche Leases bleibt der Block unverändert (gleiche Signatur). Gilt auch im lokalen Fallback der APs (DW1.6), dort baut dieselbe Funktion die Access-List. `$cfmCheck`: `wifi` nur `yes`/`no`; Fehler, wenn dieselbe MAC in zwei VLANs `wifi` hat; Hinweis bei lokal verwalteter (zufälliger) MAC und wenn das VLAN nicht auf den AP-Uplinks (`trunk-ap`) liegt. Hardware 2026-11-05: Der CAPsMAN gibt `vlan-id` aus der Access-List an die CAPs weiter (Laptop an einem CAP in VLAN
+175, [TESTSTAND.md](TESTSTAND.md#bestanden)); offen: Roaming, auch mit FT. Kabel am gemeinsamen Dock bleibt offen (TODO 65b, wartet auf 802.1X). Labor: `e2e.sh` Schritt 14 (Reihenfolge, Probelauf ohne Scheinänderung, Prüfungen).
 
 ### <a id="dw3"></a>DW3 · Kanäle
 
@@ -1368,6 +1406,8 @@ Kanal-Pools zentral in `wifi.rsc`, optionales Pinning pro AP ebenfalls in `wifi.
 
 *2026-11-04*
 
+**Status:** ergänzt durch DU2.3.1 (2026-11-05): `mirror=<Port>` spiegelt gebrückten Verkehr zur CPU.
+
 **Frage:** Für eine `allow`-Liste (DR2.4) braucht man die Internet-Ziele eines IoT-Geräts über Stunden. Der
 Mitschnitt an der Fritz!Box ist ein Download im Browser und riss am 2026-11-04 nach einer Minute ab (Laptop wechselte
 die SSID). Wo soll cfm mitschneiden und wohin mit der Datei?
@@ -1386,6 +1426,28 @@ Rechner muss laufen. Grenze: Der Sniffer sieht nur, was über die CPU läuft –
 Radios. Brückt das Gerät nur (der Router ist ein anderer, z.B. eine Fritz!Box) und der Switch-Chip leitet zwischen
 den Ports selbst weiter, fehlt dieser Verkehr ([TODO.md](TODO.md) Punkt 75). Rückbau: Modul `lib/mgr-sniff.rsc` und
 der Aufruf im Tick entfallen.
+
+##### <a id="du2.3.1"></a>DU2.3.1 · Mitschnitt bei gebrücktem Verkehr: Port zur CPU spiegeln
+
+*2026-11-05*
+
+**Frage:** Brückt das Gerät nur und vermittelt der Switch-Chip am Router vorbei, sieht der Sniffer die Clients nicht
+(TODO 75). Wie kommt der Verkehr in den Mitschnitt?
+
+**Optionen (gewählt fett):** nur Clients an den eigenen Radios (dokumentieren) · `hw=no` am Uplink für die Dauer ·
+**Port-Spiegel des Switch-Chips zur CPU** · Mitschnitt auch auf dem AP erlauben
+
+**Entscheidung:** `$cfmSniff … mirror=<Port>` spiegelt Ein- und Ausgang dieses Ports zur CPU, der MAC-Filter des
+Sniffers bleibt. Zwei Varianten, nacheinander probiert: CRS3xx/5xx ab 7.15 je Port (`mirror-ingress`/`mirror-egress`,
+Ziel der CPU-Port mit `mirror-target`), ältere Chips am Switch (`mirror-source`, `mirror-target=cpu`). Ist schon ein
+Spiegel eingestellt, bricht der Befehl ab; geht keine Variante, startet nichts. Rückbau des Spiegels beim Abholen
+bzw. `stop=yes` (der Scheduler auf dem Gerät stoppt nur den Sniffer; bis zum nächsten Manager-Tick bleibt der
+Spiegel stehen) (Nutzer, 2026-11-05).
+
+**Begründung:** Kein Durchsatzverlust für den übrigen Verkehr (anders als `hw=no`), kein Platz auf APs nötig. Last
+auf der CPU: Alles, was über den Port läuft, kommt dort an – nur kurz und an ruhigen Ports nutzen. Auf Hardware
+ungetestet: Eigenschaftsnamen je Chip und ob die CPU als Ziel geht ([TESTSTAND.md](TESTSTAND.md)). Rückbau: Parameter
+`mirror` entfällt. Labor: nur die Meldung ohne Switch-Chip (`e2e.sh` Schritt 14).
 
 ### <a id="du3"></a>DU3 · Logs
 
@@ -1433,6 +1495,8 @@ Beide Standorte schickten den Syslog an ihren Manager – RouterOS nimmt aber ke
 
 **Begründung:** Das MGMT-VLAN hat kein Internet, der Manager erreicht aber Dienste im LAN; ein allgemeiner POST deckt Home Assistant, ntfy und eigene Empfänger mit derselben Funktion ab. Neues Modul `lib/mgr-notify.rsc`: `$cfmNotifyTick` läuft am Ende des Manager-Ticks (nur Primary), bildet aus den gesammelten Status die Menge `<art>:<gerät>` und meldet die Unterschiede zu `meta/notify.dat`. Scheitert die Zustellung, bleibt der Zustand offen (nächster Tick versucht es erneut), und im selben Tick folgen keine weiteren Versuche (ein toter Empfänger bremst den Tick nicht vielfach). Das JSON baut die Funktion selbst (`$cfmJStr`), damit Umlaute als UTF-8 ankommen. „Stumm“ vergleicht wie `$cfmStatus` den Zeitstempel `seen` des Geräts; `bad vN` zählt nur, solange `$cfmStatus` sie zeigt. Die Lizenzdaten liest der Manager aus `/system/license` (nur CHR hat `next-renewal-at`/`deadline-at`); überfällig heißt mindestens einen Tag zurück. Onboarding meldet einmalig (`state=once`), ohne „wieder ok“. Probe: `$cfmNotify test=yes`.
 
+**Nachtrag 2026-11-06:** `$cfmNotifyTick` läuft nie zweimal zugleich (Sperre `cfmNotBusy`, wartet bis 60 s, verfällt nach 5 min). Ein Aufruf von Hand neben dem Scheduler-Tick las sonst dasselbe `notify.dat` und schickte jede Meldung doppelt (Labor, `e2e.sh` „kein zweites Mal“).
+
 ##### <a id="du4.1.1"></a>DU4.1.1 · Felder `level`/`device`/`message`, neue RouterOS-Versionen
 
 *2026-10-11 · alt D66, Nachtrag 1*
@@ -1454,6 +1518,9 @@ Beide Standorte schickten den Syslog an ihren Manager – RouterOS nimmt aber ke
 #### <a id="du4.2"></a>DU4.2 · „Erledigt“-Meldung für neue RouterOS-Versionen
 
 *2026-10-27 · alt D96*
+
+**Status:** ergänzt 2026-11-05 (TODO 64): Ist keine Meldung offen, aber ein Gerät älter als die zuletzt gesehene
+Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie wieder (`"on"`, ohne Abfrage bei MikroTik).
 
 **Entscheidung:** `ros` als Zustand: `"on"` beim Melden, offen in `meta/notify.dat` `roso`; in jedem Tick `"off"` („auf allen Geräten“), sobald kein aufgenommenes Gerät älter ist; kommt vorher eine neuere Version, erst `"off"` für die alte („überholt durch …“), dann `"on"` für die neue. Jede Meldung trägt `key` (`<ev>:<host>`, bei `ros` `ros:<Version>`) und bei `ros` `ver`. Absichtlich ausgelassene Geräte halten die Meldung offen – abgehakt wird beim Empfänger, cfm kümmert sich nur um die Zustände der Geräte (Nutzer, 2026-10-27)
 
@@ -1862,3 +1929,10 @@ Entscheidungen: DW1.8.1, DW2.2.1, DP3.1.1, DU2.3
 
 Anlass: Hardware-Test an einem Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25): Fallback-Kopie fehlte, normale
 Passphrase galt mit PPSK nicht mehr, `cfm-iso` zeigte nach `slaves-static` auf alte Interfaces.
+
+### Vorbereitung Rollout: Dock-Port, Spiegel, Pakete (2026-11-05)
+
+Entscheidungen: DP1.4, DU2.3.1; Nachträge DV1.2 (TODO 7), DU4.2 (TODO 64), DU4.1 (Sperre des Notify-Ticks, 2026-11-06)
+
+Anlass: Rollout an einem Standort mit RouterOS 7.25.1, Backup-Manager und dem Hardware-Test aus TODO 74 (Nutzer,
+2026-11-05).

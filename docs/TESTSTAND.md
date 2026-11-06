@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-05).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-06).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -11,8 +11,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Überblick
 
-* **Labor:** Mit RouterOS 7.25 (zuvor 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-05 der Gesamttest (431 Prüfungen), drei VRRP-Router (137),
+* **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-06 der Gesamttest (447 Prüfungen), drei VRRP-Router (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
   verwalteten Switch (18). Funkteile lassen sich auf CHR nicht testen.
 * **Hardware:** cfm läuft an zwei Standorten mit 13 Geräten, alle mit RouterOS 7.25; an einem davon routen seit dem
@@ -21,7 +21,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Noch nicht auf Hardware:** Backup-Manager (Test geplant 2026-11-07/08), Onboarding gegen Werks-Configs von Routern
   und CRS-Switches, die Fixes vom 2026-11-04 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im lokalen
   Fallback, `cfm-iso` nach `slaves-static`), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
-  Gerätetyp einen Pilotbetrieb mit einem Testgerät ein.
+  Gerätetyp einen Pilotbetrieb mit einem Testgerät ein. Neu seit 2026-11-05: umschaltbarer Port (DP1.4),
+  `$cfmSniff mirror=` (DU2.3.1), Pakete auf dem Backup (TODO 7).
 
 ## Labor (CHR)
 
@@ -71,6 +72,13 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Tick von cm2): `e2e-vrrp.sh` 137, `e2e-mlag.sh` 72, Onboarding 14/15/18 grün; `e2e.sh` 430 von 431 – das ✘ lag
   am Test (startete den Agent für den Abgleich von `cfm-iso` per SSH als admin – so holt er kein Manifest und bricht
   vorher ab; jetzt per `$cfmPush`), danach 431 von 431.
+  2026-11-05 abends, **RouterOS 7.25.1** (Ausbauten DP1.4, DU2.3.1, TODO 7 und 64, Laden per `:parse`): erster Lauf
+  `e2e.sh` 445 von 448 (Paketspiegel: zwei Spiegel-Läufe zugleich, behoben mit einer Sperre; zweiter Apply nach
+  `slaves-static` stellt noch einmal um, TODO „Bekannte Fehler“), `e2e-vrrp.sh` 137, `e2e-mlag.sh` 72, Onboarding
+  14/15/18. Abschlusslauf 2026-11-05/06 mit Sperre und `:parse`: `e2e-vrrp.sh` 137, `e2e-mlag.sh` 72, Onboarding
+  14/15/18 grün, `e2e.sh` 445 von 447 (Paketspiegel und Dock-Port grün; ✘ doppelte Notify-Meldungen – Tick von Hand
+  neben dem Scheduler-Tick, behoben mit der Sperre `cfmNotBusy`, DU4.1 – und ppskOnly-Probelauf – Agent noch
+  beschäftigt, Test wartet jetzt); Nachlauf `e2e.sh` 447 von 447.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -176,6 +184,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Feature-Module** (DG4.6) – 2026-11-02 am ersten Standort: Upload nur der genutzten Module, Release ringweise und
   ein zweites Release mit dem neuen Manager-Code, alle Geräte ohne Rollback, auf dem Manager genau die erwarteten
   Module.
+* **Fremdgerät per MAC in ein anderes VLAN** (DW2.6) – 2026-11-05 am zweiten Standort (hAP be³ als CAPsMAN, 7.25):
+  Laptop mit fester MAC an der Haupt-SSID (WPA3, an einem CAP auf 5 GHz) per MAC-Regel der Access-List in VLAN
+  175, feste Lease, Internet ja, LAN nein. Der CAPsMAN gibt `vlan-id` aus der Access-List an die CAPs weiter.
 * **WLAN-Hardware-Test** – 2026-11-04 am ersten Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25):
   **Gast-Limit** (DR2.7) mit zwei Clients je ≈ 20/5 Mbit/s; Gegenprobe ohne die Fasttrack-Ausnahmen 46/6 mit
   Verbindungen im Fasttrack – die Ausnahmen sind nötig. **Schaltbare SSID** (DW4.1/DW4.2): Grundzustand aus,
@@ -199,6 +210,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   ausgeschaltetem Primary, Geräte ziehen bis zur Beförderung nicht vom Backup, zweiphasiger Rekey mit zwei echten
   Managern; `$cfmPromoteManager` nur im Ernstfall. *Geplant an einem Standort (hAP be³ als
   `switch,ap,manager-backup`, 2026-11-07/08).*
+* **Umschaltbarer Port** (DP1.4): Skripte und Mode-Taster an einem echten Gerät (Dockingstation), Bridge-Port mit
+  Switch-Chip (`hw`), DHCP des Geräts am Port nach dem Umschalten. *Geplant an einem Standort (2026-11-06).*
+* **`$cfmSniff mirror=<Port>`** (DU2.3.1): Eigenschaftsnamen je Switch-Chip, CPU als Spiegelziel, CPU-Last, sieht
+  der Sniffer die gespiegelten Frames (TODO 75).
+* **Pakete auf dem Backup-Manager** (TODO 7): Spiegel offener Aufträge und Laden nach einer Beförderung.
 * **Hook Manager → Git-Host** per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet).
 * **Rolle `router` auf einem CRS mit L3-Hardware-Offloading** (DR1.2): Schaltet sie `l3-hw-offloading` ab, läuft
   VRRP danach, und gibt es beim Umschalten einen Aussetzer im gerouteten Verkehr?
@@ -216,8 +232,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
   Master-SSID: Ausfall nur für die Dauer des Applys plus höchstens 30 s, Log `meldet nach dem Push Secrets v0`.
-* **Fremdgerät per MAC in ein anderes VLAN** (DW2.6): Gibt der CAPsMAN `vlan-id` aus der Access-List an die CAPs
-  weiter (wie bei PPSK)? Roaming mit FT.
+* **Fremdgerät per MAC in ein anderes VLAN** (DW2.6): Roaming zwischen APs (2026-11-05 nur an einem CAP getestet,
+  siehe Bestanden), Roaming mit FT.
 * **MLAG** (DP2.2) auf CRS3xx: Offload im Switch-Chip, Ausfall eines Knotens (Strom aus, nicht nur Link), Umbau eines
   Uplinks, über den der Weg zum Manager läuft (Labor: ein 802.3ad-Port ohne Gegenstelle leitet weiter),
   `mlag-lacp-fallback` ab 7.25. Ebenso LACP-Bonds (DP2.1).

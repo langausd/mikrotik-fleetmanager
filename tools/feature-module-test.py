@@ -81,6 +81,11 @@ class Bedarf(unittest.TestCase):
         self.schreiben("mlag.rsc", ':global cfmMlag {"p1"={"nodes"={"sw1";"sw2"}}}\n')
         self.assertEqual(self.genutzt(), ["base.bond"])
 
+    def test_portswitch(self):
+        self.schreiben("hosts/ap1.rsc", ':global cfmHost {"ports"={"ether5"="hybrid:20"};'
+                       '"portSwitch"={"dock"={"port"="ether5";"alt"="access:40"}}}\n')
+        self.assertEqual(self.genutzt(), ["base.portsw"])
+
     def test_schaltbare_ssid(self):
         self.anhaengen("wifi.rsc", ':set ($cfmWifi->"ssids"->"guest"->"switch") "off"\n')
         self.assertEqual(self.genutzt(), ["capsman.ssid", "capsman.ssidcheck"])

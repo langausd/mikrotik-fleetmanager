@@ -21,8 +21,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Noch nicht auf Hardware:** Backup-Manager (Test geplant 2026-11-07/08), Onboarding gegen Werks-Configs von Routern
   und CRS-Switches, die Fixes vom 2026-11-04 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im lokalen
   Fallback, `cfm-iso` nach `slaves-static`), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
-  Gerätetyp einen Pilotbetrieb mit einem Testgerät ein. Neu seit 2026-11-05: umschaltbarer Port (DP1.4),
-  `$cfmSniff mirror=` (DU2.3.1), Pakete auf dem Backup (TODO 7).
+  Gerätetyp einen Pilotbetrieb mit einem Testgerät ein. Neu seit 2026-11-05: `$cfmSniff mirror=` (DU2.3.1), Pakete
+  auf dem Backup (TODO 7); der umschaltbare Port (DP1.4) nur an einem hAP be³ Media, nicht an einem CRS.
 
 ## Labor (CHR)
 
@@ -214,8 +214,13 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Switch-Chip (`hw`), DHCP des Geräts am Port nach dem Umschalten. *2026-11-06 an einem Standort (hAP be³ Media, v100):
   Umschalten per Skript bestanden – Link-Abriss, Firmen-Laptop am Dock mit Pool-Adresse in VLAN 175 (MAC des Docks),
   Internet ja, LAN nein. Reset-Taster: startet Skripte erst mit Code in `on-event` und gesetzter `hold-time` (von Hand
-  geprüft, Rolle angepasst). Offen: Release mit dem Fix, Umschalten per Taster in beide Richtungen, Zurückschalten
-  auf normal, Bridge-Port mit `hw` an einem CRS.*
+  geprüft, Rolle angepasst). Abends, Release v101 mit dem Fix: Die Rolle ersetzt eine abweichende Belegung durch
+  ihre eigene (auf Hardware bestätigt). Umschalten per Taster in beide Richtungen bestanden, Admin-Laptop am Dock:
+  normal 177 mit `dock.42`, alt Pool-Adresse in 175, der Laptop folgt jedem Wechsel sofort per DHCP. Der
+  Reset-Taster ist mechanisch unzuverlässig (normaler Druck 0 von 5, kräftiger 6 von 8, ohne Rückmeldung) – Schalten
+  aus Home Assistant folgt (TODO 76). Bei jedem Umschalten ein `cfm-drop` für den DHCP-Discover des Geräts am Port
+  (TODO, Bekannte Fehler). Offen: Release im alt-Zustand (darf nicht zurückschalten), Bridge-Port mit `hw` an einem
+  CRS.*
 * **`$cfmSniff mirror=<Port>`** (DU2.3.1): Eigenschaftsnamen je Switch-Chip, CPU als Spiegelziel, CPU-Last, sieht
   der Sniffer die gespiegelten Frames (TODO 75).
 * **Pakete auf dem Backup-Manager** (TODO 7): Spiegel offener Aufträge und Laden nach einer Beförderung.

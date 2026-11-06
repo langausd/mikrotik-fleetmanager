@@ -21,7 +21,10 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
   hAP be³ Media: Umschalten per Skript bestanden (Pool-Adresse in 175, Internet ja, LAN nein). Der Reset-Taster löste zunächst
   nicht aus; eingegrenzt mit Log-Befehl und Probe-Skript: `on-event` ist Code (nicht der Skriptname), und eine
   geänderte Belegung wirkt erst mit `hold-time` – Rolle entsprechend geändert (Nachtrag DP1.4, EIGENHEITEN), unten
-  unter „Behobene Fehler“.
+  unter „Behobene Fehler“. Abends als v101 an allen 10 Geräten `ok`; die Rolle setzte am hAP be³ Media die eigene
+  Taster-Belegung. Umschalten per Taster in beide Richtungen mit dem Admin-Laptop am Dock bestanden (65b auf
+  Hardware bis auf `hw` an einem CRS und ein Release im alt-Zustand, [TESTSTAND.md](TESTSTAND.md)). Der Taster löst
+  aber nur bei kräftigem Druck und auch dann nicht immer aus – Schalten aus Home Assistant vorgezogen (TODO 76).
 * **Umgesetzt am 2026-11-05 (Vorbereitung eines Standort-Rollouts):** 7 (Nachtrag DV1.2) – der Backup-Manager
   spiegelt offene RouterOS-Aufträge samt Paketen; 64 (Nachtrag DU4.2) – ein später aufgenommenes oder
   zurückgestuftes Gerät öffnet die `ros`-Meldung wieder; 65b-Rückfall (DP1.4) – umschaltbarer Port per Skript und

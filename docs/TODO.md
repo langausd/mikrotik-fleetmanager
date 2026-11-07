@@ -1,17 +1,15 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-06)
+## Übersicht offener Punkte (Stand 2026-11-07)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 77). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 78). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
-* **Danach: 76 – umschaltbaren Port aus Home Assistant schalten** (DP1.4.1, umgesetzt 2026-11-06, Labor grün): Test am
-  Standort steht aus.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   DW1.8; erster Versuch 2026-11-04 scheiterte am Fehler unten). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
@@ -27,7 +25,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–76.
+* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75, 77.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -324,9 +322,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
-76. **Umschaltbaren Port aus Home Assistant schalten, Zustand anzeigen** (DP1.4.1, *umgesetzt 2026-11-06, Labor
-    `e2e.sh` 456 von 456; Hardware offen*) – Der Reset-Taster des hAP be³ Media löst unzuverlässig aus (normaler Druck 0 von 5, kräftiger 6
-    von 8) und meldet nichts zurück. Umgesetzt (Entscheidung des Nutzers): Geräte mit `portSwitch` öffnen die API für
-    `capsmanApi.from` wie der CAPsMAN, HA schaltet mit `tools/home-assistant/cfm_port.py` und liest den Zustand aus
-    `<cfm>/port-<name>.txt`; jeder Wechsel geht als `ev` `port` an den Webhook ([home-assistant.md](home-assistant.md),
-    Abschnitt 8). Offen: am Standort `cfm_port.py` aus HA und die Meldung beim Tasterdruck.
+77. **Hostnamen am Manager ohne Groß-/Kleinschreibung** (Befund am Standort 2026-11-07: `$cfmPlan host=hap-flur` →
+    „unbekannter Host“, das Inventar kennt `hAP-Flur`) – Entscheidung des Nutzers: eine zentrale Suchfunktion löst
+    `host=` unabhängig von der Schreibweise zum Namen im Inventar auf, alle Befehle mit `host=` nutzen sie (heute
+    einzeln `[$cfmInvLoad]->$host` u.a. in `mgr-core`, `mgr-check`, `mgr-show`, `mgr-enroll`, `mgr-sniff`); danach gilt
+    nur der Inventarname (Pfade `state/<host>`, Hostfile, Meldungen). `$cfmCheck` lehnt Namen ab, die sich nur in
+    der Schreibweise unterscheiden. Labor: Befehle mit anders geschriebenem Namen, Kollision im Check.

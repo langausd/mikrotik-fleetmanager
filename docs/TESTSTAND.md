@@ -197,6 +197,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Einschalten mit Ablauf, Aus/Ein startet das Radio nicht neu, andere SSIDs laufen ohne Unterbrechung. **PPSK**
   (DW2.2): Eintrag mit eigener Passphrase landet im VLAN des Eintrags, auch mit FT. Drei Fehler gefunden (Fallback,
   normale Passphrase bei PPSK, `cfm-iso` nach `slaves-static`), Fixes DW1.8.1, DW2.2.1, DP3.1.1 (TODO 74).
+* **Umschaltbarer Port aus Home Assistant** (DP1.4.1, TODO 76) – 2026-11-07 am ersten Standort (hAP be³ Media,
+  7.25.1, v102): Release ohne Rollback (Gruppe `cfm-api`, User, Regelblock `capi`, Dienst `api` nur für HA; auf den
+  vier Routern die Forward-Freigabe in die MGMT-Zone); das API-Passwort kam mit dem Secret-Push, nachdem der Manager
+  selbst die neue Version hatte. HA schaltet per `cfm_port.py` in beide Richtungen, jeder Wechsel kommt als `ev`
+  `port` am Webhook an. Ein Container von Hand auf dem Gerät (eigene Bridge, veth, NAT) blieb unberührt.
+
 
 ## Offen auf Hardware
 
@@ -224,7 +230,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Reset-Taster ist mechanisch unzuverlässig (normaler Druck 0 von 5, kräftiger 6 von 8, ohne Rückmeldung) – Schalten
   aus Home Assistant folgt (TODO 76). Bei jedem Umschalten ein `cfm-drop` für den DHCP-Discover des Geräts am Port
   (TODO, Bekannte Fehler). Offen: Release im alt-Zustand (darf nicht zurückschalten), Bridge-Port mit `hw` an einem
-  CRS, Schalten aus Home Assistant mit Meldung an den Webhook (DP1.4.1, im Labor grün).*
+  CRS, Meldung an den Webhook beim Tasterdruck (gleicher Skriptrumpf wie beim Schalten aus HA, das 2026-11-07
+  bestanden hat, siehe oben).*
 * **`$cfmSniff mirror=<Port>`** (DU2.3.1): Eigenschaftsnamen je Switch-Chip, CPU als Spiegelziel, CPU-Last, sieht
   der Sniffer die gespiegelten Frames (TODO 75).
 * **Pakete auf dem Backup-Manager** (TODO 7): Spiegel offener Aufträge und Laden nach einer Beförderung.

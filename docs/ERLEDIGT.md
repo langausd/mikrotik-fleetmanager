@@ -10,6 +10,11 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-07 (HA-Port-Schalter am Standort):** Framework `0ca97f7` als v102 an allen 10 Geräten `ok`. TODO 76
+  (DP1.4.1) bestanden: HA schaltet den Dock-Port per `cfm_port.py`, die Meldungen kommen am Webhook an (TESTSTAND).
+  Das API-Passwort für das Gerät mit `portSwitch` kam erst mit `$cfmSecretPush` nach Ring 2: Den vom Apply
+  angeforderten Push führte der Manager noch mit seiner alten Bibliothek aus. Neu: TODO 77 (Hostnamen ohne
+  Groß-/Kleinschreibung).
 * **Am 2026-11-06 (Abschluss der Vorbereitung, Rollout an einem Standort):** Labor 7.25.1 grün (`e2e.sh` 447,
   vrrp 137, mlag 72, Onboarding 14/15/18), Commit `673a944`. Dabei behoben: doppelte Benachrichtigungen bei zwei
   gleichzeitigen `$cfmNotifyTick` (Sperre `cfmNotBusy`, Nachtrag DU4.1, unten unter „Behobene Fehler“); der e2e-Test
@@ -644,6 +649,14 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     erzeugte auf dem Manager ~1070 Zeilen/~750 KB in einer Minute (Graylog). Geheime Felder schwärzt RouterOS
     (Test: User, PPP-Secret, SNMP-Community, WLAN-Security, WireGuard), Dateiinhalte nicht – beim Manager-Rekey
     wäre der private SSH-Schlüssel im Syslog gelandet (an diesem Standort lief seit dem Syslog keiner).
+
+76. ~~**Umschaltbaren Port aus Home Assistant schalten, Zustand anzeigen**~~ – *umgesetzt 2026-11-06 (DP1.4.1),
+    Labor `e2e.sh` 456 von 456, am Standort bestanden 2026-11-07 (v102):* Der Reset-Taster des hAP be³ Media löst
+    unzuverlässig aus (normaler Druck 0 von 5, kräftiger 6 von 8) und meldet nichts zurück. Geräte mit `portSwitch`
+    öffnen die API für `capsmanApi.from` wie der CAPsMAN, HA schaltet mit `tools/home-assistant/cfm_port.py` und
+    liest den Zustand aus `<cfm>/port-<name>.txt`; jeder Wechsel geht als `ev` `port` an den Webhook
+    ([home-assistant.md](home-assistant.md), Abschnitt 8). Am Standort: Schalten aus HA in beide Richtungen,
+    Meldung am Webhook ([TESTSTAND.md](TESTSTAND.md#bestanden)).
 
 ## Frühere Fassungen
 

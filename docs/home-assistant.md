@@ -1,7 +1,9 @@
-# Gast-WLAN aus Home Assistant schalten, Meldungen von cfm empfangen
+# Gast-WLAN und Ports aus Home Assistant schalten, Meldungen von cfm empfangen
 
 Anleitung für die Einbindung in Home Assistant (HA): Abschnitte 1–6 schalten das Gast-WLAN,
-[Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (DU4.1). Sie setzt kein Wissen über cfm oder RouterOS
+[Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (DU4.1),
+[Abschnitt 8](#8-umschaltbaren-port-schalten-dockingstation) schaltet einen Port, z.B. den einer Dockingstation, zwischen
+normalem Netz und Gastnetz um (DP1.4.1). Sie setzt kein Wissen über cfm oder RouterOS
 voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidungen DW4.1 und DW4.2), die
 konkreten Werte bekommst du von ihm.
 
@@ -272,9 +274,9 @@ dann nur `host` in `cfm_ssid.json` zu ändern (und in der Integration „Mikroti
 
 * Die API ist **unverschlüsselt** (Port 8728, im LAN so gewollt, DU2.1). Das Passwort des Lese-Users
   geht im Klartext über das Netz. Er kann Konfiguration und Clients lesen, aber nichts ändern außer
-  über die beiden Schalt-Skripte.
-* Der Port ist am CAPsMAN nur für die Adressen aus `capsmanApi.from` offen.
-* Wer `cfm_ssid.json` lesen kann, kann das Gast-WLAN schalten und die Konfiguration des CAPsMAN
+  über die Schalt-Skripte (Gast-WLAN am CAPsMAN, `cfm-port-*` an Geräten mit umschaltbarem Port).
+* Der Port ist am CAPsMAN und an Geräten mit umschaltbarem Port nur für die Adressen aus `capsmanApi.from` offen.
+* Wer `cfm_ssid.json` lesen kann, kann das Gast-WLAN und die Ports schalten und die Konfiguration dieser Geräte
   lesen (ohne Passwörter der WLANs).
 
 ## 7. Benachrichtigungen von cfm
@@ -316,8 +318,8 @@ z.B. aufs Handy weiter.
 |---|---|
 | `site` | Standort (z.B. `Haus`) |
 | `host` | betroffenes Gerät (leer bei der Probemeldung) |
-| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `dnsreq` (von einem Router: Client hat per DNS-Selbstbedienung eine Domain freigeschaltet, DN3.2), `test` |
-| `state` | `on` = eingetreten, `off` = wieder in Ordnung bzw. erledigt (bei `ros`: alle Geräte haben die Version, oder sie ist überholt), `once` = einmalig (Onboarding, Probe, `dnsreq`) |
+| `ev` | `apply`, `stumm`, `wlan`, `update`, `lizenz`, `ros`, `onboard`, `primary`, `primary-tick` (vom Backup-Manager: Primary weg bzw. hängt), `dnsreq` (von einem Router: Client hat per DNS-Selbstbedienung eine Domain freigeschaltet, DN3.2), `port` (vom Gerät mit dem Port: umgeschaltet, Abschnitt 8), `test` |
+| `state` | `on` = eingetreten, `off` = wieder in Ordnung bzw. erledigt (bei `ros`: alle Geräte haben die Version, oder sie ist überholt), `once` = einmalig (Onboarding, Probe, `dnsreq`); bei `port` der neue Zustand `normal` oder `alt` |
 | `msg` | Beschreibung ohne Standort und Gerät |
 | `text` | fertiger Text: `<site>: <host> - <msg>` |
 | `time` | Zeit des Managers |
@@ -327,6 +329,7 @@ z.B. aufs Handy weiter.
 | `key` | ordnet `on` und `off` einander zu: `<ev>:<host>` (z.B. `apply:ap1`), bei `ros` `ros:<Version>` |
 | `ver` | nur bei `ros`: die Version (z.B. `7.25.1`) |
 | `domain`, `client`, `result`, `until` | nur bei `dnsreq`: freigeschaltete Domain, IP des Clients, `allowed`/`extended`/`denied`, Ablauf (Unixzeit) |
+| `port`, `interface` | nur bei `port`: Name des Ports aus `portSwitch` (z.B. `dock`), Interface am Gerät (z.B. `ether5`); `key` ist `port:<Gerät>:<Name>`, `level` `info` |
 
 Ein Empfänger, der nur `level`, `device` und `message` auswertet (etwa `info` nur ins Log,
 `action` als Aufgabe), funktioniert ohne Anpassung. Achtung: `dnsreq` hat `level` `action` und
@@ -342,10 +345,100 @@ den `key` also in den Titel nehmen (z.B. `[apply:ap1] …`) oder die Einträge s
 (`todo.get_items`, dann über die Beschreibung).
 
 Nur Wichtiges aufs Handy, z.B. ohne „wieder ok“: Bedingung
-`{{ trigger.json.state != 'off' }}` vor die Aktion setzen. `local_only: true` lässt nur Aufrufe aus
+`{{ trigger.json.state != 'off' }}` vor die Aktion setzen. Meldungen `port` (jedes Umschalten eines Ports) gehen
+ebenfalls an diesen Webhook; wer sie nicht aufs Handy will: `{{ trigger.json.ev != 'port' }}` (Abschnitt 8.3 nutzt sie). `local_only: true` lässt nur Aufrufe aus
 dem lokalen Netz zu; der Manager schickt aus dem LAN.
 
 **Fehlersuche:** Kommt nichts an, steht im Log des Managers `cfm: Meldung nicht zugestellt …`
 (Netzweg, Port 8123, falsche ID). HA beantwortet auch eine unbekannte Webhook-ID mit `200` – ein
 Tippfehler in der ID fällt also nur dadurch auf, dass die Automation nicht auslöst (Trace der
 Automation ansehen).
+
+## 8. Umschaltbaren Port schalten (Dockingstation)
+
+Ein Port mit `portSwitch` im Hostfile (DP1.4) hat zwei Zustände: **normal** (sein Profil, z.B. Haupt-VLAN ungetaggt
+und alle anderen getaggt für den Admin-Laptop) und **alt** (z.B. nur das Gastnetz für einen Firmen-Laptop). Die
+Skripte `cfm-port-<name>-normal` und `-alt` auf dem Gerät setzen den Zustand, trennen danach den Link für 3 s (das
+Gerät am Port holt eine neue Adresse) und melden den Wechsel an den Webhook aus Abschnitt 7. HA startet die Skripte
+über die RouterOS-API des Geräts – derselbe Lese-User und dasselbe Passwort wie beim Gast-WLAN, nur die Adresse ist
+die des Geräts mit dem Port (DP1.4.1).
+
+```
+Home Assistant ──RouterOS-API, TCP 8728──▶ Gerät mit dem Port (z.B. Switch am Schreibtisch)
+  command_line-Schalter                      ├─ Skript cfm-port-dock-alt     ─┐ setzen den Port
+  └─ cfm_port.py (Hilfsskript)               ├─ Skript cfm-port-dock-normal  ─┘
+                                             └─ Datei cfm/port-dock.txt     ◀── Zustand (normal/alt)
+               ◀──Webhook (Abschnitt 7)─────── jeder Wechsel, auch vom Taster am Gerät
+```
+
+### 8.1 Werte vom Netz-Admin
+
+| Wert | Beispiel | Bedeutung |
+|---|---|---|
+| Host | `192.168.10.30` | MGMT-Adresse des Geräts mit dem Port |
+| Name | `dock` | Name aus `portSwitch`; die Skripte heißen `cfm-port-dock-normal/-alt` |
+| User/Passwort | – | wie beim Gast-WLAN (`cfm_ssid.json`) |
+
+Der Netz-Admin braucht dafür `capsmanApi` in `global.rsc` (Adresse von HA in `from`) und den Eintrag `portSwitch` im
+Hostfile; nach dem Release öffnet das Gerät die API für HA (Admin-Guide, Feld `portSwitch`).
+
+### 8.2 Datei ablegen und von Hand testen
+
+`tools/home-assistant/cfm_port.py` nach `/config/cfm/cfm_port.py` – **neben** `cfm_ssid.py` (es nutzt dessen
+API-Client und Zugangsdatei `cfm_ssid.json`; ohne Gast-WLAN-Schalter trotzdem beide Dateien und die JSON-Datei
+ablegen). Im Container von HA (Abschnitt 3.2):
+
+```sh
+python3 /config/cfm/cfm_port.py 192.168.10.30 dock state    # → normal
+python3 /config/cfm/cfm_port.py 192.168.10.30 dock alt       # kein Output, Exit-Code 0 nach ~4 s
+python3 /config/cfm/cfm_port.py 192.168.10.30 dock state    # → alt
+python3 /config/cfm/cfm_port.py 192.168.10.30 dock normal
+```
+
+| Aufruf | Ausgabe (stdout) | Exit-Code |
+|---|---|---|
+| `<host> <name> normal` / `alt` | nichts; kehrt zurück, wenn das Gerät fertig ist (Port umgestellt, Link 3 s getrennt, Meldung, ~4 s) | 0, bei Fehler 1 |
+| `<host> <name> state` | `normal` oder `alt` | 0, bei Fehler 1 |
+
+Fehler nach stderr mit `cfm_port:` (z.B. „Skript cfm-port-dock-alt fehlt“: kein `portSwitch` mit diesem Namen auf dem
+Gerät). Optionen wie bei `cfm_ssid.py`: `--config`, `--timeout`.
+
+### 8.3 `configuration.yaml` und Automation
+
+```yaml
+command_line:
+  - switch:
+      name: Dock im Gastnetz
+      unique_id: cfm_port_dock
+      icon: mdi:laptop
+      command_on: python3 /config/cfm/cfm_port.py 192.168.10.30 dock alt
+      command_off: python3 /config/cfm/cfm_port.py 192.168.10.30 dock normal
+      command_state: python3 /config/cfm/cfm_port.py 192.168.10.30 dock state
+      value_template: '{{ value == "alt" }}'
+      availability: '{{ value in ["normal", "alt"] }}'
+      command_timeout: 30
+      # selten: Wechsel vom Taster meldet das Gerät per Webhook (Automation unten)
+      scan_interval: 3600
+```
+
+Der Schalter ist **an**, wenn der Port im Gastnetz (alt) ist. Damit ein Wechsel am Taster sofort sichtbar wird, in der
+Automation aus Abschnitt 7 (oder einer eigenen mit derselben Webhook-ID) bei `ev` = `port` den Schalter neu abfragen:
+
+```yaml
+       - if: "{{ trigger.json.ev == 'port' }}"
+         then:
+           - action: homeassistant.update_entity
+             target:
+               entity_id: switch.dock_im_gastnetz
+         else:
+           - action: notify.mobile_app_<handy>
+             data:
+               title: "Netz {{ trigger.json.site }}"
+               message: >-
+                 {{ '✅ ' if trigger.json.state == 'off' else '⚠️ ' }}{{ trigger.json.text }}
+```
+
+**Verhalten:** Jedes Schalten trennt den Link für 3 s, auch wenn der Port schon im gewünschten Zustand ist – keine
+Automationen, die hin- und herschalten. Der Zustand bleibt über Neustarts und Releases erhalten. Im Zustand alt fehlt
+dem Port das MGMT-VLAN: Ein Admin-Laptop am Dock erreicht die Geräte dann nur über WLAN; HA schaltet weiter, es
+spricht das Gerät über das Netz an, nicht über den Port.

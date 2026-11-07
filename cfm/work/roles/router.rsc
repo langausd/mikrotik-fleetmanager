@@ -367,19 +367,15 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
     }
   }
 }
-# Monitoring -> RouterOS-API des CAPsMAN (DU2.1): Quellen aus capsmanApi.from, Ziel ist der CAPsMAN aus
-# dem Manifest (cm), die Freigabe zieht also mit ihm um. Ist der Router selbst CAPsMAN, reicht die
-# Freigabe der Rolle capsman in local-input.
+# Monitoring -> RouterOS-API (DU2.1, DP1.4.1): Quellen aus capsmanApi.from, Ziel ist die MGMT-Zone - dort
+# öffnen nur der CAPsMAN und Geräte mit umschaltbarem Port die API (für capsmanApi.from, Rolle base), die
+# Freigabe zieht also mit ihnen um. Ist der Router selbst eines davon, reicht die Freigabe in local-input.
 :local capi ($cfmG->"capsmanApi")
-:if ([:typeof $capi] = "array") do={
+:if ([:typeof $capi] = "array" and ($zones->$mz) = 1) do={
   :local cport [:tostr ($capi->"port")]
   :if ([:len $cport] = 0) do={ :set cport "8728" }
-  :foreach c in=($cfmMf->"cm") do={
-    :if ([:tostr ($c->"n")] != [:tostr ($cfmMf->"name")]) do={
-      :foreach a in=($capi->"from") do={
-        :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"protocol"="tcp";"src-address"=$a;"dst-address"=[:tostr ($c->"ip")];"dst-port"=$cport})
-      }
-    }
+  :foreach a in=($capi->"from") do={
+    :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"protocol"="tcp";"src-address"=$a;"out-interface-list"=("Z-" . $mz);"dst-port"=$cport})
   }
 }
 :set ($r->[:len $r]) ({"chain"="forward";"action"="accept";"connection-nat-state"="dstnat"})

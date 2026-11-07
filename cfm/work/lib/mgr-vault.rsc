@@ -168,15 +168,23 @@
           :set c ($c . "/ppp/secret/remove [find where name=\"" . $n . "\"]; /ppp/secret/add name=\"" . $n . "\" password=\"" . [$cfmEsc [/ppp/secret/get $i password]] . "\" disabled=yes service=any comment=\"cfm-sys:vault\";")
         }
       }
-      # Lese-User der API auf dem CAPsMAN (DU2.1)
+      # Lese-User der API (DU2.1) auf dem CAPsMAN und auf Geräten mit umschaltbarem Port (DP1.4.1). Am CAPsMAN muss
+      # es ihn geben (sonst beim nächsten Push); ob ein anderes Gerät einen portSwitch hat, weiß nur das Gerät -
+      # dort nur setzen, wenn es den User gibt (legt die Rolle base an und fordert dabei den Push an). Kein Hostfile
+      # hier laden: Das setzte cfmHost auf dem Manager, mitten in einen Apply hinein (Labor 2026-11-06)
       :local capi ($cfmG->"capsmanApi")
-      :if ($iscm and [:typeof $capi] = "array") do={
+      :if ([:typeof $capi] = "array") do={
         :if ([:len ($capi->"from")] > 0) do={
           :local au [:tostr ($capi->"user")]
           :if ([:len $au] = 0) do={ :set au "homeassistant" }
           :local apw [$cfmVaultGet ("user." . $au)]
           :if ([:len $apw] > 0) do={
-            :set c ($c . ":if ([:len [/user/find where name=\"" . $au . "\"]] > 0) do={ /user/set [find where name=\"" . $au . "\"] password=\"" . [$cfmEsc $apw] . "\" disabled=no } else={ :set ok false };")
+            :local us ("/user/set [find where name=\"" . $au . "\"] password=\"" . [$cfmEsc $apw] . "\" disabled=no")
+            :if ($iscm) do={
+              :set c ($c . ":if ([:len [/user/find where name=\"" . $au . "\"]] > 0) do={ " . $us . " } else={ :set ok false };")
+            } else={
+              :set c ($c . ":if ([:len [/user/find where name=\"" . $au . "\" and group=\"cfm-api\"]] > 0) do={ " . $us . " };")
+            }
           }
         }
       }

@@ -91,7 +91,8 @@
 #             $cfmSecret key=snmp.auth value=... und key=snmp.priv (Secret-Push). Die Standard-Community
 #             public (v1/v2c) wird abgeschaltet.
 #  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (DU2.1), z.B. für Home Assistant (welcher
-#             Client an welchem AP). {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}
+#             Client an welchem AP), und auf Geräten mit portSwitch (Port aus HA schalten, DP1.4.1).
+#             {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}
 #             öffnet dort den Dienst api nur für from, legt den User (Gruppe cfm-api: read,api,test) an,
 #             Passwort NUR im Vault: $cfmSecret key=user.homeassistant value=... (Secret-Push). {} = aus.
 #             Unverschlüsselt (api) – das Passwort geht im Klartext durchs Netz.

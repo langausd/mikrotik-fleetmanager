@@ -545,22 +545,6 @@
       }
     }
   }
-  # Lese-Zugang per API (DU2.1): Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault,
-  # user.<name>; bis dahin abgeschaltet), Freigabe in local-input nur für capsmanApi.from. Den
-  # Dienst selbst öffnet base. Zieht der CAPsMAN um, räumt die GC das alte Gerät auf.
-  :local capi ($cfmG->"capsmanApi")
-  :if ([:typeof $capi] = "array") do={
-    :if ([:len ($capi->"from")] > 0) do={
-      :local au [:tostr ($capi->"user")]
-      :if ([:len $au] = 0) do={ :set au "homeassistant" }
-      :local ap [:tostr ($capi->"port")]
-      :if ([:len $ap] = 0) do={ :set ap "8728" }
-      $cfmEnsure m="/user/group" k="grp:api" n=({"name"="cfm-api"}) p=({"name"="cfm-api";"policy"="read,api,test"})
-      $cfmEnsure m="/user" k=("user:" . $au) n=({"name"=$au}) p=({"name"=$au;"group"="cfm-api"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
-      :local fl ({})
-      :foreach a in=($capi->"from") do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=$ap;"src-address"=$a}) }
-      $cfmBlock m="/ip/firewall/filter" k="capi" l=$fl
-    }
-  }
+  # Lese-Zugang per API (DU2.1): User, Gruppe und Freigabe legt die Rolle base an (auch für umschaltbare Ports)
   :return true
 }

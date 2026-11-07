@@ -7,6 +7,7 @@
 #  c   {"normal"={...};"alt"={...}} je Zustand: pv (PVID), ft (frame-types), ed (edge), bg (bpdu-guard),
 #      tg (getaggte VIDs, Komma-Liste), ut (ungetaggte VID oder ""), iso (reiner Access-Port eines isolierten
 #      VLANs, DP3.1), spec (Profil fürs Log)
+#  nu  notify.url (leer = keine Meldung)   site  Name des Standorts für die Meldung (DP1.4.1)
 # Ändert nur diesen Port: Bridge-Port, seine Einträge in den Bridge-VLANs (cfm:bv:<VID>) und ggf. cfm-iso, trennt
 # danach den Link für 3 s (neue DHCP-Adresse am Gerät). Der nächste Apply übernimmt den Zustand aus der Datei (ein
 # Release schaltet nicht zurück).
@@ -63,5 +64,12 @@
   :onerror e in={ /interface/disable [find where name=$p]; :delay 3s; /interface/enable [find where name=$p] } do={}
   :onerror e in={ /file/set $sf contents=$s } do={ /file/add name=$sf contents=$s }
   :log info ("cfm: Port " . $p . " (" . $nm . ") auf " . $s . ": " . ($x->"spec"))
+  # Meldung an den Webhook (DP1.4.1): ev "port", state = neuer Zustand; HA fragt daraufhin den Schalter neu ab
+  :if ([:len $nu] > 0) do={
+    :local id [/system/identity/get name]
+    :local t ($site . ": " . $id . " - Port " . $p . " (" . $nm . ") auf " . $s)
+    :local j ("{\"site\":\"" . $site . "\",\"host\":\"" . $id . "\",\"ev\":\"port\",\"state\":\"" . $s . "\",\"msg\":\"Port " . $p . " (" . $nm . ") auf " . $s . "\",\"text\":\"" . $t . "\",\"time\":\"" . [/system/clock/get date] . " " . [/system/clock/get time] . "\",\"level\":\"info\",\"device\":\"" . $id . "\",\"message\":\"" . $t . "\",\"key\":\"port:" . $id . ":" . $nm . "\",\"port\":\"" . $nm . "\",\"interface\":\"" . $p . "\"}")
+    :onerror e in={ /tool/fetch url=$nu http-method=post http-header-field="Content-Type: application/json" http-data=$j output=none } do={ :log warning ("cfm: Port " . $p . ": Meldung nicht zugestellt: " . $e) }
+  }
   :return true
 }

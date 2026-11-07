@@ -561,7 +561,7 @@ pflegen die Datei selbst, du kannst sie aber auch direkt editieren (wirkt sofort
 | `portDefault` | Profil für alle nicht genannten Ethernet-Ports |
 | `bonds` | Link-Bündel (DP2.1): `{"bond1"={"slaves"="sfp-sfpplus1,sfp-sfpplus2"}}`, optional `"mode"` (`802.3ad` = LACP, Standard, oder `active-backup` mit `"primary"=<slave>`) und `"hash"` (Standard `layer-2-and-3`); LACP mit `lacp-rate=1sec`. Das Profil des Bonds steht unter `ports` (`"bond1"="trunk"`), Einträge der Slaves unter `ports`/`portDefault` gelten nicht. MLAG über zwei Switches: `mlag.rsc` |
 | `stpPrio` | RSTP-Priorität der Bridge (z.B. `"0x4000"` für den Core) |
-| `portSwitch` | umschaltbarer Port (DP1.4), z.B. Dockingstation: `{"dock"={"port"="ether5";"alt"="access:175";"button"="reset"}}`. Normal gilt das Profil aus `ports`/`portDefault`; die Skripte `cfm-port-dock-alt`, `-normal` und `-toggle` (Terminal: `/system script run cfm-port-dock-toggle`) schalten nur diesen Port in Sekunden um, ohne Release, und trennen danach den Link für 3 s (das Gerät am Port holt eine neue Adresse); jeder Apply behält den Zustand (`<cfm>/port-dock.txt`). `button="mode"` bzw. `"reset"`: der Mode- bzw. Reset-Taster des Geräts startet `-toggle` bei kräftigem Druck – normaler Druck löst am hAP be³ Media nichts aus, auch kräftiger nicht immer, ohne Rückmeldung; Schalten aus Home Assistant folgt (TODO 76) (ein Eintrag je Gerät; beim Einschalten gehalten setzt der Reset-Taster weiter zurück). Die Belegung von Hand nur zusammen mit `hold-time` ändern, sonst wirkt sie nicht (ROUTEROS-EIGENHEITEN). Im alt-Zustand fehlen dem Port die übrigen VLANs – z.B. MGMT für den Admin-Laptop am Dock (Rückfall WLAN/Konsole). Entfernen: Eintrag löschen, Release |
+| `portSwitch` | umschaltbarer Port (DP1.4), z.B. Dockingstation: `{"dock"={"port"="ether5";"alt"="access:175";"button"="reset"}}`. Normal gilt das Profil aus `ports`/`portDefault`; die Skripte `cfm-port-dock-alt`, `-normal` und `-toggle` (Terminal: `/system script run cfm-port-dock-toggle`) schalten nur diesen Port in Sekunden um, ohne Release, und trennen danach den Link für 3 s (das Gerät am Port holt eine neue Adresse); jeder Apply behält den Zustand (`<cfm>/port-dock.txt`). `button="mode"` bzw. `"reset"`: der Mode- bzw. Reset-Taster des Geräts startet `-toggle` bei kräftigem Druck – normaler Druck löst am hAP be³ Media nichts aus, auch kräftiger nicht immer, ohne Rückmeldung; mit Rückmeldung aus Home Assistant schalten: 6.9 (ein Eintrag je Gerät; beim Einschalten gehalten setzt der Reset-Taster weiter zurück). Die Belegung von Hand nur zusammen mit `hold-time` ändern, sonst wirkt sie nicht (ROUTEROS-EIGENHEITEN). Im alt-Zustand fehlen dem Port die übrigen VLANs – z.B. MGMT für den Admin-Laptop am Dock (Rückfall WLAN/Konsole). Entfernen: Eintrag löschen, Release |
 | `stp` | `"none"` schaltet RSTP auf der Bridge ab – für Router/Manager in einer VM mit einer Karte je VLAN (siehe DP1.2). `$cfmCheck` warnt dann bei zwei Ports im selben VLAN oder mehreren Trunks. |
 | `igmp`, `dhcpSnoop` | nur Rolle `switch`: IGMP-Snooping, DHCP-Snooping (Trunks = trusted) |
 | `routerId` | nur Rolle `router`: 1–4, schaltet VRRP ein (kleinere Zahl = höhere Priorität) |
@@ -765,18 +765,21 @@ Assistant: Lesezeichen „cfm-Monitor“, 8.10):
    Vault: `$cfmSecret key=user.homeassistant value=…`, `$cfmRelease` (bzw. Ringe durchlaufen lassen).
    Der CAPsMAN bekommt Dienst `api` (8728, nur diese Adresse), Gruppe `cfm-api` (`read,api,test`),
    den User und eine Freigabe in `local-input`; der Secret-Push setzt das Passwort und schaltet ihn ein.
-2. Liegt HA außerhalb des MGMT-VLANs, gibt die Rolle `router` den Weg von `capsmanApi.from` zum
-   CAPsMAN auf dem API-Port frei (Firewall-Block, Ziel aus dem Manifest). Ein Router ohne Rolle
-   `router` (Bestandsgerät, das noch selbst routet) braucht die Freigabe in seiner `post.rsc`:
+   Dasselbe bekommen Geräte mit `portSwitch` im Hostfile, damit HA den Port schalten kann (DP1.4.1, 6.9).
+2. Liegt HA außerhalb des MGMT-VLANs, gibt die Rolle `router` den Weg von `capsmanApi.from` in die
+   MGMT-Zone auf dem API-Port frei (Firewall-Block; dort öffnen nur CAPsMAN und Geräte mit `portSwitch` die
+   API). Ein Router ohne Rolle `router` (Bestandsgerät, das noch selbst routet) braucht die Freigabe in
+   seiner `post.rsc`:
    ```
-   :global cfmG; :global cfmMf; :global cfmBlock
+   :global cfmG; :global cfmNet; :global cfmBlock
    :local capi ($cfmG->"capsmanApi")
    :local fl ({})
    :if ([:typeof $capi] = "array") do={
      :local port [:tostr ($capi->"port")]
      :if ([:len $port] = 0) do={ :set port "8728" }
-     :foreach c in=($cfmMf->"cm") do={ :foreach a in=($capi->"from") do={
-       :set ($fl->[:len $fl]) ({"chain"="forward";"action"="accept";"protocol"="tcp";"src-address"=$a;"dst-address"=[:tostr ($c->"ip")];"dst-port"=$port}) } }
+     :local mn ([$cfmNet [:tostr ($cfmG->"mgmtVlan")]]->"net")
+     :foreach a in=($capi->"from") do={
+       :set ($fl->[:len $fl]) ({"chain"="forward";"action"="accept";"protocol"="tcp";"src-address"=$a;"dst-address"=$mn;"dst-port"=$port}) }
    }
    $cfmBlock m="/ip/firewall/filter" k="capifwd" l=$fl
    ```
@@ -846,6 +849,16 @@ Zeile nur mit `capsmanRadios`):
 ```
 
 ---
+
+### 6.9 Umschaltbaren Port per Home Assistant schalten (DP1.4.1)
+
+Ein Port mit `portSwitch` (Feld im Hostfile) lässt sich aus HA schalten, mit Rückmeldung – der Taster
+am Gerät ist dafür zu unzuverlässig (hAP be³ Media). Voraussetzung ist `capsmanApi` wie in 6.7. Nach dem Release
+öffnet das Gerät mit dem Port die API für `capsmanApi.from` (User, Gruppe, Freigabe wie am CAPsMAN), der
+Secret-Push setzt das Passwort (`$cfmSecretPush host=<gerät>` beschleunigt). HA nutzt
+`tools/home-assistant/cfm_port.py` (Anleitung `home-assistant.md`, Abschnitt 8): Host = MGMT-IP des Geräts, Name aus
+`portSwitch`. Jeder Wechsel – auch vom Taster – geht als Meldung `ev` `port` an `notify.url`. Entfernt man
+`portSwitch`, räumt der nächste Apply API, User und Freigabe dort wieder ab (außer am CAPsMAN).
 
 ## 7. Geräte aufnehmen
 

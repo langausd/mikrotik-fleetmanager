@@ -10,8 +10,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
-* **Danach: 76 – umschaltbaren Port aus Home Assistant schalten** (Entscheidung des Nutzers 2026-11-06): Der
-  Reset-Taster des hAP be³ Media löst unzuverlässig aus und meldet nichts zurück; HA schaltet und zeigt den Zustand.
+* **Danach: 76 – umschaltbaren Port aus Home Assistant schalten** (DP1.4.1, umgesetzt 2026-11-06, Labor grün): Test am
+  Standort steht aus.
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
   Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
   DW1.8; erster Versuch 2026-11-04 scheiterte am Fehler unten). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
@@ -324,13 +324,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
-76. **Umschaltbaren Port aus Home Assistant schalten, Zustand anzeigen** (DP1.4, Wunsch des Nutzers 2026-11-05;
-    **vorgezogen 2026-11-06**) – Der Link-Abriss nach dem Umschalten zeigt nur, dass geschaltet wurde, nicht ob der
-    Port gerade im Gastnetz oder privilegiert ist. Der Taster taugt dafür nicht: Am hAP be³ Media (7.25) kam am
-    2026-11-06 abends normaler Druck 0 von 5, kräftiger 6 von 8 an – ohne Rückmeldung (die Port-LED zeigt ACT, der
-    Link-Abriss von 3 s ist kaum zu sehen; `/system/leds` ist leer). **Entschieden (Nutzer): Schalten über HA**, nach
-    dem Muster der schaltbaren SSID ([home-assistant.md](home-assistant.md)): HA startet über die RouterOS-API mit dem
-    Lese-User (`read,api,test`) `cfm-port-<name>-normal` bzw. `-alt` (setzen den Zustand fest, kein Toggle) und liest
-    den Zustand aus der PVID des Bridge-Ports (nicht aus der Merkdatei `<cfm>/port-<name>.txt`); dazu
-    `cfm_ssid.py` um Ports erweitern oder ein eigenes Hilfsskript, Anleitung in home-assistant.md. Offen: ob das
-    Skript jeden Wechsel zusätzlich an den HA-Webhook meldet (`notify`); ob der Taster bleibt (`button` ist optional).
+76. **Umschaltbaren Port aus Home Assistant schalten, Zustand anzeigen** (DP1.4.1, *umgesetzt 2026-11-06, Labor
+    `e2e.sh` 456 von 456; Hardware offen*) – Der Reset-Taster des hAP be³ Media löst unzuverlässig aus (normaler Druck 0 von 5, kräftiger 6
+    von 8) und meldet nichts zurück. Umgesetzt (Entscheidung des Nutzers): Geräte mit `portSwitch` öffnen die API für
+    `capsmanApi.from` wie der CAPsMAN, HA schaltet mit `tools/home-assistant/cfm_port.py` und liest den Zustand aus
+    `<cfm>/port-<name>.txt`; jeder Wechsel geht als `ev` `port` an den Webhook ([home-assistant.md](home-assistant.md),
+    Abschnitt 8). Offen: am Standort `cfm_port.py` aus HA und die Meldung beim Tasterdruck.

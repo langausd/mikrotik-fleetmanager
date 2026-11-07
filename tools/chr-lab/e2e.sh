@@ -587,6 +587,7 @@ mgr ':global e2eP [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents
 rv=$(mgr '$cfmRelease msg=" portSwitch" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (portSwitch dock) angewendet" || { bad "sw1 Apply v$rv (portSwitch)"; r 2 '/log/print where message~"^cfm: "' | tail -5; }
 expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 20 and [:len [/system/script/find where name~"^cfm-port-dock-(normal|alt|toggle)\$"]] = 3 and [:len [/log/find where message~"reset-Taster nicht belegt"]] >= 1' "sw1: Dock-Port normal (PVID 20), drei Skripte, Warnung ohne Reset-Taster (DP1.4)"
+expect 2 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name~"^(hatest|homeassistant)\$"]] = 0' "sw1: portSwitch ohne capsmanApi öffnet keine API (DP1.4.1)"
 r 2 '/system script run cfm-port-dock-toggle' >/dev/null
 expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 40 and [/interface/bridge/port/get [find interface=dock] frame-types] = "admit-only-untagged-and-priority-tagged" and [:tostr [/interface/bridge/vlan/get [find comment="cfm:bv:40"] untagged]] ~ "dock" and !([:tostr [/interface/bridge/vlan/get [find comment="cfm:bv:30"] tagged]] ~ "dock") and [/file/get cfm/port-dock.txt contents] = "alt"' "sw1: toggle schaltet auf access:40 (PVID, VLAN-Tabelle, Zustandsdatei)"
 applied sw1 && expect 2 '[/interface/bridge/port/get [find interface=dock] pvid] = 40' "sw1: Apply behält den Zustand alt bei" || bad "sw1 Apply mit Port auf alt"
@@ -709,7 +710,7 @@ agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (capsmanApi) angewendet" || bad "cm1 A
 agentwait 2 "$rv" sw1 || true; agentwait 3 "$rv" cm2 || true
 expect 1 '![/ip/service/get [find name=api] disabled] and [:tostr [/ip/service/get [find name=api] available-from]] ~ "10.0.2.2" and [/user/get [find name=hatest] group] = "cfm-api" and [:len [/ip/firewall/filter/find where comment~"^cfm:capi" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "cm1: API nur für capsmanApi.from, User hatest (cfm-api), Freigabe in local-input"
 expect 2 '[/ip/service/get [find name=api] disabled]' "sw1: API aus (kein CAPsMAN)"
-expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and chain=forward and dst-address~"^192.168.10.2(/32)?\$" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "sw1 (router): Forward-Freigabe zur API des CAPsMAN cm1"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and chain=forward and out-interface-list="Z-mgmt" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "sw1 (router): Forward-Freigabe zur API in die MGMT-Zone (CAPsMAN cm1, DP1.4.1)"
 expect 1 '[/interface/wifi/provisioning/get [find where comment~"^cfm:wprov:00"] name-format] = "%I-2g"' "cm1: Interface-Namen aus Identity und Band (name-format)"
 # CAPsMAN auf sw1, cm2 zusätzlich AP (CHR ohne Radios: CAP-Einstellungen, Profile, Passphrasen)
 invrole "switch,router" "switch,router,capsman"
@@ -727,7 +728,7 @@ applied cm1 && ok "cm1 nach dem Umzug angewendet" || bad "cm1: $(stat cm1 res)"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm1: CAPsMAN aus, Profile abgeräumt"
 expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0 and [:len [/ip/firewall/filter/find where comment~"^cfm:capi"]] = 0' "cm1: API, User und Freigabe mit der Rolle capsman abgeräumt"
 expect 2 '![/ip/service/get [find name=api] disabled] and [/user/get [find name=hatest] group] = "cfm-api" and ![/user/get [find name=hatest] disabled]' "sw1: API-Zugang umgezogen, User nach dem Secret-Push aktiv"
-expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and dst-port="8728"]] = 0' "sw1: als CAPsMAN selbst keine Forward-Freigabe (local-input reicht)"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and chain=forward and out-interface-list="Z-mgmt" and dst-port="8728"]] = 1' "sw1: als CAPsMAN weiter Forward-Freigabe in die MGMT-Zone (für weitere API-Geräte), selbst über local-input"
 applied cm2 && ok "cm2 als manager-backup,ap angewendet" || bad "cm2 ap: $(stat cm2 res)"
 expect 3 '[:tostr [/interface/wifi/cap/get caps-man-addresses]] = "192.168.10.21" and [:tostr [/interface/wifi/cap/get caps-man-names]] = "sw1" and [/interface/wifi/datapath/get [find name="cfm-cap"] comment] = "cfm:wdp-cap cm=sw1"' "cm2: CAP zeigt auf sw1 (Adresse und Name aus dem Manifest, im Datapath gemerkt)"
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf:l"]] = 2 and [/interface/wifi/datapath/get [find name="cfm-main"] vlan-id] = 20 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: lokale Fallback-Konfiguration je Band, Datapath mit VLAN, kein CAPsMAN"
@@ -892,6 +893,27 @@ out=$(mgr '$cfmNotify test=yes; $cfmNotify ev="e2e" host="sw1" st="once" msg=("P
 echo "$out" | grep -q "zugestellt an http://10.0.2.2:$NP/hook" && nwait '"ev": "test"' && ok "Probemeldung zugestellt" || { bad "Probemeldung"; echo "$out" | tail -2; }
 nwait '"ev": "e2e"' && grep '"ev": "e2e"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "e2e", "state": "once", "msg": "Prüfung äöü \\"x\\"", "text": "Labor: sw1 - Prüfung äöü \\"x\\""' && grep '"ev": "e2e"' "$NL" | grep -q '"_ct": "application/json"' && ok "JSON mit Umlauten und Anführungszeichen, Content-Type application/json" || { bad "JSON der Meldung"; tail -1 "$NL"; }
 grep '"ev": "test"' "$NL" | grep -q '"level": "info", "device": "cm1", "message": "Labor: Probemeldung von cfm"' && grep '"ev": "e2e"' "$NL" | grep -q '"level": "warning", "device": "sw1"' && ok "level/device/message (Probe info, Gerät statt Absender)" || { bad "level/device/message"; grep '"ev": "test"' "$NL" | tail -1; }
+# Umschaltbarer Port aus Home Assistant (DP1.4.1): API auch auf einem Gerät mit portSwitch (sw1 ist hier kein
+# CAPsMAN, das ist cm1 nach der Übergangsregel), Passwort per Secret-Push, jeder Wechsel als Meldung an den Webhook
+r 2 '/interface/eoip/add name=dock remote-address=127.0.0.2 tunnel-id=77 local-address=127.0.0.1' >/dev/null
+mgr ':global e2eP15 [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eP15 . ":set (\$cfmHost->\"ports\"->\"dock\") \"hybrid:20\"\n:set (\$cfmHost->\"portSwitch\") {\"dock\"={\"port\"=\"dock\";\"alt\"=\"access:40\"}}\n"); :global e2eG15 [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG15 . ":set (\$cfmG->\"capsmanApi\") {\"from\"={\"10.0.2.2/32\"};\"user\"=\"hatest\"}\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" portSwitch mit API" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (portSwitch, capsmanApi) angewendet" || { bad "sw1 Apply v$rv (portSwitch mit API)"; r 2 '/log/print where message~"^cfm: "' | tail -5; }
+agentwait 1 "$rv" cm1 || true
+expect 2 '![/ip/service/get [find name=api] disabled] and [:tostr [/ip/service/get [find name=api] available-from]] ~ "10.0.2.2" and [/user/get [find name=hatest] group] = "cfm-api" and [:len [/ip/firewall/filter/find where comment~"^cfm:capi" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "sw1 (portSwitch, kein CAPsMAN): API nur für capsmanApi.from, User hatest, Freigabe in local-input (DP1.4.1)"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and chain=forward and out-interface-list="Z-mgmt" and dst-port="8728" and src-address~"10.0.2.2"]] = 1' "sw1 (router): Forward-Freigabe zur API in die MGMT-Zone"
+mgr '$cfmSecretPush host=sw1' >/dev/null
+expect 2 '![/user/get [find name=hatest] disabled]' "sw1: API-User nach dem Secret-Push aktiv (portSwitch)"
+r 2 '/system script run cfm-port-dock-alt' >/dev/null
+nwait '"ev": "port"' && grep '"ev": "port"' "$NL" | grep -q '"site": "Labor", "host": "sw1", "ev": "port", "state": "alt", "msg": "Port dock (dock) auf alt"' && grep '"ev": "port"' "$NL" | grep -q '"level": "info", "device": "sw1", "message": "Labor: sw1 - Port dock (dock) auf alt", "key": "port:sw1:dock", "port": "dock", "interface": "dock"' && ok "Webhook-Meldung beim Umschalten (ev port, state alt, key port:sw1:dock)" || { bad "Webhook-Meldung des Ports"; grep '"ev": "port"' "$NL" | tail -1; r 2 '/log/print where message~"Port dock"' | tail -3; }
+r 2 '/system script run cfm-port-dock-normal' >/dev/null
+nwait '"ev": "port", "state": "normal"' && ok "Zurück auf normal ebenfalls gemeldet" || bad "Meldung normal fehlt"
+mgr ':global e2eP15; :global e2eG15; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eP15; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG15; :set e2eP15; :set e2eG15' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne portSwitch/API" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && ok "sw1 hat v$rv (ohne portSwitch/API) angewendet" || bad "sw1 Apply v$rv (ohne portSwitch/API)"
+agentwait 1 "$rv" cm1 || true
+expect 2 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0 and [:len [/ip/firewall/filter/find where comment~"^cfm:capi"]] = 0 and [:len [/system/script/find where name~"^cfm-port-"]] = 0' "sw1: ohne portSwitch und capsmanApi API, User, Freigabe und Skripte weg"
+r 2 '/interface/eoip/remove [find name=dock]' >/dev/null
 # Umlaute oben als Bytes (\C3\BC): die Konsole verwirft Mehrbyte-Zeichen aus der ssh-Befehlszeile
 # Zustände von sw1 im gesammelten Status vortäuschen: stumm, Apply-Fehler, WLAN lokal, Update fehlgeschlagen
 setst() { mgr ':global cfmJson; :global cfmWrite; :global cfmRead; :global cfmNow; :global e2eS; :if ([:typeof $e2eS] != "str") do={ :set e2eS [$cfmRead "cfm/state/sw1/status.dat"] }; :local s [$cfmJson "cfm/state/sw1/status.dat"]; :set ($s->"seen") ([$cfmNow] - 3600); :set ($s->"res") "failed e2e"; :set ($s->"wfb") 1; :set ($s->"upg") "fehlgeschlagen 7.0.0"; $cfmWrite "cfm/state/sw1/status.dat" [:serialize to=json $s]; :global cfmNotifyTick; :put ("NT=" . [$cfmNotifyTick])'; }

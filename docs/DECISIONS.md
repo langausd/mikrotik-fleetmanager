@@ -705,7 +705,7 @@ hat sein Profil aus `ports`/`portDefault` („normal“) und das `alt`-Profil. D
 schreiben den Zustand nach `<cfm>/port-<name>.txt`. Jeder Apply übernimmt den Zustand – ein Release schaltet nicht
 zurück. `button="mode"` bzw. `"reset"` legt den Mode- bzw. Reset-Taster auf das toggle-Skript (ein Eintrag je Gerät;
 ohne Taster eine Warnung; der Reset-Taster setzt beim Einschalten weiter zurück, das macht RouterBOOT). Kein
-Auto-Zurück, kein API-Zugang (Nutzer, 2026-11-05; Reset-Taster: Nutzer, Geräte ohne Mode-Taster wie hAP be³ Media).
+Auto-Zurück, kein API-Zugang (Nutzer, 2026-11-05 – API seit [DP1.4.1](#dp1.4.1); Reset-Taster: Nutzer, Geräte ohne Mode-Taster wie hAP be³ Media).
 
 **Begründung:** Wie die schaltbare SSID (DW4.1): Schalten ohne Manager und ohne Apply (Sekunden statt eines Releases),
 der Apply kennt den Zustand. Der Link-Abriss lässt das Gerät am Port per DHCP eine Adresse im neuen VLAN holen
@@ -718,6 +718,39 @@ der nächste Apply entfernt Skripte, Zustandsdatei und Taster-Belegung, der Port
 Labor: `e2e.sh` Schritt 14 (EoIP-Interface als Port, CHR hat keinen Taster); auf Hardware offen.
 
 **Nachtrag 2026-11-06 (Hardware):** Der Taster startet das Skript über `on-event="/system script run cfm-port-<name>-toggle"` (Code statt Name), und die Rolle setzt `hold-time=0s..1m` immer mit – sonst wirkt eine geänderte Belegung nicht (ROUTEROS-EIGENHEITEN). Umschalten per Skript an einem hAP be³ Media bestanden (Gast-Adresse aus dem Pool am Dock, LAN gesperrt).
+
+##### <a id="dp1.4.1"></a>DP1.4.1 · Umschaltbaren Port aus Home Assistant schalten
+
+*2026-11-06 · Nachtrag, Hardware-Test*
+
+**Frage:** Der Reset-Taster des hAP be³ Media löst unzuverlässig aus (normaler Druck 0 von 5, kräftiger 6 von 8) und
+meldet nichts zurück; die Port-LED zeigt ACT, der Link-Abriss ist kaum zu sehen (TODO 76). Wie schaltet man den Port
+mit Rückmeldung?
+
+**Optionen (gewählt fett):** **API am Gerät mit dem Port** (wie DU2.1) · über den Manager (Manager-Skript schaltet per
+ssh am Gerät); Rückmeldung nach einem Wechsel, der nicht von HA kommt: Abfrage alle 5 min · **das Gerät meldet jeden
+Wechsel an den Webhook**
+
+**Entscheidung:** Geräte mit `portSwitch` öffnen die RouterOS-API wie der CAPsMAN: derselbe Lese-User aus
+`capsmanApi` (Gruppe `cfm-api`, `read,api,test`, Passwort per Secret-Push `user.<name>`), nur für `capsmanApi.from`.
+User, Gruppe und Freigabe in `local-input` legt jetzt die Rolle `base` an (für CAPsMAN und Geräte mit `portSwitch`),
+der Secret-Push setzt das Passwort auch dort: an jedem Gerät, auf dem es den User in `cfm-api` gibt (welches Gerät
+einen `portSwitch` hat, weiß nur das Gerät; legt `base` den User neu an, fordert sie den Push an). HA startet mit
+`tools/home-assistant/cfm_port.py <host> <name> normal|alt|state` die Skripte `cfm-port-<name>-normal` bzw. `-alt`
+(setzen den Zustand fest, kein Toggle) und liest den Zustand aus `<cfm>/port-<name>.txt`. Jeder Wechsel – auch vom
+Taster – geht als Meldung an `notify.url` (`ev` `port`, `state` `normal`/`alt`, `key` `port:<Gerät>:<Name>`, Felder
+`port`, `interface`, `level` `info`); HA fragt daraufhin den Schalter neu ab. Der Taster bleibt (`button` optional).
+(Nutzer, 2026-11-06)
+
+**Begründung:** Gleiches Muster wie das Gast-WLAN (DW4.1): schaltet ohne Manager und ohne Release, der Zustand
+kommt vom Gerät. Ein Weg über den Manager hinge an dessen Erreichbarkeit und bräuchte ssh-Rechte am Gerät. Die
+Meldung ersetzt eine kurze Abfrage: Jede API-Abfrage schreibt zwei Zeilen ins Log des Geräts (DW4.1). Die Zustandsdatei
+statt der PVID, weil `normal` und `alt` dieselbe PVID haben können. Der Manager liest im Secret-Push kein Hostfile:
+Das setzt `cfmHost` auf dem Manager, auch mitten in dessen eigenen Apply (Labor 2026-11-06: cm2 holte danach v19 nicht
+mehr – vermutlich, weil cm1 die Ports von cm2 übernahm) – das Passwort des Lese-Users geht deshalb im Push an alle Geräte und wird nur dort gesetzt,
+wo es den User gibt. Die Freigabe am Router zielt jetzt auf die
+MGMT-Zone statt auf die IP des CAPsMAN (Nachtrag DU2.1). Labor: `e2e.sh` Schritt 14 (EoIP-Port an sw1, Webhook-
+Empfänger); auf Hardware offen.
 
 ### <a id="dp2"></a>DP2 · Bonds und MLAG
 
@@ -1394,6 +1427,11 @@ Kanal-Pools zentral in `wifi.rsc`, optionales Pinning pro AP ebenfalls in `wifi.
 
 **Begründung:** Die Registration-Tabelle des CAPsMAN enthält alle Clients aller APs; ein Zugang dort reicht. Er wandert mit der Rolle `capsman` (`base` öffnet den Dienst nur auf `$cfmIsCapsman`, die Rolle legt User, Gruppe und die Freigabe in `local-input` an, die GC räumt das alte Gerät auf); das Passwort kommt per Secret-Push (`user.<name>`). Unverschlüsselt auf Wunsch (Klartext-Passwort eines reinen Lese-Users im LAN). Ohne stabile Namen verschob sich `cap-wifiN` bei jeder Neuverbindung, eine Zuordnung Interface → AP war in einer Oberfläche nicht haltbar. Liegt der Monitoring-Host außerhalb des MGMT-VLANs, braucht der Router davor eine Forward-Freigabe auf den API-Port: Die Rolle `router` rendert sie in ihrem Firewall-Block (Quellen aus `capsmanApi.from`, Ziel der CAPsMAN aus dem Manifest, zieht also mit um); ein Bestandsrouter ohne Rolle `router` bekommt sie über seine `post.rsc` nach demselben Muster.
 
+**Nachtrag 2026-11-06 (DP1.4.1):** Die API öffnen auch Geräte mit umschaltbarem Port (derselbe User; User, Gruppe und
+Freigabe legt jetzt `base` an statt der Rolle `capsman`). Die Forward-Freigabe der Rolle `router` zielt deshalb auf die
+MGMT-Zone (`out-interface-list=Z-<mgmt>`, Port aus `capsmanApi`) statt auf die IP des CAPsMAN – dort öffnet nur, wer
+die API braucht, und die Freigabe gilt unverändert, wenn der CAPsMAN umzieht.
+
 #### <a id="du2.2"></a>DU2.2 · Roaming nachvollziehen ohne Home Assistant
 
 *2026-10-12 · alt D77*
@@ -1936,7 +1974,7 @@ Passphrase galt mit PPSK nicht mehr, `cfm-iso` zeigte nach `slaves-static` auf a
 
 ### Vorbereitung Rollout: Dock-Port, Spiegel, Pakete (2026-11-05)
 
-Entscheidungen: DP1.4, DU2.3.1; Nachträge DV1.2 (TODO 7), DU4.2 (TODO 64), DU4.1 (Sperre des Notify-Ticks, 2026-11-06), DT2.2 (rsc-check vor dem Upload, 2026-11-06), DP1.4 (Taster: Code und hold-time, 2026-11-06)
+Entscheidungen: DP1.4, DU2.3.1; Nachträge DV1.2 (TODO 7), DU4.2 (TODO 64), DU4.1 (Sperre des Notify-Ticks, 2026-11-06), DT2.2 (rsc-check vor dem Upload, 2026-11-06), DP1.4 (Taster: Code und hold-time, 2026-11-06), DP1.4.1 (Schalten aus Home Assistant, 2026-11-06), DU2.1 (API auch am Gerät mit dem Port, 2026-11-06)
 
 Anlass: Rollout an einem Standort mit RouterOS 7.25.1, Backup-Manager und dem Hardware-Test aus TODO 74 (Nutzer,
 2026-11-05).

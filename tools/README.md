@@ -22,6 +22,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
+| [`home-assistant/cfm_port.py`](#home-assistantcfm_portpy) | Umschaltbaren Port (Dockingstation) aus Home Assistant schalten |
 | [`chr-lab/`](chr-lab/README.md) | Testlabor mit RouterOS-CHR in QEMU (eigene Anleitung) |
 
 **Typischer Ablauf:** `new-site.py` → Daten anpassen, `rsc-check.py site/` → `upload-seed.sh … --seed-inventory
@@ -256,6 +257,19 @@ cfm_ssid.py guest on | off | state | until | clients
 
 Die Zugangsdaten stehen in `cfm_ssid.json` neben dem Skript. Einbau in Home Assistant, Test und
 Fehlersuche: [docs/home-assistant.md](../docs/home-assistant.md).
+
+## `home-assistant/cfm_port.py`
+
+Schaltet einen umschaltbaren Port (`portSwitch` im Hostfile, DP1.4.1, z.B. die Dockingstation) aus Home Assistant
+zwischen `normal` und `alt` und fragt den Zustand ab. Es spricht die RouterOS-API des Geräts mit dem Port an, mit
+demselben User wie `cfm_ssid.py`.
+
+```bash
+cfm_port.py 192.168.10.30 dock normal | alt | state
+```
+
+Liegt neben `cfm_ssid.py` (nutzt dessen API-Client und `cfm_ssid.json`). Einbau in Home Assistant:
+[docs/home-assistant.md](../docs/home-assistant.md), Abschnitt 8.
 
 ## `chr-lab/`
 

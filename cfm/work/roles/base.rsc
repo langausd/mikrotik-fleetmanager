@@ -224,10 +224,17 @@ $cfmEnsure m="/interface/list" k="il:DISC" n=({"name"="DISC"}) p=({"name"="DISC"
       :set c ($c . "\"" . $s . "\"={\"pv\"=" . $pv . ";\"ft\"=\"" . ($pr->"frame") . "\";\"ed\"=\"" . ($pr->"edge") . "\";\"bg\"=\"" . $bg . "\";\"tg\"=\"" . $tl . "\";\"ut\"=\"" . $u . "\";\"iso\"=" . [:tostr $isoP] . ";\"spec\"=\"" . $sp . "\"}")
     }
     :local sf ($cfmDir . "/port-" . $nm . ".txt")
+    # Jeder Wechsel geht an den Webhook aus notify.url (DP1.4.1, z.B. Home Assistant aktualisiert den Schalter);
+    # die Werte landen im Skripttext, Anführungszeichen, Backslash und $ fallen weg
+    :local san do={ :local o ""; :for i from=0 to=([:len $1] - 1) do={ :local ch [:pick $1 $i]; :if ($ch != "\"" and $ch != "\\" and $ch != "\$") do={ :set o ($o . $ch) } }; :return $o }
+    :local nu [$san [:tostr ($cfmG->"notify"->"url")]]
+    :local site [:tostr ($cfmG->"notify"->"site")]
+    :if ([:len $site] = 0) do={ :set site [:tostr ($cfmG->"domain")] }
+    :set site [$san $site]
     :foreach act in={"normal";"alt";"toggle"} do={
       :local src ("# cfm (DP1.4): Port " . ($x->"port") . " (" . $nm . ") " . $act . " - jeder Apply schreibt es neu\n")
-      :set src ($src . ":local st \"" . $act . "\"\n:local nm \"" . $nm . "\"\n:local p \"" . ($x->"port") . "\"\n:local br \"" . $br . "\"\n:local sf \"" . $sf . "\"\n:local hw " . [:tostr $hasHw] . "\n:local c {" . $c . "}\n")
-      :set src ($src . $body . "\n\$portsw st=\$st nm=\$nm p=\$p br=\$br sf=\$sf hw=\$hw c=\$c\n")
+      :set src ($src . ":local st \"" . $act . "\"\n:local nm \"" . $nm . "\"\n:local p \"" . ($x->"port") . "\"\n:local br \"" . $br . "\"\n:local sf \"" . $sf . "\"\n:local hw " . [:tostr $hasHw] . "\n:local c {" . $c . "}\n:local nu \"" . $nu . "\"\n:local site \"" . $site . "\"\n")
+      :set src ($src . $body . "\n\$portsw st=\$st nm=\$nm p=\$p br=\$br sf=\$sf hw=\$hw c=\$c nu=\$nu site=\$site\n")
       $cfmEnsure m="/system/script" k=("sys:port-" . $nm . "-" . $act) n=({"name"=("cfm-port-" . $nm . "-" . $act)}) p=({"name"=("cfm-port-" . $nm . "-" . $act);"source"=$src;"policy"="ftp,read,write,test";"dont-require-permissions"="yes"})
     }
     :if (($x->"st") = "alt") do={ $cfmLog ("Port " . ($x->"port") . " (" . $nm . ") steht auf alt: " . ($x->"alt")) }
@@ -311,12 +318,30 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
   :set ($an->[:tostr ($cfmWg->"net")]) 1
 }
-# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN und nur für capsmanApi.from (DU2.1, z.B. Home
-# Assistant: welcher Client an welchem AP) - unabhängig von services und den Management-Netzen
+# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN und auf Geräten mit umschaltbarem Port, nur für capsmanApi.from
+# (DU2.1, z.B. Home Assistant: welcher Client an welchem AP, Port umschalten DP1.4.1) - unabhängig von services und
+# den Management-Netzen. Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault, user.<name>; bis dahin
+# abgeschaltet), Freigabe in local-input. Entfällt beides (CAPsMAN zieht um, portSwitch entfernt), räumt die GC auf.
 :global cfmIsCapsman
 :local capi ($cfmG->"capsmanApi")
 :local capiOn false
-:if ([:typeof $capi] = "array") do={ :if ([:len ($capi->"from")] > 0 and [$cfmIsCapsman]) do={ :set capiOn true } }
+:if ([:typeof $capi] = "array") do={ :if ([:len ($capi->"from")] > 0 and ([$cfmIsCapsman] or [:len $psw] > 0)) do={ :set capiOn true } }
+:if ($capiOn) do={
+  :local au [:tostr ($capi->"user")]
+  :if ([:len $au] = 0) do={ :set au "homeassistant" }
+  :local ap [:tostr ($capi->"port")]
+  :if ([:len $ap] = 0) do={ :set ap "8728" }
+  $cfmEnsure m="/user/group" k="grp:api" n=({"name"="cfm-api"}) p=({"name"="cfm-api";"policy"="read,api,test"})
+  # Neu angelegt trägt der User ein Zufallspasswort und ist aus: Secret-Push anfordern (SV 0, wie SNMP)
+  :if ([:len [/user/find where name=$au]] = 0 and $cfmDry != true) do={
+    :onerror e in={ /ppp/secret/set [find where name="cfm:key"] comment="cfm-sys:key sv=0" } do={}
+    $cfmLog ("API-User " . $au . " neu - Secret-Push angefordert")
+  }
+  $cfmEnsure m="/user" k=("user:" . $au) n=({"name"=$au}) p=({"name"=$au;"group"="cfm-api"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"];"disabled"="yes"})
+  :local fl ({})
+  :foreach a in=($capi->"from") do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=$ap;"src-address"=$a}) }
+  $cfmBlock m="/ip/firewall/filter" k="capi" l=$fl
+}
 # Ab RouterOS 7.24 heißt das Feld available-from, address ist veraltet (Warnung beim Setzen, TODO 43);
 # ältere Versionen kennen nur address -> Feldname aus dem Eigenschafts-Array (ssh gibt es auch dynamisch)
 :local saf "address"

@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-06).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-07).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -79,6 +79,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   14/15/18 grün, `e2e.sh` 445 von 447 (Paketspiegel und Dock-Port grün; ✘ doppelte Notify-Meldungen – Tick von Hand
   neben dem Scheduler-Tick, behoben mit der Sperre `cfmNotBusy`, DU4.1 – und ppskOnly-Probelauf – Agent noch
   beschäftigt, Test wartet jetzt); Nachlauf `e2e.sh` 447 von 447.
+  2026-11-06, Taster-Fix und rsc-check im Upload: `e2e.sh` 446 von 447 und 445 von 447 (je ein bis zwei bekannte
+  Wackler: MNDP mit Quelle 0.0.0.0, zweiter Apply nach `slaves-static` – TODO „Bekannte Fehler“). Abends mit dem
+  HA-Port-Schalter (DP1.4.1): erster Lauf 454 von 456 (cm2 holte v19 nicht – der Secret-Push lud Hostfiles und setzte
+  damit `cfmHost` auf dem Manager; behoben, lädt keine mehr), danach **456 von 456**.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -220,7 +224,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Reset-Taster ist mechanisch unzuverlässig (normaler Druck 0 von 5, kräftiger 6 von 8, ohne Rückmeldung) – Schalten
   aus Home Assistant folgt (TODO 76). Bei jedem Umschalten ein `cfm-drop` für den DHCP-Discover des Geräts am Port
   (TODO, Bekannte Fehler). Offen: Release im alt-Zustand (darf nicht zurückschalten), Bridge-Port mit `hw` an einem
-  CRS.*
+  CRS, Schalten aus Home Assistant mit Meldung an den Webhook (DP1.4.1, im Labor grün).*
 * **`$cfmSniff mirror=<Port>`** (DU2.3.1): Eigenschaftsnamen je Switch-Chip, CPU als Spiegelziel, CPU-Last, sieht
   der Sniffer die gespiegelten Frames (TODO 75).
 * **Pakete auf dem Backup-Manager** (TODO 7): Spiegel offener Aufträge und Laden nach einer Beförderung.

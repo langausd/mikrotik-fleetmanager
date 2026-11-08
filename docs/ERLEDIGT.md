@@ -17,7 +17,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
   `login failure` (`critical`) in rund 25 min, offen zur Entscheidung. Am selben Standort als v103 die Haupt-SSID nur
   WPA3 (Steering ohne kick/drop) und als v104 eine Forward-Freigabe IoT → MQTT-Broker. TODO 77 (DM1.3): `host=`
   ohne Groß-/Kleinschreibung. Behoben: `upload-seed.sh --site` lud die Labor-Hostfiles der Vorlage mit (Nachtrag
-  DT2.2). Labor 7.25.1 grün: `e2e.sh` 461, vrrp 137, mlag 72, Onboarding 14/15/18.
+  DT2.2). Labor 7.25.1 grün: `e2e.sh` 461, vrrp 137, mlag 72, Onboarding 14/15/18. Danach am selben Standort
+  WPA3-only mit Steering nur per 802.11v getestet: reicht nicht, Schwellen wieder an (Nachtrag DW2.4, Admin-Guide
+  8.16, zwei Eigenheiten).
 * **Am 2026-11-07 (HA-Port-Schalter am Standort):** Framework `0ca97f7` als v102 an allen 10 Geräten `ok`. TODO 76
   (DP1.4.1) bestanden: HA schaltet den Dock-Port per `cfm_port.py`, die Meldungen kommen am Webhook an (TESTSTAND).
   Das API-Passwort für das Gerät mit `portSwitch` kam erst mit `$cfmSecretPush` nach Ring 2: Den vom Apply

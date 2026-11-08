@@ -1260,6 +1260,8 @@ am 2026-11-04 bestätigte den Eintrag ohne VLAN. Rückbau: Eintrag und Schlüsse
 
 **Begründung:** Der Client bekommt erst Nachbarn vorgeschlagen und wird nur getrennt, wenn er bleibt – näher an „nur trennen, wenn ein besserer AP da ist“. Ob ein anderer AP den Client besser hört, prüft RouterOS nicht (die APs tauschen keine Client-Pegel aus). Eine Anmeldeschwelle je Band geht nicht: Die access-list kennt kein Band, nur Interfaces, und die der CAPs entstehen dynamisch. Für weitere SSIDs legt die Rolle bei Steering je Band eigene Konfigurationen `cfm-<SSID>-<Band>g` an (Security bleibt `cfm-<SSID>`, sofern das Band keine eigene hat). Auf Hardware seit 2026-10-17 an einem Standort (5 und 6 GHz, mit `kick`).
 
+**Nachtrag 2026-11-08** (*Test an einem Standort, Entscheidung des Nutzers*): Ein Tag mit WPA3-only und Steering nur per 802.11v, also ohne `kick`, `join`/`drop` und `minSignal`, zeigt: Die Vorschläge allein reichen nicht. Auf 6 GHz gingen sie nachweislich hinaus (mit `count=15` meldet das Log `all 15 transition requests sent`, mit `unlimited` nur `0 …`, siehe ROUTEROS-EIGENHEITEN). Zwei Clients blieben trotzdem bei −78 bzw. über 10 h bei −84 am AP. Ohne Anmeldeschwelle meldeten sich Clients bei −80…−87 an, auf 5/6 GHz auch an einem AP zwei Stockwerke tiefer. Am Rand der Abdeckung (2,4 GHz) war ein Client bei −77…−85 noch angemeldet, aber praktisch ohne Verkehr, und klebte am fernen AP. Folge: Anmelde- und Trennschwelle (DW2.5) bleiben nötig; `count` als Zahl statt `unlimited`, damit das Log die Vorschläge zählt. 802.11b für mehr Reichweite am Rand gibt es mit wifi-qcom nicht (kein `2ghz-b`). Offen: Auf 2,4 GHz kam während des Rundgangs kein einziger Vorschlag, obwohl der Client 25 s unter der Schwelle lag.
+
 #### <a id="dw2.5"></a>DW2.5 · Trennschwelle je Band, auch für Clients mit FT
 
 *2026-10-23 · alt D92*
@@ -2000,3 +2002,10 @@ Entscheidungen: DM1.3; Nachtrag DT2.2 (Hostfiles mit `--site` nur aus dem Overla
 
 Anlass: Befunde an einem Standort – `$cfmPlan host=hap-flur` fand `hAP-Flur` nicht (Nutzer, 2026-11-07), und auf
 dem Manager lagen die Labor-Hostfiles der Vorlage (2026-11-08).
+
+### WLAN: WPA3-only und Steering nur per 802.11v getestet (2026-11-08)
+
+Entscheidungen: Nachtrag DW2.4 (802.11v allein reicht nicht, `count` als Zahl). Eigenheit: `0 transition requests
+sent` bei `count=unlimited`. Admin-Guide 8.16 (Steering einstellen und prüfen).
+
+Anlass: Test an einem Standort über Nacht und mit einem Rundgang ums Haus (Nutzer, 2026-11-08).

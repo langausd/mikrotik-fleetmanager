@@ -1722,6 +1722,43 @@ steht die Zeile in LibreNMS beim Gerät (Logs → Graylog) und in Graylog unter 
 
 ---
 
+### 8.16 WLAN-Steering einstellen und prüfen (DW2.4, DW2.5)
+
+Was `steer` und `minSignal` bedeuten, steht in Kapitel 4 (`wifi.rsc`). Hier geht es um das Einstellen vor Ort
+und um das, was ein Test an einem Standort gezeigt hat (2026-11-08).
+
+**Vorschläge allein reichen nicht.** 802.11v schlägt einem Client Nachbar-APs nur vor. Viele Clients ignorieren
+das: Im Test blieb ein Laptop über 10 h bei −84 an einem 6-GHz-AP, obwohl der AP alle 5 s Vorschläge schickte.
+Ohne Anmeldeschwelle melden sich Clients außerdem bei −80…−87 an, auch an einem AP zwei Stockwerke tiefer.
+Darum je Band `join`/`drop` setzen (5/6 GHz) bzw. `minSignal`. `kick` wirkt bei Clients mit FT nicht.
+
+**Erprobte Werte** (Wohnhaus, fünf APs, 2,4/5/6 GHz): 6 GHz `threshold` −72, `join` −65, `drop` −74, `hold`
+60 s; 5 GHz `threshold` −74; `minSignal` −80 für 5/6 GHz; 2,4 GHz als Rand mit `join` −86…−88, `drop`
+−90…−92, `hold` 2–3 min. Unter etwa −80 dBm war auf 2,4 GHz kaum noch Verkehr möglich. Lockerer zu setzen bringt
+dann keine Verbindung, nur längeres Kleben am fernen AP.
+
+**Prüfen, ob die Vorschläge hinausgehen:** `wireless,debug` in einen RAM-Puffer loggen (am CAPsMAN):
+```
+/system/logging/action/add name=wdebug target=memory memory-lines=50000
+/system/logging/add topics=wireless,debug action=wdebug
+/log/print where buffer=wdebug and message~"transition"
+```
+`all 3 transition requests sent` heißt: drei Vorschläge gesendet, der Client blieb. **Mit `count=unlimited`
+steht dort nur `0 transition requests sent`**, auch wenn Vorschläge hinausgehen – für Tests `count` als Zahl
+setzen (z.B. 15). Ob der Client sie bekommt und warum er ablehnt, zeigt nur ein Log am Client (z.B.
+wpa_supplicant im Debug-Modus); in der Luft sind die Vorschläge mit PMF verschlüsselt, mit WPA3 (SAE) lässt
+sich das aus der Passphrase nicht entschlüsseln. Danach Regel und Aktion wieder löschen (Handänderung).
+
+**Reichweite am Rand:** Die Radios mit wifi-qcom können kein 802.11b. Ihre Beacons gehen mit mindestens
+6 Mbit/s hinaus, ein alter AP mit 802.11b (1 Mbit/s) ist am Rand daher noch einige dB länger sichtbar. Einstellen
+lässt sich das nicht.
+
+**WPA3-only** (`"sec"="wpa3-psk";"pmf"="required"`): Im Test scheiterte kein Client dauerhaft. Linux mit
+NetworkManager fragt nach der Umstellung das Passwort neu ab, weil das gespeicherte Profil noch auf WPA2 steht.
+Nach der Eingabe verbindet er sich. Vorher prüfen, welche Clients sich schon per WPA3 anmelden
+(`auth-type` in `/interface/wifi/registration-table print detail` am CAPsMAN, z.B. `ft-wpa3-psk`): Ein Gerät, das nur WPA2 kann, versucht es danach gar nicht
+mehr und taucht in keinem Log auf.
+
 ## 9. Sicherheitsnetze und Notfälle
 
 | Situation | Automatisch | Deine Aufgabe |

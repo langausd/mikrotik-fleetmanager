@@ -200,6 +200,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Einschalten mit Ablauf, Aus/Ein startet das Radio nicht neu, andere SSIDs laufen ohne Unterbrechung. **PPSK**
   (DW2.2): Eintrag mit eigener Passphrase landet im VLAN des Eintrags, auch mit FT. Drei Fehler gefunden (Fallback,
   normale Passphrase bei PPSK, `cfm-iso` nach `slaves-static`), Fixes DW1.8.1, DW2.2.1, DP3.1.1 (TODO 74).
+* **WPA3-only und Steering nur per 802.11v** (DW2.4, DW2.5) – 2026-11-08 am ersten Standort (CAPsMAN hAP be³, fünf
+  APs, 7.25.1), über Nacht und mit einem Rundgang: Kein Client scheiterte dauerhaft an WPA3-only (Fehler nur am
+  Rand: `authentication timeout`, `FT failed`, `no cached PMK`); ein Linux-Client mit NetworkManager brauchte das
+  Passwort neu. Roaming per FT ohne längere Lücke. 802.11v allein reicht nicht: Vorschläge auf 6 GHz gehen hinaus
+  (`all 15` mit `count=15`), die Clients blieben trotzdem bei −78 bzw. −84; ohne Anmeldeschwelle Anmeldungen bei
+  −80…−87. Danach Schwellen wieder an (Admin-Guide 8.16).
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5, DU4.1) – 2026-11-08 am ersten Standort (hAP be³ Media
   als `switch,ap,manager-backup`, 7.25.1, v102–v104): Aufnahme ohne Rollback, Spiegel im Takt (live, archive, meta),
   alle `cfmd-*` gesperrt, `$cfmPlan` des Geräts ohne Änderung. Ausfalltest: Primary (CHR) gestoppt, die Geräte
@@ -245,6 +251,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   bestanden hat, siehe oben).*
 * **`$cfmSniff mirror=<Port>`** (DU2.3.1): Eigenschaftsnamen je Switch-Chip, CPU als Spiegelziel, CPU-Last, sieht
   der Sniffer die gespiegelten Frames (TODO 75).
+* **Steering 2,4 GHz:** Beim Rundgang 2026-11-08 kein einziger Vorschlag, obwohl ein Client 25 s unter `threshold`
+  lag (an einem Tag nur einer auf 2,4 GHz). Gezielt prüfen: Client 2 min unter der Schwelle halten, `count` als
+  Zahl, Log `wireless,debug`.
 * **Pakete auf dem Backup-Manager** (TODO 7): Spiegel offener Aufträge und Laden nach einer Beförderung.
 * **Hook Manager → Git-Host** per `ssh-exec` (die Pull-Seite `cfm-git-sync` ist getestet).
 * **Rolle `router` auf einem CRS mit L3-Hardware-Offloading** (DR1.2): Schaltet sie `l3-hw-offloading` ab, läuft

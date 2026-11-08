@@ -272,6 +272,25 @@ Im Labor gefunden und behoben (2026-10-04): Eine gelöschte Datei liefert `/file
 
 **Umsetzung:** `/file get` liest nur etwa 60 KB. Die Funktionen liegen daher in `lib/mgr-*.rsc`: `core`, `check` (Prüfung, Probelauf), `enroll`, `onboard`, `ros` (RouterOS-Updates), `auto`; später dazu `net` (Verkabelung und WLAN-Kanäle, DW2.2/DU1.1), `show` (DU1.2), `notify` (DU4.1) und `mf` (Manifest-Regeln, DG2.5); 2026-10-20 aus `core` `vault` (Vault, Secrets, Identitätsprüfung, Rekey) und aus `net` `scan` (`$cfmWifiScan`) ausgelagert, damit jedes Modul deutlich unter der Grenze bleibt (vorher 47 KB). 2026-11-04 aus `check` die WLAN-Prüfung nach `checkw` (`$cfmCheckWifi`, TODO 73; `check` 57,4 → 47,1 KB): `$cfmRelease` importiert nur `work/lib/mgr-check.rsc`, deshalb lädt `$cfmCheck` den WLAN-Teil selbst aus dem geprüften Stand nach (sonst prüfte beim ersten Release nach einem Update die alte, installierte Fassung); fehlt er dort und ist keiner installiert, meldet die Prüfung einen Fehler statt WLAN-Daten ungeprüft durchzulassen. Die Rolle `manager` installiert jedes Modul aus dem Manifest als Skript `cfm-mgr-<modul>`, das Skript `cfm-mgr` lädt alle (Befehl im Terminal unverändert). Fehlen die Module im Manifest, bricht der Apply ab.
 
+##### <a id="dm1.1.1"></a>DM1.1.1 · Module erst lesen, dann setzen
+
+*2026-11-08 · Nachtrag, Hardware-Befund*
+
+**Frage:** Am ersten Framework-Update eines Backup-Managers (hAP be³ Media, 7.25.1) brach der Apply zweimal in der
+Rolle `manager` ab: `no such item (/file/get; line 26)` beim Lesen eines Moduls, Rollback mit Neustart. Laut Syslog
+jeweils direkt nach dem Ersetzen eines anderen Modul-Skripts (`/system script set source=`), an wechselnder Stelle
+(erst nach `mgr-check`, dann nach `mgr-check` und `mgr-core`); im zweiten Lauf ohne Download, die Dateien waren
+vorhanden. Von Hand (großes `set`, danach alle Module lesen; dazu die Dateizugriffe von DS2.5.1) nicht nachgestellt.
+
+**Optionen (gewählt fett):** **Abwehr: alle Modultexte vor dem ersten `set` lesen, je Datei bis zu fünf Versuche mit
+1 s Pause, unlesbare Datei mit Namen und Fehler im Log** · den Backup vorerst auf dem alten Stand lassen · weiter
+untersuchen ohne Codeänderung
+
+**Entscheidung:** Abwehr (Nutzer); ein Versuch über 1 kommt als Warnung ins Log. Ursache offen.
+
+**Begründung:** Jeder Fehlschlag kostet am Gerät einen Neustart; die Abwehr trennt Lesen und Schreiben und macht den
+nächsten Fall eindeutig. Labor: `e2e.sh` (Module auf cm1/cm2), die Falle selbst tritt auf CHR nicht auf.
+
 #### <a id="dm1.2"></a>DM1.2 · Manager-Tick einstellbar
 
 *2026-09-17 · technisch, nicht abgefragt*
@@ -2070,5 +2089,6 @@ Anlass: Test an einem Standort über Nacht und mit einem Rundgang ums Haus (Nutz
 Entscheidungen: DS2.5.1 (SSH-Sperre am unbeförderten Backup), DM2.1.1 (`cfm-mgr-boot`), DR2.5.1 (DHCP-Discover still).
 Bekannte Eigenheit bei den Manager-Ticks übersehen: Scheduler mit `start-time=startup` und Intervall laufen erst
 nach dem Intervall.
+Nachtrag DM1.1.1 (Module erst lesen, dann setzen) nach dem Rollout am Standort.
 
 Anlass: Befunde vom Ausfalltest des Backup-Managers und vom Dock-Port an einem Standort (Nutzer, 2026-11-08).

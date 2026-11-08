@@ -91,6 +91,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   `dst-port=67`, 10 statt 9 Regeln), korrigiert und auf den laufenden VMs nachgeprüft; `e2e-vrrp.sh` 137,
   Onboarding 14/15/18. `e2e-mlag.sh` erst 71 von 72 (sw2 im zweiten Apply `add=6;rem=3;set=6`, einmalig, sw1 mit
   derselben Rolle sauber), Wiederholung 72 von 72.
+  Mit DM1.1.1 (Module erst lesen, dann setzen) nur `e2e.sh`: 451 von 469 – rot nur Fremdursachen: Schritt 13 (ein
+  Download von download.mikrotik.com scheiterte, 12 Folgefehler), cm2-Apply 4 min wegen Spiegel/SFTP (DM3.2, 4 Folgen),
+  MNDP-Wackler, Schlüssel-Spiegel nach Rekey im Zeitfenster; Module und SSH-Sperre grün.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

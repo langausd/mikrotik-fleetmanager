@@ -453,7 +453,7 @@ expect 3 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]
 n0=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=10 frame-types=admit-all' >/dev/null
 # Senden anstoßen: MNDP an cm2 kurz aus und wieder an. Sonst kam das erste Paket nach discover-interval (30 s)
-# vereinzelt erst nach über 70 s (Wackler TODO). Danach bis zu 120 s auf den Zähler warten
+# vereinzelt erst nach über 70 s. Danach bis zu 120 s auf den Zähler warten (wackelt trotzdem, TODO)
 r 3 ':local p [/ip/neighbor/discovery-settings/get protocol]; /ip/neighbor/discovery-settings/set protocol=lldp; :delay 2s; /ip/neighbor/discovery-settings/set protocol=$p' >/dev/null
 for _ in $(seq 1 24); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; done
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=1 frame-types=admit-only-vlan-tagged' >/dev/null

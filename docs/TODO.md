@@ -107,6 +107,24 @@ Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
   (Eigenheit „Verweis auf ein Interface“). Vorschlag zur Entscheidung: `isolate` an einer SSID setzt `slaves-static`
   mit, oder der Agent prüft `cfm-iso` bei jedem Lauf.
 
+* **Backup-Manager: Einspielen der Manager-Module scheitert** (`roles/manager.rsc`, hAP be³ Media 7.25.1,
+  2026-11-08): zweimal `no such item (/file/get; line 26)` gleich nach dem Ersetzen eines anderen Modul-Skripts,
+  Rollback mit Neustart; von Hand nicht nachgestellt. Abwehr seit DM1.1.1 (erst lesen, dann setzen, Wiederholung,
+  Log-Zeile mit Dateiname). Bleibt hier, bis ein Framework-Update an einem Backup auf Flash durchläuft; tritt es
+  wieder auf, steht die Datei im Log.
+
+* **Tick des Backup-Managers bricht ab: `no such item (/file/get; line 237)`** (Labor 7.25.1, 2026-11-08, cm2): Im
+  Zweig für den Backup ruft `$cfmTick` `$cfmIsPrimary` auf; ist `cfmG` nicht geladen, liest `$cfmLoadData`
+  (`mgr-core.rsc`) `work/global.rsc` … ohne `:onerror` – der Backup spiegelt kein `work/`. Der Tick fällt dann aus
+  (kein Spiegel bis zum nächsten). Fix: `$cfmIsPrimary` ohne `$cfmLoadData` (Managerliste aus `cfm-conf` bzw.
+  `meta/`), oder `$cfmLoadData` tolerant gegen fehlende Dateien.
+
+* **Labor-Wackler MNDP mit Quelle 0.0.0.0** (`e2e.sh` Abschnitt 14, DR2.5): Die Prüfung „cm1: MNDP mit Quelle
+  0.0.0.0 still verworfen“ wartet auf einen Treffer im Zähler der Drop-Regel. Fehlschläge 2026-10-31, 2026-11-06 und
+  2026-11-08 (7.25.1) – auch nach dem Anstoßen (MNDP an cm2 aus und wieder an, danach bis zu 120 s): Zähler 0, cm2
+  sendet MNDP (`cdp;lldp;mndp`, 30 s). Das Verhalten stimmt jeweils (kein `cfm-drop` im Log). Offen: Sendet cm2 über
+  den Bridge-Port ohne Adresse nur manchmal mit Quelle 0.0.0.0? Gegenprobe per Sniffer an cm1 `ether3`.
+
 * **Labor-Wackler MLAG: sw2 im zweiten Apply nicht idempotent** (`e2e-mlag.sh` Schritt 7, 7.25.1, 2026-11-08): einmal
   `add=6;rem=3;set=6`, sw1 mit derselben Rolle sauber, die Wiederholung grün. Die VMs waren schon ersetzt, das
   Agent-Log von sw2 fehlt. Bei Wiederkehr vor dem Stoppen `/log/print where message~"gesetzt|entfernt|angelegt"`

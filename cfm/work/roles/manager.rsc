@@ -17,15 +17,35 @@
 #     das Skript cfm-mgr lädt alle. Fehlen die Module, bricht der Apply ab (-> Rollback),
 #     statt einen Manager ohne Funktionen zu hinterlassen ---
 :local pol "ftp,reboot,read,write,policy,test,password,sensitive"
-:local nmod 0
+# Erst alle Modultexte lesen, dann die Skripte setzen; jede Datei bis zu fünf Versuche (DM1.1.1). Auf einem
+# Backup-Manager (hAP be³ Media, Flash, 7.25.1) fand "/file get <Name> contents" im Apply zweimal ein Modul nicht,
+# jeweils gleich nach dem Ersetzen eines anderen Skripts - Rollback mit Neustart; von Hand nicht nachgestellt.
+# Bleibt eine Datei unlesbar, steht ihr Name mit dem Fehler im Log.
+:local msrc ({})
 :foreach f in=($cfmMf->"files") do={
   :local p [:tostr ($f->0)]
   :if ($p ~ "^lib/mgr-") do={
-    :local mn [:pick $p 8 ([:len $p] - 4)]
-    :local s ("cfm-mgr-" . $mn)
-    $cfmEnsure m="/system/script" k=("sys:mgr-" . $mn) n=({"name"=$s}) p=({"name"=$s;"source"=[/file get ($cfmDl . "/" . $p) contents];"policy"=$pol})
-    :set nmod ($nmod + 1)
+    :local fn ($cfmDl . "/" . $p)
+    :local c ""; :local ok false; :local le ""; :local n 0
+    :while (!$ok and $n < 5) do={
+      :if ($n > 0) do={ :delay 1s }
+      :set n ($n + 1)
+      :onerror e in={ :set c [/file get $fn contents]; :set ok true } do={ :set le $e }
+    }
+    :if (!$ok) do={
+      :log error ("cfm: Manager-Modul " . $p . " nicht lesbar (5 Versuche): " . $le)
+      :error ("Manager-Modul " . $p . " nicht lesbar: " . $le)
+    }
+    :if ($n > 1) do={ :log warning ("cfm: Manager-Modul " . $p . " erst im " . $n . ". Versuch lesbar (" . $le . ")") }
+    :set ($msrc->$p) $c
   }
+}
+:local nmod 0
+:foreach p,c in=$msrc do={
+  :local mn [:pick $p 8 ([:len $p] - 4)]
+  :local s ("cfm-mgr-" . $mn)
+  $cfmEnsure m="/system/script" k=("sys:mgr-" . $mn) n=({"name"=$s}) p=({"name"=$s;"source"=$c;"policy"=$pol})
+  :set nmod ($nmod + 1)
 }
 :if ($nmod = 0) do={ :error "Manager-Module lib/mgr-*.rsc fehlen im Manifest" }
 :local ld ":foreach s in=[/system/script/find where name~\"^cfm-mgr-\"] do={ /system/script/run \$s }"

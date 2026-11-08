@@ -441,6 +441,45 @@
   :return {"net"=$net;"addr"=$a;"pfx"=[:pick $net ($s + 1) [:len $net]];"gw"=($a + [:tonum $g])}
 }
 
+# Backup-Manager vor der Beförderung (DS2.5.1): SSH von den Geräten mit TCP-Reset abweisen, bevor sie sich
+# anmelden. Fällt der Primary aus, probieren ihre Agenten den Backup und scheiterten an den gesperrten Usern
+# cfmd-* - "login failure" (system,error,critical) mehrmals je Minute, nicht unterscheidbar von dem eines Admins.
+# Geräte = MGMT-Adressen aus dem gespiegelten Inventar ohne Manager (Liste cfm-bkssh); Admins aus anderen Netzen
+# oder per getaggtem MGMT-VLAN und die Manager bleiben frei. Liefert die Regel für den input-Block (leer ohne
+# Rolle manager-backup, nach $cfmPromoteManager, ohne Inventar); $cfmDevUsersOn entfernt sie sofort.
+:global cfmBkSsh do={
+  :global cfmHas; :global cfmG; :global cfmEnsure
+  :local r ({})
+  :if (![$cfmHas "manager-backup"]) do={ :return $r }
+  :local mb "cfm"
+  :onerror e in={ :if ([/file/get "flash" type] = "directory") do={ :set mb "flash/cfm" } } do={}
+  :local prom false
+  :onerror e in={ :if ([:len [/file/get ($mb . "/meta/PROMOTED") name]] > 0) do={ :set prom true } } do={}
+  :if ($prom) do={ :return $r }
+  :global cfmInv
+  :local inv ({})
+  :onerror e in={ [[:parse [/file/get ($mb . "/meta/inventory.rsc") contents]]]; :set inv $cfmInv } do={}
+  :local skip ({})
+  :foreach m in=($cfmG->"managers") do={ :set ($skip->[:tostr $m]) 1 }
+  :foreach i in=[/ip/address/find] do={
+    :local a [:tostr [/ip/address/get $i address]]
+    :set ($skip->[:pick $a 0 [:find $a "/"]]) 1
+  }
+  :local n 0
+  :foreach name,d in=$inv do={
+    :local ip [:tostr ($d->"ip")]
+    :if ([:len $ip] > 0 and !([:tostr ($d->"role")] ~ "manager") and [:typeof ($skip->$ip)] = "nothing") do={
+      $cfmEnsure m="/ip/firewall/address-list" k=("al:bkssh:" . $ip) p=({"list"="cfm-bkssh";"address"=$ip})
+      :set n ($n + 1)
+    }
+  }
+  :if ($n = 0) do={ :return $r }
+  :local p [:tostr ($cfmG->"services"->"ssh")]
+  :if ([:len $p] = 0) do={ :set p "22" }
+  :set ($r->0) ({"chain"="input";"action"="reject";"reject-with"="tcp-reset";"protocol"="tcp";"dst-port"=$p;"src-address-list"="cfm-bkssh"})
+  :return $r
+}
+
 # Größe in KiB (DN3.1, DNS-Cache): "64M", "1G", "512k" oder eine Zahl (KiB); ungültig -> ""
 :global cfmKib do={
   :local t [:tostr $1]

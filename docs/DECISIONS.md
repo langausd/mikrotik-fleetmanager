@@ -302,6 +302,23 @@ Im Labor gefunden und behoben (2026-10-04): Eine gelöschte Datei liefert `/file
 
 **Umsetzung:** Befund (CRS418, 2026-09-21/22): Bei vollem Archiv und einer Supout-Datei dauerte jede `/file/find`-Suche so lange, dass ein Tick Minuten brauchte; `cfm-mgr-tick` und der minütliche `cfm-mgr-onb-tick` stapelten sich dann auf, bis zu `action timed out`. Beide Scheduler starten jetzt nur, wenn nicht schon ein Lauf desselben Schedulers in `/system/script/job` steht (wie beim Agenten), sonst eine Warnung „… übersprungen (Vorlauf hängt)“. Der Onboarding-Tick lädt die Manager-Module nur, wenn `meta/onboard.dat` Aufträge enthält. `$cfmTick` schreibt vor jedem Schritt `cfm: tick collect/promote/secrets/upgrade/net/hook/ende` ins Log, damit ein Hänger zu lokalisieren ist. Die langsamen Dateisuchen selbst behob DG4.1 (Dateizugriff über den Namen, 2026-10-01). Nummer nachgetragen: Sie stand zuerst nur im Commit `bd39385`.
 
+##### <a id="dm2.1.1"></a>DM2.1.1 · Manager-Funktionen gleich nach dem Start laden
+
+*2026-11-08 · Nachtrag, Hardware-Befund*
+
+**Frage:** Nach einem Neustart des Primary fehlten an einem Standort alle `$cfm*`-Befehle, bis `/system script run
+cfm-mgr` lief oder der erste Tick (10 min).
+
+**Entscheidung:** Die Rolle `manager` legt den Scheduler `cfm-mgr-boot` an (`start-time=startup`, ohne Intervall), der
+10 s nach dem Start `cfm-mgr` ausführt und nur die Funktionen lädt; der Tick bleibt im eigenen Takt.
+
+**Begründung:** Ein Scheduler mit `start-time=startup` und Intervall läuft zum ersten Mal erst nach Ablauf des
+Intervalls, nicht beim Booten – bekannte [Eigenheit](ROUTEROS-EIGENHEITEN.md), wegen der der Agent schon
+`cfm-agent-boot` hat; bei den Manager-Ticks übersehen (nachgeprüft im Labor 7.25.1: `run-count=0` 20 s nach dem
+Start, 1 nach einer Minute bei `mgrTick` 1m). Globale
+Variablen gelten für alle Sitzungen, eine Admin-Sitzung sieht die geladenen Funktionen sofort. Labor: `e2e.sh`
+Schritt 16.
+
 #### <a id="dm2.2"></a>DM2.2 · Gleichzeitige Manager-Ticks: kurz warten
 
 *2026-10-01 · alt D57*
@@ -451,6 +468,32 @@ Status als JSON (`:deserialize`), Audit als Text. Der Manager führt nie etwas a
 **Optionen (gewählt fett):** Umfang: **beides zusammen** – der Spiegel überträgt `meta/keys/<name>.pem`, der Backup legt `cfmd-<name>` selbst an; `$cfmRekey … sftp=yes` · nur die Backup-Lücke · nur die Rotation; Manager-Geräte: **zweiphasig gleich mitbauen** · Manager erst ausnehmen; ab wann Geräte vom Backup ziehen: **erst nach der Beförderung – die User liegen gesperrt bereit, `$cfmPromoteManager` schaltet sie frei** · Agent fragt immer zuerst den Primary, Backup nur als Notfall · zusätzlich Schutz vor älteren Manifesten (Ringwechsel bringen legitim kleinere Versionen)
 
 **Begründung:** Der SFTP-Schlüssel eines Geräts ist sein exportierter ed25519-Host-Key (DS1.4) – eine Rotation ändert deshalb den Host-Key mit (SSH-Clients melden das einmal). Ablauf ohne Lücke: neuer Host-Key auf dem Gerät → neuer Schlüssel *zusätzlich* bei `cfmd-<name>` → Gerät importiert den privaten Schlüssel → alter Schlüssel weg. Ein Manager-Schlüssel ist zugleich der Trust-Key im User `cfm` aller Geräte: Er kommt erst auf **alle** aufgenommenen Geräte; fehlt eines, bricht die Rotation ab und `$cfmTrust` stellt den alten Stand her (sonst sperrte sich der Manager bei einem Gerät aus, das gerade offline ist). Erst dann ersetzt der Manager die privaten Schlüssel **aller** User mit Schlüssel (alles Kopien des Host-Keys: `cfm`, Admin-User aus `users`), danach entfernt `$cfmTrust` den alten überall, die Bootstrap-Datei wird neu geschrieben. Der private Teil eines Manager-Schlüssels liegt nur Sekunden als Datei auf dem Gerät (dessen Geräte-User dürfen per SFTP lesen) und sonst nur im Speicher der Funktion. `$cfmDevUser` merkt einen Hash des Schlüssels im Kommentar und lässt einen User mit passendem Hash und genau einem Schlüssel stehen – so kostet der Abgleich auf dem Backup bei jedem Spiegel fast nichts. Nach einer Rotation hat der Backup bis zu seinem nächsten Spiegel (≥ 5 min) noch den alten Schlüssel. Ein Git-Host (`hook`) kennt den alten Manager-Schlüssel weiter – `$cfmRekey` weist darauf hin. Ohne Beförderung hat der Backup nie einen neueren Stand als der Primary – auszuliefern brächte nichts, konnte aber ältere Stände verteilen; die Geräte laufen im Ernstfall bis zur Beförderung mit ihrem Stand weiter. Den User für sich selbst legt der Backup nicht an (sein Agent zöge sonst aus dem eigenen Spiegel, Labor: v12 statt der neuen Version; er überspringt sich weiter, solange der User fehlt, TODO 44); `$cfmPromoteManager` legt ihn an (`$cfmDevUsersOn`). Weil die Schlüssel schon abgeglichen sind, greift die Beförderung sofort.
+
+##### <a id="ds2.5.1"></a>DS2.5.1 · Unbeförderter Backup weist SSH der Geräte ab
+
+*2026-11-08 · Nachtrag, Hardware-Befund*
+
+**Frage:** Fällt der Primary aus, probieren die Agenten den Backup-Manager und scheitern an den gesperrten Usern
+`cfmd-*`: `login failure for user cfmd-… via ssh` (`system,error,critical`), an einem Standort 65 Einträge in 25 min,
+auch im Syslog. Fehlversuche von Admins sollen im Log bleiben.
+
+**Optionen (gewählt fett):** **Firewall am Backup: SSH von Geräte-Adressen per TCP-Reset abweisen, bevor sie sich
+anmelden** · Log-Regel mit `regex` (RouterOS kennt keine Verneinung; Ersatzkonstrukt unhandlich) · Agent probiert einen
+Ersatz-Manager nach einem Fehlschlag erst nach einer Pause wieder (weniger, aber nicht null) · so lassen
+
+**Entscheidung:** Ein Gerät mit Rolle `manager-backup` ohne `meta/PROMOTED` bekommt im input-Block (`fwb`, auf einem
+Router der Zonen-Block `fw`) nach ICMP eine Regel `reject tcp-reset` für den SSH-Port aus `services` mit Quelle
+`cfm-bkssh`. Die Liste füllt `$cfmBkSsh` (`lib.rsc`) aus dem gespiegelten Inventar: MGMT-Adressen aller Geräte, deren
+Rolle keinen Manager enthält, ohne die Adressen aus `managers` und die eigenen. `$cfmDevUsersOn` (Teil von
+`$cfmPromoteManager`) entfernt die Regel sofort; der nächste Apply nach der Beförderung legt sie nicht mehr an (die
+Liste räumt die GC ab).
+
+**Begründung:** Die Meldung unterscheidet sich von der eines Admins nur im Text, und `/system/logging` filtert per
+`regex` nur positiv. Ein TCP-Reset kommt vor der Anmeldung, RouterOS loggt dann nichts; der Agent scheitert sofort
+statt nach dem SSH-Handshake. Über das Inventar statt über das ganze MGMT-Netz, damit ein Admin im MGMT-VLAN (Rückfall
+über ein getaggtes VLAN am Trunk) und der Primary (Push, `$cfmExec`) frei bleiben. Ein Gerät, das nach dem letzten
+Spiegel aufgenommen wurde, fehlt bis zum nächsten Apply des Backups in der Liste – es erzeugt dann wie bisher Einträge.
+Labor: `e2e.sh` Schritt 14g.
 
 ### <a id="ds3"></a>DS3 · Benutzer und Dienste
 
@@ -883,7 +926,7 @@ Die Rolle fragte für den DHCP-Server den Zustand des VRRP-Interface ab; im Prob
 
 **Optionen (gewählt fett):** Regelwerk: **Default-Drop** · nur Dienste sperren; IPv6: **IPv6-Firewall** · abschalten · nicht anfassen; Log: **begrenzt** · nein
 
-**Umsetzung:** Nicht-Router (Switch, AP, Manager) bekommen den input-Block `fwb`: Antworten, ICMP, Adressliste `cfm-mgmt` (MGMT-Netz, `mgmtAccess`, `mgmtExtra`), auf Managern DHCP im Onboarding-VLAN, Sprung in `local-input`, MNDP mit Quelle `0.0.0.0` still (DR2.5), Log `cfm-drop` (10/min), Drop. IPv6-input `fw6` auf allen Geräten: Antworten, ICMPv6, Link-Local aus dem MGMT-VLAN. Bekommt ein Gerät die Rolle `router`, ersetzt dessen Zonen-Firewall den Block.
+**Umsetzung:** Nicht-Router (Switch, AP, Manager) bekommen den input-Block `fwb`: Antworten, ICMP, auf einem unbeförderten Backup-Manager SSH-Sperre für Geräte (DS2.5.1), Adressliste `cfm-mgmt` (MGMT-Netz, `mgmtAccess`, `mgmtExtra`), auf Managern DHCP im Onboarding-VLAN, Sprung in `local-input`, MNDP und DHCP-Discover mit Quelle `0.0.0.0` still (DR2.5, DR2.5.1), Log `cfm-drop` (10/min), Drop. IPv6-input `fw6` auf allen Geräten: Antworten, ICMPv6, Link-Local aus dem MGMT-VLAN. Bekommt ein Gerät die Rolle `router`, ersetzt dessen Zonen-Firewall den Block.
 
 #### <a id="dr2.3"></a>DR2.3 · NAT je Zone
 
@@ -916,6 +959,18 @@ Die Rolle fragte für den DHCP-Server den Zustand des VRRP-Interface ab; im Prob
 **Verworfen:** VMs mit `stp="none"` ohne MNDP (zuerst gewählt, `7635c5e`: die VM fehlte dann in der Nachbarliste von Winbox) · VMs suchen nur über das MGMT-Interface · VM-Karten auf dem Host getaggt (Site, Umbau an der Manager-VM) · Broadcast/Multicast im input-Block ohne Log verwerfen · Log enger begrenzen
 
 **Begründung:** Die Nachbarsuche läuft auf allen Bridge-Ports (DU1.1). Über einen Bridge-Port ohne eigene Adresse geht MNDP mit Quelle `0.0.0.0` an 255.255.255.255. An einem physischen Port landet es ungetaggt im Trunk-VLAN 1 und damit nirgends; hinter einer VM-Karte stellt die Bridge des Hosts es als Access-VLAN im ganzen VLAN zu, und jedes Gerät mit Adresse darin verwarf und loggte es alle 30 s. An der Quelle ließ es sich nicht ohne Verlust abstellen (Labor): `protocol` gilt für das ganze Gerät, die Liste `DISC` für alle drei Protokolle; eine output-Regel der IP-Firewall oder des Bridge-Filters auf der VM sieht die Pakete nicht (Zähler 0); ohne die Karte in `DISC` endet auch LLDP auf ihr, über das die VM den Host und dessen Interface meldet (Netzplan, z.B. `tap108i1`). Winbox findet Geräte nur per MNDP, das MNDP der MGMT-Adresse kommt weiter durch. Die Regel trifft genau diese Pakete (Gegenstück in `fw6`: MNDP aus anderen VLANs still); der Router-Block loggt ohnehin nicht. Labor: `e2e.sh` Schritt 14 stellt den Access-Port mit `pvid=10` an cm1:ether3 nach (Regel zählt, kein `cfm-drop`)
+
+##### <a id="dr2.5.1"></a>DR2.5.1 · DHCP-Discover ohne Adresse still verwerfen
+
+*2026-11-08 · Nachtrag*
+
+**Entscheidung:** Der input-Block `fwb` verwirft DHCP-Anfragen eines Clients (`udp 68→67`, Quelle `0.0.0.0`) still wie
+MNDP, vor dem Log `cfm-drop`. Manager mit Onboarding-VLAN nehmen `udp/67` weiter vorher an.
+
+**Begründung:** Beim Umschalten eines Ports (DP1.4) loggte der Switch jedes Mal `cfm-drop … 0.0.0.0:68->255.255.255.255:67`
+vom Gerät am Port (hAP be³ Media, 7.25, 2026-11-06); dasselbe gilt für jeden Client, der in einem VLAN mit Adresse
+des Geräts nach DHCP fragt. Nicht-Router betreiben keinen DHCP-Server (außer dem Onboarding der Manager), das Paket
+ist für sie nur Rauschen. Labor: `e2e.sh` Schritt 8 (Regel vorhanden; ein echter Discover braucht Hardware).
 
 #### <a id="dr2.6"></a>DR2.6 · Admin-PCs außerhalb des MGMT-VLANs hinter cfm-Routern
 
@@ -2009,3 +2064,11 @@ Entscheidungen: Nachtrag DW2.4 (802.11v allein reicht nicht, `count` als Zahl). 
 sent` bei `count=unlimited`. Admin-Guide 8.16 (Steering einstellen und prüfen).
 
 Anlass: Test an einem Standort über Nacht und mit einem Rundgang ums Haus (Nutzer, 2026-11-08).
+
+### Backup-Manager leise, Manager nach dem Start, DHCP-Rauschen (2026-11-08 abends)
+
+Entscheidungen: DS2.5.1 (SSH-Sperre am unbeförderten Backup), DM2.1.1 (`cfm-mgr-boot`), DR2.5.1 (DHCP-Discover still).
+Bekannte Eigenheit bei den Manager-Ticks übersehen: Scheduler mit `start-time=startup` und Intervall laufen erst
+nach dem Intervall.
+
+Anlass: Befunde vom Ausfalltest des Backup-Managers und vom Dock-Port an einem Standort (Nutzer, 2026-11-08).

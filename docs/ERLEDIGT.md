@@ -1,6 +1,6 @@
 # Erledigt
 
-Was aus [TODO.md](TODO.md) erledigt ist, mit den Nummern der Punkte (neue Punkte in TODO.md zählen weiter, ab 78).
+Was aus [TODO.md](TODO.md) erledigt ist, mit den Nummern der Punkte (neue Punkte in TODO.md zählen weiter, ab 79).
 Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTAND.md](TESTSTAND.md).
 
 * [Verlauf](#verlauf) – was wann erledigt wurde, neueste oben
@@ -10,6 +10,11 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-08 abends (Befunde vom Backup-Manager):** Der unbeförderte Backup weist SSH der Geräte per TCP-Reset
+  ab, bevor sie sich anmelden – kein `login failure` mehr während eines Ausfalls des Primary, Fehlversuche von Admins
+  bleiben im Log (DS2.5.1). Nach einem Neustart lädt `cfm-mgr-boot` die Manager-Funktionen gleich (DM2.1.1). Der
+  input-Block der Nicht-Router verwirft DHCP-Discover mit Quelle `0.0.0.0` still (DR2.5.1). Labor-Wackler MNDP
+  behoben (Senden anstoßen). Neu: TODO 78 (Manager-Bibliothek beim Release aus `work/`).
 * **Am 2026-11-08 (Backup-Manager am Standort, TODO 77):** Ein hAP be³ Media läuft als
   `switch,ap,manager-backup` an einem Standort: Spiegel im Takt, `cfmd-*` gesperrt. Ausfalltest mit gestopptem
   Primary bestanden, `primary/on` nach 33 min und `primary/off` nach der Rückkehr kamen am Webhook an (TESTSTAND).
@@ -984,6 +989,17 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* ~~**`cfm-drop` für DHCP-Discover beim Umschalten eines Ports**~~ – *behoben 2026-11-08 (DR2.5.1):* Der input-Block
+  `fwb` verwirft `udp 68->67` mit Quelle `0.0.0.0` still. (Befund 2026-11-06 an einem Standort, hAP be³ Media 7.25:
+  bei jedem Umschalten einmal `cfm-drop input: in:ether5 … 0.0.0.0:68->255.255.255.255:67`.)
+
+* ~~**Labor-Wackler MNDP mit Quelle 0.0.0.0**~~ – *behoben 2026-11-08:* `e2e.sh` stößt das Senden an (MNDP an cm2
+  aus und wieder an) und wartet bis zu 120 s. (Fehlschläge 2026-10-31 und 2026-11-06: Das Paket kam im Zeitfenster
+  von 70 s nicht, das Verhalten stimmte.)
+
+* ~~**Manager-Funktionen fehlen nach einem Neustart bis zum ersten Tick**~~ – *behoben 2026-11-08 (DM2.1.1):*
+  Scheduler `cfm-mgr-boot`. (Befund beim Ausfalltest an einem Standort, 2026-11-08.)
 
 * ~~**`upload-seed.sh --site` lädt Labor-Hostfiles der Vorlage auf den Manager**~~ – *behoben 2026-11-08 (Nachtrag
   DT2.2):* Mit `--site` und Overlay kommen die Hostfiles nur noch aus dem Overlay; Dateien direkt in `work/`, die die

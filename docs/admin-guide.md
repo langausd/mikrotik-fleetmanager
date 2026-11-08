@@ -588,7 +588,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (DW1.5). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (DW1.7); Provisioning mit festen Interfaces (DW4.2); Schalt-Skripte für SSIDs mit `switch` (DW4.1, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, DR3.1); DNS (Upstream, Adlisten, Ausnahmen, Weiterleitungen und Abfrage-Log aus `dns.rsc`, DN3.1; Selbstbedienung mit User, Skript `cfm-dnsreq` und WebFig-Zugang aus `self.zones`, DN3.2); NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, DN2.1); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (DR3.2); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (DN1.1); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (DM2.2) |
-| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, DS2.5) |
+| `manager-backup` | wie `manager`, aber ohne CAPsMAN, spiegelt den Primary, Releases gesperrt; die SFTP-User der Geräte liegen gesperrt bereit (Geräte ziehen erst nach `$cfmPromoteManager` von hier, DS2.5); bis dahin weist er SSH von Geräte-Adressen per TCP-Reset ab, damit ein Ausfall des Primary kein `login failure` je Agent-Lauf erzeugt (Liste `cfm-bkssh`, DS2.5.1) |
 
 Eigene Firewall-Regeln gehören auf allen Geräten in die Chain `local-input`, auf Routern
 zusätzlich `local-forward`, zum Beispiel per `hosts/<name>.post.rsc`. Sie greifen vor dem finalen
@@ -1767,7 +1767,7 @@ mehr und taucht in keinem Log auf.
 | Gerät nach dem Apply unerreichbar | Watchdog rollt nach 5 min zurück, Ergebnis `rollback-watchdog` | Ursache (Ports/VLANs) im Hostfile beheben |
 | Fehlerhafte Version schon in Ring 0 | Ringe 1 und 2 bekommen sie nicht | reparieren oder `$cfmRollback ver=<N>` |
 | Zurück auf einen alten Stand | – | `$cfmRollback ver=<N> [all=yes]`. **Achtung:** überschreibt `work/` mit dem alten Stand |
-| Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (DS2.5) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
+| Primary-Manager fällt aus | Geräte laufen mit ihrem Stand weiter; der Backup hält ihre SFTP-User gesperrt bereit (DS2.5), weist ihre SSH-Versuche ohne Log-Eintrag ab (DS2.5.1) und liefert erst nach der Beförderung aus; ist der Primary zugleich CAPsMAN, senden die APs im lokalen Fallback weiter (ohne FT zwischen den APs) | bei längerem Ausfall auf cm2 `$cfmPromoteManager` (schaltet die SFTP-User frei und hebt die SSH-Sperre auf, die Geräte ziehen sofort von cm2), dann `managers` tauschen und releasen |
 | Primary kommt zurück | – | nach einer Beförderung den alten Primary neu als Backup aufsetzen |
 | Ein Switch eines MLAG-Paars fällt aus | doppelt angebundene Geräte laufen über den anderen Knoten weiter (LACP, DP2.2; auf Hardware noch nicht geprüft) | Gerät tauschen bzw. aufnehmen (7.4), beide Knoten im selben Ring lassen |
 | CAPsMAN fällt aus | APs senden nach ~10 s mit der lokalen Kopie der `master`-SSID weiter (weitere SSIDs nur mit `fallback="yes"`, DW1.8, im Fallback auf Hardware noch nicht geprüft); kommt er zurück, übernimmt er wieder | bei längerem Ausfall die Rolle `capsman` auf ein anderes Gerät verschieben (6.6) |
@@ -2005,7 +2005,8 @@ liegt unter `$LAB/mirror`.
 
 ## 13. Befehlsreferenz
 
-Nach `/system script run cfm-mgr` im Terminal des Primary-Managers. Gerätenamen in `host=`, `name=`, `sw=` und `ap=`
+Nach `/system script run cfm-mgr` im Terminal des Primary-Managers (nach einem Neustart lädt der Scheduler
+`cfm-mgr-boot` die Befehle 10 s nach dem Start selbst, DM2.1.1). Gerätenamen in `host=`, `name=`, `sw=` und `ap=`
 dürfen anders geschrieben sein als im Inventar (`host=hap-flur` findet `hAP-Flur`, DM1.3); ausgegeben wird der
 Inventarname.
 

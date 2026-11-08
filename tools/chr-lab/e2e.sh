@@ -76,7 +76,7 @@ agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
 expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 14' "cm1: 14 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (DT3.2)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
-expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
+expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and action=accept and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
 expect 1 '(([/ip/ssh/get]->"known-hosts-validation") != true)' "cm1: SSH-Client ohne Host-Key-Prüfung (ab 7.25 nach dem Reset an, DS1.5)"
 mgr '$cfmSecret key=user.netadmin value="Lab-Passw0rd!"; $cfmSecret key=psk.main value="lab-psk-12345"; $cfmSecret key=vaultpw value="vault-lab-pw"' >/dev/null
 
@@ -91,7 +91,7 @@ agentwait 2 1 sw1 && ok "sw1 hat v1 angewendet" || bad "sw1 Apply v1"
 expect 2 '[/interface/bridge/get bridge vlan-filtering]' "sw1: VLAN-Filtering aktiv"
 expect 2 '[:len [/interface/bridge/vlan/find where comment="cfm:bv:119"]] = 1' "sw1: Trunk trägt VLAN 119"
 expect 2 '[:len [/ip/address/find where address="192.168.10.21/24"]] = 1' "sw1: MGMT-IP"
-expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 9 and [/ip/firewall/filter/get [find where comment="cfm:fwb:08"] action] = "drop"' "sw1: minimale Firewall IPv4 (9 Regeln, zuletzt drop)"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb"]] = 10 and [/ip/firewall/filter/get [find where comment="cfm:fwb:09"] action] = "drop"' "sw1: minimale Firewall IPv4 (10 Regeln, zuletzt drop)"
 expect 2 '[:len [/ipv6/firewall/filter/find where comment~"^cfm:fw6"]] = 8' "sw1: minimale Firewall IPv6 (8 Regeln)"
 expect 2 '[/ip/neighbor/discovery-settings/get discover-interface-list] = "DISC" and [:len [/interface/list/member/find where list="DISC" and interface="ether2"]] = 1' "sw1: Nachbarsuche auf den Bridge-Ports (Liste DISC)"
 expect 2 '[/ip/service/get [:pick [find where name="reverse-proxy" and !dynamic] 0] disabled]' "sw1: Dienst reverse-proxy aus (ab Werk offen auf 443, TODO 30)"
@@ -211,6 +211,7 @@ mgr '$cfmEnroll name=cm2 ip=192.168.10.3 role=manager-backup ring=0' | grep -q E
 agentwait 3 4 cm2 && ok "cm2 hat v4 angewendet" || bad "cm2 Apply"
 expect 3 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: kein CAPsMAN (Backup ohne CAPsMAN, DW1.5)"
 expect 3 '[:len [/tool/netwatch/find where comment~"^cfm:nw:primary"]] = 0' "cm2: keine Netwatch-Übernahme mehr (DW1.5)"
+expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and action=drop and src-address="0.0.0.0" and dst-port="67"]] = 1' "sw1: DHCP-Discover mit Quelle 0.0.0.0 still verworfen (DR2.5.1)"
 expect 3 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "none"' "cm2: Bridge ohne RSTP (stp=none)"
 expect 2 '[:tostr [/interface/bridge/get bridge protocol-mode]] = "rstp"' "sw1: Bridge weiter mit RSTP"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true"' "cm1: CAPsMAN aktiv"
@@ -451,8 +452,10 @@ echo "$out" | grep -qE "^(cm1 +ether3 +cm2 +ether2|cm2 +ether2 +cm1 +ether3) +ok
 expect 3 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]] = "num"' "cm2 (stp=none): Nachbarsuche mit MNDP"
 n0=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=10 frame-types=admit-all' >/dev/null
-# auf das erste Paket warten statt fest 40 s: discover-interval ist 30 s, kam aber vereinzelt später (TODO)
-for _ in $(seq 1 14); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; done
+# Senden anstoßen: MNDP an cm2 kurz aus und wieder an. Sonst kam das erste Paket nach discover-interval (30 s)
+# vereinzelt erst nach über 70 s (Wackler TODO). Danach bis zu 120 s auf den Zähler warten
+r 3 ':local p [/ip/neighbor/discovery-settings/get protocol]; /ip/neighbor/discovery-settings/set protocol=lldp; :delay 2s; /ip/neighbor/discovery-settings/set protocol=$p' >/dev/null
+for _ in $(seq 1 24); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; done
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=1 frame-types=admit-only-vlan-tagged' >/dev/null
 n1=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
 expect 1 '[/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets] > 0' "cm1: MNDP mit Quelle 0.0.0.0 still verworfen (DR2.5)"
@@ -997,11 +1000,24 @@ fp() { r "$1" ":put [/user/ssh-keys/get [:pick [find where user=\"$2\"] 0] finge
 mirror | grep -q MIR=true && ok "Spiegel auf cm2 angestoßen" || bad "Spiegel auf cm2"
 expect 3 '[:len [/user/find where name~"^cfmd-(cm1|sw1)\$" and group="cfm-dev" and comment~" k=" and disabled]] = 2 and [:len [/user/ssh-keys/find where user="cfmd-sw1"]] = 1 and [:len [/user/find where name="cfmd-cm2"]] = 0' "cm2: SFTP-User von cm1 und sw1 gesperrt, je ein Schlüssel, keiner für sich selbst"
 [ "$(fp 3 cfmd-sw1)" = "$(fp 1 cfmd-sw1)" ] && ok "cm2: Schlüssel von sw1 wie auf dem Primary" || bad "cm2: Schlüssel von sw1 weicht ab"
+# Unbeförderter Backup weist SSH der Geräte ab, bevor sie sich anmelden (DS2.5.1): kein "login failure" im Log
+# des Backups. Liste aus dem gespiegelten Inventar - nach dem Spiegel oben einmal anwenden
+applied cm2 || bad "cm2 Apply vor der SSH-Sperre: $(stat cm2 res)"
+expect 3 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and action=reject and src-address-list="cfm-bkssh"]] = 1 and [:len [/ip/firewall/address-list/find where list="cfm-bkssh" and address="192.168.10.21"]] = 1 and [:len [/ip/firewall/address-list/find where list="cfm-bkssh" and (address="192.168.10.2" or address="192.168.10.3")]] = 0' "cm2: SSH-Sperre für Geräte (sw1 in cfm-bkssh, Manager nicht)"
+expect 1 '[:len [/ip/firewall/filter/find where src-address-list="cfm-bkssh"]] = 0 and [:len [/ip/firewall/address-list/find where list="cfm-bkssh"]] = 0' "cm1 (Primary): keine SSH-Sperre"
+lf0=$(r 3 ':put [:len [/log/find where message~"login failure"]]' | tail -1 | tr -dc 0-9)
+r 2 ':onerror e in={ /tool/fetch url="sftp://192.168.10.3/cfm/live/index.dat" user=cfmd-sw1 dst-path=e2e-bk.txt as-value } do={ :put "ERR" }' >/dev/null
+sleep 2
+lf1=$(r 3 ':put [:len [/log/find where message~"login failure"]]' | tail -1 | tr -dc 0-9)
+expect 3 '[/ip/firewall/filter/get [find where src-address-list="cfm-bkssh"] packets] > 0' "cm2: SSH von sw1 per TCP-Reset abgewiesen"
+[ -n "$lf0" ] && [ "$lf0" = "$lf1" ] && ok "cm2: kein login failure für den Versuch von sw1" || bad "cm2: login failure im Log ($lf0 -> $lf1)"
+r 2 '/file/remove [find where name="e2e-bk.txt"]' >/dev/null
 # Ernstfall nach der Beförderung: $cfmDevUsersOn (Teil von $cfmPromoteManager) schaltet die User frei;
 # sw1 erreicht cm1 per SFTP nicht mehr (eigene Verbindungen zu cm1:22 abgewiesen; der Push von cm1 und
 # das Abholen des Status laufen als Verbindungen von cm1 weiter)
 mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.3 cmd=("/system script run cfm-mgr; :global cfmDevUsersOn; :put [\$cfmDevUsersOn]")]; :put ($r->"output")' >/dev/null
 expect 3 '[:len [/user/find where name~"^cfmd-(cm1|sw1|cm2)\$" and !disabled]] = 3' "cm2: \$cfmDevUsersOn schaltet die User frei und legt den eigenen an"
+expect 3 '[:len [/ip/firewall/filter/find where src-address-list="cfm-bkssh"]] = 0' "cm2: \$cfmDevUsersOn hebt die SSH-Sperre sofort auf"
 r 2 '/ip/firewall/filter/add chain=output protocol=tcp dst-address=192.168.10.2 dst-port=22 action=reject reject-with=tcp-reset comment=e2e-dr' >/dev/null
 t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
 for _ in $(seq 1 40); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
@@ -1246,5 +1262,17 @@ a=$(chk ':put [/user/get [find name=netadmin] disabled]')
 printf '#!/bin/sh\necho "Lab-Passw0rd!"\n' > "$LAB/askpass-netadmin"; chmod +x "$LAB/askpass-netadmin"
 out=$(SSH_ASKPASS="$LAB/askpass-netadmin" SSH_ASKPASS_REQUIRE=force ssh -p $((LABPORT+10)) "${O[@]}" -o PubkeyAuthentication=no netadmin@127.0.0.1 '/system script run cfm-mgr; $cfmPush host=sw1' 2>&1 | tr -d '\r')
 echo "$out" | grep -q "Push -> sw1" && ! echo "$out" | grep -q FEHLER && ok "cm1: Manager-Befehle unter eigenem User (netadmin)" || bad "netadmin: $(echo "$out" | tail -1)"
+
+step "16. Manager nach Neustart (DM2.1.1)"
+# Scheduler mit start-time=startup und Intervall laufen erst nach dem Intervall (Labor: mgrTick 1m) - die
+# Funktionen müssen vorher da sein, ohne /system script run cfm-mgr in der Sitzung
+expect 1 '[:len [/system/scheduler/find where name="cfm-mgr-boot" and interval=0s]] = 1' "cm1: Scheduler cfm-mgr-boot"
+r 1 '/system/reboot' >/dev/null 2>&1
+sleep 15; waitssh 1 || bad "cm1 nach Neustart nicht erreichbar"
+up=""; for _ in $(seq 1 20); do
+  o=$(r 1 ':global cfmStatus; :put ("T=" . [:typeof $cfmStatus] . " U=" . [:tonum [/system/resource/get uptime]])' | grep -o 'T=.*' | head -1)
+  case "$o" in "T=nothing"*|"") sleep 2;; *) up=${o#*U=}; break;; esac
+done
+[ -n "$up" ] && [ "$up" -lt 55 ] && ok "cm1: Manager-Funktionen ${up} s nach dem Start da (vor dem ersten Tick)" || bad "cm1: Manager-Funktionen nach dem Start: ${o:-keine Antwort}"
 
 echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]

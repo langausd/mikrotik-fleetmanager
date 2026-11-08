@@ -74,6 +74,9 @@
   :global cfmInvLoad; :global cfmDevUser
   :local n 0
   :foreach name,d in=[$cfmInvLoad] do={ :if ([$cfmDevUser name=$name serial=($d->"serial")]) do={ :set n ($n + 1) } }
+  # SSH der Geräte nicht mehr abweisen (DS2.5.1): sofort, nicht erst beim nächsten Apply. Fehlt meta/PROMOTED
+  # (von Hand freigeschaltet), setzt der nächste Apply die Regel wieder
+  :onerror e in={ /ip/firewall/filter/remove [find where src-address-list="cfm-bkssh"] } do={ :log warning ("cfm: SSH-Sperre der Geraete nicht entfernt: " . $e) }
   :return $n
 }
 

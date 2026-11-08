@@ -12,7 +12,7 @@
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog; :global cfmWarn
 :global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey
-:global cfmDns; :global cfmKib; :global cfmFeat; :global cfmCtx
+:global cfmDns; :global cfmKib; :global cfmFeat; :global cfmCtx; :global cfmBkSsh
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -272,6 +272,8 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"connection-state"="established,related,untracked"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"connection-state"="invalid"})
 :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="icmp"})
+# unbeförderter Backup-Manager: SSH der Geräte abweisen (DS2.5.1), vor den Freigaben der Zonen
+:foreach x in=[$cfmBkSsh] do={ :set ($r->[:len $r]) $x }
 :if ([:len $wgIf] > 0) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="udp";"dst-port"=[:tostr ($cfmWg->"listenPort")]}) }
 :if ($vr) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="vrrp"}) }
 :foreach z in=[:toarray ($cfmG->"mgmtAccess")] do={

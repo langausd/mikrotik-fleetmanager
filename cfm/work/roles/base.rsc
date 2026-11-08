@@ -7,7 +7,7 @@
 :global cfmEnsure; :global cfmSet; :global cfmProfile; :global cfmNet; :global cfmKeys
 :global cfmHas; :global cfmLog; :global cfmBlock; :global cfmDry
 :global cfmIds; :global cfmRun; :global cfmIndex; :global cfmIdx; :global cfmVids; :global cfmMlagOf
-:global cfmLeases; :global cfmMacUp; :global cfmVlanKey; :global cfmFeat; :global cfmCtx
+:global cfmLeases; :global cfmMacUp; :global cfmVlanKey; :global cfmFeat; :global cfmCtx; :global cfmBkSsh
 
 :local br "bridge"
 :local mv [:tostr ($cfmG->"mgmtVlan")]
@@ -406,6 +406,8 @@ $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"connection-state"="established,related,untracked"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"connection-state"="invalid"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="icmp"})
+  # unbeförderter Backup-Manager: SSH der Geräte abweisen (DS2.5.1), vor der Freigabe des MGMT-Netzes
+  :foreach x in=[$cfmBkSsh] do={ :set ($r->[:len $r]) $x }
   :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"src-address-list"="cfm-mgmt"})
   # Manager: DHCP-Anfragen der Werksgeräte (Broadcast). Ohne Interface-Bindung, weil das
   # Onboarding-VLAN-Interface erst die Rolle manager anlegt; der DHCP-Server läuft nur dort.
@@ -419,6 +421,10 @@ $cfmSet m="/ip/ssh" p=({"strong-crypto"="yes";"host-key-type"="ed25519"})
   # MNDP über Bridge-Ports ohne Adresse (Quelle 0.0.0.0) still verwerfen, sonst füllt es das Log: Hinter
   # einem Access-Port (z.B. die Karten einer VM, DP1.2) erreicht es jedes Gerät im VLAN (DR2.5)
   :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"protocol"="udp";"dst-port"="5678";"src-address"="0.0.0.0"})
+  # DHCP-Discover eines Clients im VLAN (Quelle 0.0.0.0, Broadcast) ebenso: Nicht-Router ohne DHCP-Server sehen
+  # ihn, sobald ein Gerät an einem Port mit MGMT-VLAN steckt oder ein Port umschaltet (DP1.4); Manager mit
+  # Onboarding nehmen udp/67 schon oben an (DR2.5.1)
+  :set ($r->[:len $r]) ({"chain"="input";"action"="drop";"protocol"="udp";"src-port"="68";"dst-port"="67";"src-address"="0.0.0.0"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="log";"log-prefix"="cfm-drop";"limit"="10/1m,5:packet"})
   :set ($r->[:len $r]) ({"chain"="input";"action"="drop"})
   $cfmBlock m="/ip/firewall/filter" k="fwb" l=$r

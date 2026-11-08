@@ -12,7 +12,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-08 der Gesamttest (461 Prüfungen), drei VRRP-Router (137),
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-08 der Gesamttest (469 Prüfungen), drei VRRP-Router (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
   verwalteten Switch (18). Funkteile lassen sich auf CHR nicht testen.
 * **Hardware:** cfm läuft an zwei Standorten mit 13 Geräten, alle mit RouterOS 7.25; an einem davon routen seit dem
@@ -86,6 +86,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   damit `cfmHost` auf dem Manager; behoben, lädt keine mehr), danach **456 von 456**.
   2026-11-08 mit TODO 77 (`host=` ohne Groß-/Kleinschreibung, DM1.3): `e2e.sh` **461 von 461**, `e2e-vrrp.sh` 137,
   `e2e-mlag.sh` 72, Onboarding 14/15/18 – alle grün.
+  2026-11-08 abends mit DS2.5.1/DM2.1.1/DR2.5.1 (SSH-Sperre am Backup, `cfm-mgr-boot`, DHCP-Discover still):
+  `e2e.sh` 467 von 469 – die zwei roten waren veraltete Erwartungen an den input-Block (eine Regel mehr mit
+  `dst-port=67`, 10 statt 9 Regeln), korrigiert und auf den laufenden VMs nachgeprüft; `e2e-vrrp.sh` 137,
+  Onboarding 14/15/18. `e2e-mlag.sh` erst 71 von 72 (sw2 im zweiten Apply `add=6;rem=3;set=6`, einmalig, sw1 mit
+  derselben Rolle sauber), Wiederholung 72 von 72.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -212,8 +217,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   liefen mit ihrem Stand weiter und zogen nichts vom Backup; nach 33 min ohne Spiegel kam `primary/on` am
   Webhook an, nach dem Neustart des Primary und dem nächsten Spiegel (v104) `primary/off`. Befund: Die Geräte
   versuchen in der Zeit den Backup per SSH und scheitern an den gesperrten Usern – 65 `login failure`
-  (`system,error,critical`) in rund 25 min, auch im Syslog-Server; offen zur Entscheidung. Nach dem Neustart des
-  CHR fehlten die Manager-Funktionen bis zum ersten Takt bzw. `/system script run cfm-mgr`.
+  (`system,error,critical`) in rund 25 min, auch im Syslog-Server – seither abgewiesen ohne Anmeldung (DS2.5.1).
+  Nach dem Neustart des CHR fehlten die Manager-Funktionen bis zum ersten Takt bzw. `/system script run cfm-mgr` –
+  seither `cfm-mgr-boot` (DM2.1.1). Beides im Labor, auf Hardware mit dem nächsten Release.
 * **Umschaltbarer Port aus Home Assistant** (DP1.4.1, TODO 76) – 2026-11-07 am ersten Standort (hAP be³ Media,
   7.25.1, v102): Release ohne Rollback (Gruppe `cfm-api`, User, Regelblock `capi`, Dienst `api` nur für HA; auf den
   vier Routern die Forward-Freigabe in die MGMT-Zone); das API-Passwort kam mit dem Secret-Push, nachdem der Manager
@@ -235,7 +241,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5) – bisher nur im Labor (`e2e.sh`: cm2, auch als
   `manager-backup,ap`). *2026-11-08 an einem Standort bestanden (siehe oben):* Spiegel, gesperrte Geräte-User,
   `primary/on`/`off` am Webhook, Geräte ziehen nicht vom Backup. Offen: Platz auf dem Backup über längere Zeit,
-  zweiphasiger Rekey mit zwei echten Managern, die `login failure` der Geräte während eines Ausfalls (Befund);
+  zweiphasiger Rekey mit zwei echten Managern, SSH-Sperre der Geräte am Backup (DS2.5.1) bei einem Ausfall;
   `$cfmPromoteManager` nur im Ernstfall.
 * **Umschaltbarer Port** (DP1.4): Skripte und Taster an einem echten Gerät (Dockingstation), Bridge-Port mit
   Switch-Chip (`hw`), DHCP des Geräts am Port nach dem Umschalten. *2026-11-06 an einem Standort (hAP be³ Media, v100):

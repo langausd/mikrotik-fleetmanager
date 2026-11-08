@@ -25,7 +25,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75.
+* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75, 78.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -107,24 +107,15 @@ Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
   (Eigenheit „Verweis auf ein Interface“). Vorschlag zur Entscheidung: `isolate` an einer SSID setzt `slaves-static`
   mit, oder der Agent prüft `cfm-iso` bei jedem Lauf.
 
+* **Labor-Wackler MLAG: sw2 im zweiten Apply nicht idempotent** (`e2e-mlag.sh` Schritt 7, 7.25.1, 2026-11-08): einmal
+  `add=6;rem=3;set=6`, sw1 mit derselben Rolle sauber, die Wiederholung grün. Die VMs waren schon ersetzt, das
+  Agent-Log von sw2 fehlt. Bei Wiederkehr vor dem Stoppen `/log/print where message~"gesetzt|entfernt|angelegt"`
+  auf sw2 sichern.
+
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein
   WLAN-Interface unter dem Werksnamen (cfm benennt sie um). Ohne erkennbare Folge; Ursache offen.
-
-* **`cfm-drop` für DHCP-Discover beim Umschalten eines Ports** (DP1.4, `lib/base.portsw.rsc`, hAP be³ Media 7.25,
-  2026-11-06): Bei jedem Umschalten loggt der Switch einmal `cfm-drop input: in:ether5 … 0.0.0.0:68->255.255.255.255:67`
-  vom Gerät am Port, im selben Moment wie `link up` nach dem `enable`. Vermutlich kommt der erste Rahmen an, bevor
-  ether5 wieder Bridge-Port ist. Die Lease kommt trotzdem (der Client wiederholt), es ist nur Rauschen im Log. Fix:
-  DHCP-Client-Verkehr (`udp 68->67`, Quelle `0.0.0.0`) im input-Block still verwerfen wie MNDP (DR2.5) – oder
-  erst klären, ob das auch ohne Umschalten beim Stecken eines Geräts vorkommt.
-
-* **Labor-Wackler MNDP mit Quelle 0.0.0.0** (`e2e.sh` Abschnitt 14, DR2.5): Die Prüfung „cm1: MNDP mit Quelle
-  0.0.0.0 still verworfen“ erwartet nach höchstens 70 s einen Treffer im Zähler der Drop-Regel. Der als erledigt
-  geführte Fix vom 2026-10-27 (Warteschleife statt fester 40 s) reicht nicht: Fehlschlag noch am 2026-10-31 und
-  2026-11-06 (7.25.1). Das Verhalten stimmt jeweils, denn die Prüfung danach (kein `cfm-drop` im Log) ist grün; nur
-  das Paket kam im Zeitfenster nicht (`discover-interval` 30 s). Fix: länger warten (etwa 120 s) oder das
-  Senden anstoßen, z. B. MNDP an cm2 aus- und wieder einschalten, nachdem `pvid=10` gesetzt ist.
 
 ## Verbesserungsplan (Stand 2026-09-12)
 
@@ -322,3 +313,8 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
+78. **Manager-Bibliothek beim Release aus `work/` laden** (geplant 2026-11-09, nach der Auswertung des WLAN-Tests an
+    einem Standort): `cfm-mgr` lädt die installierten Skripte `cfm-mgr-*`. Nach einem Framework-Update laufen
+    `$cfmCheck`, `$cfmPlan` und das erste `$cfmRelease` deshalb mit der alten Bibliothek – heute muss man jede neue
+    `lib/mgr-*.rsc` vorher von Hand importieren (Admin-Guide 8.1, mehrfach vergessen: v95, 6.11.). Wie der Prüfer
+    (DG4.1) sollen die Befehle die Module aus `work/lib/` laden, wenn sie neuer sind als die installierten.

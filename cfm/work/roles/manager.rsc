@@ -43,6 +43,10 @@ $cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm
 # allgemeinen Tick, der selbst noch wartet (sonst warteten beide aufeinander), und kommt auch bei
 # mgrTick=1m (Labor) zum Zug. Jeder überspringt sich außerdem, solange sein Vorlauf läuft (DM2.1).
 $cfmEnsure m="/system/scheduler" k="sys:mgr-tick" n=({"name"="cfm-mgr-tick"}) p=({"name"="cfm-mgr-tick";"start-time"="startup";"interval"=$mgrTick;"on-event"=":if ([:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] < 2) do={ :local w 0; :while ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] > 0 and \$w < 30) do={ :delay 2s; :set w (\$w + 1) }; :if (\$w >= 30) do={ :log warning \"cfm: mgr-tick laeuft trotz Onboarding-Tick (60 s gewartet)\" }; :global cfmTickBusy; :set cfmTickBusy true; :onerror e in={ /system script run cfm-mgr; :global cfmTick; \$cfmTick } do={ :log warning (\"cfm: mgr-tick: \" . \$e) }; :set cfmTickBusy false } else={ :log warning \"cfm: mgr-tick uebersprungen (Vorlauf haengt)\" }"})
+# Nach dem Start die Manager-Funktionen gleich laden: Ein Scheduler mit start-time=startup und Intervall läuft
+# zum ersten Mal erst nach Ablauf des Intervalls, nicht beim Booten (Labor 7.25.1, ROUTEROS-EIGENHEITEN) - bis zum
+# ersten Tick fehlten sonst alle $cfm*-Befehle (DM2.1.1)
+$cfmEnsure m="/system/scheduler" k="sys:mgr-boot" n=({"name"="cfm-mgr-boot"}) p=({"name"="cfm-mgr-boot";"start-time"="startup";"interval"="0s";"on-event"=":delay 10s; :onerror e in={ /system script run cfm-mgr } do={ :log warning (\"cfm: mgr-boot: \" . \$e) }"})
 # Aufträge in meta/onboard.dat? Über den Namen statt /file/find (TODO 21: eine Suche über alle
 # Dateien kostete auf Hardware jede Minute über 100 ms). Ablage wie $cfmMB.
 # Falle beim on-event: Der String wird zweimal geparst (beim Erzeugen und bei jedem Lauf). Ein

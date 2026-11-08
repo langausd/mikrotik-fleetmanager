@@ -16,7 +16,8 @@
 
 :global cfmSniff do={
   :global cfmInvLoad; :global cfmExec; :global cfmMB; :global cfmJson; :global cfmWrite; :global cfmNow
-  :global cfmLoadData; :global cfmLeases
+  :global cfmLoadData; :global cfmLeases; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local b [$cfmMB]
   :local jf ($b . "/meta/sniff.dat")
   :local jobs [$cfmJson $jf]

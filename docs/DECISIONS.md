@@ -278,6 +278,18 @@ Im Labor gefunden und behoben (2026-10-04): Eine gelöschte Datei liefert `/file
 
 `mgrTick` in `global.rsc` (Standard 10 min) steuert Status-Abholung, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook und Vault-Backup. Das Onboarding läuft auf einem eigenen Scheduler jede Minute, damit eine laufende Sitzung nicht langsamer wird.
 
+#### <a id="dm1.3"></a>DM1.3 · Gerätenamen ohne Groß-/Kleinschreibung
+
+*2026-11-07 · TODO 77, Befund an einem Standort: `$cfmPlan host=hap-flur` → „unbekannter Host“, das Inventar kennt `hAP-Flur`*
+
+**Frage:** Wie sollen `host=` und `name=` mit einer anderen Schreibweise umgehen?
+
+**Entscheidung:** Eine zentrale Suchfunktion (`$cfmHostName`, `lib/mgr-core.rsc`) löst den Namen zum Eintrag im Inventar auf: erst exakt, dann ohne Rücksicht auf die Schreibweise; unbekannt bleibt er unverändert (der Befehl meldet wie bisher „unbekannter Host“). Alle Befehle mit `host=` nutzen sie, dazu `name=` bei `$cfmEnroll`, `$cfmRegister`/`$cfmApprove`, `$cfmBootstrap`, `$cfmOnboard` (auch `sw=`) und `ap=` bei `$cfmFind`. Danach gilt nur der Inventarname (Pfade `state/<host>`, Hostfile, Meldungen). `$cfmCheck` lehnt Inventarnamen ab, die sich nur in der Schreibweise unterscheiden.
+
+**Verworfen:** nur die Fehlermeldung verbessern („meintest du hAP-Flur?“); Namen im Inventar kleinschreiben (Identity und Hostfile tragen die Schreibweise des Nutzers).
+
+**Umsetzung:** RouterOS-Script kennt kein `tolower` – `$cfmLower` ersetzt A–Z einzeln (leere Zeichenkette vorab abfangen: `:for … to=-1` läuft rückwärts). Ein Funktionsargument lässt sich nicht per `:set` ändern (Syntaxfehler), und in `:local host [… $host]` ist `$host` schon die neue, leere Variable; daher in jedem Befehl `:local hn [$cfmHostName $host]; :local host $hn`. `$cfmEnroll`/`$cfmRegister` nennen eine Umschreibung („hap-flur -> hAP-Flur“): ein Name in anderer Schreibweise ist dasselbe Gerät, sonst entstünden genau die Dubletten, die `$cfmCheck` ablehnt.
+
 ### <a id="dm2"></a>DM2 · Nebenläufigkeit
 
 #### <a id="dm2.1"></a>DM2.1 · Überlappende Manager-Ticks: Job-Sperre
@@ -1620,6 +1632,8 @@ Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie
 
 **Begründung:** Eine Änderung im Browser darf der nächste Framework-Upload nicht still überschreiben. Site-Daten sind die Dateien direkt in `work/` und `work/hosts/`
 
+**Nachtrag 2026-11-08** (*technisch, nicht abgefragt*): Mit `--site` und Overlay kommen die Hostfiles nur noch aus dem Overlay. Vorher füllte die Vorlage `cfm/work/hosts/` auf, und die Labor-Hostfiles (`ap1.rsc`, `cm1.rsc` …) landeten an einem Standort auf dem Manager und in jedem Release. Dateien direkt in `work/`, die dem Overlay fehlen, ergänzt die Vorlage weiter (meist leere Vorgaben wie `mlag.rsc`, `dns.rsc`), das Skript nennt sie. Mit `--seed-inventory` (Labor, erstes Aufsetzen) bleibt das Auffüllen, die Labor-Overlays bauen darauf.
+
 **Nachtrag 2026-11-06:** `upload-seed.sh` prüft vor dem Upload alles, was hinübergeht, mit `tools/rsc-check.py` und bricht bei einem Fehler ab, ohne etwas hochzuladen (`--no-check` überspringt das). Anlass: Ein Hostfile mit Kommentar im Array-Literal kam auf den Manager, erst `$cfmCheck` meldete den Syntaxfehler – rsc-check kennt die Regel, lief aber nur von Hand und in der CI.
 
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
@@ -1812,6 +1826,7 @@ Entscheidung“ aus den Einleitungen der Runden):
 | Einleitung „Dritte Remote-Runde“: Datei-Existenz nur mit nicht leerem Namen | DG4.2 |
 | Umsetzungsentscheidungen: Geänderte Dateien überschreiben statt löschen | DG4.5 |
 | Umsetzungsentscheidungen: Manager-Tick einstellbar | DM1.2 |
+| Gerätenamen ohne Groß-/Kleinschreibung (TODO 77, 2026-11-07) | DM1.3 |
 | Umsetzungsentscheidungen: Sperre `cfmApplyBusy` | DM2.3 |
 | Umsetzungsentscheidungen: Gegenrichtung: Zeitstempel `cfmMgrData` | DM2.4 |
 | Umsetzungsentscheidungen: Integritätsschutz | DS1.2 |
@@ -1978,3 +1993,10 @@ Entscheidungen: DP1.4, DU2.3.1; Nachträge DV1.2 (TODO 7), DU4.2 (TODO 64), DU4.
 
 Anlass: Rollout an einem Standort mit RouterOS 7.25.1, Backup-Manager und dem Hardware-Test aus TODO 74 (Nutzer,
 2026-11-05).
+
+### Hostnamen ohne Groß-/Kleinschreibung, Upload ohne Labor-Hostfiles (2026-11-07/08)
+
+Entscheidungen: DM1.3; Nachtrag DT2.2 (Hostfiles mit `--site` nur aus dem Overlay, 2026-11-08).
+
+Anlass: Befunde an einem Standort – `$cfmPlan host=hap-flur` fand `hAP-Flur` nicht (Nutzer, 2026-11-07), und auf
+dem Manager lagen die Labor-Hostfiles der Vorlage (2026-11-08).

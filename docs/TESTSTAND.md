@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-07).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-08).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -12,13 +12,14 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-06 der Gesamttest (447 Prüfungen), drei VRRP-Router (137),
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-08 der Gesamttest (461 Prüfungen), drei VRRP-Router (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
   verwalteten Switch (18). Funkteile lassen sich auf CHR nicht testen.
 * **Hardware:** cfm läuft an zwei Standorten mit 13 Geräten, alle mit RouterOS 7.25; an einem davon routen seit dem
   17.10. vier Geräte alle VLANs per VRRP hinter einer Fritz!Box. Die gefundenen Fehler sind behoben
   ([ERLEDIGT.md](ERLEDIGT.md#behobene-fehler)) oder stehen in [TODO.md](TODO.md#bekannte-fehler) unter „Bekannte Fehler“.
-* **Noch nicht auf Hardware:** Backup-Manager (Test geplant 2026-11-07/08), Onboarding gegen Werks-Configs von Routern
+* **Noch nicht auf Hardware:** Beförderung und Rekey mit dem Backup-Manager (Spiegel und Ausfallmeldung am
+  2026-11-08 bestanden), Onboarding gegen Werks-Configs von Routern
   und CRS-Switches, die Fixes vom 2026-11-04 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im lokalen
   Fallback, `cfm-iso` nach `slaves-static`), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
   Gerätetyp einen Pilotbetrieb mit einem Testgerät ein. Neu seit 2026-11-05: `$cfmSniff mirror=` (DU2.3.1), Pakete
@@ -83,6 +84,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Wackler: MNDP mit Quelle 0.0.0.0, zweiter Apply nach `slaves-static` – TODO „Bekannte Fehler“). Abends mit dem
   HA-Port-Schalter (DP1.4.1): erster Lauf 454 von 456 (cm2 holte v19 nicht – der Secret-Push lud Hostfiles und setzte
   damit `cfmHost` auf dem Manager; behoben, lädt keine mehr), danach **456 von 456**.
+  2026-11-08 mit TODO 77 (`host=` ohne Groß-/Kleinschreibung, DM1.3): `e2e.sh` **461 von 461**, `e2e-vrrp.sh` 137,
+  `e2e-mlag.sh` 72, Onboarding 14/15/18 – alle grün.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -197,6 +200,14 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Einschalten mit Ablauf, Aus/Ein startet das Radio nicht neu, andere SSIDs laufen ohne Unterbrechung. **PPSK**
   (DW2.2): Eintrag mit eigener Passphrase landet im VLAN des Eintrags, auch mit FT. Drei Fehler gefunden (Fallback,
   normale Passphrase bei PPSK, `cfm-iso` nach `slaves-static`), Fixes DW1.8.1, DW2.2.1, DP3.1.1 (TODO 74).
+* **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5, DU4.1) – 2026-11-08 am ersten Standort (hAP be³ Media
+  als `switch,ap,manager-backup`, 7.25.1, v102–v104): Aufnahme ohne Rollback, Spiegel im Takt (live, archive, meta),
+  alle `cfmd-*` gesperrt, `$cfmPlan` des Geräts ohne Änderung. Ausfalltest: Primary (CHR) gestoppt, die Geräte
+  liefen mit ihrem Stand weiter und zogen nichts vom Backup; nach 33 min ohne Spiegel kam `primary/on` am
+  Webhook an, nach dem Neustart des Primary und dem nächsten Spiegel (v104) `primary/off`. Befund: Die Geräte
+  versuchen in der Zeit den Backup per SSH und scheitern an den gesperrten Usern – 65 `login failure`
+  (`system,error,critical`) in rund 25 min, auch im Syslog-Server; offen zur Entscheidung. Nach dem Neustart des
+  CHR fehlten die Manager-Funktionen bis zum ersten Takt bzw. `/system script run cfm-mgr`.
 * **Umschaltbarer Port aus Home Assistant** (DP1.4.1, TODO 76) – 2026-11-07 am ersten Standort (hAP be³ Media,
   7.25.1, v102): Release ohne Rollback (Gruppe `cfm-api`, User, Regelblock `capi`, Dienst `api` nur für HA; auf den
   vier Routern die Forward-Freigabe in die MGMT-Zone); das API-Passwort kam mit dem Secret-Push, nachdem der Manager
@@ -216,10 +227,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **PPSK** (DW2.2): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). Offen: die normale Passphrase als
   Gruppeneintrag (DW2.2.1, Fix 2026-11-05, nur Labor), Roaming mit PPSK zwischen CAPs, `ppskOnly`.
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5) – bisher nur im Labor (`e2e.sh`: cm2, auch als
-  `manager-backup,ap`). Offen: Spiegel-Abruf und Platz, gesperrte Geräte-User, Meldung `primary` an den Webhook bei
-  ausgeschaltetem Primary, Geräte ziehen bis zur Beförderung nicht vom Backup, zweiphasiger Rekey mit zwei echten
-  Managern; `$cfmPromoteManager` nur im Ernstfall. *Geplant an einem Standort (hAP be³ als
-  `switch,ap,manager-backup`, 2026-11-07/08).*
+  `manager-backup,ap`). *2026-11-08 an einem Standort bestanden (siehe oben):* Spiegel, gesperrte Geräte-User,
+  `primary/on`/`off` am Webhook, Geräte ziehen nicht vom Backup. Offen: Platz auf dem Backup über längere Zeit,
+  zweiphasiger Rekey mit zwei echten Managern, die `login failure` der Geräte während eines Ausfalls (Befund);
+  `$cfmPromoteManager` nur im Ernstfall.
 * **Umschaltbarer Port** (DP1.4): Skripte und Taster an einem echten Gerät (Dockingstation), Bridge-Port mit
   Switch-Chip (`hw`), DHCP des Geräts am Port nach dem Umschalten. *2026-11-06 an einem Standort (hAP be³ Media, v100):
   Umschalten per Skript bestanden – Link-Abriss, Firmen-Laptop am Dock mit Pool-Adresse in VLAN 175 (MAC des Docks),

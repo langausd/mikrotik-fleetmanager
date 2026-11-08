@@ -146,6 +146,21 @@ class UploadSeed(unittest.TestCase):
         self.upload("--overlay", ov)
         self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
 
+    def test_site_ohne_hostfiles_der_vorlage(self):
+        # mit --site und Overlay: Hostfiles nur aus dem Overlay, nie die der Vorlage (Labor: ap1, cm1 …);
+        # fehlende Dateien direkt in work/ ergänzt die Vorlage weiter und nennt sie
+        ov = os.path.join(self.tmp, "site")
+        os.makedirs(os.path.join(ov, "hosts"))
+        for f in ("global.rsc", "vlans.rsc"):
+            shutil.copy(ROOT / "cfm/work" / f, ov)
+        with open(os.path.join(ov, "hosts", "core1.rsc"), "w", encoding="utf-8") as fh:
+            fh.write(':global cfmHost {"ports"={}}\n')
+        out = self.upload("--overlay", ov, "--site")
+        self.assertEqual(sorted(os.listdir(os.path.join(self.mgr, "cfm/work/hosts"))), ["core1.rsc"])
+        self.assertIn("aus der Vorlage ergänzt (nicht im Overlay):", out)
+        self.assertIn("mlag.rsc", out.split("aus der Vorlage ergänzt")[1].splitlines()[0])
+        self.assertNotIn("vlans.rsc", out.split("aus der Vorlage ergänzt")[1].splitlines()[0])
+
     def test_all_features(self):
         self.upload("--site")
         out = self.upload("--all-features")

@@ -12,8 +12,9 @@
 :global cfmShow do={
   :global cfmInvLoad; :global cfmLoadData; :global cfmMB; :global cfmRings; :global cfmEnrolled
   :global cfmFileEx; :global cfmG; :global cfmVlans; :global cfmHost; :global cfmProfile; :global cfmWifi
-  :global cfmLeases; :global cfmNet; :global cfmPlan; :global cfmPad; :global cfmMlagOf; :global cfmVids
+  :global cfmLeases; :global cfmNet; :global cfmPlan; :global cfmPad; :global cfmMlagOf; :global cfmVids; :global cfmHostName
   :if ([:len $host] = 0) do={ :error "Aufruf: \$cfmShow host=<name> [ver=<N>] [objects=yes]" }
+  :local hn [$cfmHostName $host]; :local host $hn
   :local d ([$cfmInvLoad]->$host)
   :if ([:typeof $d] != "array") do={ :error ("unbekannter Host " . $host) }
   :if ($objects = "yes") do={ $cfmPlan host=$host show="yes"; :return "" }

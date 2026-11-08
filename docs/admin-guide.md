@@ -1968,7 +1968,9 @@ liegt unter `$LAB/mirror`.
 
 ## 13. Befehlsreferenz
 
-Nach `/system script run cfm-mgr` im Terminal des Primary-Managers:
+Nach `/system script run cfm-mgr` im Terminal des Primary-Managers. Gerätenamen in `host=`, `name=`, `sw=` und `ap=`
+dürfen anders geschrieben sein als im Inventar (`host=hap-flur` findet `hAP-Flur`, DM1.3); ausgegeben wird der
+Inventarname.
 
 | Befehl | Wirkung |
 |---|---|

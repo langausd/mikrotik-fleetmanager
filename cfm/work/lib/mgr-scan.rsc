@@ -86,7 +86,8 @@
 :global cfmWifiScan do={
   :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmPad; :global cfmExec; :global cfmEnrolled
   :global cfmWrite; :global cfmCapsmen; :global cfmLoadData; :global cfmWifi; :global cfmScanW; :global cfmScanOv
-  :global cfmOthCost; :global cfmOthSig; :global cfmOthOv; :global cfmOthNear
+  :global cfmOthCost; :global cfmOthSig; :global cfmOthOv; :global cfmOthNear; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local b [$cfmMB]
   :local f ($b . "/state/wifiscan.json")
   :local inv [$cfmInvLoad]

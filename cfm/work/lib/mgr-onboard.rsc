@@ -62,7 +62,10 @@
 }
 
 :global cfmRegister do={
-  :global cfmInvLoad; :global cfmInvSave; :global cfmVaultSet; :global cfmMB; :global cfmRings
+  :global cfmInvLoad; :global cfmInvSave; :global cfmVaultSet; :global cfmMB; :global cfmRings; :global cfmHostName
+  :local nn [$cfmHostName $name]
+  :if ([:len $nn] > 0 and $nn != $name) do={ :put ("cfmRegister: " . $name . " -> " . $nn . " (Schreibweise im Inventar)") }
+  :local name $nn
   :if ([:len $name] = 0 or [:len $serial] = 0 or [:len $ip] = 0) do={ :error "Aufruf: \$cfmRegister name=<n> serial=<Seriennr.> ip=<MGMT-IP> [role=<r>] [ring=<0-2>] [pw=<Aufkleber-Passwort>]" }
   :local inv [$cfmInvLoad]
   :local d ($inv->$name)
@@ -124,7 +127,10 @@
 
 :global cfmOnboard do={
   :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmOnbPort; :global cfmNow; :global cfmInvLoad
-  :global cfmLoadData; :global cfmOnbVid; :global cfmOnbWhere
+  :global cfmLoadData; :global cfmOnbVid; :global cfmOnbWhere; :global cfmHostName
+  # sw=/name= in beliebiger Schreibweise (TODO 77); ein nicht verwalteter Switch (manual=yes) bleibt, wie er ist
+  :local sn [$cfmHostName $sw]; :local sw $sn
+  :local nn [$cfmHostName $name]; :local name $nn
   # manual=yes (TODO 31): Der Port hängt an einem Switch, den cfm nicht verwaltet. Der Admin schaltet
   # ihn selbst ins Onboarding-VLAN und zurück; kein Fail-safe, kein Push an den Switch. sw/port sind
   # dann nur eine Notiz für Status und Log.

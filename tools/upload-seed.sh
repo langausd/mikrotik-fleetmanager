@@ -111,6 +111,19 @@ if [ -z "$site" ]; then
   rm -rf "$stage/work/hosts"
   echo "Site-Daten nicht hochgeladen (führt der Manager; --site lädt sie hoch, tools/pull-site.sh holt sie)"
 elif [ -z "$seed_inventory" ]; then
+  # Mit Overlay sind die Hostfiles der Vorlage (Labor: hosts/ap1.rsc, cm1.rsc …) nie Site-Daten - sie landeten
+  # sonst auf dem Manager und in jedem Release (gefunden 2026-11-08 auf einem Standort). Dateien direkt in work/,
+  # die das Overlay nicht hat, ergänzt die Vorlage weiter (meist leere Vorgaben wie mlag.rsc) - genannt.
+  if [ -n "$overlay" ]; then
+    for f in "$stage/work/hosts"/*; do
+      [ -f "$f" ] && [ ! -f "$overlay/hosts/$(basename "$f")" ] && rm -f "$f"
+    done
+    ergaenzt=""
+    for f in "$stage/work"/*; do
+      [ -f "$f" ] && [ ! -f "$overlay/$(basename "$f")" ] && ergaenzt="$ergaenzt $(basename "$f")"
+    done
+    [ -n "$ergaenzt" ] && echo "--site: aus der Vorlage ergänzt (nicht im Overlay):$ergaenzt"
+  fi
   remote=$(mktemp -d)
   (cd "$stage/work" && { find . -maxdepth 1 -type f; find ./hosts -type f 2>/dev/null; }) | sed 's|^\./||' | sort > "$remote/liste"
   mkdir -p "$remote/hosts"

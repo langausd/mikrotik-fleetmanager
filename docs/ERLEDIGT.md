@@ -1,6 +1,6 @@
 # Erledigt
 
-Was aus [TODO.md](TODO.md) erledigt ist, mit den Nummern der Punkte (neue Punkte in TODO.md zählen weiter, ab 74).
+Was aus [TODO.md](TODO.md) erledigt ist, mit den Nummern der Punkte (neue Punkte in TODO.md zählen weiter, ab 78).
 Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTAND.md](TESTSTAND.md).
 
 * [Verlauf](#verlauf) – was wann erledigt wurde, neueste oben
@@ -10,6 +10,14 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-08 (Backup-Manager am Standort, TODO 77):** Ein hAP be³ Media läuft als
+  `switch,ap,manager-backup` an einem Standort: Spiegel im Takt, `cfmd-*` gesperrt. Ausfalltest mit gestopptem
+  Primary bestanden, `primary/on` nach 33 min und `primary/off` nach der Rückkehr kamen am Webhook an (TESTSTAND).
+  Befund dabei: Die Geräte versuchen während des Ausfalls den Backup und scheitern an den gesperrten Usern – 65
+  `login failure` (`critical`) in rund 25 min, offen zur Entscheidung. Am selben Standort als v103 die Haupt-SSID nur
+  WPA3 (Steering ohne kick/drop) und als v104 eine Forward-Freigabe IoT → MQTT-Broker. TODO 77 (DM1.3): `host=`
+  ohne Groß-/Kleinschreibung. Behoben: `upload-seed.sh --site` lud die Labor-Hostfiles der Vorlage mit (Nachtrag
+  DT2.2). Labor 7.25.1 grün: `e2e.sh` 461, vrrp 137, mlag 72, Onboarding 14/15/18.
 * **Am 2026-11-07 (HA-Port-Schalter am Standort):** Framework `0ca97f7` als v102 an allen 10 Geräten `ok`. TODO 76
   (DP1.4.1) bestanden: HA schaltet den Dock-Port per `cfm_port.py`, die Meldungen kommen am Webhook an (TESTSTAND).
   Das API-Passwort für das Gerät mit `portSwitch` kam erst mit `$cfmSecretPush` nach Ring 2: Den vom Apply
@@ -657,6 +665,12 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     liest den Zustand aus `<cfm>/port-<name>.txt`; jeder Wechsel geht als `ev` `port` an den Webhook
     ([home-assistant.md](home-assistant.md), Abschnitt 8). Am Standort: Schalten aus HA in beide Richtungen,
     Meldung am Webhook ([TESTSTAND.md](TESTSTAND.md#bestanden)).
+77. ~~**Hostnamen am Manager ohne Groß-/Kleinschreibung**~~ – *umgesetzt 2026-11-08 (DM1.3), Labor `e2e.sh` 461
+    von 461:* Befund am Standort 2026-11-07: `$cfmPlan host=hap-flur` → „unbekannter Host“, das Inventar kennt
+    `hAP-Flur`. `$cfmHostName` (`mgr-core`) löst `host=` (auch `name=`, `sw=`, `ap=`) über `$cfmLower` zum Namen
+    im Inventar auf; alle Befehle mit Hostnamen nutzen ihn, danach gilt nur der Inventarname (Pfade, Hostfile,
+    Meldungen). `$cfmEnroll` und `$cfmRegister` nennen eine abweichende Schreibweise. `$cfmCheck` lehnt Namen ab, die
+    sich nur in der Schreibweise unterscheiden. Labor: Plan/Show/Audit/Push mit `SW1`/`Sw1`, Kollision im Check.
 
 ## Frühere Fassungen
 
@@ -968,6 +982,11 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* ~~**`upload-seed.sh --site` lädt Labor-Hostfiles der Vorlage auf den Manager**~~ – *behoben 2026-11-08 (Nachtrag
+  DT2.2):* Mit `--site` und Overlay kommen die Hostfiles nur noch aus dem Overlay; Dateien direkt in `work/`, die die
+  Vorlage ergänzt, nennt das Skript (Test in `upload-seed-test.py`). (Befund an einem Standort, v104: `hosts/ap1.rsc`,
+  `cm1.rsc` … standen auf dem Manager und in jedem Release; dort gelöscht.)
 
 * ~~**Taster startet das Umschalt-Skript nicht**~~ – *im Code behoben 2026-11-06 (Nachtrag DP1.4), Release offen:*
   Die Rolle setzt `on-event="/system script run cfm-port-<name>-toggle"` zusammen mit `hold-time=0s..1m`. (Befund

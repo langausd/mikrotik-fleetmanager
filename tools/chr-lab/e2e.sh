@@ -166,8 +166,18 @@ expect 1 '[:typeof [:find [/file/get [/file/find name="cfm/work/vlans.rsc"] cont
 out=$(mgr ':onerror e in={ $cfmPlan host=sw1 from=work } do={ :put ("ERR " . $e) }')
 echo "$out" | grep -q "ERR from=work" && ok "from=work abgelehnt (nur eigene Verzeichnisse)" || { bad "from=work nicht abgelehnt"; echo "$out" | tail -2; }
 mgr ':foreach f in=[/file/find where name~"^cfm/umzug"] do={ :onerror e in={ /file/remove $f } do={} }' >/dev/null
+# Hostnamen ohne Rücksicht auf die Schreibweise (TODO 77): zentrale Suche $cfmHostName, Kollision im Check
+out=$(mgr ':global cfmHostName; :put ("H=" . [$cfmHostName "Sw1"] . "/" . [$cfmHostName "cm1"] . "/" . [$cfmHostName "xx9"] . "/[" . [$cfmHostName ""] . "]")')
+echo "$out" | grep -qF "H=sw1/cm1/xx9/[]" && ok "\$cfmHostName: Sw1 -> sw1, exakt bleibt, unbekannt unverändert, leer bleibt leer" || { bad "\$cfmHostName"; echo "$out" | tail -2; }
+out=$(mgr '$cfmPlan host=SW1')
+echo "$out" | grep -q "# Plan sw1" && ! echo "$out" | grep -q "unbekannter Host" && ok "\$cfmPlan host=SW1 läuft als sw1" || { bad "\$cfmPlan host=SW1"; echo "$out" | tail -3; }
+out=$(mgr '$cfmShow host=Sw1; :onerror e in={ $cfmAudit host=SW1 } do={ :put ("ERR " . $e) }; $cfmPush host=SW1')
+echo "$out" | grep -q "^Ports" && ! echo "$out" | grep -q "ERR" && echo "$out" | grep -q "Push -> sw1" && ok "\$cfmShow/\$cfmAudit/\$cfmPush mit anders geschriebenem Namen" || { bad "Show/Audit/Push host=SW1"; echo "$out" | grep -E "ERR|Push|unbekannt" | head -3; }
+out=$(mgr ':global e2eI [/file/get [/file/find name="cfm/meta/inventory.rsc"] contents]; /file/set [/file/find name="cfm/meta/inventory.rsc"] contents=($e2eI . ":set (\$cfmInv->\"SW1\") {\"serial\"=\"SERIAL-E2E\";\"role\"=\"switch\";\"ring\"=2;\"ip\"=\"192.168.10.99\"}\n"); :global cfmCheck; :foreach e in=([$cfmCheck]->"err") do={ :put ("ERR " . $e) }; /file/set [/file/find name="cfm/meta/inventory.rsc"] contents=$e2eI')
+echo "$out" | grep -qE "ERR inventory: (SW1 und sw1|sw1 und SW1) unterscheiden sich nur in der Schreibweise" && ok "Prüfung: sw1 und SW1 im Inventar abgelehnt" || { bad "Kollision sw1/SW1 nicht erkannt"; echo "$out" | grep ERR | head -3; }
+expect 1 '[:typeof [:find [/file/get [/file/find name="cfm/meta/inventory.rsc"] contents] "SERIAL-E2E"]] = "nil"' "Inventar nach dem Kollisionstest wiederhergestellt"
 
-step "7. Kaputte Version -> Prüfung stoppt, mit force: Rollback + bad"
+step "7.Kaputte Version -> Prüfung stoppt, mit force: Rollback + bad"
 # unbekannter Dienstname und doppelter Port (www-ssl und reverse-proxy auf 443) sind Fehler (TODO 30)
 out=$(mgr ':global e2eG [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG . ":set (\$cfmG->\"services\"->\"http\") 80\n:set (\$cfmG->\"services\"->\"www-ssl\") 443\n:set (\$cfmG->\"services\"->\"reverse-proxy\") 443\n"); :global cfmCheck; :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG')
 echo "$out" | grep -q "ERR global.rsc: services nennt unbekannten Dienst http" && echo "$out" | grep -q "ERR global.rsc: services: Port 443 doppelt" && ok "\$cfmCheck: unbekannter Dienst und doppelter Port" || { bad "\$cfmCheck services"; echo "$out" | tail -3; }

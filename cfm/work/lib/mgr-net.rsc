@@ -320,8 +320,8 @@
 # "uplink"=true|false;"links"=Links per LLDP (eigenes Gerät);"w"={"ap";"band";"ssid";"sig";"up";"vid";"rate"};"src"=Gerät mit ARP/Lease}
 :global cfmFind do={
   :global cfmInvLoad; :global cfmEnrolled; :global cfmExec; :global cfmCapsmen; :global cfmPad
-  :global cfmCiRe; :global cfmMB; :global cfmJson; :global cfmG; :global cfmNet
-  :local q [:tostr $1]; :local fh [:tostr $host]; :local fp [:tostr $port]; :local fa [:tostr $ap]
+  :global cfmCiRe; :global cfmMB; :global cfmJson; :global cfmG; :global cfmNet; :global cfmHostName
+  :local q [:tostr $1]; :local fh [$cfmHostName $host]; :local fp [:tostr $port]; :local fa [$cfmHostName $ap]
   :local fs [:tostr $ssid]; :local fv [:tostr $vlan]; :local fg [:tostr $signal]
   :local say ($quiet != "yes")
   :if ([:len ($q . $fh . $fp . $fa . $fs . $fv . $fg)] = 0) do={

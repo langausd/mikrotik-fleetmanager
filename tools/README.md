@@ -45,7 +45,9 @@ tools/upload-seed.sh admin@192.168.10.2 --overlay site --seed-inventory --bootst
 ```
 
 * `--site` nennt vorher, welche Dateien auf dem Manager anders sind. Hast du dort etwas geändert
-  (z.B. im cfm-Editor), hol es vorher mit `pull-site.sh`, sonst ist es weg.
+  (z.B. im cfm-Editor), hol es vorher mit `pull-site.sh`, sonst ist es weg. Hostfiles kommen dabei nur aus
+  dem Overlay; fehlt dem Overlay eine Datei direkt in `work/` (z.B. `mlag.rsc`), nimmt das Skript die
+  Vorlage und nennt sie.
 * `--seed-inventory` lädt auch `meta/inventory.rsc`. Das ist nur beim allerersten Mal sinnvoll und
   bricht ab, sobald auf dem Manager echte Seriennummern stehen (`--force` überschreibt trotzdem).
 * `--bootstrap [datei]` legt die Bootstrap-Datei ins Wurzelverzeichnis des Geräts (ohne Angabe:

@@ -148,6 +148,34 @@
   :onerror e in={ [[:parse [/file/get ([$cfmMB] . "/meta/inventory.rsc") contents]]] } do={ :log warning ("cfm: inventory.rsc: " . $e) }
   :return $cfmInv
 }
+# Kleinschreibung (nur A-Z; RouterOS kennt kein tolower). Leer bleibt leer - ":for … to=-1" liefe rückwärts.
+:global cfmLower do={
+  :local lo "abcdefghijklmnopqrstuvwxyz"; :local up "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  :local s [:tostr $1]; :local r ""
+  :if ([:len $s] = 0) do={ :return "" }
+  :for i from=0 to=([:len $s] - 1) do={
+    :local c [:pick $s $i]; :local p [:find $up $c]
+    :if ([:typeof $p] = "num") do={ :set c [:pick $lo $p] }
+    :set r ($r . $c)
+  }
+  :return $r
+}
+# host=/name= ohne Rücksicht auf Groß-/Kleinschreibung (TODO 77): $1 = Eingabe, $2 = Inventar (optional, sonst
+# geladen) -> Name, wie er im Inventar steht. Exakter Treffer zuerst; unbekannt -> Eingabe unverändert (der Befehl
+# meldet dann wie bisher „unbekannter Host“); leer -> "". Danach gilt nur der Inventarname (Pfade state/<host>,
+# Hostfile, Meldungen). In den Befehlen: ":local hn [$cfmHostName $host]; :local host $hn" - ein Argument lässt
+# sich nicht per :set ändern, und in ":local host [… $host]" wäre $host schon die neue, leere Variable.
+:global cfmHostName do={
+  :global cfmInvLoad; :global cfmLower
+  :local h [:tostr $1]
+  :if ([:len $h] = 0) do={ :return "" }
+  :local inv $2
+  :if ([:typeof $inv] != "array") do={ :set inv [$cfmInvLoad] }
+  :if ([:typeof ($inv->$h)] = "array") do={ :return $h }
+  :local l [$cfmLower $h]
+  :foreach n,d in=$inv do={ :if ([$cfmLower $n] = $l) do={ :return $n } }
+  :return $h
+}
 :global cfmInvSave do={
   :global cfmWrite; :global cfmMB
   :local s "# cfm – Inventar (Manager-Metadaten, wirkt sofort). Auch von \$cfmEnroll geschrieben.\n# Key = Identity; serial, role (base immer; router,switch,ap,capsman,manager,manager-backup), ring 0-2, ip (MGMT)\n:global cfmInv {\n"
@@ -493,7 +521,8 @@
 
 # ---------- Push-Trigger ----------
 :global cfmPush do={
-  :global cfmInvLoad; :global cfmExec; :global cfmEnrolled; :global cfmCapsmen; :global cfmNow; :global cfmFollowAdd
+  :global cfmInvLoad; :global cfmExec; :global cfmEnrolled; :global cfmCapsmen; :global cfmNow; :global cfmFollowAdd; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local c ":execute \"/system script run cfm-agent\""
   :if ($force = "yes") do={ :set c ":execute \":global cfmArg \\\"force\\\"; /system script run cfm-agent\"" }
   # nicht aufgenommene Geräte nie anstoßen: Unter der geplanten Adresse kann ein fremdes Gerät stehen
@@ -578,7 +607,8 @@
 
 # ---------- Audit (Hand-Objekte auf einem Gerät) ----------
 :global cfmAudit do={
-  :global cfmInvLoad; :global cfmExec; :global cfmHook
+  :global cfmInvLoad; :global cfmExec; :global cfmHook; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local d ([$cfmInvLoad]->$host)
   :if ([:typeof $d] != "array") do={ :error ("unbekannter Host " . $host) }
   :local o $op; :if ([:len $o] = 0) do={ :set o "report" }
@@ -595,7 +625,8 @@
 # Geräte haben am Manager nur Lesezugriff; der Manager (User cfm auf dem Gerät)
 # holt cfm/out/status.json und – wenn neu – cfm/out/export.rsc nach state/<name>/.
 :global cfmCollect do={
-  :global cfmInvLoad; :global cfmMB; :global cfmJson; :global cfmEnrolled; :global cfmFileEx
+  :global cfmInvLoad; :global cfmMB; :global cfmJson; :global cfmEnrolled; :global cfmFileEx; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local b [$cfmMB]
   :local n 0
   :foreach name,d in=[$cfmInvLoad] do={

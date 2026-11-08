@@ -8,13 +8,13 @@
 # ---------- Inhaltliche Prüfung von work/ -> {"err"={..};"warn"={..}} ----------
 # Fehler: VLANs/Zonen, die Profile, WLAN, policy, mgmtAccess oder Hostfiles nennen, aber nicht
 # existieren; unbekannte Port-Profile; doppelte MGMT-IPs; Rollen ohne Datei; unbekannte IP-Dienste
-# oder doppelte Ports in services.
+# oder doppelte Ports in services; Gerätenamen, die sich nur in der Schreibweise unterscheiden.
 # Warnungen: Inventar-Eintrag ohne Hostfile.
 :global cfmCheck do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
   :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp; :global cfmMgrData; :global cfmLimit
-  :global cfmMlag; :global cfmMlagOf; :global cfmDns; :global cfmKib
+  :global cfmMlag; :global cfmMlagOf; :global cfmDns; :global cfmKib; :global cfmLower
   :local b [$cfmMB]
   # dir=<verzeichnis>: statt work/ prüfen ($cfmPlan from=)
   :local w ($b . "/work")
@@ -332,6 +332,14 @@
   # Inventar + Hostfiles
   :local ips ({})
   :local inv [$cfmInvLoad]
+  # Gerätenamen auch ohne Rücksicht auf die Schreibweise eindeutig: host= sucht so (TODO 77, $cfmHostName).
+  # $cfmLower steht in mgr-core: Ist von Hand nur ein neues mgr-check importiert, fehlt sie - dann auslassen
+  :local lcn ({})
+  :foreach n,d in=$inv do={
+    :local l [$cfmLower $n]
+    :if ([:len $l] > 0 and [:typeof ($lcn->$l)] != "nothing") do={ :set ($err->[:len $err]) ("inventory: " . ($lcn->$l) . " und " . $n . " unterscheiden sich nur in der Schreibweise - host= trifft sie nicht eindeutig") }
+    :set ($lcn->$l) $n
+  }
   # Feature-Module (DG4.6): tools/upload-seed.sh lädt nur die hoch, die die Site-Daten nutzen. Schaltet eine Site ein
   # Feature danach ein (cfm-Editor, /file edit), fehlt sein Modul in work/ - die Geräte bekämen es nicht, ihr Apply
   # bräche ab (Rollback). Bedingungen wie in den Rollen (vor den Hostfiles: die ändern cfmG u.U.)
@@ -625,8 +633,9 @@
 # Beides wirkt nur auf diesen Probelauf; work/ und das Inventar bleiben unberührt.
 :global cfmPlan do={
   :global cfmMB; :global cfmInvLoad; :global cfmWrite; :global cfmExec; :global cfmManifests
-  :global cfmCheck; :global cfmParseWork; :global cfmFileEx
+  :global cfmCheck; :global cfmParseWork; :global cfmFileEx; :global cfmHostName
   :if ([:len $host] = 0) do={ :error "Aufruf: \$cfmPlan host=<name> [from=<verzeichnis>] [role=<rollen>]" }
+  :local hn [$cfmHostName $host]; :local host $hn
   :local d ([$cfmInvLoad]->$host)
   :if ([:typeof $d] != "array") do={ :error ("unbekannter Host " . $host) }
   :local b [$cfmMB]

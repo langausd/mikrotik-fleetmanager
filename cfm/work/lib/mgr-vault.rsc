@@ -83,7 +83,8 @@
 :global cfmSecretPush do={
   :global cfmInvLoad; :global cfmVaultGet; :global cfmExec; :global cfmEsc; :global cfmJson
   :global cfmMB; :global cfmG; :global cfmWifi; :global cfmLoadData; :global cfmChallenge; :global cfmCapsmen
-  :global cfmEnrolled; :global cfmWg
+  :global cfmEnrolled; :global cfmWg; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   $cfmLoadData
   :local vv [:tonum ([$cfmJson ([$cfmMB] . "/meta/vault.dat")]->"ver")]
   :local done 0
@@ -253,7 +254,8 @@
 # Nicht während eines Applys: dessen Rollback-Sicherung ist mit dem alten Schlüssel verschlüsselt.
 :global cfmRekey do={
   :global cfmInvLoad; :global cfmChallenge; :global cfmExec; :global cfmVaultSet; :global cfmManifests
-  :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmIsPrimary; :global cfmEnrolled
+  :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmIsPrimary; :global cfmEnrolled; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :if (![$cfmIsPrimary]) do={ :error "nicht Primary: Backup-Manager ist read-only (\$cfmPromoteManager)" }
   :if ([:len $host] = 0 and $all != "yes") do={ :error "Aufruf: \$cfmRekey host=<name> | all=yes [sftp=yes]" }
   :local n 0

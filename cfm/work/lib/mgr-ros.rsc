@@ -118,7 +118,8 @@
   :global cfmMB; :global cfmInvLoad; :global cfmJson; :global cfmWrite; :global cfmManifests
   :global cfmPush; :global cfmVerGe; :global cfmPkgFetch; :global cfmPkgPrune; :global cfmPkgDir
   :global cfmIsPrimary; :global cfmNow; :global cfmDtNum; :global cfmLoadData; :global cfmPad
-  :global cfmEnrolled; :global cfmMiB
+  :global cfmEnrolled; :global cfmMiB; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local b [$cfmMB]
   :local of ($b . "/meta/upgrade.dat")
   :local ord [$cfmJson $of]

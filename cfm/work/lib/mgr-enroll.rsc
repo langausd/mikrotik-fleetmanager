@@ -6,7 +6,8 @@
 # ---------- Vertrauen: alle Manager-Schlüssel auf Geräte verteilen ----------
 # (nötig, damit ein später enrollter Backup-Manager im DR-Fall steuern kann)
 :global cfmTrust do={
-  :global cfmInvLoad; :global cfmMB; :global cfmRead; :global cfmExec; :global cfmEnrolled; :global cfmPemEsc
+  :global cfmInvLoad; :global cfmMB; :global cfmRead; :global cfmExec; :global cfmEnrolled; :global cfmPemEsc; :global cfmHostName
+  :local hn [$cfmHostName $host]; :local host $hn
   :local b [$cfmMB]
   :local inv [$cfmInvLoad]
   :local c ":local old [/user/ssh-keys/find where user=cfm]; :local ok true;"
@@ -186,7 +187,10 @@
 # ---------- Onboarding ----------
 :global cfmEnroll do={
   :global cfmMB; :global cfmExec; :global cfmInvLoad; :global cfmInvSave; :global cfmVaultSet
-  :global cfmManifests; :global cfmWrite; :global cfmRings; :global cfmG; :global cfmLoadData
+  :global cfmManifests; :global cfmWrite; :global cfmRings; :global cfmG; :global cfmLoadData; :global cfmHostName
+  :local nn [$cfmHostName $name]
+  :if ([:len $nn] > 0 and $nn != $name) do={ :put ("cfmEnroll: " . $name . " -> " . $nn . " (Schreibweise im Inventar)") }
+  :local name $nn
   :if ([:len $name] = 0 or [:len $ip] = 0) do={ :error "Aufruf: \$cfmEnroll name=<identity> ip=<erreichbare IP> [role=..] [ring=..] [rekey=yes] [noapply=yes]" }
   :local b [$cfmMB]
   $cfmLoadData
@@ -282,6 +286,8 @@
   :local out ($b . "/cfm-bootstrap.rsc")
   :local hint "# Auf neuem/zurückgesetztem Gerät: IP/Uplink anpassen, dann /import cfm-bootstrap.rsc\n# Danach am Manager: \$cfmEnroll name=<name> ip=<ip> role=<rolle> ring=<0-2>\n"
   # name=<n>: gerätespezifisch für den Onboarding-Push (MGMT-IP aus dem Inventar, alle Ports)
+  :global cfmHostName
+  :local nn [$cfmHostName $name]; :local name $nn
   :if ([:len $name] > 0) do={
     :local d ([$cfmInvLoad]->$name)
     :if ([:typeof $d] != "array") do={ :error ("unbekanntes Gerät " . $name) }

@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-07)
+## Übersicht offener Punkte (Stand 2026-11-08)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
@@ -25,7 +25,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75, 77.
+* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -134,7 +134,7 @@ Reihenfolge: 0 → 1 → 2, 3, 4 → 6, 7 → Rest nach Bedarf.
 die oben genannten ungetesteten Punkte ab. Größter Risikominderer vor jedem neuen Feature.
 *Begonnen 2026-09-17* mit CRS418 (Router + Manager) und hAP ax² (AP), seit 2026-09-26 ein
 zweiter Standort mit Switches, eigenem CAPsMAN und Manager in einer VM (siehe oben). Auf Hardware
-fehlt noch der Backup-Manager (Test geplant 2026-11-07/08); VRRP mit vier Routern läuft seit 2026-10-17 an einem Standort.
+lief der Backup-Manager am 2026-11-08 an einem Standort (Ausfalltest bestanden); VRRP mit vier Routern läuft seit 2026-10-17 an einem Standort.
 
 ### Kurzfristig (großer Nutzen, wenig Aufwand)
 
@@ -322,9 +322,3 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
-77. **Hostnamen am Manager ohne Groß-/Kleinschreibung** (Befund am Standort 2026-11-07: `$cfmPlan host=hap-flur` →
-    „unbekannter Host“, das Inventar kennt `hAP-Flur`) – Entscheidung des Nutzers: eine zentrale Suchfunktion löst
-    `host=` unabhängig von der Schreibweise zum Namen im Inventar auf, alle Befehle mit `host=` nutzen sie (heute
-    einzeln `[$cfmInvLoad]->$host` u.a. in `mgr-core`, `mgr-check`, `mgr-show`, `mgr-enroll`, `mgr-sniff`); danach gilt
-    nur der Inventarname (Pfade `state/<host>`, Hostfile, Meldungen). `$cfmCheck` lehnt Namen ab, die sich nur in
-    der Schreibweise unterscheiden. Labor: Befehle mit anders geschriebenem Namen, Kollision im Check.

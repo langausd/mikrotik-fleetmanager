@@ -1,0 +1,8 @@
+/* cfm auf der WebFig-Login-Seite (DT3.3, Prototyp): Knopf im Login-Formular und der Kasten mit den Werkzeugen */
+button.cfm { font: inherit; padding: 4px 10px; border: 1px solid #9aa; border-radius: 4px; background: #fff; color: #1d2321; cursor: pointer; text-align: left; margin-top: 6px; }
+button.cfm:disabled { opacity: .5; cursor: default; }
+button.cfm.prim { background: #13534b; color: #fff; border-color: #13534b; }
+button.cfm small { color: #667; display: block; }
+button.cfm.prim small { color: #dfe; }
+#cfmbtn { margin-left: 8px; }
+#cfmbox { display: grid; gap: 8px; width: 340px; margin: 16px auto; padding: 16px 20px; background: #fff; color: #1d2321; font: 13px system-ui, sans-serif; border-radius: 8px; box-shadow: 0 2px 16px #0003; }

@@ -85,7 +85,8 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `tools/pcap-ziele.py` | Internet-Ziele eines Geräts aus einem Mitschnitt (pcap/pcapng), Vorschlag für eine `allow`-Liste |
 | `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
-| `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern `e2e-vrrp.sh`, LACP/MLAG und isolierte VLANs `e2e-mlag.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, `seed-mlag*/`, Empfänger für Meldungen `notify-sink.py` |
+| `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern und Standortkopplung `e2e-vrrp.sh`, LACP/MLAG und isolierte VLANs `e2e-mlag.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, `seed-mlag*/`, Empfänger für Meldungen `notify-sink.py`, dyndns2-Attrappe `fake-ddns.py` |
+| `tools/branding/` | Prototyp für ein Branding-Paket (DO1.8, DT3.3): cfm-Stub als Default-Config (Reset-fest ins Onboarding), CAPs-Mode-Skript, cfm-Start auf der WebFig-Login-Seite; Plan für die Netinstall-Station in [docs/NETINSTALL.md](docs/NETINSTALL.md) |
 
 Anleitung zu jedem Werkzeug: [tools/README.md](tools/README.md), zum Testlabor: [tools/chr-lab/README.md](tools/chr-lab/README.md).
 

@@ -23,7 +23,8 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
 | [`home-assistant/cfm_port.py`](#home-assistantcfm_portpy) | Umschaltbaren Port (Dockingstation) aus Home Assistant schalten |
-| [`chr-lab/`](chr-lab/README.md) | Testlabor mit RouterOS-CHR in QEMU (eigene Anleitung) |
+| [`chr-lab/`](chr-lab/README.md) | Testlabor mit RouterOS-CHR in QEMU (eigene Anleitung); `fake-ddns.py` = dyndns2-Attrappe für den DynDNS-Test |
+| [`branding/`](branding/README.md) | Prototyp für das cfm-Branding-Paket: Stub, CAPs-Mode-Skript, cfm auf der WebFig-Login-Seite (Plan: docs/NETINSTALL.md, noch nicht gebaut) |
 
 **Typischer Ablauf:** `new-site.py` → Daten anpassen, `rsc-check.py site/` → `upload-seed.sh … --seed-inventory
 --bootstrap` (erstes Aufsetzen, Admin-Guide 6.2). Später bei einem neuen Framework-Stand: `git pull`,

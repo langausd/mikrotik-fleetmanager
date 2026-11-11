@@ -1,0 +1,12 @@
+<!-- cfm auf der WebFig-Login-Seite (DT3.3, Prototyp): Ausschnitt für MikroTiks index2.html aus dem Branding Maker.
+     Die Pflichtelemente der Seite bleiben unverändert: <form id="login">, <input id="name" data-defaultuser="admin">,
+     <input id="password">, <div id="error"> und assets/script.js (MikroTiks Login). Nur ergänzen: -->
+
+<!-- 1. im <head>, nach dem Stylesheet der Seite: -->
+<link rel="stylesheet" href="cfm.css">
+
+<!-- 2. am Ende des <body>, nach assets/script.js: cfm.js hängt den Knopf „cfm“ selbst an das Formular (#login) -->
+<script src="cfm.js"></script>
+
+<!-- Hinweis: Die hochgeladenen Dateien müssen im selben Pfad wie index2.html liegen (keine eigenen Ordner, MikroTik-Doku);
+     deshalb cfm.js und cfm.css ohne Verzeichnis referenzieren. -->

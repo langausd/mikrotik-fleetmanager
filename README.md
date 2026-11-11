@@ -142,6 +142,8 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Clients schalten gesperrte Domains selbst befristet frei | `dns.rsc` `self` → `$cfmRelease`, `$cfmSecret key=user.dns`; Lesezeichen „cfm“ → cfm-DNS (Admin-Guide 8.14, DN3.2) |
 | Bandbreite eines Netzes begrenzen (z.B. Gast-WLAN) | `"limit"="50M/10M"`, optional `"limitClient"` je Client, am VLAN → `$cfmRelease` (DR2.7) |
 | IoT-Geräte voneinander trennen, auch über mehrere APs | `"isolate"="yes"` am VLAN (Ausnahmen `isolateAllow`) → `$cfmRelease` |
+| Cloud eines IoT-Geräts freigeben, nur für dieses Gerät | `global.rsc` `allow` mit `"*.hersteller-cloud.com:tcp/443"` (DNS-gefüllte Adressliste, DR2.8), `leases.rsc` `"allow"={"*liste"}` an der Lease (DR2.9) → `$cfmRelease`; Liste per Mitschnitt: Admin-Guide 8.18 |
+| Zweiten Standort koppeln (Netze, Namen) | `wireguard.rsc` `sites` (Zone je Standort), `policy` → `$cfmRelease`; öffentlicher Name per `self.ddns` (DynDNS, `$cfmSecret key=ddns.auth`); Reihenfolge Admin-Guide 8.17 (DR4.3, DR4.4) |
 | Daten prüfen | `$cfmCheck` (läuft bei jedem `$cfmRelease`; Fehler stoppen das Release, `force=yes` übergeht sie) |
 | SSID/PSK ändern | `wifi.rsc` → `$cfmRelease`; PSK: `$cfmSecret key=psk.<ssid> value=…` |
 | SSH-Key einer Person | Zeile in `authorized_keys.<user>` ergänzen/löschen → `$cfmRelease` (alle entziehen: Datei leeren) |

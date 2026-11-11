@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-08).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-11).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -35,12 +35,15 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   (mit normaler Passphrase und `ppskOnly`), WLAN-Scan, CAPsMAN-Rolle und -Umzug, AP-Rolle mit `slaves-static`
   (zweiter Apply, Abgleich von `cfm-iso`), Mitschnitt per `$cfmSniff`, Bestandsgeräte, Admin-Keys je User, Benachrichtigungen, Gerätesuche,
   SNMPv3, Syslog-Inhalt, Feature-Module, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
-  Spiegel.
+  Spiegel; *seit 2026-11-11, noch nicht gelaufen:* Freigaben nach Domain und je Client (Schritt 14m, DR2.8/DR2.9).
 * `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15) und hinter
   einem nicht verwalteten Switch (18).
 * `e2e-vrrp.sh`: drei VRRP-Router hinter einem Internet-Router im LAN (5 VMs) – VIPs und DHCP nur auf dem Master,
   DHCP und DNS im LAN, das zugleich WAN ist, Zonen-Policy mit fester NAT-Adresse, `mgmtExtra`, WireGuard über die
-  VIP, `asymRouting`, Ausfall und Rückkehr des Masters, kurzer Master-Ausflug eines Backups, Ausfall zweier Router.
+  VIP, `asymRouting`, Ausfall und Rückkehr des Masters, kurzer Master-Ausflug eines Backups, Ausfall zweier Router;
+  *seit 2026-11-11, noch nicht gelaufen:* Standortkopplung (Schritt 5d: Gegenstelle in einer VRF auf inet, Schlüssel,
+  Tunnel am Master, Routen über die VIP, Policy, DNS-Weiterleitung; 6/7: Tunnel folgt dem Master; 12: Abbau) und
+  DynDNS gegen `fake-ddns.py` (DR4.3, DR4.4).
 * `e2e-mlag.sh`: LACP-Bonds, MLAG-Paar und isolierte VLANs (5 VMs, e1000-Karten).
 
 ### Läufe je RouterOS-Version
@@ -94,6 +97,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Mit DM1.1.1 (Module erst lesen, dann setzen) nur `e2e.sh`: 451 von 469 – rot nur Fremdursachen: Schritt 13 (ein
   Download von download.mikrotik.com scheiterte, 12 Folgefehler), cm2-Apply 4 min wegen Spiegel/SFTP (DM3.2, 4 Folgen),
   MNDP-Wackler, Schlüssel-Spiegel nach Rekey im Zeitfenster; Module und SSH-Sperre grün.
+  **Offen (2026-11-11):** die neuen Schritte zu Standortkopplung/DynDNS (`e2e-vrrp.sh` 5d, 6, 7, 12) und zu den
+  Freigaben nach Domain/je Client (`e2e.sh` 14m) sind geschrieben, aber noch nicht gelaufen – der Arbeitsrechner hat
+  weder QEMU/KVM noch das CHR-Image. Vor dem Rollout an einem Standort einmal `e2e-vrrp.sh` und `e2e.sh` fahren.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -232,6 +238,13 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **Standortkopplung und DynDNS** (DR4.3, DR4.4, 2026-11-11): Tunnel zwischen zwei Standorten hinter Fritz!Boxen
+  (Portfreigaben, DynDNS-Update beim echten Anbieter, Endpoint-Auflösung nach einem Adresswechsel), VRRP-Wechsel mit
+  stehendem Tunnel, Fritz!Box-Routen für Clients mit dem Internet-Router als Gateway, DNS-Namen der Gegenseite. Site-Overlays
+  beider Standorte sind vorbereitet (Admin-Guide 8.17).
+* **Freigaben nach Domain und je Client** (DR2.8, DR2.9, 2026-11-11): Füllt ein echtes IoT-Gerät die Adressliste über
+  den Router-DNS (TTL, `address-list-extra-time`)? Regel mit Adresse + MAC an einem VRRP-Router; `tuya`-Liste an
+  einem Standort auf Domains umgestellt.
 * **Onboarding-Push gegen echte Werks-Configs:** Router (ether1 = WAN mit Firewall), CRS-Switches, Geräte mit
   `flash/`-Verzeichnis; Aufkleber-Passwort (beim einzigen Versuch, einem hAP ax³ mit RouterOS 7.8, passte es nicht –
   das Gerät hatte ein leeres Passwort, der Fallback griff). Im CAPs-Modus das LED-Verhalten je Modell.

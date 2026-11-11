@@ -36,7 +36,7 @@
 #   $cfmPush [host=<n>|ring=<r>] [force=yes]   sofortigen Pull auslösen (nur aufgenommene Geräte)
 #   $cfmAudit host=<n> [op=report|mark|purge] [sel=all|A1,A3]
 #   $cfmSecret key=<k> value=<v>       Vault: user.<name>, psk.<ssid-key>, ppsk.<ssid-key>.<name>,
-#                                      vaultpw, wg.admin (DR4.2)
+#                                      vaultpw, wg.admin (DR4.2), wg.site (DR4.3), ddns.auth (DR4.4)
 #   $cfmSecretPush [host=<n>]          Secrets per SSH direkt in die Geräte schreiben
 #   $cfmVaultBackup                    verschlüsseltes Backup (inkl. Vault) nach vault/
 #   $cfmRekey host=<n>|all=yes         Geräteschlüssel (Manifest-Signatur) erneuern
@@ -299,6 +299,11 @@
   :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0) do={
     :if ($pl = 0) do={ :global cfmWgKey; :set wgpub [$cfmWgKey] } else={ :set wgpub [:tostr ([$cfmJson ($b . "/meta/vault.dat")]->"wgpub")] }
   }
+  # Schlüssel der Standortkopplung (DR4.3) ebenso: wg.site, öffentlich "wgsitepub"
+  :local wgsp ""
+  :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"sites")] > 0) do={
+    :if ($pl = 0) do={ :global cfmWgKey; :set wgsp [$cfmWgKey k="site"] } else={ :set wgsp [:tostr ([$cfmJson ($b . "/meta/vault.dat")]->"wgsitepub")] }
+  }
   :local reap ([:tonsec [:totime ($cfmG->"reapply")]] / 1000000000)
   :local inv [$cfmInvLoad]
   :local cms [$cfmCapsmen $inv]
@@ -391,6 +396,7 @@
           :local rl ("," . $rol . ",")
           :if ($rl ~ ",router,") do={ :set ($m->"dns") $dnsH }
           :if ($rl ~ ",router," and [:len $wgpub] > 0) do={ :set ($m->"wgpub") $wgpub }
+          :if ($rl ~ ",router," and [:len $wgsp] > 0) do={ :set ($m->"wgsitepub") $wgsp }
           :if ([:len $rmac] > 0) do={ :set ($m->"rmac") $rmac }
           # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
           :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }

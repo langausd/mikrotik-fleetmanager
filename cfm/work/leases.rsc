@@ -7,8 +7,12 @@
 # läuft nur auf dem Master). Die Router führen außerdem DNS-Namen für alle aufgenommenen Geräte
 # (<name>.<domain> -> MGMT-Adresse). Beispiel:
 #  :global cfmLeases {
-#    "30"={"drucker"={"mac"="02:00:00:00:00:30";"ip"=20}}
+#    "30"={"drucker"={"mac"="02:00:00:00:00:30";"ip"=20};
+#          "wr-pv"={"mac"="02:00:00:00:00:31";"ip"=21;"allow"={"*pv-cloud"}}}
 #  }
+#  wifi   "yes": das Gerät landet im WLAN an jeder SSID im VLAN dieser Lease (DW2.6)
+#  allow  Freigaben nur für dieses Gerät (DR2.9): Listen aus global.rsc allow, "*" = mit NAT (masquerade),
+#         "liste@Adresse" = feste NAT-Adresse - wie "allow:" in der Policy, aber nur für Adresse + MAC der Lease
 # Leer bleibt es bei ({}) - ein leeres {} liest RouterOS als Codeblock (Syntaxfehler beim /import).
 # ============================================================
 :global cfmLeases ({})

@@ -220,7 +220,7 @@ irgendetwas ausgerollt wird.
 | `pkgPath` | Ablage der RouterOS-Pakete für `$cfmUpgrade`, leer = `<cfm>/pkg` | leer |
 | `mgmtAccess`, `mgmtExtra` | Zonen bzw. Netze mit Management-Zugriff | `mgmt` / `{}` |
 | `policy` | Zonen-Matrix: `von = Ziele` mit Zonen, `wan` (Internet), `*` (alles), `mtupdate` (nur MikroTik-Update-Server), `allow:<Liste>` (nur die Ziele der Liste). **NAT nur mit Kennzeichen:** `*wan` = masquerade, `wan@<Adresse>` = feste NAT-Adresse (bei VRRP wandert sie mit dem Master); gilt auch für `mtupdate` und `allow:…`. `wan` ohne Kennzeichen wird geroutet, der Upstream braucht eine Route zurück. Zonen ohne `*`/`wan`: DNS an externe Server wird auf den Router umgeleitet | |
-| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}`; nur bestimmte Ports mit `":tcp/443,8883"` bzw. `":udp/123"` am Eintrag (DP3.1), z.B. `"cloud.example.com:tcp/443"` – je Port-Kombination eine eigene Adressliste `cfm-allow-<Liste>-tcp443` mit eigener Regel, Einträge ohne Ports gelten wie bisher für alle | `{}` |
+| `allow` | Freigabelisten: `{"name"={"host.example.com";"203.0.113.10";"198.51.100.0/24"}}`; nur bestimmte Ports mit `":tcp/443,8883"` bzw. `":udp/123"` am Eintrag (DP3.1), z.B. `"cloud.example.com:tcp/443"` – je Port-Kombination eine eigene Adressliste `cfm-allow-<Liste>-tcp443` mit eigener Regel, Einträge ohne Ports gelten wie bisher für alle. **`"*.domain.example[:tcp/443]"`** (DR2.8): die Domain samt Subdomains – kein Adresslisten-Eintrag, sondern ein statischer DNS-Eintrag (FWD, `match-subdomain`, `address-list`): jede Antwort des Router-DNS an einen Client landet für ihre TTL plus 30 min in der Adressliste. Für Geräte, deren Cloud-Adressen wechseln; die Zone muss den Router als DNS nutzen (DNS-Umleitung gibt es für Zonen ohne Internet), DoH-Clients umgehen es. Freigaben nur für einzelne Geräte: `leases.rsc` `allow` (DR2.9); Liste erstellen: 8.18 | `{}` |
 | `rosChannel`, `rosMin` | Update-Kanal und Mindestversion beim Onboarding | `stable`, `7.22` |
 | `onboard` | `timeout` einer Onboarding-Sitzung, `mtHosts` (Update-Server) | `60m` |
 | `users` | Admin-Benutzer → Gruppe | |
@@ -356,7 +356,7 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 
 ### `wireguard.rsc`
 
-Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`.
+Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`; Standortkopplung und DynDNS (8.17).
 
 * `listenPort`: UDP-Port des Routers (auf dem WAN-Interface offen, Quelle nicht beschränkt).
 * `net`: eigenes Subnetz für Router (Host `.1`) und Peers, darf sich nicht mit einem VLAN aus
@@ -365,6 +365,18 @@ Admin-Fernzugang auf dem Router (siehe 8.8), Peers zählen als Zone `mgmt`.
 * `peers`: Key = Name; `pubkey` = Public Key des Peers; `addr` = Host-Anteil der Tunnel-IP in
   `net`. Leere `peers={}` = WireGuard-Interface bleibt aus. Alle Router haben denselben privaten
   Schlüssel aus dem Vault (`wg.admin`, DR4.2), er steht nicht in den Daten.
+* **`sites`** (DR4.3, optional): je entferntem Standort `"<name>"={"pubkey"=…;"endpoint"="<Name>:<Port>";"port"=13232;
+  "nets"={…};"domain"="…";"dns"="…"}`. Der Standort wird eine **Zone** mit diesem Namen (Interface `wg-site-<name>`),
+  Freigaben stehen in `policy` wie bei jeder Zone. `pubkey` = `wgsitepub` der Gegenstelle (`$cfmShow` dort);
+  `endpoint` = deren öffentlicher Name/Adresse samt Port (fehlt er, wartet dieser Standort auf den Aufbau durch die
+  Gegenstelle); `port` = eigener UDP-Port für diesen Tunnel (Standard 13232, je Standort eindeutig, am Internet-Router
+  auf die VIP des WAN-VLANs weiterleiten); `nets` = Netze des Standorts (Routen, `allowed-address`); `domain`/`dns` =
+  dessen DNS-Namen samt Subdomains an dessen Resolver durch den Tunnel. Alle Router haben denselben Schlüssel
+  `wg.site` (Vault, entsteht beim ersten Release mit `sites`).
+* **`self`** (DR4.4, optional): `"name"` (Kurzname des Standorts) und `"ddns"` = `{"type"="dyndns2";"url"=
+  "https://update.dedyn.io/nic/update";"name"="s1.example";"ipUrl"=…;"interval"="5m"}`. `type` `dyndns2` =
+  Update-URL des Anbieters (hostname/myip, HTTP-Basic; Zugang `$cfmSecret key=ddns.auth value="user:passwort"`),
+  `cloud` = MikroTik-Cloud (`<SN>.sn.mynetname.net` je Gerät), `api` = vorgemerkt (TODO 80).
 
 ### `leases.rsc`
 
@@ -398,6 +410,10 @@ Feste DHCP-Leases je VLAN (DN1.1), wirksam auf Geräten mit Rolle `router` in VL
   unter Android/iOS meist auch (abschaltbar je Netz). `$cfmCheck` weist auf lokal verwaltete MACs hin,
   verlangt `yes`/`no`, nur ein VLAN mit `wifi` je MAC und warnt, wenn das VLAN nicht in `trunk-ap` liegt.
   Am Kabel wirkt das nicht (TODO 65).
+* **`"allow"={"*liste";"liste2"}`** (DR2.9): Freigaben nur für dieses Gerät – forward-Regeln mit Adresse **und** MAC
+  der Lease für die Ziele der Listen aus `global.rsc` `allow` (mit Ports wie dort), `*` = masquerade, `liste@Adresse` =
+  feste NAT-Adresse (wie `allow:` in der Policy, DR2.3). Die Zone bleibt unberührt; wirkt nur in gerouteten VLANs.
+  Beispiel: `"wr-pv"={"mac"="…";"ip"=50;"allow"={"*pv-cloud"}}` mit `"pv-cloud"={"*.sma.de:tcp/443"}` in `allow`.
 * Ohne Einträge steht dort `:global cfmLeases ({})` – ein leeres `{}` wäre ein Syntaxfehler.
 * Ältere Releases ohne diese Datei bleiben gültig (die Datei ist im Manifest optional).
 
@@ -1585,7 +1601,7 @@ verfolgt, die Zonen-Policy gilt dort unverändert.
 
 ```
 :global cfmVlans {
-  "177"={"name"="LAN";"zone"="lan";"gw"=2;"dhcp"="20-150";"dhcpGw"=1;"lease"="10d";"asymRouting"="internet"};
+  "20"={"name"="LAN";"zone"="lan";"gw"=2;"dhcp"="20-150";"dhcpGw"=1;"lease"="10d";"asymRouting"="internet"};
   ...
 }
 ```
@@ -1758,6 +1774,73 @@ NetworkManager fragt nach der Umstellung das Passwort neu ab, weil das gespeiche
 Nach der Eingabe verbindet er sich. Vorher prüfen, welche Clients sich schon per WPA3 anmelden
 (`auth-type` in `/interface/wifi/registration-table print detail` am CAPsMAN, z.B. `ft-wpa3-psk`): Ein Gerät, das nur WPA2 kann, versucht es danach gar nicht
 mehr und taucht in keinem Log auf.
+
+### 8.17 Standorte koppeln: WireGuard-Standortkopplung und DynDNS (DR4.3, DR4.4)
+
+Zwei Standorte mit eigenem Manager, beide hinter einem Internet-Router (z.B. Fritz!Box), erreichen sich über einen
+WireGuard-Tunnel zwischen ihren Routern. Voraussetzungen: VLAN-IDs (Netze `192.168.<VID>.0/24`) ohne
+Überschneidung, je Standort ein öffentlicher Name (DynDNS) und eine Portfreigabe UDP auf die VIP des WAN-VLANs
+bzw. den Router.
+
+**Daten** (`wireguard.rsc`, beide Standorte spiegelbildlich; hier A = `a`, B = `b`):
+
+```
+"self"={"name"="a";"ddns"={"type"="dyndns2";"url"="https://update.dedyn.io/nic/update";"name"="a-wan.example.net"}};
+"sites"={"b"={"pubkey"="<wgsitepub von B>";"endpoint"="b-wan.example.net:13232";
+                "nets"={"192.168.99.0/24"};"domain"="b.example.net";"dns"="192.168.99.2"}}
+```
+
+und in `global.rsc` die Policy: `"b"="lan,iot"` (was B hier erreicht) sowie `"lan"="…,b"` (wohin das eigene LAN
+darf). `mgmt`↔`mgmt` bewusst nicht (Entscheidung 2026-11-11); Router↔Router (DNS-Weiterleitung, Keepalive) geht immer.
+
+**Reihenfolge:**
+
+1. DynDNS: `self.ddns` eintragen, `$cfmSecret key=ddns.auth value="user:passwort"`; Portfreigabe UDP `port`
+   (Standard 13232) am Internet-Router auf die VIP des WAN-VLANs (bzw. den Router).
+2. `sites` mit `nets`, `endpoint`, `domain`/`dns` der Gegenseite, **`pubkey` zunächst leer** (Warnung, kein Fehler),
+   Policy ergänzen → `$cfmRelease … all=yes`. Das erste Release erzeugt `wg.site` und zeigt `wgsitepub` in
+   `$cfmShow host=<router>` (bzw. `meta/vault.dat`). Wie bei `wg.admin` braucht es nach einem Framework-Update zwei
+   Releases (das erste bringt die Manager-Bibliothek mit), danach `$cfmSecretPush`.
+3. Den `wgsitepub` der Gegenseite als `pubkey` eintragen → Release. Beide Seiten gleich: Der Tunnel steht, sobald
+   beide Peers ihre Endpoints aufgelöst haben (`cfm-wgsite` alle 2 min; `/interface/wireguard/peers/print` zeigt
+   `last-handshake`).
+4. Clients, die den Internet-Router als Gateway nutzen (Fritz!Box-LAN): dort statische Routen zu `nets` der Gegenseite
+   auf die VIP/den Router – `$cfmShow` nennt den Vorschlag. Ohne sie antworten solche Clients nicht; cfm setzt
+   diese Routen bewusst nicht (nur auf seinen Routern, Geräte mit eigenem Ausgang eingeschlossen).
+
+**Was passiert:** Interface `wg-site-<name>` in `Z-<name>`, Peer mit `allowed-address` = `nets`, Keepalive 25 s;
+Routen zu `nets` über das Interface (Distanz 1) und bei VRRP über die MGMT-VIP (Distanz 10) – auf Backups ist der
+Tunnel aus (on-master/on-backup wie `wg-admin`), dort greift die VIP-Route; `dst-nat` VIP:Port auf die eigene Adresse
+des Masters; FWD-Eintrag `domain` → `dns`; Endpoint-Namen löst der Router über den ersten Upstream auf (nicht über den
+eigenen DNS, der die Domain der Gegenseite in den Tunnel leitet). Skript `cfm-ddns` (Scheduler) meldet die eigene
+Adresse nur bei Änderung, Log `cfm-ddns: <name> -> <ip>`; Warnungen bei `badauth` o.ä.
+
+**Prüfen:** `$cfmCheck` (Namen, Netze, Ports, Endpoint, `domain`/`dns`), `/interface/wireguard/peers/print` (Handshake,
+`current-endpoint-address`), `/ip/route/print where dst-address=<Netz>` (aktiv über Tunnel oder VIP), Ping aus dem LAN,
+`:resolve <name>.<domain der Gegenseite>` am Router. Labor: `e2e-vrrp.sh` Schritte 5d, 6, 7, 12.
+
+### 8.18 Freigaben für Cloud-Geräte: Liste per Mitschnitt erstellen (DR2.8, DR2.9)
+
+Ein IoT-Gerät soll ins isolierte VLAN, braucht aber seine Cloud. Statt die ganze Zone freizugeben, bekommt das Gerät
+eine eigene Liste an seiner Lease:
+
+1. **Mitschneiden:** `$cfmSniff host=<router> lease=<Name> dauer=2h` (DU2.3; das Gerät dabei einmal neu starten und
+   bedienen, App-Anmeldung eingeschlossen). Nach Ablauf liegt die Datei unter `sniff/` auf dem Manager (`scp`). Ohne
+   cfm-Router geht auch der Mitschnitt der Fritz!Box (`http://fritz.box/html/capture.html`).
+2. **Auswerten:** `tools/pcap-ziele.py <datei> --mac <MAC> --leases site/leases.rsc --liste <name>` zeigt je Gerät
+   DNS-Anfragen, TLS-Servernamen (SNI), HTTP-Hosts und Verbindungen und schlägt eine `allow`-Liste vor. Viele Namen
+   unter einer Domain (`a3-eu.lifeaiot.com`, `m3-eu.lifeaiot.com`, …) → als Domain zusammenfassen:
+   `"*.lifeaiot.com:tcp/443,8883"`. Feste Adressen oder Netze wie bisher.
+3. **Eintragen:** `global.rsc` `allow` → `"<name>"={…}`; `leases.rsc` → `"allow"={"*<name>"}` an der Lease (`*` =
+   masquerade ins Internet). Die Zone selbst behält ihre Policy (z.B. `iot` ohne Internet). `$cfmRelease`.
+4. **Prüfen:** `/ip/firewall/address-list/print where list~"cfm-allow-<name>"` füllt sich, sobald das Gerät Namen der
+   Domain auflöst (dynamische Einträge mit Ablauf); `/ip/firewall/filter/print where src-address=<IP>` zählt. Löst das
+   Gerät nicht über den Router auf (eigener DNS, DoH), bleibt die Liste leer – dann hilft nur ein fester Eintrag oder
+   die Zone.
+
+Hinweise: Ein `*.domain`-Eintrag gilt für alle Listen-Nutzer derselben Domain; die DNS-Antworten gehen an den
+Adlisten vorbei (die Domain ist erlaubt). `address-list-extra-time` steht auf 30 min, weil Geräte Adressen länger als
+die TTL behalten. Wechselt das Gerät später die Zone oder die Adresse, zieht die Regel mit der Lease um.
 
 ## 9. Sicherheitsnetze und Notfälle
 
@@ -2025,7 +2108,7 @@ Inventarname.
 | `$cfmPush [host=<n>\|ring=<r>] [force=yes]` | sofortigen Pull auslösen (nur aufgenommene Geräte, DO2.2) |
 | `$cfmCollect [host=<n>]` | Status und Export sofort abholen |
 | `$cfmAudit host=<n> [op=report\|mark\|purge] [sel=all\|A1,A3]` | unverwaltete Objekte anzeigen, markieren, entfernen |
-| `$cfmSecret key=<k> value=<v>` | Vault-Eintrag setzen (`user.<name>`, `psk.<ssid>`, `ppsk.<ssid>.<name>`, `vaultpw`, `wg.admin`) |
+| `$cfmSecret key=<k> value=<v>` | Vault-Eintrag setzen (`user.<name>`, `psk.<ssid>`, `ppsk.<ssid>.<name>`, `vaultpw`, `wg.admin`, `wg.site`, `ddns.auth`) |
 | `$cfmSecretPush [host=<n>]` | Secrets sofort verteilen |
 | `$cfmVaultBackup` | verschlüsseltes Manager-Backup nach `vault/` |
 | `$cfmRekey host=<n>\|all=yes` | Geräteschlüssel erneuern |

@@ -47,7 +47,7 @@
 # Verwaltete Menüs in Abhängigkeitsreihenfolge (GC läuft rückwärts)
 :global cfmMenus {
   "/interface/bonding";"/interface/bridge";"/interface/bridge/port";"/interface/vlan";"/interface/bridge/vlan";
-  "/interface/vrrp";"/interface/list";"/interface/list/member";
+  "/interface/vrrp";"/interface/wireguard";"/interface/wireguard/peers";"/interface/list";"/interface/list/member";
   "/ip/address";"/routing/table";"/ip/route";"/ip/pool";"/ip/dhcp-server";"/ip/dhcp-server/network";
   "/ip/dhcp-server/lease";"/ip/dhcp-client";
   "/interface/bridge/filter";"/ip/firewall/address-list";"/ip/firewall/filter";"/ip/firewall/mangle";"/ip/firewall/nat";"/ip/firewall/raw";"/ipv6/firewall/filter";"/ip/dns/forwarders";"/ip/dns/adlist";"/ip/dns/static";
@@ -574,11 +574,13 @@
 }
 
 # Eintrag einer Freigabeliste (global.rsc allow, DR2.4) zerlegen: "ziel" oder "ziel:tcp/443,8883" (Ports je
-# Eintrag, DP3.1) -> {"h"=Ziel;"p"=Protokoll|"";"d"=Ports|"";"l"=Adressliste}. $1 = Listenname, $2 = Eintrag.
-# Einträge ohne Ports bleiben in cfm-allow-<Liste>, mit Ports je Kombination eine eigene Liste
+# Eintrag, DP3.1) -> {"h"=Ziel;"p"=Protokoll|"";"d"=Ports|"";"l"=Adressliste;"w"=Domain|""}. $1 = Listenname,
+# $2 = Eintrag. Einträge ohne Ports bleiben in cfm-allow-<Liste>, mit Ports je Kombination eine eigene Liste.
+# "*.domain" (DR2.8): w = Domain - kein Adresslisten-Eintrag, sondern ein DNS-Eintrag (FWD, match-subdomain), der
+# die Antworten des Router-DNS in die Adressliste schreibt
 :global cfmAllowEntry do={
   :local e [:tostr $2]
-  :local r ({"h"=$e;"p"="";"d"="";"l"=("cfm-allow-" . $1)})
+  :local r ({"h"=$e;"p"="";"d"="";"l"=("cfm-allow-" . $1);"w"=""})
   :local c -1
   :for i from=0 to=([:len $e] - 1) do={ :if ([:pick $e $i] = ":") do={ :set c $i } }
   :if ($c > 0) do={
@@ -589,9 +591,10 @@
       :local pt [:pick $sp ($sl + 1) [:len $sp]]
       :local tag ""
       :for i from=0 to=([:len $pt] - 1) do={ :local ch [:pick $pt $i]; :if ($ch = ",") do={ :set ch "_" }; :set tag ($tag . $ch) }
-      :set r ({"h"=[:pick $e 0 $c];"p"=$pr;"d"=$pt;"l"=("cfm-allow-" . $1 . "-" . $pr . $tag)})
+      :set r ({"h"=[:pick $e 0 $c];"p"=$pr;"d"=$pt;"l"=("cfm-allow-" . $1 . "-" . $pr . $tag);"w"=""})
     }
   }
+  :if ([:pick ($r->"h") 0 2] = "*.") do={ :set ($r->"w") [:pick ($r->"h") 2 [:len ($r->"h")]] }
   :return $r
 }
 

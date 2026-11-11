@@ -3,7 +3,8 @@
 
 tools/upload-seed.sh lädt nur die Module hoch, deren Feature die Site-Daten nutzen, und entfernt die übrigen
 auf dem Manager. Dieses Skript liest dazu die Site-Daten (global.rsc, vlans.rsc, wifi.rsc, wireguard.rsc, dns.rsc,
-mlag.rsc, hosts/*.rsc, authorized_keys.<user>) und nennt die Module, die die Site nicht braucht. Dazu zählen
+mlag.rsc, hosts/*.rsc, authorized_keys.<user>) und nennt die Module, die die Site nicht braucht (auch router.site und
+router.ddns aus wireguard.rsc sites bzw. self.ddns, DR4.3/DR4.4). Dazu zählen
 auch die Skript-Rümpfe (lib/<Rolle>.<Name>.rsc, $cfmBody), z.B. der Schalt-Skripte schaltbarer SSIDs.
 
 Aufruf:
@@ -132,6 +133,11 @@ def bedarf(site):
     w = tokens(lesen(site, "wireguard.rsc") or "")
     wg = genutzt_wenn_nicht_leer(w, "peers")
     r["router.wg"] = (wg, "wireguard.rsc peers" + ("" if wg else " leer"))
+    # Standortkopplung (DR4.3) und DynDNS (DR4.4): sites bzw. self.ddns.type in wireguard.rsc
+    st = genutzt_wenn_nicht_leer(w, "sites")
+    r["router.site"] = (st, "wireguard.rsc sites" + ("" if st else " leer"))
+    dd = any(p is None or wert(w, p) != "" for p in nennungen(w, "type"))
+    r["router.ddns"] = (dd, "wireguard.rsc self.ddns.type" + ("" if dd else " fehlt"))
 
     lim = False
     for k in ("limit", "limitClient"):

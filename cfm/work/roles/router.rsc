@@ -2,7 +2,10 @@
 # Rolle router – Inter-VLAN-Routing, DHCP, Zonen-Firewall, NAT, VRRP
 #  NAT nur, wo die policy es kennzeichnet (DR2.3): "*wan" = masquerade, "wan@a.b.c.d" = src-nat auf
 #  diese Adresse (liegt bei VRRP auf vrrp<VID> des WAN-VLANs und wandert mit dem Master).
-#  Freigabelisten (DR2.4): policy-Ziel "allow:<Liste>" aus global.rsc "allow".
+#  Freigabelisten (DR2.4): policy-Ziel "allow:<Liste>" aus global.rsc "allow"; Einträge "*.domain" füllen die
+#  Adressliste über den Router-DNS (DR2.8); Freigaben je Client aus leases.rsc "allow" (DR2.9).
+#  Standortkopplung (DR4.3): wireguard.rsc "sites" -> Feature-Modul lib/router.site.rsc, Zone je Standort;
+#  DynDNS (DR4.4): wireguard.rsc "self"."ddns" -> Skript cfm-ddns (Rumpf lib/router.ddns.rsc).
 #  Hostfile-Parameter:
 #   routerId=1..4   VRRP aktiv: reale IP .250+id, VIP .gw, Prio 210-10*id
 #                   (weglassen = Einzelrouter, bekommt .gw direkt)
@@ -12,7 +15,7 @@
 :global cfmG; :global cfmVlans; :global cfmHost; :global cfmMf; :global cfmWg; :global cfmLeases; :global cfmMacUp
 :global cfmEnsure; :global cfmSet; :global cfmBlock; :global cfmNet; :global cfmLog; :global cfmWarn
 :global cfmIds; :global cfmRun; :global cfmTarget; :global cfmDry; :global cfmVlanKey
-:global cfmDns; :global cfmKib; :global cfmFeat; :global cfmCtx; :global cfmBkSsh
+:global cfmDns; :global cfmKib; :global cfmFeat; :global cfmCtx; :global cfmBkSsh; :global cfmBody
 
 :local vr ([:len [:tostr ($cfmHost->"routerId")]] > 0)
 :local rid [:tonum ($cfmHost->"routerId")]
@@ -20,8 +23,9 @@
 # WireGuard bei VRRP (DR4.2): wg-admin läuft nur auf dem Master des WAN-VLANs (Endpoint = dessen VIP), alle
 # Router mit demselben Schlüssel aus dem Vault; die Backups routen das WG-Netz über die MGMT-VIP zum Master
 :local wgOn ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0)
+:local siteOn ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"sites")] > 0)
 :local wgV ""
-:if ($vr and $wgOn) do={
+:if ($vr and ($wgOn or $siteOn)) do={
   :local wi [:tostr ($cfmHost->"wan"->"if")]
   :if ($wi ~ "^vlan[0-9]+\$") do={
     :local wv [:pick $wi 4 [:len $wi]]
@@ -47,6 +51,8 @@
 :foreach vid,v in=$cfmVlans do={
   :if ([:tostr ($v->"l3")] != "no" and [:len [:tostr ($v->"zone")]] > 0) do={ :set ($zones->($v->"zone")) 1 }
 }
+# Standortkopplung (DR4.3): je entferntem Standort eine Zone mit dessen Namen (Interface wg-site-<name>)
+:if ($siteOn) do={ :foreach sn,sd in=($cfmWg->"sites") do={ :set ($zones->$sn) 1 } }
 :foreach z,x in=$zones do={ $cfmEnsure m="/interface/list" k=("il:Z-" . $z) n=({"name"=("Z-" . $z)}) p=({"name"=("Z-" . $z)}) }
 $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 
@@ -84,8 +90,10 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
         }
         :if ($vid = $wgV) do={
           :if ([:len $om] > 0) do={ :set om ($om . "; "); :set ob ($ob . "; ") }
-          :set om ($om . "/interface/wireguard/enable [find name=wg-admin]; /ip/route/disable [find comment=\"cfm:rt:wg\"]")
-          :set ob ($ob . "/interface/wireguard/disable [find name=wg-admin]; /ip/route/enable [find comment=\"cfm:rt:wg\"]")
+          # wg-admin (DR4.2) und die Standort-Tunnel wg-site-* (DR4.3) folgen dem Master des WAN-VLANs; die Routen
+          # der Standortkopplung schalten über die Distanz von selbst um (Tunnel aus -> Route über die MGMT-VIP)
+          :set om ($om . "/interface/wireguard/enable [find name=wg-admin]; /ip/route/disable [find comment=\"cfm:rt:wg\"]; /interface/wireguard/enable [find name~\"^wg-site-\"]")
+          :set ob ($ob . "/interface/wireguard/disable [find name=wg-admin]; /ip/route/enable [find comment=\"cfm:rt:wg\"]; /interface/wireguard/disable [find name~\"^wg-site-\"]")
         }
         # Erst nach 5 s und nur, wenn er dann noch Master ist: Ein startender Backup hört den Master
         # anfangs nicht und ist für etwa 2 s selbst Master (Befund am Standort, DR1.5); on-backup sofort
@@ -193,9 +201,23 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
 :if ([:len ($cfmDns->"servers")] > 0) do={ :set dup ($cfmDns->"servers"); :set ($dp->"servers") $dup }
 :if ([:len [:tostr ($cfmDns->"cache")]] > 0) do={ :set ($dp->"cache-size") [:tostr [$cfmKib ($cfmDns->"cache")]] }
 $cfmSet m="/ip/dns" p=$dp
-# Forwarder cfm-upstream mit allen Upstreams für Ausnahmen (allow) und die Selbstbedienung (DN3.2); er bleibt, solange
-# Freischaltungen der Selbstbedienung (dnsui:) auf ihn zeigen - auch ohne dns.rsc
-:if (([:len ($cfmDns->"allow")] > 0 or [:len ($cfmDns->"self"->"zones")] > 0 or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0) and [:len $dup] > 0) do={
+# Freigaben nach Domain (DR2.8, global.rsc allow "*.domain"): FWD-Einträge an den Forwarder cfm-upstream (sonst an
+# die dynamischen Server des WAN-DHCP); die Antworten landen für ihre TTL plus address-list-extra-time in der Adressliste
+:global cfmAllowEntry
+:local wild false
+:foreach ln,lst in=($cfmG->"allow") do={ :foreach h in=$lst do={ :if ([:len ([$cfmAllowEntry $ln $h]->"w")] > 0) do={ :set wild true } } }
+:local fwdTo ""
+:if ($wild) do={
+  :if ([:len $dup] > 0) do={ :set fwdTo "cfm-upstream" } else={
+    :onerror e in={ :set fwdTo [:tostr [/ip/dns/get dynamic-servers]] } do={}
+    :if ([:len $fwdTo] = 0) do={ $cfmWarn "allow: *.domain braucht einen Upstream (wan.dns oder dns.rsc servers) - Domain-Freigaben nicht angelegt (DR2.8)" }
+  }
+  # Geräte mit eigenem DNS-Cache halten Adressen länger als die TTL: Einträge 30 min über die TTL hinaus behalten
+  :if ([:typeof ([/ip/dns/get]->"address-list-extra-time")] != "nothing") do={ $cfmSet m="/ip/dns" p=({"address-list-extra-time"="30m"}) }
+}
+# Forwarder cfm-upstream mit allen Upstreams für Ausnahmen (allow), Domain-Freigaben (DR2.8) und die Selbstbedienung
+# (DN3.2); er bleibt, solange Freischaltungen der Selbstbedienung (dnsui:) auf ihn zeigen - auch ohne dns.rsc
+:if (([:len ($cfmDns->"allow")] > 0 or [:len ($cfmDns->"self"->"zones")] > 0 or $wild or [:len [/ip/dns/static/find where comment~"^dnsui:"]] > 0) and [:len $dup] > 0) do={
   $cfmEnsure m="/ip/dns/forwarders" k="dnsfw:upstream" n=({"name"="cfm-upstream"}) p=({"name"="cfm-upstream";"dns-servers"=$dup})
 }
 # Adlisten, Ausnahmen, Weiterleitungen, Abfrage-Log und Selbstbedienung (DN3.1, DN3.2): Feature-Modul lib/router.dns.rsc
@@ -242,6 +264,34 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
   :set wgIf "wg-admin"
   :set cfmCtx ({"wgV"=$wgV;"mv"=$mv}); $cfmFeat "router.wg"
 }
+# --- Standortkopplung (DR4.3): Feature-Modul lib/router.site.rsc, nur mit sites in wireguard.rsc. Je Standort ein
+#     Interface wg-site-<name> in der Zone Z-<name>, Routen zu dessen Netzen (bei VRRP mit Rückfall über die MGMT-VIP),
+#     DNS-Weiterleitung seiner Domain; erster Upstream für die Auflösung der Endpoint-Namen ---
+:local up1 ""
+:if ([:len $dup] > 0) do={ :set up1 [:tostr [:pick [:toarray $dup] 0]] } else={ :onerror e in={ :set up1 [:tostr [:pick [:toarray [/ip/dns/get dynamic-servers]] 0]] } do={} }
+:if ($siteOn) do={
+  :set cfmCtx ({"wgV"=$wgV;"mv"=$mv;"up"=$up1}); $cfmFeat "router.site"
+}
+# --- DynDNS (DR4.4, wireguard.rsc self.ddns): type "cloud" = MikroTik-Cloud-Name je Gerät (<SN>.sn.mynetname.net);
+#     type "dyndns2" = Skript cfm-ddns (Rumpf lib/router.ddns.rsc) meldet die öffentliche Adresse an den Anbieter, nur auf
+#     dem Master des WAN-VLANs; Zugang "user:passwort" aus dem Vault (ddns.auth, Secret-Push); type "api" ist vorgemerkt ---
+:local dd ($cfmWg->"self"->"ddns")
+:local ddt [:tostr ($dd->"type")]
+:if ($ddt = "cloud") do={ $cfmSet m="/ip/cloud" p=({"ddns-enabled"="yes"}) }
+:if ($ddt = "dyndns2") do={
+  :local di [:tostr ($dd->"interval")]
+  :if ([:len $di] = 0) do={ :set di "5m" }
+  :local diu [:tostr ($dd->"ipUrl")]
+  :if ([:len $diu] = 0) do={ :set diu "https://api.ipify.org" }
+  :local san do={ :local o ""; :for i from=0 to=([:len $1] - 1) do={ :local ch [:pick $1 $i]; :if ($ch != "\"" and $ch != "\\" and $ch != "\$") do={ :set o ($o . $ch) } }; :return $o }
+  :local src "# cfm (Rolle router, DR4.4): DynDNS-Update nach dyndns2 - nur auf dem Master des WAN-VLANs, nur bei neuer Adresse. Jeder Apply schreibt es neu\n"
+  :set src ($src . ":local url \"" . [$san [:tostr ($dd->"url")]] . "\"\n:local name \"" . [$san [:tostr ($dd->"name")]] . "\"\n:local ipUrl \"" . [$san $diu] . "\"\n")
+  :set src ($src . ":local wgV \"" . $wgV . "\"\n:local dns \"" . [$san $up1] . "\"\n")
+  :set src ($src . [$cfmBody "router.ddns"] . "\n\$ddns url=\$url name=\$name ipUrl=\$ipUrl wgV=\$wgV dns=\$dns\n")
+  $cfmEnsure m="/system/script" k="sys:ddns" n=({"name"="cfm-ddns"}) p=({"name"="cfm-ddns";"source"=$src;"policy"="read,write,test"})
+  $cfmEnsure m="/system/scheduler" k="sys:ddns" n=({"name"="cfm-ddns"}) p=({"name"="cfm-ddns";"interval"=$di;"start-time"="startup";"on-event"="/system/script/run cfm-ddns";"policy"="read,write,test"})
+}
+:if ($ddt = "api") do={ $cfmWarn "wireguard.rsc self.ddns type api ist noch nicht umgesetzt (DR4.4) - kein DynDNS-Update" }
 
 # --- Adresslisten ---
 :foreach n in={"10.0.0.0/8";"172.16.0.0/12";"192.168.0.0/16"} do={
@@ -252,14 +302,21 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
   $cfmEnsure m="/ip/firewall/address-list" k=("al:mt:" . $h) p=({"list"="cfm-mtupdate";"address"=$h})
 }
 # Freigabelisten (DR2.4): Hostnamen löst RouterOS dynamisch auf, IPs/Netze gelten direkt. Einträge mit
-# Ports ("ziel:tcp/443,8883", DP3.1) kommen je Port-Kombination in eine eigene Liste mit eigener Regel
-:global cfmAllowEntry
+# Ports ("ziel:tcp/443,8883", DP3.1) kommen je Port-Kombination in eine eigene Liste mit eigener Regel.
+# "*.domain" (DR2.8): statischer DNS-Eintrag FWD mit match-subdomain und address-list - jede Antwort des Router-DNS
+# an einen Client (Domain samt Subdomains) steht für ihre TTL in der Adressliste
 :local alg ({})
 :foreach ln,lst in=($cfmG->"allow") do={
   :set ($alg->$ln) ({})
   :foreach h in=$lst do={
     :local ae [$cfmAllowEntry $ln $h]
-    $cfmEnsure m="/ip/firewall/address-list" k=("al:allow:" . $ln . ":" . $h) p=({"list"=($ae->"l");"address"=($ae->"h")})
+    :if ([:len ($ae->"w")] > 0) do={
+      :if ([:len $fwdTo] > 0) do={
+        $cfmEnsure m="/ip/dns/static" k=("dnsal:" . $ln . ":" . $h) n=({"name"=($ae->"w");"type"="FWD";"address-list"=($ae->"l")}) p=({"name"=($ae->"w");"type"="FWD";"forward-to"=$fwdTo;"match-subdomain"="yes";"address-list"=($ae->"l")})
+      }
+    } else={
+      $cfmEnsure m="/ip/firewall/address-list" k=("al:allow:" . $ln . ":" . $h) p=({"list"=($ae->"l");"address"=($ae->"h")})
+    }
     :set ($alg->$ln->($ae->"l")) ({"p"=($ae->"p");"d"=($ae->"d")})
   }
 }
@@ -275,6 +332,13 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
 # unbeförderter Backup-Manager: SSH der Geräte abweisen (DS2.5.1), vor den Freigaben der Zonen
 :foreach x in=[$cfmBkSsh] do={ :set ($r->[:len $r]) $x }
 :if ([:len $wgIf] > 0) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="udp";"dst-port"=[:tostr ($cfmWg->"listenPort")]}) }
+:if ($siteOn) do={
+  :foreach sn,sd in=($cfmWg->"sites") do={
+    :local sp [:tostr ($sd->"port")]
+    :if ([:len $sp] = 0) do={ :set sp "13232" }
+    :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="udp";"dst-port"=$sp})
+  }
+}
 :if ($vr) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"protocol"="vrrp"}) }
 :foreach z in=[:toarray ($cfmG->"mgmtAccess")] do={
   :if (($zones->$z) = 1) do={ :set ($r->[:len $r]) ({"chain"="input";"action"="accept";"in-interface-list"=("Z-" . $z)}) }
@@ -364,6 +428,39 @@ $cfmSet m="/system/ntp/server" p=({"enabled"="yes"})
             :set ($nr->"action") "src-nat"; :set ($nr->"to-addresses") $nat; :set ($natA->$nat) 1
           }
           :set ($natR->[:len $natR]) $nr
+        }
+      }
+    }
+  }
+}
+# Freigaben je Client (DR2.9): leases.rsc "allow"={"*liste";"liste2"} an einer festen Lease - nur dieses Gerät
+# (Adresse und MAC) erreicht die Ziele der Listen, die Zone bleibt unberührt; "*" = masquerade, "@Adresse" = feste
+# NAT-Adresse wie in der Policy (DR2.3)
+:if ([:typeof $cfmLeases] = "array") do={
+  :foreach lvid,lls in=$cfmLeases do={
+    :local lv ($cfmVlans->[:tostr $lvid])
+    :if ([:typeof $lv] = "array" and [:tostr ($lv->"l3")] != "no") do={
+      :local lnn [$cfmNet $lvid]
+      :foreach ln,ld in=$lls do={
+        :if ([:len ($ld->"allow")] > 0 and [:len ($lnn->"net")] > 0) do={
+          :local la [:tostr (($lnn->"addr") + [:tonum ($ld->"ip")])]
+          :local lm [$cfmMacUp ($ld->"mac")]
+          :foreach t0 in=[:toarray ($ld->"allow")] do={
+            :local pt [$cfmTarget $t0]
+            :local nat [:tostr ($pt->"nat")]
+            :foreach gl,gp in=($alg->($pt->"t")) do={
+              :local fr ({"chain"="forward";"action"="accept";"src-address"=$la;"src-mac-address"=$lm;"dst-address-list"=$gl})
+              :if ([:len ($gp->"p")] > 0) do={ :set ($fr->"protocol") ($gp->"p"); :set ($fr->"dst-port") ($gp->"d") }
+              :set ($r->[:len $r]) $fr
+              :if ([:len $nat] > 0) do={
+                :local nr ({"chain"="srcnat";"src-address"=$la;"out-interface-list"="WAN";"dst-address-list"=$gl})
+                :if ($nat = "masq") do={ :set ($nr->"action") "masquerade" } else={
+                  :set ($nr->"action") "src-nat"; :set ($nr->"to-addresses") $nat; :set ($natA->$nat) 1
+                }
+                :set ($natR->[:len $natR]) $nr
+              }
+            }
+          }
         }
       }
     }

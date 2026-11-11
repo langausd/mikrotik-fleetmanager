@@ -14,7 +14,9 @@
 # Router im LAN, das zugleich ihr WAN ist (DR3.1), TCP ins Internet über die VIP mit asymRouting (DR3.2), WireGuard über die
 # VIP mit gemeinsamem Schlüssel (DR4.2, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (DR1.5), Neustart des
-# Masters, Ausfall von zwei Routern.
+# Masters, Ausfall von zwei Routern. Standortkopplung (DR4.3): Gegenstelle "site2" auf inet (WireGuard wgs in einer
+# VRF mit 192.168.77.0/24), Tunnel am Master, Routen über die MGMT-VIP auf den Backups, Zone site2 in der Policy,
+# DNS-Weiterleitung; DynDNS (DR4.4) gegen fake-ddns.py auf dem Host.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
 # ------------------------------------------------------------------
@@ -50,6 +52,11 @@ wgstate() { r "$1" ':local s "an"; :if ([/interface/wireguard/get [find name=wg-
 wgpub() { r "$1" ':put ("K=" . [/interface/wireguard/get [find name=wg-admin] public-key])' | grep -o 'K=.*' | cut -d= -f2-; }
 tunnel() { local i; for i in $(seq 1 8); do [ "$(pings 4 "$1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
 wgep() { r 4 ':put ("E=" . [/interface/wireguard/peers/get [find interface=wgc] current-endpoint-address])' | grep -o 'E=.*' | cut -d= -f2; }
+# Standortkopplung (DR4.3): sitestate <vm> -> "an/aus" für wg-site-site2 und welche Route zu 192.168.77.0/24 aktiv ist
+# (tun = über den Tunnel, vip = über die MGMT-VIP); sitepub <vm>; sitetunnel <Ziel>: Ping aus der VRF site2 auf inet
+sitestate() { r "$1" ':local s "an"; :if ([/interface/wireguard/get [find name=wg-site-site2] disabled]) do={ :set s "aus" }; :local t "-"; :foreach i in=[/ip/route/find where dst-address="192.168.77.0/24" and comment~"^cfm:rt[sb]:" and active] do={ :if ([/ip/route/get $i comment] ~ "^cfm:rts:") do={ :set t "tun" } else={ :set t "vip" } }; :put ("S=" . $s . "/" . $t)' | grep -o 'S=.*' | cut -d= -f2; }
+sitepub() { r "$1" ':put ("K=" . [/interface/wireguard/get [find name=wg-site-site2] public-key])' | grep -o 'K=.*' | cut -d= -f2-; }
+sitetunnel() { local i; for i in $(seq 1 8); do [ "$(pings 4 "$1 vrf=site2 src-address=192.168.77.1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
 # LAN-Client (DR3.1): lanc -> "Status Adresse Gateway DNS Server" des DHCP-Clients mv20 auf inet; lanlease
 # <Host-Teil des Servers>: neu anfragen lassen und bis 30 s auf die feste Lease vom erwarteten Router warten;
 # dnsq <Name>: Antwort der VIP .20.2 auf eine Anfrage aus dem LAN (Absender .20.1)
@@ -223,6 +230,51 @@ i0=$(invdrop 2)
 [ "$(pings 4 '192.168.30.77 src-address=192.168.20.1')" -ge 4 ] && [ "$(pings 4 '198.51.100.1 vrf=guest')" -ge 4 ] && ok "Mit asymRouting: LAN -> IoT und Gast -> Internet (NAT) unverändert" || bad "asymRouting stört LAN -> IoT oder Gast-NAT"
 ASYM=1
 
+step "5d. Standortkopplung (DR4.3) und DynDNS (DR4.4)"
+# Gegenstelle "site2" auf inet: wgs in der VRF site2 mit 192.168.77.1/24, lauscht auf 13232 (für die Router
+# erreichbar als 198.51.100.1 = Name site2.lab aus dem DNS von inet). Der Endpoint der Gegenstelle ist die VIP
+# .20.2:13232 (dst-nat auf den Master). inet bekommt die "Fritz!Box-Route" 192.168.77.0/24 -> VIP für Antworten aus dem LAN
+r 4 '/interface/wireguard/add name=wgs listen-port=13232; /ip/vrf/add name=site2 interfaces=wgs; /ip/dns/set allow-remote-requests=yes; /ip/dns/static/add name=site2.lab address=198.51.100.1; /ip/route/add dst-address=192.168.77.0/24 gateway=192.168.20.2' >/dev/null
+sleep 3
+r 4 '/ip/address/add address=192.168.77.1/24 interface=wgs' >/dev/null
+spub=$(r 4 ':put ("K=" . [/interface/wireguard/get [find name=wgs] public-key])' | grep -o 'K=.*' | cut -d= -f2-)
+rm -f "$LAB/ddns.jsonl"; python3 ./fake-ddns.py $((LABPORT+92)) "$LAB/ddns.jsonl" "lab:geheim" & dpid=$!
+printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}};"self"={"name"="lab";"ddns"={"type"="dyndns2";"url"="http://10.0.2.2:%s/nic/update";"name"="lab.dyn.example";"ipUrl"="http://10.0.2.2:%s/ip";"interval"="1m"}};"sites"={"site2"={"pubkey"="%s";"endpoint"="site2.lab:13232";"nets"={"192.168.77.0/24"};"domain"="site2.lab";"dns"="192.168.77.1"}}}\n' "$cpub" $((LABPORT+92)) $((LABPORT+92)) "$spub" > "$LAB/wg-site.rsc"
+echo "put $LAB/wg-site.rsc cfm/work/wireguard.rsc" | put 1
+for n in r1 r2 cm1; do mgr ':local f [/file/find name="cfm/work/hosts/'$n'.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmG->\"policy\"->\"site2\") \"lan,iot\"; :set (\$cfmG->\"policy\"->\"lan\") \"iot,guest,wan,site2\"\n")' >/dev/null; done
+# Prüfung: Standort als Zone in der Policy, Warnung ohne Zugang im Vault; Fehlerfälle
+out=$(mgr ':global cfmCheck; :local c [$cfmCheck]; :put ("E=" . [:len ($c->"err")]); :foreach e in=($c->"err") do={ :put ("ERR " . $e) }; :foreach e in=($c->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "^E=0" && echo "$out" | grep -q "W wireguard.rsc: self.ddns: kein Zugang im Vault" && ok "Prüfung: Zone site2 in der Policy ok, Hinweis auf ddns.auth" || { bad "Prüfung Standortkopplung"; echo "$out" | head -6; }
+out=$(mgr ':global e2eW5d [/file/get [/file/find name="cfm/work/wireguard.rsc"] contents]; :global cfmCheck; /file/set [/file/find name="cfm/work/wireguard.rsc"] contents=($e2eW5d . ":set (\$cfmWg->\"sites\"->\"Lan\") {\"nets\"={\"192.168.20.0/24\";\"x\"};\"port\"=13231;\"endpoint\"=\"a b:x\";\"domain\"=\"q.example\"}\n:set (\$cfmWg->\"self\"->\"ddns\"->\"type\") \"ftp\"\n"); :local c [$cfmCheck]; :foreach e in=($c->"err") do={ :put ("ERR " . $e) }; :foreach e in=($c->"warn") do={ :put ("W " . $e) }')
+n=0; for m in "sites Lan: Name nur aus Kleinbuchstaben" "sites Lan: nets: 192.168.20.0/24 ist das eigene VLAN 20" "sites Lan: nets: x ist kein Netz" "sites Lan: port 13231 schon bei listenPort" "sites Lan: endpoint a b:x: Port ist keine Zahl" "sites Lan: domain braucht dns" "W wireguard.rsc: sites Lan: pubkey fehlt" "self.ddns: type ftp"; do echo "$out" | grep -qF "$m" && n=$((n+1)); done
+[ $n = 8 ] && ok "Prüfung: Standort-Name, Netze, Port, Endpoint, domain ohne dns, pubkey, ddns type (8 Meldungen)" || { bad "Prüfung Standort-Fehlerfälle: $n/8"; echo "$out" | grep -E "Lan|ddns" | head -8; }
+mgr ':global e2eW5d; /file/set [/file/find name="cfm/work/wireguard.rsc"] contents=$e2eW5d' >/dev/null
+mgr '$cfmSecret key=ddns.auth value="lab:geheim"' >/dev/null
+mgr '$cfmRelease all=yes' >/dev/null
+for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 4 $n || bad "$n: v4 nicht angewendet ($(stat $n res))"; done
+mgr '$cfmSecretPush' >/dev/null; sleep 3
+k1=$(mgr ':global cfmJson; :put ("K=" . [:tostr ([$cfmJson "cfm/meta/vault.dat"]->"wgsitepub")])' | grep -o 'K=.*' | cut -d= -f2-)
+[ -n "$k1" ] && [ "$(sitepub 2)" = "$k1" ] && [ "$(sitepub 3)" = "$k1" ] && [ "$(sitepub 1)" = "$k1" ] && ok "wg.site erzeugt (wgsitepub), nach dem Secret-Push auf r1, r2, cm1 derselbe Schlüssel" || bad "Standort-Schlüssel: vault $k1, r1 $(sitepub 2), r2 $(sitepub 3), cm1 $(sitepub 1)"
+[ "$(sitestate 2)" = "an/tun" ] && [ "$(sitestate 3)" = "aus/vip" ] && [ "$(sitestate 1)" = "aus/vip" ] && ok "wg-site-site2 nur am Master r1 an (Route durch den Tunnel), Backups routen über die MGMT-VIP (Distanz 10)" || bad "Standort-Zustand r1 $(sitestate 2), r2 $(sitestate 3), cm1 $(sitestate 1)"
+expect 2 '[:tostr [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] endpoint-address]] = "198.51.100.1" and [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] endpoint-port] = 13232 and [:tostr [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] allowed-address]] = "192.168.77.0/24"' "r1: Peer mit Endpoint site2.lab über den Upstream aufgelöst (198.51.100.1:13232), allowed-address = Netze des Standorts"
+expect 2 '[:len [/system/scheduler/find where name="cfm-wgsite" and comment~"^cfm:"]] = 1 and [:len [/system/script/find where name="cfm-wgsite" and source~"site2.lab"]] = 1 and [:len [/interface/list/member/find where list="Z-site2" and interface="wg-site-site2"]] = 1 and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and chain=input and protocol=udp and dst-port="13232" and action=accept]] = 1' "r1: Skript cfm-wgsite (Namen neu auflösen), wg-site-site2 in Z-site2, UDP 13232 offen"
+expect 2 '[/ip/dns/static/get [find where name="site2.lab" and type="FWD"] forward-to] = "192.168.77.1" and [/ip/dns/static/get [find where name="site2.lab" and type="FWD"] match-subdomain]' "r1: Namen *.site2.lab gehen an 192.168.77.1 durch den Tunnel"
+expect 5 '[:len [/ip/route/find where comment="cfm:rt:site:site2:0" and dst-address="192.168.77.0/24" and gateway="192.168.10.1" and !disabled]] = 1' "sw1 (eigener Ausgang): Route zum Standort über die MGMT-VIP"
+r 4 "/interface/wireguard/peers/add interface=wgs public-key=\"$k1\" endpoint-address=192.168.20.2 endpoint-port=13232 allowed-address=192.168.20.0/24,192.168.30.0/24,192.168.40.0/24,192.168.10.0/24 persistent-keepalive=5s; :foreach a in={\"192.168.20.0/24\";\"192.168.30.0/24\";\"192.168.40.0/24\";\"192.168.10.0/24\"} do={ /ip/route/add dst-address=\$a gateway=wgs routing-table=site2 }" >/dev/null
+sitetunnel 192.168.30.77 && ok "Tunnel: site2 erreicht den IoT-Client (Policy site2 -> iot)" || bad "Tunnel site2 -> IoT geht nicht"
+sitetunnel 192.168.20.1 && ok "Tunnel: site2 erreicht das LAN (Antwort über die Route am Internet-Router zur VIP)" || bad "Tunnel site2 -> LAN geht nicht"
+[ "$(pings 4 '192.168.40.77 vrf=site2 src-address=192.168.77.1')" = 0 ] && ok "site2 -> Gast gesperrt (nicht in der Policy)" || bad "site2 -> Gast offen"
+[ "$(pings 4 '192.168.77.1 src-address=192.168.20.1')" -ge 4 ] && ok "LAN -> site2 erlaubt (Ziel durch den Tunnel)" || bad "LAN -> site2 geht nicht"
+[ "$(pings 4 '192.168.77.1 vrf=iot')" = 0 ] && ok "IoT -> site2 gesperrt" || bad "IoT -> site2 offen"
+[ "$(pings 4 '192.168.10.21 vrf=site2 src-address=192.168.77.1')" = 0 ] && ok "site2 -> MGMT gesperrt" || bad "site2 -> MGMT offen"
+# DynDNS: Skript und Scheduler auf allen Routern, Update nur vom Master (r1) - der Name löst nicht auf, also jede Minute
+expect 2 '[:len [/system/scheduler/find where name="cfm-ddns" and interval=1m]] = 1 and [:len [/system/script/find where name="cfm-ddns" and source~"lab.dyn.example"]] = 1 and [/ppp/secret/get [find where name="cfm:ddns"] password] = "lab:geheim"' "r1: Skript cfm-ddns, Zugang aus dem Vault (cfm:ddns)"
+r 2 '/system/script/run cfm-ddns' >/dev/null; sleep 2
+grep -q '"hostname": "lab.dyn.example", "myip": "127.0.0.1", "auth": "lab:geheim", "ua": "cfm-ddns/1"' "$LAB/ddns.jsonl" 2>/dev/null && ok "DynDNS: Update mit hostname, myip (aus ipUrl) und HTTP-Basic beim Anbieter angekommen" || { bad "DynDNS-Update fehlt"; cat "$LAB/ddns.jsonl" 2>/dev/null | tail -2; r 2 '/log/print where message~"cfm-ddns"' | tail -3; }
+n0=$(wc -l < "$LAB/ddns.jsonl" 2>/dev/null || echo 0); r 3 '/system/script/run cfm-ddns' >/dev/null; sleep 2
+[ "$(wc -l < "$LAB/ddns.jsonl")" = "$n0" ] && ok "DynDNS: der Backup r2 sendet kein Update" || bad "r2 hat ein DynDNS-Update gesendet"
+expect 2 '[:len [/log/find where message~"cfm-ddns: lab.dyn.example -> 127.0.0.1"]] >= 1' "r1: Log-Zeile zum DynDNS-Update"
+
 step "6. Ausfall: r1 verliert den Uplink -> r2 übernimmt"
 # DHCP/WG schaltet on-master erst nach 5 s ein (DR1.5)
 r 2 '/interface/ethernet/disable ether2' >/dev/null; sleep 10
@@ -231,6 +283,8 @@ policy r2
 [ "$(wgstate 3)" = "an/aus" ] && ok "r2 hält jetzt den Tunnel (wg-admin an, Route aus)" || bad "WG-Zustand r2 $(wgstate 3)"
 tunnel 192.168.10.22 && tunnel 192.168.10.2 && ok "Tunnel nach dem Umschalten: Client erreicht r2 und cm1 über dieselbe VIP" || bad "Tunnel nach dem Umschalten tot"
 tunnel 192.168.10.30 && ok "Tunnel nach dem Umschalten: Client erreicht sw1 (über die MGMT-VIP, jetzt r2)" || bad "Tunnel zu sw1 nach dem Umschalten tot"
+[ "$(sitestate 3)" = "an/tun" ] && [ "$(sitestate 1)" = "aus/vip" ] && ok "Standortkopplung: r2 hält jetzt den Tunnel wg-site-site2, cm1 routet weiter über die VIP" || bad "Standort-Zustand r2 $(sitestate 3), cm1 $(sitestate 1)"
+sitetunnel 192.168.30.77 && ok "Standortkopplung nach dem Umschalten: site2 erreicht den IoT-Client über r2" || bad "Standort-Tunnel nach dem Umschalten tot"
 
 step "7. Rückkehr: r1 wieder am Netz -> Preemption, VIPs danach erreichbar"
 r 2 '/interface/ethernet/enable ether2' >/dev/null; sleep 10
@@ -240,6 +294,7 @@ state 2 r1
 policy r1
 [ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && ok "Nach der Rückkehr: Tunnel wieder an r1, r2 mit Route" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3)"
 tunnel 192.168.10.22 && tunnel 192.168.10.21 && ok "Tunnel nach der Preemption: Client erreicht r1 und r2" || bad "Tunnel nach der Preemption tot"
+[ "$(sitestate 2)" = "an/tun" ] && [ "$(sitestate 3)" = "aus/vip" ] && sitetunnel 192.168.30.77 && ok "Standortkopplung nach der Preemption wieder an r1" || bad "Standort-Zustand r1 $(sitestate 2), r2 $(sitestate 3)"
 
 step "7b. Kurzer Master-Ausflug eines Backups (DR1.5)"
 # Wie beim Start eines Backups am Standort: r2 hört den Master 3 s nicht (VRRP-Werbung in raw verworfen),
@@ -276,8 +331,18 @@ done
 step "11. asymRouting wieder aus (DR3.2): raw-Regel verschwindet"
 mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"\"\n")' >/dev/null
 mgr '$cfmRelease all=yes' >/dev/null
-for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 4 $n || bad "$n: v4 nicht angewendet"; done
+for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 5 $n || bad "$n: v5 nicht angewendet"; done
 for i in 2 3 1; do expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "vm$i: notrack-Regel entfernt"; done
 [ "$(asymtcp)" = err ] && ok "Ohne asymRouting wieder: TCP über die VIP ins Internet verworfen (bisheriges Verhalten)" || bad "Nach dem Abschalten geht TCP über die VIP noch"
+
+step "12. Standortkopplung wieder aus: Tunnel, Routen, Zone und Skripte verschwinden"
+printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}}}\n' "$cpub" > "$LAB/wg-off.rsc"
+echo "put $LAB/wg-off.rsc cfm/work/wireguard.rsc" | put 1
+for n in r1 r2 cm1; do mgr ':local f [/file/find name="cfm/work/hosts/'$n'.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmG->\"policy\"->\"site2\"); :set (\$cfmG->\"policy\"->\"lan\") \"iot,guest,wan\"\n")' >/dev/null; done
+mgr '$cfmRelease all=yes' >/dev/null
+for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 6 $n || bad "$n: v6 nicht angewendet ($(stat $n res))"; done
+for i in 2 3 1; do expect $i '[:len [/interface/wireguard/find where name~"^wg-site-"]] = 0 and [:len [/interface/wireguard/peers/find where comment~"^cfm:wgp:site:"]] = 0 and [:len [/ip/route/find where comment~"^cfm:rt[sb]:"]] = 0 and [:len [/interface/list/find where name="Z-site2"]] = 0 and [:len [/ip/dns/static/find where comment~"^cfm:dnssite:"]] = 0 and [:len [/system/script/find where name~"^cfm-(wgsite|ddns)\$"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-(wgsite|ddns)\$"]] = 0 and [:len [/interface/wireguard/find where name="wg-admin"]] = 1' "vm$i: Standortkopplung und DynDNS abgebaut, wg-admin bleibt"; done
+expect 5 '[:len [/ip/route/find where comment~"^cfm:rt:site:"]] = 0' "sw1: Route zum Standort entfernt"
+kill $dpid 2>/dev/null
 
 echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]

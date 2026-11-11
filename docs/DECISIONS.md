@@ -618,6 +618,24 @@ Stufe 1 (Probe) liest Seriennummer/Modell/Version und stößt ggf. das Update an
 
 **Begründung:** Hardware-Befund (TODO 31): Beim ersten Gerät hinter dem noch nicht übernommenen Core-Switch musste die Sitzung von Hand in `meta/onboard.dat` angelegt werden, und der Manager versuchte in jedem Tick, sich am Switch anzumelden. Ein eigener Schalter ist selbsterklärender als ein Sonderwert.
 
+#### <a id="do1.8"></a>DO1.8 · Branding-Paket mit cfm-Stub und Netinstall-Station (geplant)
+
+*2026-11-11 · Plan, noch nicht umgesetzt*
+
+**Frage:** Zurückgesetzte oder neue Geräte ohne Aufkleber-Passwort ins Onboarding bringen (TODO, Abschnitt Onboarding;
+DO1.1 hatte Netinstall und Branding zurückgestellt).
+
+**Optionen (gewählt fett):** Netinstall-Server: **Container auf einem MikroTik des Standorts (tikoci/netinstall), an
+einem Standort auf dem Backup-Manager mit Speicherkarte, ohne den dortigen Companion-Container zu stören** (Nutzer) · VM/LXC auf
+Proxmox plus Laptop · nur Laptop; Stub (Default-Config im Branding-Paket): **ein generisches Paket für alle Standorte:
+DHCP-Client, Identity `cfm-new`, SSH-Zugang für `admin` nur mit dem öffentlichen Teil eines standortübergreifenden
+Onboarding-Schlüsselpaars (privater Teil im Vault jedes Managers)** (Nutzer) · Paket je Standort mit dem Manager-Hostkey ·
+festes Onboarding-Passwort; GUI: **Login-Seite mit cfm-Start, Skin für die Gruppe `cfm-dns`, Logo/ASCII-Logo/Identity
+„cfm“, CAPs-Mode-Skript** (Nutzer, alle vier)
+
+**Begründung und Stand:** Plan in [NETINSTALL.md](NETINSTALL.md), Prototyp in `tools/branding/` (Login-Seite, Stub,
+CAPs-Mode-Skript, Skin, Baubeschreibung für den Branding Maker). Umsetzung: TODO 79.
+
 ### <a id="do2"></a>DO2 · Bestandsgeräte und Inventar
 
 #### <a id="do2.1"></a>DO2.1 · Bestandsgerät übernehmen, das noch selbst routet
@@ -1009,6 +1027,46 @@ ist für sie nur Rauschen. Labor: `e2e.sh` Schritt 8 (Regel vorhanden; ein echte
 
 **Begründung:** Je VLAN eine Simple Queue `vlan<VID>` (`cfm:q:<VID>`, `target` = Netz, `max-limit` Upload/Download in der Schreibweise, die RouterOS zurückliest: größte Einheit, die glatt teilt, `1500k`), Queue-Typ `pcq-upload-default/pcq-download-default` (Rate 0 = gleiche Teile), mit `limitClient` eigene PCQ-Typen `cfm-pcq<VID>-down/-up` (`pcq-rate`, Klassifizierung `dst-address`/`src-address`). `/queue/type` hat kein `comment` (7.25: „bad parameter comment“) – neue Liste `cfmByName` in `lib.rsc`: In diesen Menüs sind der Name der Schlüssel und die Objekte „cfm-…“ die eigenen, Reconciler und Audit behandeln sie so. Aufräumen in der Reihenfolge von `cfmMenus` (Queue vor Typ): RouterOS löscht einen benutzten Typ ohne Fehler, die Queue zeigte dann `*7` (Labor). Bei VRRP auf jedem Router (nur der Master leitet weiter). Neue Simple Queues hängt `$cfmEnsure` hinten an, fremde Queues eines Standorts davor greifen zuerst. Eine schon per Fasttrack markierte Verbindung bleibt es bis zu ihrem Ende. `$cfmCheck`: Syntax (Fehler), Warnung ohne Router-Interface oder Subnetz. Labor 7.25 (drei CHRs: Client → Router → Server, `bandwidth-test` TCP, unter der 1-Mbit/s-Grenze der CHR-Lizenz): Limit 400k/200k → 371k/175k, je Client 100k/50k → 89k/37k; die Umgehung durch Fasttrack zeigt CHR nicht (Fast Path aus, `ipv4-fasttrack-packets` 0) – auf Hardware prüfen. `e2e.sh` Schritt 9 (Objekte, Ausnahme vor Fasttrack, idempotent, Abbau im Probelauf, Prüfung): 359, grün. Hardware (2026-10-28/29, CRS418 als Router und CAPsMAN, 7.25, Gast-VLAN `50M/10M`, je Client `20M/5M`): Speedtest eines Clients 19,8 Mbit/s Download, die Queue zählte über den Test ≈ 20M down/5M up und verwarf in beiden Richtungen, `pcq-queues=1/1`, keine Gast-Verbindung mit Fasttrack-Markierung. Gegenprobe ohne Ausnahme und CPU-Last unter Volllast offen
 
+#### <a id="dr2.8"></a>DR2.8 · Freigaben nach Domain über den Router-DNS
+
+*2026-11-11 · TODO 20*
+
+**Frage:** Freigaben für Cloud-Geräte, deren Adressen häufig wechseln (TODO 20, „Proxy als Ziel“): Hostnamen in
+`allow` löst RouterOS zwar regelmäßig auf, aber ein Hersteller nutzt viele Namen unter einer Domain (`*.lifeaiot.com`),
+und ein Mitschnitt zeigt nie alle.
+
+**Optionen (gewählt fett):** **DNS-gefüllte Adressliste: Eintrag `"*.domain:tcp/443"` in einer Freigabeliste wird zu
+einem statischen DNS-Eintrag Typ FWD mit `match-subdomain` und `address-list=cfm-allow-<Liste>…` – jede Antwort des
+Router-DNS an einen Client steht für ihre TTL (plus 30 min `address-list-extra-time`) in der Adressliste, die Firewall
+erlaubt genau diese Adressen** (Nutzer) · TLS-SNI-Matcher `tls-host` (nur TLS, jedes erste Paket inspiziert) · beides ·
+echter transparenter Proxy (RouterOS kann nur HTTP transparent; für IoT wertlos)
+
+**Begründung:** Kein Proxy, keine Zertifikate, kein TLS-Parsen; der Router ist für diese Zonen ohnehin DNS (DNS-Umleitung,
+DR2.4). Ziel des FWD-Eintrags ist der Forwarder `cfm-upstream` (Upstreams aus `dns.rsc` bzw. `wan.dns`), ohne feste
+Upstreams (WAN per DHCP) die dynamischen Server; ohne beides Warnung und kein Eintrag. Die Extra-Zeit, weil IoT-Geräte
+Adressen länger als die TTL behalten. Grenzen: Clients mit eigenem DNS (DoH) umgehen es; ein FWD-Eintrag geht an den
+Adlisten vorbei (die Domain ist ausdrücklich erlaubt). `$cfmCheck`: `*` nur als Präfix `*.domain`. Labor: `e2e.sh`
+Schritt 14m (FWD-Eintrag, dynamische Server als Ziel, Auflösung füllt die Liste, Abbau). Hardware: offen (TESTSTAND).
+
+#### <a id="dr2.9"></a>DR2.9 · Freigaben je Client statt je Zone
+
+*2026-11-11 · TODO 20*
+
+**Frage:** Ein einzelnes Gerät braucht seine Cloud (PV-Wechselrichter, Tuya-Lampe), `allow:<Liste>` in der Policy
+erlaubt die Ziele aber jedem Gerät der Zone; eine Zone je Gerät wäre ein VLAN je Gerät.
+
+**Optionen (gewählt fett):** **`leases.rsc`: `"allow"={"*liste";"liste2"}` an der festen Lease – forward-Regeln nur
+für Adresse *und* MAC der Lease je Adressliste (mit Ports wie in DP3.1), NAT per `*`/`@Adresse` wie in der Policy
+(DR2.3)** (Nutzer) · an der Freigabeliste in `global.rsc` (`"only"={…}`, ändert die Struktur von `allow`) · als
+Policy-Ziel `allow:liste@gerät` (`@` ist für die NAT-Adresse belegt)
+
+**Begründung:** Das Gerät ist in `leases.rsc` schon beschrieben (Name, MAC, feste Adresse); die Regel hängt an beidem,
+damit ein anderer Client mit derselben Adresse nicht durchkommt. Die Regeln stehen hinter den Zonen-Regeln im
+`fw`-Block, auf allen Routern (VRRP). Wirkt nur in gerouteten VLANs (Warnung bei `l3=no`). `$cfmCheck`: Liste
+vorhanden, NAT-Kennzeichen gültig. Labor: `e2e.sh` Schritt 14m (Regeln mit Adresse + MAC je Liste, masquerade je
+Liste, Prüfung, Abbau). Hardware: offen; an einem Standort sollen die Cloud-Geräte eigene Listen bekommen
+(Admin-Guide 8.18: Liste per Mitschnitt erstellen).
+
 ### <a id="dr3"></a>DR3 · Internet-Router im LAN
 
 #### <a id="dr3.1"></a>DR3.1 · WAN-VLAN zugleich Client-Netz
@@ -1060,6 +1118,63 @@ ist für sie nur Rauschen. Labor: `e2e.sh` Schritt 8 (Regel vorhanden; ein echte
 **Verworfen:** WG nur auf einem festen Router (bei dessen Ausfall kein Fernzugang) · Admin-PC mit Karte im MGMT-VLAN statt Tunnel
 
 **Begründung:** Der Manager übernimmt beim ersten Release mit Peers den Schlüssel eines Routers, der `wg-admin` schon hat (Einzelrouter mit bestehenden Clients: nichts ändert sich), sonst erzeugt er einen (Hilfs-Interface, gleich wieder gelöscht); der öffentliche Schlüssel steht in `meta/vault.dat` und im Manifest der Router (`wgpub`). Weicht `wg-admin` davon ab (neu angelegt, von Hand geändert), fordert die Rolle beim Apply einen Secret-Push an (sv=0, wie bei fehlenden WLAN-Passphrasen). Erzeugt wird nur beim echten Release, nicht im Probelauf. `$cfmSecret key=wg.admin` setzt einen eigenen Schlüssel samt `wgpub`. Ohne VRRP oder mit `wan.if` außerhalb eines VLANs bleibt `wg-admin` an und ohne `rt:wg` (wie bisher). Laborbefund (7.24.5): RouterOS beantwortet ein Paket an die VIP von seiner eigenen Adresse im WAN-VLAN; der Client übernahm sie als Endpoint (Roaming) und hing nach dem Wechsel des Masters am alten Router. Deshalb `dst-nat` VIP:`listenPort` → eigene Adresse: Die Antwort gehört dann zur Verbindung und geht von der VIP zurück, auch hinter einer Portfreigabe des Internet-Routers. Geräte ohne Rolle `router` mit eigenem Ausgang (Hostfile `gw`, z.B. ein NAT-Käfig direkt über den Internet-Router) schickten ihre Antworten an Peers zu diesem Gateway, das das WG-Netz nicht kennt (Befund am Standort): Sie bekommen bei vorhandenen Peers ebenfalls `rt:wg` über das MGMT-Gateway. Beim Update gilt: `$cfmRelease` läuft mit der Manager-Bibliothek, die der Manager zuletzt selbst angewendet hat – das erste Release bringt die neue mit, erst das zweite übernimmt bzw. erzeugt den Schlüssel, danach `$cfmSecretPush`. Nebenbei behoben: Der Secret-Push schaltete den CAPsMAN auch ohne Passphrase der Master-SSID im Vault ein, die Rolle beim nächsten Apply wieder aus (fiel auf, weil im VRRP-Labor erstmals ein Secret-Push lief). Labor: `e2e-vrrp.sh` Schritt 5b (vorhandener Schlüssel auf r1 übernommen, gleicher Schlüssel auf allen, Tunnel nur am Master, Client über die VIP erreicht Master, Backup und Manager, Endpoint bleibt die VIP, Selbstheilung nach geändertem Schlüssel; Switch sw1 mit eigenem Ausgang erreichbar, keine Antwort über den Internet-Router), Schritte 6/7 (Tunnel nach Umschalten und Preemption)
+
+#### <a id="dr4.3"></a>DR4.3 · WireGuard-Standortkopplung
+
+*2026-11-11 · TODO 15*
+
+**Frage:** Zwei Standorte mit eigenem Manager koppeln (beide hinter einer Fritz!Box, VLAN-IDs ohne Überschneidung),
+so dass Clients und Dienste des einen die Netze des anderen erreichen – ohne NAT und ohne Vollzugriff.
+
+**Optionen (gewählt fett):** Endpoint: **beide Seiten erreichbar (DynDNS-Name und Portfreigabe je Standort, DR4.4), der
+Tunnel kommt von beiden Seiten hoch** · nur eine Seite erreichbar · vorerst nur im Labor; Zone: **eigene Zone je
+Standort – Interface `wg-site-<name>` in `Z-<name>`, in `policy` wie jede andere Zone (Zeile `"<name>"="lan,iot"`, Ziel
+`"lan"="…,<name>"`)** · entfernter Standort = Zone `mgmt` · ein gemeinsames Interface mit Zonen per Adressliste;
+Rückweg für Clients mit dem Internet-Router als Gateway: **statische Routen nur auf cfm-Routern, Routen für die
+Fritz!Box als Vorschlag (`$cfmShow`)** · NAT auf dem Tunnel · beides; Namen des anderen Standorts: **automatisch aus
+`sites` (`domain` → FWD mit `match-subdomain` an `dns` durch den Tunnel)** · von Hand in `dns.rsc` · später (Nutzer).
+Startwert der Policy an den Standorten: `lan` beider Seiten gegenseitig, `lan` → IoT der Gegenseite, kein
+`mgmt`↔`mgmt` (Nutzer).
+
+**Begründung:** `wireguard.rsc` → `sites` (`pubkey`, `endpoint`, `port`, `nets`, `domain`, `dns`; Vorlage).
+Schlüssel: alle Router eines Standorts teilen `wg.site` (Vault, Secret-Push, öffentlich `wgsitepub` im Manifest und in
+`$cfmShow` – den trägt die Gegenstelle ein; weicht ein Interface ab, fordert die Rolle den Push an, wie DR4.2). Bei
+VRRP hält der Master des WAN-VLANs den Tunnel (on-master/on-backup wie `wg-admin`, `dst-nat` VIP:Port auf die eigene
+Adresse); Routen zu den Netzen der Gegenseite liegen auf allen Routern doppelt: über das Interface (Distanz 1) und
+über die MGMT-VIP (Distanz 10) – auf einem Backup ist der Tunnel aus, die Interface-Route inaktiv, die VIP-Route greift,
+ohne Umschalten per Skript. Geräte mit eigenem Ausgang bekommen die Route über das MGMT-Gateway (wie `rt:wg`).
+Endpoint-Namen löst der Router über den ersten Upstream auf (`:resolve server=`) und setzt die Adresse als
+`endpoint-address`; das Skript `cfm-wgsite` (2 min) folgt einem DynDNS-Wechsel. Anlass: Die Domain der Gegenseite
+wird in deren Tunnel weitergeleitet – ein Endpoint-Name darunter (`b.example.net` als Domain und `…example.net` als Name)
+liefe über den eigenen DNS in den noch nicht stehenden Tunnel. Keepalive 25 s (beide hinter NAT). Ohne `pubkey`
+oder `endpoint` steht das Interface ohne Peer bzw. passiv (Warnung, kein Fehler: beim Einrichten kennt man den
+Schlüssel der Gegenseite erst nach deren erstem Release). GC: `/interface/wireguard` und `peers` stehen jetzt in
+`cfmMenus` (räumt auch `wg-admin` ohne Peers weg). `$cfmCheck` (`lib/mgr-checkn.rsc`, eigene Datei wegen der
+60-KB-Grenze): Name, Netze (gültig, nicht eigen), Ports eindeutig, Endpoint-Form, `domain` nur mit `dns`.
+Labor: `e2e-vrrp.sh` Schritt 5d (Gegenstelle auf inet in einer VRF, Schlüssel, Zustand Master/Backups, Endpoint
+aufgelöst, Policy in beide Richtungen, DNS-Weiterleitung, Route am Switch mit eigenem Ausgang), 6/7 (Tunnel folgt dem
+Master), 12 (Abbau). Hardware: offen (TESTSTAND); Reihenfolge an den Standorten im Admin-Guide 8.17.
+
+#### <a id="dr4.4"></a>DR4.4 · DynDNS-Client auf den Routern
+
+*2026-11-11 · TODO 15*
+
+**Frage:** Die Standorte brauchen feste Namen für die Kopplung (und den Admin-Fernzugang), unabhängig von der Fritz!Box
+(auch bei mehreren Providern).
+
+**Optionen (gewählt fett):** **alle drei per Config wählbar: `dyndns2` (Update-URL des Anbieters mit `hostname`/`myip`,
+HTTP-Basic; MyFRITZ!, dynv6, deSEC, DuckDNS-kompatibel, Strato, ddnss …), `cloud` (MikroTik-Cloud, `<SN>.sn.mynetname.net`
+je Gerät), `api` (Anbieter-API mit Token – Schalter vorgemerkt, Anbieter noch offen)** (Nutzer) · nur eine davon
+
+**Begründung:** `wireguard.rsc` → `self.ddns` (`type`, `url`, `name`, `ipUrl`, `interval`), Zugang `"user:passwort"` im
+Vault (`ddns.auth`, per Secret-Push als abgeschaltetes `/ppp/secret cfm:ddns`, wie der Vault selbst). Skript `cfm-ddns`
+(Rumpf `lib/router.ddns.rsc`, Scheduler, Standard 5 min) läuft bei VRRP nur auf dem Master des WAN-VLANs, holt die
+eigene Adresse über `ipUrl` (Standard `https://api.ipify.org` – hinter NAT ist das die öffentliche), löst den Namen über
+den Upstream auf und sendet nur bei Abweichung oder einmal täglich (`good`/`nochg` = ok, sonst Warnung im Log).
+`cloud` schaltet nur `/ip/cloud ddns-enabled` ein: Der Name gilt je Gerät, bei VRRP zeigt er auf einen Router, nicht
+auf den Master (Warnung in `$cfmCheck`). `api` warnt, bis ein Anbieter umgesetzt ist (TODO 80). Labor: `e2e-vrrp.sh`
+Schritt 5d gegen `tools/chr-lab/fake-ddns.py` (Update mit Name, Adresse und Zugang, kein Update vom Backup).
+Hardware: offen.
 
 ## <a id="dn"></a>DN · Netzdienste
 
@@ -1744,6 +1859,23 @@ Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie
 
 **Begründung:** Nur dokumentierte REST-API, nichts aus dem Netz, keine Browser-Erweiterung; die Anmeldung braucht es ohnehin für die REST-Aufrufe der beiden Lesezeichen, `/jsproxy` brächte also nichts. Ohne CORS muss der Code auf dem Gerät liegen, dessen WebFig offen ist – deshalb verteilt der Release ihn auch an den CAPsMAN, wenn er nicht der Manager ist (zusammen etwa 50 KB Flash, Switches und APs bekommen nichts). Ein Update kommt so mit dem Framework-Update und geht ringweise wie der übrige Code. `/file get` liest nur etwa 60 KB (Release und Hash-Prüfung des Agents lesen so, die REST-API ebenso) – `build.py` bricht bei einer größeren Gerätefassung ab, `$cfmParseWork` würde sie ablehnen. `tools/pull-site.sh` überspringt `web/` wie `lib/` und `roles/`. Labor: `e2e.sh` Schritte 1, 2 und 14c (Dateien je Rolle); das Lade-Lesezeichen mit nachgebildetem Browser (Node) gegen die REST-API von cm1 (7.24.5): falsches Passwort, Auswahl, Start beider Dateien unverändert, gemerkte und abgelaufene Anmeldung (2026-10-22). Im echten Browser (Firefox 153 ESR, WebFig 7.25, 2026-10-26): Formular, falsches Passwort, Start des Monitors auf dem CAPsMAN, Menü und Editor auf dem Manager, gemerkte Anmeldung.
 
+#### <a id="dt3.3"></a>DT3.3 · cfm auf der WebFig-Login-Seite (geplant)
+
+*2026-11-11 · Plan, noch nicht umgesetzt*
+
+**Frage:** Die cfm-Werkzeuge im Browser ohne Lesezeichen erreichen – „fast wie ein Teil der GUI“ (Nutzer).
+
+**Entscheidung:** Das Branding-Paket (DO1.8) bringt eine eigene WebFig-Login-Seite (`index2.html`, `assets/script.js`,
+`assets/style.css` – laut MikroTik-Doku erlaubt) mit: normaler Login plus Knopf „cfm“, der sich an der REST-API
+derselben Adresse anmeldet und Editor/Monitor/DNS aus `cfm/dl/web/` vom Gerät lädt (Logik des Lade-Lesezeichens, DT3.2).
+Auf dem Gerät, also nach jedem Reset vorhanden; die Lesezeichen bleiben als Rückfall.
+
+**Verworfen:** Code ins eingeloggte WebFig einschleusen (nicht vorgesehen, Skins sind nur JSON) · eigener Dienst auf dem
+Gerät (Container) · Userscript im Browser
+
+**Begründung:** Die Login-Seite ist der einzige Ort, an dem RouterOS eigenes JavaScript unter der Adresse des Geräts
+ausliefert. Prototyp: `tools/branding/webfig/` (gegen die REST-Attrappe testbar), Plan in [NETINSTALL.md](NETINSTALL.md).
+
 ## <a id="archiv"></a>Archiv
 
 Abgelöste Entscheidungen, mit ihrer Nummer und dem Text zum Zeitpunkt der Ablösung.
@@ -2092,3 +2224,12 @@ nach dem Intervall.
 Nachtrag DM1.1.1 (Module erst lesen, dann setzen) nach dem Rollout am Standort.
 
 Anlass: Befunde vom Ausfalltest des Backup-Managers und vom Dock-Port an einem Standort (Nutzer, 2026-11-08).
+
+### Standortkopplung, DynDNS, Freigaben je Domain und Client, Netinstall-Plan (2026-11-11)
+
+Entscheidungen: DR4.3 (WireGuard-Standortkopplung), DR4.4 (DynDNS-Client), DR2.8 (Freigaben nach Domain), DR2.9
+(Freigaben je Client), DO1.8 und DT3.3 (Branding-Paket, Netinstall-Station, cfm auf der Login-Seite – geplant).
+Nebenbei: WireGuard-Prüfungen in `lib/mgr-checkn.rsc` ausgelagert (60-KB-Grenze), `/interface/wireguard` in der GC.
+
+Anlass: TODO 15 und 20 sowie der Netinstall-Plan, vom Nutzer in vier Fragerunden entschieden (Nacht auf den
+2026-11-11); Umsetzung und Labortests unbeaufsichtigt.

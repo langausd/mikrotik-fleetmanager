@@ -141,6 +141,39 @@
       }
     }
   }
+  # --- Standortkopplung (DR4.3) und DynDNS (DR4.4), nur Router ---
+  :global cfmWg; :global cfmJson
+  :if ($rl ~ ",router," and [:typeof $cfmWg] = "array") do={
+    :local sf ($cfmWg->"self")
+    :local dd ($sf->"ddns")
+    :if ([:len [:tostr ($dd->"type")]] > 0) do={
+      :local t ("DynDNS (" . [:tostr ($dd->"type")] . "): " . [:tostr ($dd->"name")])
+      :if ([:tostr ($dd->"type")] = "cloud") do={ :set t ($t . "<SN>.sn.mynetname.net je Router (/ip/cloud)") }
+      :put $t
+    }
+    :if ([:len ($cfmWg->"sites")] > 0) do={
+      :local sp [:tostr ([$cfmJson ($b . "/meta/vault.dat")]->"wgsitepub")]
+      :if ([:len $sp] = 0) do={ :set sp "(entsteht beim ersten Release mit sites)" }
+      :put ("Standortkopplung: eigener Schlüssel (wgsitepub, für die Gegenstelle) " . $sp)
+      :local wv ""
+      :local wi [:tostr ($cfmHost->"wan"->"if")]
+      :if ([:len [:tostr ($cfmHost->"routerId")]] > 0 and $wi ~ "^vlan[0-9]+\$") do={ :set wv [:pick $wi 4 [:len $wi]] }
+      :local me ""
+      :if ([:len $wv] > 0) do={ :set me [:tostr ([$cfmNet $wv]->"gw")] } else={
+        :foreach vid,v in=$cfmVlans do={ :if (("vlan" . $vid) = $wi) do={ :set me [:tostr ([$cfmNet $vid]->"gw")] } }
+        :if ([:len $me] = 0) do={ :set me [:tostr ($d->"ip")] }
+      }
+      :foreach sn,sd in=($cfmWg->"sites") do={
+        :local sp2 [:tostr ($sd->"port")]; :if ([:len $sp2] = 0) do={ :set sp2 "13232" }
+        :local t ("  " . [$cfmPad $sn 8] . "Zone " . $sn . ", wg-site-" . $sn . " Port " . $sp2 . ", Endpoint " . [:tostr ($sd->"endpoint")] . ", Netze " . [:tostr ($sd->"nets")])
+        :if ([:len [:tostr ($sd->"domain")]] > 0) do={ :set t ($t . ", Namen *." . [:tostr ($sd->"domain")] . " -> " . [:tostr ($sd->"dns")]) }
+        :if ([:len [:tostr ($sd->"pubkey")]] = 0) do={ :set t ($t . " - pubkey fehlt") }
+        :put $t
+        # Clients, deren Gateway der Internet-Router ist, brauchen dort Routen zu den Netzen des Standorts (Vorschlag)
+        :put ("           Routen am Internet-Router (falls Clients ihn als Gateway nutzen): " . [:tostr ($sd->"nets")] . " -> " . $me . "; Portfreigabe UDP " . $sp2 . " -> " . $me)
+      }
+    }
+  }
   # --- WLAN ---
   :if ($rl ~ ",ap," or $rl ~ ",capsman,") do={
     :put "WLAN"

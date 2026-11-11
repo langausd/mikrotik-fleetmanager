@@ -87,24 +87,6 @@
   }
   # VLANs der AP-Uplinks (Client-VLAN je MAC unten; WLAN und PPSK prüft lib/mgr-checkw.rsc)
   :local apTag [:tostr ($cfmProfiles->"trunk-ap"->"tag")]
-  # WireGuard (Peers zählen als Zone mgmt): Pubkey Pflicht, Tunnel-Adressen eindeutig, eigenes
-  # Subnetz darf nicht mit einem VLAN aus vlans.rsc überlappen (sonst wieder Proxy-ARP-Ärger)
-  :local wgAddrs ({})
-  :if ([:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] = 0) do={
-    :set ($err->[:len $err]) ("wireguard.rsc: peers vorhanden, aber net fehlt")
-  }
-  :foreach vid,v in=$cfmVlans do={
-    :local vn [:tostr (([$cfmNet $vid])->"net")]
-    :if ([:len $vn] > 0 and $vn = [:tostr ($cfmWg->"net")]) do={ :set ($err->[:len $err]) ("wireguard.rsc: net " . $vn . " überlappt mit VLAN " . $vid) }
-  }
-  :foreach k,p in=($cfmWg->"peers") do={
-    :if ([:len [:tostr ($p->"pubkey")]] = 0) do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": pubkey fehlt") }
-    :local ad [:tostr ($p->"addr")]
-    :if ([:len $ad] = 0) do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": addr fehlt") } else={
-      :if ([:typeof ($wgAddrs->$ad)] != "nothing") do={ :set ($err->[:len $err]) ("wireguard.rsc: peer " . $k . ": addr " . $ad . " doppelt vergeben (" . ($wgAddrs->$ad) . ")") }
-      :set ($wgAddrs->$ad) $k
-    }
-  }
   # dhcpGw (DN1.2): Host-Anteil, nur mit dhcp, nicht im Pool, nicht das Gateway selbst
   :foreach vid,v in=$cfmVlans do={
     :local dg [:tostr ($v->"dhcpGw")]
@@ -163,6 +145,18 @@
         }
         :local wf [:tostr ($ld->"wifi")]
         :if ([:len $wf] > 0 and $wf != "yes" and $wf != "no") do={ :set ($err->[:len $err]) ($w . "wifi nur \"yes\" oder \"no\"") }
+        # Freigaben je Client (DR2.9): Listen aus global.rsc allow, NAT-Kennzeichen wie in der Policy
+        :if ([:len ($ld->"allow")] > 0) do={
+          :if ([:typeof ($ld->"allow")] != "array") do={ :set ($err->[:len $err]) ($w . "allow als Liste {\"*liste\";\"liste2\"}") } else={
+            :foreach t0 in=($ld->"allow") do={
+              :local pt [$cfmTarget $t0]
+              :if ([:typeof ($cfmG->"allow"->($pt->"t"))] != "array") do={ :set ($err->[:len $err]) ($w . "allow " . $t0 . ": Liste " . ($pt->"t") . " fehlt in global.rsc allow") }
+              :local nat [:tostr ($pt->"nat")]
+              :if ([:len $nat] > 0 and $nat != "masq" and [:typeof [:toip $nat]] != "ip") do={ :set ($err->[:len $err]) ($w . "allow " . $t0 . ": ungültiges NAT-Kennzeichen (*liste oder liste@Adresse)") }
+            }
+            :if ([:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ($w . "allow wirkt nicht - VLAN ohne Routing (l3=no)") }
+          }
+        }
         :local h [:tonum ($ld->"ip")]
         :if ([:typeof $h] != "num" or $h < 1 or $h > $hmax) do={ :set ($err->[:len $err]) ($w . "ip = Host-Anteil 1-" . $hmax) } else={
           :if ($h = $gwh) do={ :set ($err->[:len $err]) ($w . "ip ist die Adresse des Gateways") }
@@ -290,9 +284,12 @@
     :if ([:typeof ($svp->$pk)] != "nothing") do={ :set ($err->[:len $err]) ("global.rsc: services: Port " . $pk . " doppelt (" . ($svp->$pk) . ", " . $sn . ")") }
     :set ($svp->$pk) $sn
   }
-  # Zonen-Matrix, Management-Zugang, MGMT-VLAN
+  # Zonen-Matrix, Management-Zugang, MGMT-VLAN; gekoppelte Standorte (DR4.3) sind Zonen
+  :local pz ({})
+  :foreach z,x in=$zones do={ :set ($pz->$z) 1 }
+  :foreach sn,sd in=($cfmWg->"sites") do={ :set ($pz->$sn) 1 }
   :foreach z,to in=($cfmG->"policy") do={
-    :if ([:typeof ($zones->$z)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy nennt Zone " . $z . ", kein VLAN hat diese Zone") }
+    :if ([:typeof ($pz->$z)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy nennt Zone " . $z . ", kein VLAN hat diese Zone (und kein Standort in wireguard.rsc heißt so)") }
     :foreach t0 in=[:toarray $to] do={
       :local pt [$cfmTarget $t0]
       :local t ($pt->"t")
@@ -300,7 +297,7 @@
       :if ($al) do={
         :if ([:typeof ($cfmG->"allow"->[:pick $t 6 [:len $t]])] != "array") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> " . $t0 . ": Liste fehlt in allow") }
       } else={
-        :if ($t != "*" and $t != "wan" and $t != "mtupdate" and [:typeof ($zones->$t)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> unbekannte Zone " . $t) }
+        :if ($t != "*" and $t != "wan" and $t != "mtupdate" and [:typeof ($pz->$t)] = "nothing") do={ :set ($err->[:len $err]) ("global.rsc: policy " . $z . " -> unbekannte Zone " . $t) }
       }
       # NAT-Kennzeichen (DR2.3): nur für Ziele ins Internet bzw. Freigabelisten, Adresse gültig
       :local nat [:tostr ($pt->"nat")]
@@ -317,9 +314,15 @@
       :foreach h in=$lst do={
         :local e [:tostr $h]
         :local c [:find $e ":"]
+        :local hh $e
         :if ([:typeof $c] != "nil") do={
           :local sp [:pick $e ($c + 1) [:len $e]]
+          :set hh [:pick $e 0 $c]
           :if (!($sp ~ "^(tcp|udp)/[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*\$") or [:typeof [:find $sp ":"]] != "nil") do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . ": " . $e . " - Ports als ziel:tcp/443,8883 oder ziel:udp/123") }
+        }
+        # "*.domain" (DR2.8): nur als Präfix, Rest ein Domainname
+        :if ([:typeof [:find $hh "*"]] != "nil") do={
+          :if ([:pick $hh 0 2] != "*." or !([:pick $hh 2 [:len $hh]] ~ "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)+\\.?\$")) do={ :set ($err->[:len $err]) ("global.rsc: allow " . $ln . ": " . $e . " - Domain-Freigabe als *.domain.example (samt Subdomains)") }
         }
       }
     }
@@ -349,6 +352,8 @@
   :if ($rtr and [:len $cfmDns] > 0) do={ :set ($fneed->"router.dns") "dns.rsc" }
   :if ($rtr and [:len ($cfmDns->"self"->"zones")] > 0) do={ :set ($fneed->"router.dnsreq") "dns.rsc self" }
   :if ($rtr and [:len ($cfmWg->"peers")] > 0) do={ :set ($fneed->"router.wg") "wireguard.rsc peers" }
+  :if ($rtr and [:len ($cfmWg->"sites")] > 0) do={ :set ($fneed->"router.site") "wireguard.rsc sites" }
+  :if ($rtr and [:tostr ($cfmWg->"self"->"ddns"->"type")] = "dyndns2") do={ :set ($fneed->"router.ddns") "wireguard.rsc self.ddns" }
   :if ([:typeof ($cfmG->"snmp")] = "array") do={ :if ([:len ($cfmG->"snmp"->"from")] > 0) do={ :set ($fneed->"base.snmp") "global.rsc snmp" } }
   :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($fneed->"base.iso") ("vlans.rsc isolate, VLAN " . $vid) } }
   :foreach u,g in=($cfmG->"users") do={ :if ([$fex ($w . "/authorized_keys." . $u)]) do={ :set ($fneed->"base.sshkeys") ("authorized_keys." . $u) } }
@@ -588,6 +593,14 @@
     :local cw [$cfmCheckWifi inv=$inv]
     :foreach x in=($cw->"err") do={ :set ($err->[:len $err]) $x }
     :foreach x in=($cw->"warn") do={ :set ($warn->[:len $warn]) $x }
+  }
+  # WireGuard (lib/mgr-checkn.rsc: Admin-Peers, Standortkopplung, DynDNS), aus demselben Stand wie oben
+  :if ([$fex ($w . "/lib/mgr-checkn.rsc")]) do={ :onerror e in={ [[:parse [/file/get ($w . "/lib/mgr-checkn.rsc") contents]]] } do={ :set ($err->[:len $err]) ("lib/mgr-checkn.rsc: " . $e) } }
+  :global cfmCheckNet
+  :if ([:typeof $cfmCheckNet] = "nothing") do={ :set ($err->[:len $err]) "lib/mgr-checkn.rsc fehlt: wireguard.rsc nicht geprüft - Framework hochladen: tools/upload-seed.sh" } else={
+    :local cn [$cfmCheckNet z=$zones]
+    :foreach x in=($cn->"err") do={ :set ($err->[:len $err]) $x }
+    :foreach x in=($cn->"warn") do={ :set ($warn->[:len $warn]) $x }
   }
   # Persönliche Admin-SSH-Keys je User (work/authorized_keys.<user>, OpenSSH-Format, DS3.3): optional,
   # grobe Zeilenprüfung (kein RouterOS-Skript, daher kein :parse möglich). RouterOS kennt nur

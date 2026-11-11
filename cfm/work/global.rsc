@@ -60,7 +60,10 @@
 #             Zonen ohne "*" oder "wan": DNS-Anfragen an externe Server gehen an den Router.
 #  allow      Freigabelisten für policy "allow:<Name>": Hostnamen (RouterOS löst sie
 #             regelmäßig auf), IPs oder Netze; nur bestimmte Ports mit ":tcp/443,8883" bzw.
-#             ":udp/123" am Eintrag (DP3.1), sonst alle Ports.
+#             ":udp/123" am Eintrag (DP3.1), sonst alle Ports. "*.domain.example" (DR2.8): die
+#             Domain samt Subdomains - jede Antwort des Router-DNS an einen Client landet in der
+#             Adressliste (Geräte, deren Cloud-Adressen wechseln; braucht den Router als DNS).
+#             Freigaben für einzelne Geräte statt der ganzen Zone: leases.rsc "allow" (DR2.9).
 #  rosChannel Update-Kanal beim Onboarding; rosMin = Mindestversion (sonst Abbruch).
 #  onboard    timeout = maximale Dauer einer Onboarding-Sitzung (Port fällt danach zurück).
 #  mgmtAccess Zonen, aus denen Geräte-Management (SSH/Winbox) erlaubt ist.

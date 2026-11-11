@@ -1,6 +1,6 @@
 # Erledigt
 
-Was aus [TODO.md](TODO.md) erledigt ist, mit den Nummern der Punkte (neue Punkte in TODO.md zählen weiter, ab 79).
+Was aus [TODO.md](TODO.md) erledigt ist, mit den Nummern der Punkte (neue Punkte in TODO.md zählen weiter, ab 81).
 Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTAND.md](TESTSTAND.md).
 
 * [Verlauf](#verlauf) – was wann erledigt wurde, neueste oben
@@ -10,6 +10,15 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-11 (nachts, unbeaufsichtigt nach vier Fragerunden):** **TODO 15** WireGuard-Standortkopplung (DR4.3:
+  `wireguard.rsc` `sites`, Zone je Standort, Tunnel am VRRP-Master mit Routen über die MGMT-VIP auf den Backups,
+  DNS-Weiterleitung der Domain, Modul `lib/router.site.rsc`, Schlüssel `wg.site`) mit **DynDNS-Client** (DR4.4:
+  `self.ddns` dyndns2/cloud/api, Skript `cfm-ddns`, Vault `ddns.auth`). **TODO 20** Freigaben nach Domain (DR2.8:
+  `"*.domain"` in `allow` → FWD-Eintrag mit `address-list`) und je Client (DR2.9: `leases.rsc` `allow`). WireGuard-Prüfung
+  in `lib/mgr-checkn.rsc` ausgelagert; `/interface/wireguard` in der GC. Labor: neue Schritte `e2e-vrrp.sh` 5d/12 und
+  `e2e.sh` 14m **noch nicht gelaufen** (kein QEMU auf dem Arbeitsrechner). Admin-Guide 8.17/8.18, Site-Overlays beider
+  Standorte vorbereitet (ohne Release). Netinstall/Branding als Plan ([NETINSTALL.md](NETINSTALL.md), DO1.8, DT3.3,
+  Prototyp `tools/branding/`), Umsetzung TODO 79; DynDNS-API TODO 80.
 * **Am 2026-11-08 abends (Befunde vom Backup-Manager):** Der unbeförderte Backup weist SSH der Geräte per TCP-Reset
   ab, bevor sie sich anmelden – kein `login failure` mehr während eines Ausfalls des Primary, Fehlversuche von Admins
   bleiben im Log (DS2.5.1). Nach einem Neustart lädt `cfm-mgr-boot` die Manager-Funktionen gleich (DM2.1.1). Der
@@ -229,6 +238,19 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 5. ~~**Inhaltliche Prüfung beim Release**~~ – *erledigt (DG2.4):* `$cfmCheck`, Fehler stoppen das
    Release (`force=yes` übergeht sie), fehlende Hostfiles sind Warnungen.
 <!-- -->
+15. ~~**WireGuard-Standortkopplung** (Schlüssel aus dem Vault)~~ – *erledigt 2026-11-11 (DR4.3, DR4.4):* `wireguard.rsc`
+    `sites` (Zone je Standort, `pubkey`/`endpoint`/`port`/`nets`/`domain`/`dns`), Schlüssel `wg.site` im Vault
+    (Secret-Push, `wgsitepub` im Manifest und in `$cfmShow`), Tunnel am Master des WAN-VLANs, Routen mit Distanz 10 über
+    die MGMT-VIP auf den Backups, Endpoint-Namen über den Upstream aufgelöst (`cfm-wgsite`), DynDNS-Client `cfm-ddns`
+    (`self.ddns`, dyndns2/cloud, Vault `ddns.auth`). Labor `e2e-vrrp.sh` 5d/6/7/12 (ausstehend), Admin-Guide 8.17.
+    Rest: Anbieter-API (80), Hardware-Test an beiden Standorten. Der Fernzugang für Admins war schon umgesetzt
+    (DR4.1, DR4.2).
+20. ~~**IoT-Isolation ausbauen – Rest: Proxy als Ziel, Freigaben je Client**~~ – *erledigt 2026-11-11 (DR2.8, DR2.9):*
+    statt Proxy eine DNS-gefüllte Adressliste (`"*.domain[:tcp/443]"` in `allow` → statischer FWD-Eintrag mit
+    `match-subdomain` und `address-list`, `address-list-extra-time` 30 min); Freigaben je Client in `leases.rsc`
+    (`"allow"={"*liste"}` → forward-Regeln mit Adresse + MAC, NAT nach Kennzeichen). Labor `e2e.sh` 14m (ausstehend),
+    Admin-Guide 4 und 8.18 (Liste per Mitschnitt). Volltext unten unter „Frühere Fassungen“. Rest (Standort): eigene
+    Listen für die Cloud-Geräte an einem Standort anlegen (`tuya` schon auf Domains umgestellt).
 7. ~~**RouterOS-Versionspflege – Rest: Pakete auf den Backup-Manager**~~ – *umgesetzt 2026-11-05 (Nachtrag DV1.2):*
    `$cfmMirror` holt `meta/upgrade.dat` und die Pakete offener Aufträge in die eigene Ablage (Pfad umgeschrieben),
    löscht Versionen ohne Auftrag. Labor: `e2e.sh` Schritt 13.
@@ -680,6 +702,17 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     sich nur in der Schreibweise unterscheiden. Labor: Plan/Show/Audit/Push mit `SW1`/`Sw1`, Kollision im Check.
 
 ## Frühere Fassungen
+
+### 20 · IoT-Isolation ausbauen – Rest (Stand bis 2026-11-11)
+
+20. **IoT-Isolation ausbauen – Rest** (umgesetzt: isolierte VLANs, DP3.1; Test an echten APs und Switches:
+    [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)): **Proxy als Ziel** (transparent, Filter nach Domain) für
+    Geräte, deren Cloud-Adressen häufig wechseln; gerätespezifische Freigaben über kleinere Zonen erproben
+    (eigenes VLAN/PPSK-Gruppe je Gerätegruppe). – **Freigaben je Client** (Wunsch 2026-10-13): eine
+    Freigabeliste nur für einzelne Clients einer Zone gelten lassen (Quelle = Namen aus `leases.rsc` oder IPs),
+    statt für die ganze Zone und ohne eigenes VLAN. Anlass: Ein einzelnes Gerät braucht seine Cloud (z.B. ein
+    PV-Wechselrichter), `iot="*allow:<Liste>"` erlaubt diese Ziele aber jedem Gerät der Zone. Bis dahin gilt
+    sie zonenweit.
 
 Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wurden.
 

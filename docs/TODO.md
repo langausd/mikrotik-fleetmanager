@@ -1,12 +1,17 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-08)
+## Übersicht offener Punkte (Stand 2026-11-11)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 78). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 81). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
+* **Neu 2026-11-11, noch ohne Laborlauf:** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
+  bzw. je Client (20, DR2.8/DR2.9) sind umgesetzt; die neuen Schritte in `e2e-vrrp.sh` (5d, 12) und `e2e.sh` (14m)
+  warten auf ein Labor (auf dem Arbeitsrechner fehlen QEMU/KVM und das CHR-Image). Danach: Site-Overlays beider
+  Standorte sind vorbereitet (Admin-Guide 8.17, Reihenfolge der Releases), Hardware-Test. Netinstall/Branding: Plan in
+  [NETINSTALL.md](NETINSTALL.md), Umsetzung 79.
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
@@ -24,13 +29,18 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   Umbau im laufenden Betrieb), isolierte VLANs an echten APs (seit 2026-11-04 im Betrieb an einem Standort; der
   CAPsMAN gibt `interface-list` **nicht** an die CAPs weiter. Offen: Wie sieht der Bridge-Filter WLAN-Frames? Zwei
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
-* **Größere Ausbauten:** 13–15, 18, 20 (Rest: Proxy als Ziel) sowie Netinstall/Branding (Onboarding).
-* **Offen im Verbesserungsplan:** 6, 13–16, 18, 20–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75, 78.
+* **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
+  [NETINSTALL.md](NETINSTALL.md)).
+* **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
+  78–80.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
 Umgesetzt ist der **Push in die Werks-Config** (siehe README, Abschnitt Onboarding). Zwei weitere
-Methoden wurden geprüft und für später vorgemerkt.
+Methoden wurden geprüft und für später vorgemerkt – *seit 2026-11-11 als Plan ausgearbeitet in
+[NETINSTALL.md](NETINSTALL.md) (DO1.8, DT3.3; Umsetzung: 79). Die Entscheidung dort: Branding-Paket mit cfm-Stub
+(generisch, Onboarding-Schlüsselpaar) plus Netinstall-Container auf einem MikroTik des Standorts; die beiden
+Abschnitte unten bleiben als ursprüngliche Bewertung.*
 
 ### 1. Netinstall-Station (Zero-Touch inkl. Neuinstallation)
 
@@ -157,22 +167,12 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 
 13. **IPv6** (Präfixe je VLAN, Router Advertisements, IPv6-Firewall).
 14. **Zentrale Admin-Anmeldung per RADIUS** (User Manager auf dem Manager).
-15. **WireGuard-Standortkopplung** (Schlüssel aus dem Vault). Der Fernzugang für Admins ist umgesetzt
-    (DR4.1, DR4.2).
 16. **WPA2/WPA3-Enterprise** (externer RADIUS oder User Manager) – Rest von „WLAN-Ausbau“ (umgesetzt: DW2.2);
     Voraussetzung für 65b. PPSK-VLANs auf Hardware: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware).
 <!-- -->
 18. **Optional Git als Arbeitsort** mit Review vor dem Release – bewusste Alternative zu DG1.2,
     z.B. bei mehreren Admins.
 <!-- -->
-20. **IoT-Isolation ausbauen – Rest** (umgesetzt: isolierte VLANs, DP3.1; Test an echten APs und Switches:
-    [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)): **Proxy als Ziel** (transparent, Filter nach Domain) für
-    Geräte, deren Cloud-Adressen häufig wechseln; gerätespezifische Freigaben über kleinere Zonen erproben
-    (eigenes VLAN/PPSK-Gruppe je Gerätegruppe). – **Freigaben je Client** (Wunsch 2026-10-13): eine
-    Freigabeliste nur für einzelne Clients einer Zone gelten lassen (Quelle = Namen aus `leases.rsc` oder IPs),
-    statt für die ganze Zone und ohne eigenes VLAN. Anlass: Ein einzelnes Gerät braucht seine Cloud (z.B. ein
-    PV-Wechselrichter), `iot="*allow:<Liste>"` erlaubt diese Ziele aber jedem Gerät der Zone. Bis dahin gilt
-    sie zonenweit.
 21. **Weniger `/file/find` – Rest** (umgesetzt: DG4.1): auf Geräten mit USB-Stick prüfen, ob er die
     Dateiliste bremst.
 22. **Fehlgeschlagener Apply löst über den Watchdog einen Reboot aus (Design-Falle, kein Bug)** –
@@ -331,6 +331,16 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
+79. **Netinstall-Station und Branding-Paket umsetzen** (Plan 2026-11-11: [NETINSTALL.md](NETINSTALL.md), DO1.8,
+    DT3.3; Prototyp `tools/branding/`): Branding-Paket im Branding Maker bauen (Login-Seite mit cfm-Start, Stub,
+    CAPs-Mode-Skript, Skin, Logo), Onboarding-Schlüsselpaar im Manager (`$cfmSecret key=onboard.key`, Stufe 1 per
+    `ssh-exec` statt Aufkleber-Passwort), Netinstall-Container (tikoci/netinstall) auf dem Backup-Manager eines
+    Standorts mit VETH im Onboarding-VLAN, Paketquelle aus dem Spiegel-Cache; Test mit einem Ersatzgerät (hAP ax²).
+80. **DynDNS per Anbieter-API** (`wireguard.rsc` `self.ddns.type="api"`, DR4.4): Schalter und Prüfung sind da, der
+    Anbieter (Cloudflare, deSEC, Hetzner …) ist noch offen – bis dahin `dyndns2` (die meisten Anbieter, auch deSEC)
+    oder `cloud`. Dazu aus 15 offen: Hardware-Test der Standortkopplung an beiden Standorten (Admin-Guide 8.17),
+    `mgmt`↔`mgmt` über den Tunnel (bewusst nicht freigegeben, 2026-11-11), Namen der Standorte: B wechselt die
+    Domain auf eine Subdomain von A (`b.example.net`) (Let's Encrypt später).
 78. **Manager-Bibliothek beim Release aus `work/` laden** (geplant 2026-11-09, nach der Auswertung des WLAN-Tests an
     einem Standort): `cfm-mgr` lädt die installierten Skripte `cfm-mgr-*`. Nach einem Framework-Update laufen
     `$cfmCheck`, `$cfmPlan` und das erste `$cfmRelease` deshalb mit der alten Bibliothek – heute muss man jede neue

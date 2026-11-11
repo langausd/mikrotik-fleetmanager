@@ -2,7 +2,7 @@
 # cfm lib/mgr-vault.rsc – Manager-Funktionen: Vault, Secrets, Identitätsprüfung, Geräteschlüssel
 #   $cfmSecret key=<k> value=<v>, $cfmSecretPush [host=<n>], $cfmVaultBackup,
 #   $cfmRekey host=<n>|all=yes [sftp=yes]; intern $cfmVaultGet/$cfmVaultSet, $cfmChallenge (DS1.4),
-#   $cfmWgKeyPair/$cfmWgKey (gemeinsamer WireGuard-Schlüssel der Router, DR4.2)
+#   $cfmWgKeyPair/$cfmWgKey [k=site] (gemeinsamer WireGuard-Schlüssel der Router, DR4.2; Standortkopplung DR4.3)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
 
@@ -20,13 +20,14 @@
 }
 :global cfmSecret do={
   :global cfmVaultSet; :global cfmJson; :global cfmWrite; :global cfmMB
-  :if ([:len $key] = 0 or [:len $value] = 0) do={ :error "Aufruf: \$cfmSecret key=<user.NAME|psk.SSIDKEY|vaultpw|wg.admin> value=<geheim>" }
+  :if ([:len $key] = 0 or [:len $value] = 0) do={ :error "Aufruf: \$cfmSecret key=<user.NAME|psk.SSIDKEY|vaultpw|wg.admin|wg.site|ddns.auth> value=<geheim>" }
   $cfmVaultSet $key $value
   :local f ([$cfmMB] . "/meta/vault.dat")
   :local vj [$cfmJson $f]
   :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
-  # WireGuard-Schlüssel der Router (DR4.2): öffentlichen Schlüssel für die Manifeste mitführen
+  # WireGuard-Schlüssel der Router (DR4.2 wg.admin, DR4.3 wg.site): öffentlichen Schlüssel für die Manifeste mitführen
   :if ($key = "wg.admin") do={ :global cfmWgKeyPair; :set ($vj->"wgpub") ([$cfmWgKeyPair $value]->"pub") }
+  :if ($key = "wg.site") do={ :global cfmWgKeyPair; :set ($vj->"wgsitepub") ([$cfmWgKeyPair $value]->"pub") }
   $cfmWrite $f [:serialize to=json $vj]
   :put ("Vault: " . $key . " gesetzt (Vault-Version " . ($vj->"ver") . "). Verteilung folgt automatisch.")
 }
@@ -47,16 +48,23 @@
 # Gemeinsamer WireGuard-Schlüssel der Router (DR4.2): Vault "wg.admin", öffentlicher Schlüssel in
 # meta/vault.dat ("wgpub"). Fehlt er, übernimmt der Manager den eines Routers, der wg-admin schon hat
 # (bestehende Installation: die Clients behalten den Server-Schlüssel), sonst erzeugt er einen neuen.
+# k=site (DR4.3): Schlüssel der Standortkopplung, Vault "wg.site", öffentlich "wgsitepub" - immer neu erzeugt
+# (die Gegenstelle bekommt den öffentlichen Schlüssel aus $cfmShow bzw. meta/vault.dat).
 # Liefert den öffentlichen Schlüssel.
 :global cfmWgKey do={
   :global cfmVaultGet; :global cfmVaultSet; :global cfmJson; :global cfmWrite; :global cfmMB
   :global cfmWgKeyPair; :global cfmInvLoad; :global cfmEnrolled; :global cfmExec
+  :local kk [:tostr $k]
+  :if ([:len $kk] = 0) do={ :set kk "admin" }
+  :local vk ("wg." . $kk)
+  :local jf "wgpub"
+  :if ($kk != "admin") do={ :set jf ("wg" . $kk . "pub") }
   :local f ([$cfmMB] . "/meta/vault.dat")
   :local vj [$cfmJson $f]
-  :local priv [$cfmVaultGet "wg.admin"]
-  :if ([:len $priv] > 0 and [:len [:tostr ($vj->"wgpub")]] > 0) do={ :return [:tostr ($vj->"wgpub")] }
+  :local priv [$cfmVaultGet $vk]
+  :if ([:len $priv] > 0 and [:len [:tostr ($vj->$jf)]] > 0) do={ :return [:tostr ($vj->$jf)] }
   :local neu ([:len $priv] = 0)
-  :if ($neu) do={
+  :if ($neu and $kk = "admin") do={
     :foreach n,d in=[$cfmInvLoad] do={
       :if ([:len $priv] = 0 and ("," . [:tostr ($d->"role")] . ",") ~ ",router," and [$cfmEnrolled $d]) do={
         :local wc ":put [/interface/wireguard/get [find where name=\"wg-admin\"] private-key]"
@@ -69,12 +77,12 @@
     }
   }
   :local kp [$cfmWgKeyPair $priv]
-  :if ([:len $priv] = 0) do={ :log info "cfm: WireGuard-Schluessel der Router neu erzeugt (DR4.2)" }
+  :if ([:len $priv] = 0) do={ :log info ("cfm: WireGuard-Schluessel " . $vk . " neu erzeugt") }
   :if ($neu) do={
-    $cfmVaultSet "wg.admin" ($kp->"priv")
+    $cfmVaultSet $vk ($kp->"priv")
     :set ($vj->"ver") ([:tonum ($vj->"ver")] + 1)
   }
-  :set ($vj->"wgpub") ($kp->"pub")
+  :set ($vj->$jf) ($kp->"pub")
   $cfmWrite $f [:serialize to=json $vj]
   :return ($kp->"pub")
 }
@@ -118,6 +126,20 @@
         :local wk [$cfmVaultGet "wg.admin"]
         :if ([:len $wk] > 0) do={
           :set c ($c . "{ :local i [/interface/wireguard/find where name=\"wg-admin\"]; :if ([:len \$i] > 0) do={ :if ([/interface/wireguard/get \$i private-key] != \"" . [$cfmEsc $wk] . "\") do={ /interface/wireguard/set \$i private-key=\"" . [$cfmEsc $wk] . "\" } } else={ :set ok false } };")
+        }
+      }
+      # Standortkopplung (DR4.3): ein Schlüssel wg.site für alle wg-site-<Standort>; fehlen sie noch, beim nächsten Mal.
+      # DynDNS-Zugang (DR4.4): "user:passwort" als abgeschaltetes /ppp/secret cfm:ddns (wie der Vault selbst)
+      :if ($rl ~ ",router," and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"sites")] > 0) do={
+        :local sk [$cfmVaultGet "wg.site"]
+        :if ([:len $sk] > 0) do={
+          :set c ($c . "{ :local l [/interface/wireguard/find where name~\"^wg-site-\"]; :if ([:len \$l] > 0) do={ :foreach i in=\$l do={ :if ([/interface/wireguard/get \$i private-key] != \"" . [$cfmEsc $sk] . "\") do={ /interface/wireguard/set \$i private-key=\"" . [$cfmEsc $sk] . "\" } } } else={ :set ok false } };")
+        }
+      }
+      :if ($rl ~ ",router," and [:len [:tostr ($cfmWg->"self"->"ddns"->"type")]] > 0) do={
+        :local da [$cfmVaultGet "ddns.auth"]
+        :if ([:len $da] > 0) do={
+          :set c ($c . "{ :local i [/ppp/secret/find where name=\"cfm:ddns\"]; :if ([:len \$i] = 0) do={ /ppp/secret/add name=\"cfm:ddns\" password=\"" . [$cfmEsc $da] . "\" disabled=yes service=any comment=\"cfm-sys:ddns\" } else={ :if ([/ppp/secret/get \$i password] != \"" . [$cfmEsc $da] . "\") do={ /ppp/secret/set \$i password=\"" . [$cfmEsc $da] . "\" } } };")
         }
       }
       # SNMPv3 (TODO 54): ein Satz für alle Geräte; fehlt die Community noch (Apply steht aus), beim nächsten Mal

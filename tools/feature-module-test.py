@@ -66,6 +66,17 @@ class Bedarf(unittest.TestCase):
         self.schreiben("wireguard.rsc", ':global cfmWg {"net"="10.9.0.0/24";"peers"={"laptop"={"addr"=2;"pubkey"="x"}}}\n')
         self.assertEqual(self.genutzt(), ["router.wg"])
 
+    def test_standortkopplung_und_ddns(self):
+        # sites (DR4.3) ohne peers: nur router.site
+        self.schreiben("wireguard.rsc", ':global cfmWg {"listenPort"=13231;"net"="10.9.0.0/24";"peers"={};"sites"={"b"={"pubkey"="x";"nets"={"192.168.99.0/24"}}}}\n')
+        self.assertEqual(self.genutzt(), ["router.site"])
+        # self.ddns.type (DR4.4) dazu
+        self.schreiben("wireguard.rsc", ':global cfmWg {"peers"={};"self"={"ddns"={"type"="dyndns2";"url"="https://x/nic/update";"name"="a.example"}};"sites"={}}\n')
+        self.assertEqual(self.genutzt(), ["router.ddns"])
+        # leerer type: nichts
+        self.schreiben("wireguard.rsc", ':global cfmWg {"peers"={};"self"={"ddns"={"type"=""}};"sites"={}}\n')
+        self.assertEqual(self.genutzt(), [])
+
     def test_dns(self):
         self.schreiben("dns.rsc", ':global cfmDns {"adlists"={"https://x/hosts"}}\n')
         self.assertEqual(self.genutzt(), ["router.dns"])

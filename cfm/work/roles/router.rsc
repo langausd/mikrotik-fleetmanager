@@ -532,7 +532,16 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
 # eigene Adresse gehört die Antwort zur Verbindung und geht von der VIP zurück (auch hinter einer Portfreigabe)
 :if ([:len $wgV] > 0) do={
   :local wn [$cfmNet $wgV]
-  :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="dst-nat";"protocol"="udp";"dst-address"=[:tostr ($wn->"gw")];"dst-port"=[:tostr ($cfmWg->"listenPort")];"to-addresses"=[:tostr (($wn->"addr") + 250 + $rid)]})
+  :local own [:tostr (($wn->"addr") + 250 + $rid)]
+  :if ($wgOn) do={ :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="dst-nat";"protocol"="udp";"dst-address"=[:tostr ($wn->"gw")];"dst-port"=[:tostr ($cfmWg->"listenPort")];"to-addresses"=$own}) }
+  # dasselbe je Standort-Tunnel (DR4.3): sonst wechselt die Gegenstelle auf die eigene Adresse des Masters (Labor 7.25.1)
+  :if ($siteOn) do={
+    :foreach sn,sd in=($cfmWg->"sites") do={
+      :local sp [:tostr ($sd->"port")]
+      :if ([:len $sp] = 0) do={ :set sp "13232" }
+      :set ($natR->[:len $natR]) ({"chain"="dstnat";"action"="dst-nat";"protocol"="udp";"dst-address"=[:tostr ($wn->"gw")];"dst-port"=$sp;"to-addresses"=$own})
+    }
+  }
 }
 $cfmBlock m="/ip/firewall/nat" k="nat" l=$natR
 

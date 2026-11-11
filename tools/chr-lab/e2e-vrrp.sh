@@ -56,7 +56,7 @@ wgep() { r 4 ':put ("E=" . [/interface/wireguard/peers/get [find interface=wgc] 
 # (tun = über den Tunnel, vip = über die MGMT-VIP); sitepub <vm>; sitetunnel <Ziel>: Ping aus der VRF site2 auf inet
 sitestate() { r "$1" ':local s "an"; :if ([/interface/wireguard/get [find name=wg-site-site2] disabled]) do={ :set s "aus" }; :local t "-"; :foreach i in=[/ip/route/find where dst-address="192.168.77.0/24" and comment~"^cfm:rt[sb]:" and active] do={ :if ([/ip/route/get $i comment] ~ "^cfm:rts:") do={ :set t "tun" } else={ :set t "vip" } }; :put ("S=" . $s . "/" . $t)' | grep -o 'S=.*' | cut -d= -f2; }
 sitepub() { r "$1" ':put ("K=" . [/interface/wireguard/get [find name=wg-site-site2] public-key])' | grep -o 'K=.*' | cut -d= -f2-; }
-sitetunnel() { local i; for i in $(seq 1 8); do [ "$(pings 4 "$1 vrf=site2 src-address=192.168.77.1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
+sitetunnel() { local i; for i in $(seq 1 20); do [ "$(pings 4 "$1 vrf=site2 src-address=192.168.77.1")" -ge 4 ] && return 0; sleep 3; done; return 1; }
 # LAN-Client (DR3.1): lanc -> "Status Adresse Gateway DNS Server" des DHCP-Clients mv20 auf inet; lanlease
 # <Host-Teil des Servers>: neu anfragen lassen und bis 30 s auf die feste Lease vom erwarteten Router warten;
 # dnsq <Name>: Antwort der VIP .20.2 auf eine Anfrage aus dem LAN (Absender .20.1)
@@ -257,16 +257,18 @@ k1=$(mgr ':global cfmJson; :put ("K=" . [:tostr ([$cfmJson "cfm/meta/vault.dat"]
 [ -n "$k1" ] && [ "$(sitepub 2)" = "$k1" ] && [ "$(sitepub 3)" = "$k1" ] && [ "$(sitepub 1)" = "$k1" ] && ok "wg.site erzeugt (wgsitepub), nach dem Secret-Push auf r1, r2, cm1 derselbe Schlüssel" || bad "Standort-Schlüssel: vault $k1, r1 $(sitepub 2), r2 $(sitepub 3), cm1 $(sitepub 1)"
 [ "$(sitestate 2)" = "an/tun" ] && [ "$(sitestate 3)" = "aus/vip" ] && [ "$(sitestate 1)" = "aus/vip" ] && ok "wg-site-site2 nur am Master r1 an (Route durch den Tunnel), Backups routen über die MGMT-VIP (Distanz 10)" || bad "Standort-Zustand r1 $(sitestate 2), r2 $(sitestate 3), cm1 $(sitestate 1)"
 expect 2 '[:tostr [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] endpoint-address]] = "198.51.100.1" and [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] endpoint-port] = 13232 and [:tostr [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] allowed-address]] = "192.168.77.0/24"' "r1: Peer mit Endpoint site2.lab über den Upstream aufgelöst (198.51.100.1:13232), allowed-address = Netze des Standorts"
+expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action=dst-nat and dst-address="192.168.20.2" and dst-port="13232" and to-addresses="192.168.20.251"]] = 1' "r1: dst-nat VIP:13232 auf die eigene Adresse (Gegenstelle bleibt an der VIP)"
 expect 2 '[:len [/system/scheduler/find where name="cfm-wgsite" and comment~"^cfm:"]] = 1 and [:len [/system/script/find where name="cfm-wgsite" and source~"site2.lab"]] = 1 and [:len [/interface/list/member/find where list="Z-site2" and interface="wg-site-site2"]] = 1 and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and chain=input and protocol=udp and dst-port="13232" and action=accept]] = 1' "r1: Skript cfm-wgsite (Namen neu auflösen), wg-site-site2 in Z-site2, UDP 13232 offen"
 expect 2 '[/ip/dns/static/get [find where name="site2.lab" and type="FWD"] forward-to] = "192.168.77.1" and [/ip/dns/static/get [find where name="site2.lab" and type="FWD"] match-subdomain]' "r1: Namen *.site2.lab gehen an 192.168.77.1 durch den Tunnel"
 expect 5 '[:len [/ip/route/find where comment="cfm:rt:site:site2:0" and dst-address="192.168.77.0/24" and gateway="192.168.10.1" and !disabled]] = 1' "sw1 (eigener Ausgang): Route zum Standort über die MGMT-VIP"
-r 4 "/interface/wireguard/peers/add interface=wgs public-key=\"$k1\" endpoint-address=192.168.20.2 endpoint-port=13232 allowed-address=192.168.20.0/24,192.168.30.0/24,192.168.40.0/24,192.168.10.0/24 persistent-keepalive=5s; :foreach a in={\"192.168.20.0/24\";\"192.168.30.0/24\";\"192.168.40.0/24\";\"192.168.10.0/24\"} do={ /ip/route/add dst-address=\$a gateway=wgs routing-table=site2 }" >/dev/null
+r 4 "/interface/wireguard/peers/add interface=wgs public-key=\"$k1\" endpoint-address=192.168.20.2 endpoint-port=13232 allowed-address=192.168.20.0/24,192.168.30.0/24,192.168.40.0/24,192.168.10.0/24 persistent-keepalive=5s; :foreach a in={\"192.168.20.0/24\";\"192.168.30.0/24\";\"192.168.40.0/24\";\"192.168.10.0/24\"} do={ /ip/route/add dst-address=\$a gateway=wgs@site2 routing-table=site2 }" >/dev/null
 sitetunnel 192.168.30.77 && ok "Tunnel: site2 erreicht den IoT-Client (Policy site2 -> iot)" || bad "Tunnel site2 -> IoT geht nicht"
 sitetunnel 192.168.20.1 && ok "Tunnel: site2 erreicht das LAN (Antwort über die Route am Internet-Router zur VIP)" || bad "Tunnel site2 -> LAN geht nicht"
 [ "$(pings 4 '192.168.40.77 vrf=site2 src-address=192.168.77.1')" = 0 ] && ok "site2 -> Gast gesperrt (nicht in der Policy)" || bad "site2 -> Gast offen"
 [ "$(pings 4 '192.168.77.1 src-address=192.168.20.1')" -ge 4 ] && ok "LAN -> site2 erlaubt (Ziel durch den Tunnel)" || bad "LAN -> site2 geht nicht"
 [ "$(pings 4 '192.168.77.1 vrf=iot')" = 0 ] && ok "IoT -> site2 gesperrt" || bad "IoT -> site2 offen"
-[ "$(pings 4 '192.168.10.21 vrf=site2 src-address=192.168.77.1')" = 0 ] && ok "site2 -> MGMT gesperrt" || bad "site2 -> MGMT offen"
+# Ziel sw1 (Forward), nicht die MGMT-Adresse des Routers selbst (input nimmt ICMP immer an)
+[ "$(pings 4 '192.168.10.30 vrf=site2 src-address=192.168.77.1')" = 0 ] && ok "site2 -> MGMT gesperrt (sw1)" || bad "site2 -> MGMT offen"
 # DynDNS: Skript und Scheduler auf allen Routern, Update nur vom Master (r1) - der Name löst nicht auf, also jede Minute
 expect 2 '[:len [/system/scheduler/find where name="cfm-ddns" and interval=1m]] = 1 and [:len [/system/script/find where name="cfm-ddns" and source~"lab.dyn.example"]] = 1 and [/ppp/secret/get [find where name="cfm:ddns"] password] = "lab:geheim"' "r1: Skript cfm-ddns, Zugang aus dem Vault (cfm:ddns)"
 r 2 '/system/script/run cfm-ddns' >/dev/null; sleep 2
@@ -294,7 +296,9 @@ state 2 r1
 policy r1
 [ "$(wgstate 2)" = "an/aus" ] && [ "$(wgstate 3)" = "aus/an" ] && ok "Nach der Rückkehr: Tunnel wieder an r1, r2 mit Route" || bad "WG-Zustand r1 $(wgstate 2), r2 $(wgstate 3)"
 tunnel 192.168.10.22 && tunnel 192.168.10.21 && ok "Tunnel nach der Preemption: Client erreicht r1 und r2" || bad "Tunnel nach der Preemption tot"
-[ "$(sitestate 2)" = "an/tun" ] && [ "$(sitestate 3)" = "aus/vip" ] && sitetunnel 192.168.30.77 && ok "Standortkopplung nach der Preemption wieder an r1" || bad "Standort-Zustand r1 $(sitestate 2), r2 $(sitestate 3)"
+[ "$(sitestate 2)" = "an/tun" ] && [ "$(sitestate 3)" = "aus/vip" ] && ok "Standortkopplung nach der Preemption: Tunnel wieder an r1, r2 über die VIP" || bad "Standort-Zustand r1 $(sitestate 2), r2 $(sitestate 3)"
+# neuer Handshake nach dem Rückwechsel: bis zu 80 s (Keepalive der Gegenstelle 5 s, der Router 25 s)
+sitetunnel 192.168.30.77 && ok "Standortkopplung nach der Preemption: site2 erreicht den IoT-Client über r1" || bad "Standort-Tunnel nach der Preemption tot"
 
 step "7b. Kurzer Master-Ausflug eines Backups (DR1.5)"
 # Wie beim Start eines Backups am Standort: r2 hört den Master 3 s nicht (VRRP-Werbung in raw verworfen),

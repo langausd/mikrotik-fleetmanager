@@ -17,6 +17,10 @@ jobs:
         run: python3 tools/rsc-check.py
       - name: Feature-Module je Site (DG4.6)
         run: python3 tools/feature-module-test.py -v
+      - name: wifi-sign.py (WLAN-Schild als PDF)
+        run: |
+          sudo apt-get install -y -q python3-segno python3-cairo
+          /usr/bin/python3 tools/wifi-sign-test.py -v
       - name: upload-seed.sh gegen einen nachgebauten SFTP-Server
         run: python3 tools/upload-seed-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site

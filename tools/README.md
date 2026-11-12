@@ -19,6 +19,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`editor/`](#editor) | cfm-Editor, cfm-Monitor und cfm-DNS als Lesezeichen für WebFig |
 | [`upgrade-mirror.py`](#upgrade-mirrorpy) | RouterOS-Update für Geräte ohne Internet |
 | [`pcap-ziele.py`](#pcap-zielepy) | Internet-Ziele eines Geräts aus einem Mitschnitt, Vorschlag für `allow` |
+| [`wifi-sign.py`](#wifi-signpy) | WLAN-Schild als A4-PDF: QR-Code, SSID, Passphrase (de/en) |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
@@ -218,6 +219,24 @@ Je Gerät siehst du die DNS-Anfragen, die Verbindungen ins Internet (Port, Adres
 TLS oder HTTP) und im LAN, am Ende einen Vorschlag wie `"waschmaschine"={"api.example.com:tcp/443"}`.
 Prüfe ihn: Einträge mit einer IP statt eines Namens können sich ändern. Liest pcap (auch das „modifizierte“ der Fritz!Box) und pcapng, auch abgebrochene `.part`-Dateien, ohne
 Fremdpakete. Verschlüsseltes QUIC (`udp/443`) zeigt nur die Adresse, den Namen dann aus den DNS-Anfragen.
+
+## `wifi-sign.py`
+
+Ein Schild zum Aushängen, z.B. fürs Gäste-WLAN: A4-PDF mit Überschrift (Deutsch und Englisch), QR-Code (rund
+12 cm, das übliche Format `WIFI:T:…;S:…;P:…;;` – iOS und Android verbinden sich direkt aus der Kamera), darunter SSID
+und Passphrase zum Abtippen (Monospace, `0/O` und `l/1` unterscheidbar). Die SSID kommt aus `wifi.rsc` des Overlays,
+die Passphrase aus dem Vault des Managers (`cfm:psk.<Schlüssel>`, per SSH) oder verdeckt von der Tastatur:
+
+```bash
+tools/wifi-sign.py --overlay site --ssid guest --manager <user>@<manager> -o ~/gast-wlan.pdf
+tools/wifi-sign.py --overlay site --ssid guest                    # Passphrase abfragen
+tools/wifi-sign.py --name Cafe --sec none                         # offenes Netz, ohne Passphrase
+```
+
+Optionen: `--title "Gäste-WLAN|Guest Wi-Fi"` (zwei Zeilen), `--hint "…"` (Zeile am unteren Rand), `--hidden` (SSID
+nicht ausgestrahlt). Typ im QR-Code: `WPA` für WPA2 und gemischt WPA2/WPA3, `SAE` nur bei reinem WPA3. Das PDF enthält
+die Passphrase und entsteht mit Rechten `0600` – nicht ins Repo legen, nach einem Passwortwechsel neu erzeugen. Braucht
+`python3-segno` und `python3-cairo` (Debian/Ubuntu). Tests: `tools/wifi-sign-test.py`.
 
 ## `wg-client-setup.sh`
 

@@ -31,7 +31,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
 * **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
-  78–80.
+  78–80, 82.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -340,6 +340,10 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     oder `cloud`. Dazu aus 15 offen: Hardware-Test der Standortkopplung an beiden Standorten (Admin-Guide 8.17),
     `mgmt`↔`mgmt` über den Tunnel (bewusst nicht freigegeben, 2026-11-11), Namen der Standorte: B wechselt die
     Domain auf eine Subdomain von A (`b.example.net`) (Let's Encrypt später).
+82. **WLAN-Schild im cfm-Editor** (DT3.4, Nutzer 2026-11-12): eine Seite „Schild drucken“ im cfm-Editor/-Monitor,
+    die SSID und Passphrase vom Gerät liest und das Schild über den Druckdialog als A4-PDF ausgibt (wie
+    `tools/wifi-sign.py`). Braucht einen eingebetteten QR-Encoder in JavaScript (kein CDN, der Editor lädt seinen Code
+    vom Gerät) und eine Antwort, wie die Seite an die Passphrase kommt (Vault nur auf dem Manager).
 78. **Manager-Bibliothek beim Release aus `work/` laden** (geplant 2026-11-09, nach der Auswertung des WLAN-Tests an
     einem Standort): `cfm-mgr` lädt die installierten Skripte `cfm-mgr-*`. Nach einem Framework-Update laufen
     `$cfmCheck`, `$cfmPlan` und das erste `$cfmRelease` deshalb mit der alten Bibliothek – heute muss man jede neue

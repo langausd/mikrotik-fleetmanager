@@ -1878,6 +1878,25 @@ Gerät (Container) · Userscript im Browser
 **Begründung:** Die Login-Seite ist der einzige Ort, an dem RouterOS eigenes JavaScript unter der Adresse des Geräts
 ausliefert. Prototyp: `tools/branding/webfig/` (gegen die REST-Attrappe testbar), Plan in [NETINSTALL.md](NETINSTALL.md).
 
+#### <a id="dt3.4"></a>DT3.4 · WLAN-Schild als PDF
+
+*2026-11-12*
+
+**Frage:** Ein Schild fürs Gäste-WLAN (QR-Code, SSID, Passphrase) zum Aushängen; allgemein ein Werkzeug für solche
+Schilder als A4-PDF.
+
+**Optionen (gewählt fett):** **erst ein Python-Werkzeug im Repo (`tools/wifi-sign.py`), eine Seite im cfm-Editor
+später (TODO 82)** · gleich im cfm-Editor (Browser, Druckdialog) · nur der Editor; Passphrase: **per SSH aus dem
+Vault des Managers, sonst verdeckte Eingabe** · nur Eingabe; Inhalt: **zweisprachig de/en**, kein Hinweistext
+voreingestellt (`--hint` optional) (Nutzer).
+
+**Begründung:** Die SSID steht in `wifi.rsc`, die Passphrase nur im Vault (`cfm:psk.<Schlüssel>`) – das Werkzeug
+liest sie direkt aus `/ppp/secret` (ohne geladene Manager-Bibliothek) und schreibt sie nur ins PDF (Rechte `0600`).
+QR-Code mit segno (reines Python, Debian `python3-segno`), Seite mit pycairo (`python3-cairo`) – kein eigener
+QR-Encoder. Typ `WPA` deckt WPA2 und gemischt WPA2/WPA3 ab; `SAE` nur bei reinem WPA3, weil ältere Geräte `SAE` im
+QR-Code nicht kennen. Tests: `tools/wifi-sign-test.py` (Lesen von `wifi.rsc`, Typ, Maskierung; PDF nur mit beiden
+Paketen, in der GitHub Action installiert).
+
 ## <a id="archiv"></a>Archiv
 
 Abgelöste Entscheidungen, mit ihrer Nummer und dem Text zum Zeitpunkt der Ablösung.

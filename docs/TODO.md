@@ -331,6 +331,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
     der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
     nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.
+    *2026-11-12 an einem Standort (v37):* (b) bestanden bis auf das Roaming zwischen zwei CAPs (Befund WPA3+PPSK, siehe
+    TESTSTAND), (c) bestanden an den Radios des CAPsMAN, die lokale Kopie aus (a) hängt an; offen: (a) Client-Test im
+    Fallback, (c) an zwei APs mit Zählern, (d), der zweite Standort.
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.

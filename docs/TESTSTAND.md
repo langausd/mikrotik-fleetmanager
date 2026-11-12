@@ -260,8 +260,13 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Bridge nach Neustart/Rollback:** Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot sporadisch keine
   getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte mit Switch-Chip? Auf Hardware
   prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt (bisher ein Datenpunkt ohne, siehe oben).
-* **PPSK** (DW2.2): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). Offen: die normale Passphrase als
-  Gruppeneintrag (DW2.2.1, Fix 2026-11-05, nur Labor), Roaming mit PPSK zwischen CAPs, `ppskOnly`.
+* **PPSK** (DW2.2): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). *2026-11-12 (CRS418 als CAPsMAN,
+  7.25, v37):* normale Passphrase als Gruppeneintrag (DW2.2.1) und PPSK nebeneinander in einer SSID, Secret-Push trennt
+  verbundene PPSK-Clients nicht mehr, FT-Wechsel zwischen den Bändern eines Radios-Paars behält das VLAN (der Kommentar
+  mit der Gruppe steht nur nach einer vollen Anmeldung). **Befund:** In einer SSID mit WPA2+WPA3 versucht ein neues
+  Android-Profil zuerst SAE – mit der PPSK „falsches Passwort“ (MikroTik: multi-passphrase nicht mit WPA3-PSK), erst
+  ein späterer Versuch nimmt WPA2. Offen: Roaming mit PPSK zwischen zwei CAPs, `ppskOnly`; SSIDs mit `ppsk` nur WPA2
+  (Daten oder `$cfmCheck`-Warnung, nicht entschieden).
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5) – bisher nur im Labor (`e2e.sh`: cm2, auch als
   `manager-backup,ap`). *2026-11-08 an einem Standort bestanden (siehe oben):* Spiegel, gesperrte Geräte-User,
   `primary/on`/`off` am Webhook, Geräte ziehen nicht vom Backup. Offen: Platz auf dem Backup über längere Zeit,
@@ -297,7 +302,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen? Zusammenspiel mit `slaves-static`
   (DW1.8).
 * **Weitere SSIDs im lokalen Fallback** (DW1.8, TODO 40a) und der Client-Test im Fallback. 2026-11-04 hing keine
-  lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent, nur Labor.
+  lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent.
+  *2026-11-12 (v37):* beide hAP ax² hängen die lokale Kopie `cfm-guest` an die Gast-Interfaces, ohne `force`-Push.
+  Offen: der Client-Test im Fallback (CAPWAP zu einem AP sperren).
 * **MLO mit FT** unter 7.25 („wifi - add fast transition support for MLD devices“, DW2.3, TODO 48).
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
@@ -308,8 +315,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Uplinks, über den der Weg zum Manager läuft (Labor: ein 802.3ad-Port ohne Gegenstelle leitet weiter),
   `mlag-lacp-fallback` ab 7.25. Ebenso LACP-Bonds (DP2.1).
 * **Isolierte VLANs** (DP3.1) an echten APs: Der CAPsMAN gibt `interface-list` nicht an die CAPs weiter, und
-  Client-Isolation trennt nicht zwischen den Radios eines AP (beides 2026-11-04). Offen: der Abgleich von `cfm-iso`
-  durch den Agent (DP3.1.1, nur Labor) und der Test mit zwei Gästen an verschiedenen Radios. Sieht der
+  Client-Isolation trennt nicht zwischen den Radios eines AP (beides 2026-11-04). *2026-11-12 (v37):* zwei Gäste an
+  verschiedenen Radios des CAPsMAN (CRS418, 2,4 und 5 GHz) erreichen einander nicht mehr (Bridge-Filter, letzte
+  Regel `drop`), Gateway und Internet gehen; `cfm-iso` an den APs enthält die Gast-Interfaces. Offen: zwei Gäste an
+  verschiedenen APs und die Zähler am AP. Sieht der
   Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000 `vlan`; die MAC-Regeln greifen in
   beiden Fällen)? An Switches: `hw=no` an isolierten
   Access-Ports (Durchsatz über die CPU).

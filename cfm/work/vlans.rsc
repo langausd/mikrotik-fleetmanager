@@ -9,9 +9,11 @@
 #  dhcpGw Host-Anteil des Gateways, das DHCP-Clients bekommen, wenn es nicht der Router sein soll -
 #         z.B. der Internet-Router im selben Netz (DN1.2): "dhcpGw"=1; der Router bleibt Gateway (gw) für
 #         die übrigen VLANs und DNS-Server, sofern dns nichts anderes sagt
-#  asymRouting "internet" = nur für das WAN-VLAN, wenn der Internet-Router im selben Netz steht: Clients
-#         mit Gateway VIP (statt dhcpGw) kommen ins Internet - Hinweg über den Router ohne conntrack,
-#         Antwort direkt vom Internet-Router. Übergangslösung bis zum Transfernetz (DR3.2); Default aus
+#  asymRouting "internet" und/oder Netze, als Wert oder Liste - nur für das WAN-VLAN, wenn der Internet-Router
+#         im selben Netz steht: Clients mit Gateway VIP (statt dhcpGw) erreichen das Internet ("internet") bzw.
+#         private Netze hinter dem Internet-Router, z.B. dessen VPN zu einem anderen Standort ("a.b.c.d/nn") -
+#         Hinweg über den Router ohne conntrack, Antwort direkt vom Internet-Router. Übergangslösung bis zum
+#         Transfernetz (DR3.2, DR3.2.1); Default aus. Beispiel: "asymRouting"={"internet";"192.168.99.0/24"}
 #  lease  DHCP-Lease-Zeit (Default 30m)
 #  ntp    "redirect" = NTP (udp/123) an jedes Ziel außer dem Router landet beim Router - für Geräte mit
 #         fest eingebautem NTP-Server (DN2.2)

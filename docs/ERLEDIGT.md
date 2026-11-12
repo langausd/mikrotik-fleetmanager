@@ -10,6 +10,14 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-12 (Befund an einem Standort, vor dem Rollout der Standortkopplung):** `asymRouting` auch für private
+  Netze hinter dem Internet-Router, als Liste `{"internet";"<Netz>"}` (DR3.2.1): Hosts mit der VIP als Gateway sind
+  über ein VPN des Internet-Routers (Fritz!Box-LAN-LAN-WireGuard) erreichbar; führt ein Standort-Tunnel mit `pubkey`
+  dasselbe Netz, lassen die Router die Regel aus und warnen. Ein Standort ohne `pubkey` ist nur vorbereitet –
+  Interface, Schlüssel, Zone, Port, aber keine Routen und keine DNS-Weiterleitung (DR4.3.1). Die `asymRouting`-Prüfung
+  zog nach `lib/mgr-checkn.rsc`. Labor 7.25.1: `e2e-vrrp.sh` 184 von 184, `e2e.sh` 477 von 477. Dazu `tools/wifi-sign.py`
+  (WLAN-Schild als A4-PDF, DT3.4). Neu: TODO 81 (A/B-Messung Fritz-Tunnel gegen Standortkopplung), 82 (Schild im
+  cfm-Editor). Offen auf Hardware: TODO 67 (DR3.2.1), 81.
 * **Am 2026-11-11 (nachts, unbeaufsichtigt nach vier Fragerunden):** **TODO 15** WireGuard-Standortkopplung (DR4.3:
   `wireguard.rsc` `sites`, Zone je Standort, Tunnel am VRRP-Master mit Routen über die MGMT-VIP auf den Backups,
   DNS-Weiterleitung der Domain, Modul `lib/router.site.rsc`, Schlüssel `wg.site`) mit **DynDNS-Client** (DR4.4:

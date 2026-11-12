@@ -241,7 +241,7 @@ Schlüssel ist die VLAN-ID als String.
 | `dhcp`, `lease`, `dns` | DHCP-Bereich als Host-Anteile (`"100-200"`), Lease-Zeit, DNS für Clients |
 | `dhcpGw` | Gateway der DHCP-Clients als Host-Anteil, wenn es nicht der Router sein soll, z.B. der Internet-Router im selben Netz (`"dhcpGw"=1`, DN1.2). Die cfm-Router bleiben über `gw` erreichbar (Routen der Clients bzw. des Internet-Routers zu den anderen VLANs) und DNS-Server, sofern `dns` nichts anderes sagt. Ist das VLAN zugleich das WAN der Router (Internet-Router im LAN), nehmen sie DNS, DHCP und NTP aus diesem Netz trotzdem an (DR3.1) |
 | `ntp` | `"redirect"`: NTP (`udp/123`) aus dem VLAN an jedes Ziel außer dem Router landet beim NTP-Server der Router – für Geräte mit fest eingebautem NTP-Server, z.B. OpenBeken (DN2.2). Ein anderer NTP-Server im Haus ist aus dem VLAN dann nicht erreichbar |
-| `asymRouting` | `"internet"`: nur am WAN-VLAN, wenn der Internet-Router im selben Netz steht. Hosts, die die VIP (`gw`) als Gateway nehmen, kommen damit ins Internet – Hinweg über die Router ohne Verbindungsverfolgung, Antwort direkt vom Internet-Router. Übergangslösung bis zu einem Transfernetz, Standard aus (8.13, DR3.2) |
+| `asymRouting` | `"internet"` und/oder Netze, als Wert oder Liste (`{"internet";"192.168.99.0/24"}`): nur am WAN-VLAN, wenn der Internet-Router im selben Netz steht. Hosts, die die VIP (`gw`) als Gateway nehmen, kommen damit ins Internet bzw. in private Netze hinter dem Internet-Router (z.B. dessen VPN zu einem anderen Standort) – Hinweg über die Router ohne Verbindungsverfolgung, Antwort direkt vom Internet-Router. Übergangslösung bis zu einem Transfernetz, Standard aus (8.13, DR3.2, DR3.2.1) |
 | `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (DR2.7) |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
@@ -1626,9 +1626,26 @@ verfolgt, die Zonen-Policy gilt dort unverändert.
   `$cfmCheck` warnt ebenso. Eine NTP-Umleitung (`ntp`) des VLANs greift für Ziele im Internet nicht, ein
   `limit` bremst ins Internet nur den Upload (`$cfmCheck` warnt).
 
+**Netze hinter dem Internet-Router (DR3.2.1).** Dasselbe Problem tritt bei privaten Zielen auf, die der
+Internet-Router selbst erreicht – typisch ein VPN zu einem anderen Standort (Fritz!Box-LAN-LAN-WireGuard). Von dort
+kommt die Anfrage direkt zum Host; antwortet der über die VIP, sieht der Router nur diese Richtung. Hosts mit dem
+Internet-Router als Gateway sind erreichbar, Hosts mit der VIP nicht. Abhilfe: das Netz in die Liste aufnehmen, je
+Netz entsteht eine weitere `notrack`-Regel mit diesem Ziel:
+
+```
+  "20"={…;"dhcpGw"=1;"asymRouting"={"internet";"192.168.99.0/24"}};
+```
+
+* Ein Netz braucht keine Policy (der Verkehr läuft ungeprüft, wie bei `internet`) und verträgt NAT der Zone ins
+  Internet. Es darf kein eigenes VLAN und nicht das WG-Netz der Admin-Peers sein (`$cfmCheck`: Fehler).
+* Führt eine Standortkopplung (8.17) dasselbe Netz und hat ihr Eintrag einen `pubkey`, lassen die Router die Regel
+  aus und warnen: Dann laufen beide Richtungen über den Router, und ein ungetrackter Hinweg zerrisse die
+  Verbindungen aus dem Tunnel. Beim Wechsel vom VPN des Internet-Routers auf die Standortkopplung reicht also der
+  `pubkey`; den Listeneintrag danach aufräumen (`$cfmCheck` erinnert daran).
+
 **Prüfen.** `/ip/firewall/raw/print stats where comment~"cfm:raw"` – der Zähler steigt mit dem Upload der Hosts
 mit Gateway VIP; `/ip/firewall/filter/print stats where connection-state~"invalid"` steigt bei deren Verkehr
-nicht mehr. `$cfmShow` nennt den Schalter am VLAN („Internet asymmetrisch“).
+nicht mehr. `$cfmShow` nennt den Schalter am VLAN („Internet asymmetrisch“, je Netz „<Netz> asymmetrisch“).
 
 **Rückweg.** Schlüssel entfernen und releasen: Die Regel verschwindet, Hosts mit Gateway VIP kommen nicht mehr
 ins Internet (vorher auf den Internet-Router zurückstellen). Der saubere Endzustand ist ein eigenes
@@ -1801,12 +1818,17 @@ darf). `mgmt`↔`mgmt` bewusst nicht (Entscheidung 2026-11-11); Router↔Router 
    des üblichen Masters) oder `type="dyndns2"` mit `$cfmSecret key=ddns.auth value="user:passwort"`; Portfreigabe UDP
    `port` (Standard 13232) am Internet-Router auf die VIP des WAN-VLANs (bzw. den Router).
 2. `sites` mit `nets`, `endpoint`, `domain`/`dns` der Gegenseite, **`pubkey` zunächst leer** (Warnung, kein Fehler),
-   Policy ergänzen → `$cfmRelease … all=yes`. Das erste Release erzeugt `wg.site` und zeigt `wgsitepub` in
+   Policy ergänzen → `$cfmRelease … all=yes`. Ohne `pubkey` ist der Standort nur vorbereitet (DR4.3.1): Interface,
+   Schlüssel, Zone und Portfreigabe entstehen, Routen und DNS-Weiterleitung nicht – ein bestehender Weg zu diesen
+   Netzen (z.B. ein VPN des Internet-Routers, 8.13) bleibt bis Schritt 3 unberührt. Das erste Release erzeugt `wg.site` und zeigt `wgsitepub` in
    `$cfmShow host=<router>` (bzw. `meta/vault.dat`). Wie bei `wg.admin` braucht es nach einem Framework-Update zwei
    Releases (das erste bringt die Manager-Bibliothek mit), danach `$cfmSecretPush`.
 3. Den `wgsitepub` der Gegenseite als `pubkey` eintragen → Release. Beide Seiten gleich: Der Tunnel steht, sobald
    beide Peers ihre Endpoints aufgelöst haben (`cfm-wgsite` alle 2 min; `/interface/wireguard/peers/print` zeigt
-   `last-handshake`).
+   `last-handshake`). Ab jetzt routen die Router die Netze der Gegenseite durch den Tunnel. Lief der Weg bisher über
+   ein VPN des Internet-Routers, dieses im selben Zug abschalten (sonst gehen Hin- und Rückweg getrennte Tunnel); ein
+   `asymRouting`-Eintrag für dieselben Netze wird damit wirkungslos (8.13) und kann weg. Zurück: VPN wieder an,
+   `pubkey` leeren, Release.
 4. Clients, die den Internet-Router als Gateway nutzen (Fritz!Box-LAN): dort statische Routen zu `nets` der Gegenseite
    auf die VIP/den Router – `$cfmShow` nennt den Vorschlag. Ohne sie antworten solche Clients nicht; cfm setzt
    diese Routen bewusst nicht (nur auf seinen Routern, Geräte mit eigenem Ausgang eingeschlossen).

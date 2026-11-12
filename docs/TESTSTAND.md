@@ -12,8 +12,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-12 der Gesamttest (477 Prüfungen, zwei veraltete Erwartungen
-  korrigiert) und drei VRRP-Router mit Standortkopplung (164); am 2026-11-08 der Gesamttest (469), VRRP (137),
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-12 abends der Gesamttest (477 Prüfungen) und drei VRRP-Router mit
+  Standortkopplung (184, dazu `asymRouting` mit Netzen DR3.2.1 und Standort ohne `pubkey` DR4.3.1), am Vormittag
+  desselben Tages der Gesamttest (477, zwei veraltete Erwartungen korrigiert) und VRRP (164); am 2026-11-08 der Gesamttest (469), VRRP (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
   verwalteten Switch (18). Funkteile lassen sich auf CHR nicht testen.
 * **Hardware:** cfm läuft an zwei Standorten mit 13 Geräten, alle mit RouterOS 7.25; an einem davon routen seit dem
@@ -315,5 +316,6 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Bandbreitenlimit** (DR2.7): zwei Clients gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der
   MikroTik-Doku – Ausnahme kurz abschalten, läuft der Gast dann ungebremst?; CPU-Last der CRS418 unter Volllast.
 * **`asymRouting`** (DR3.2, TODO 67): Ausfall des Internet-Routers – bleiben die internen Wege?; VRRP-Wechsel;
-  Portfreigabe auf einen Host mit Gateway VIP.
+  Portfreigabe auf einen Host mit Gateway VIP. **Netze** (DR3.2.1): Host mit Gateway VIP aus dem anderen Standort über
+  den Fritz!Box-LAN-LAN-Tunnel (TCP und Ping), Regel entfällt mit dem `pubkey` der Standortkopplung (TODO 81).
 * **Feature-Module** (DG4.6, TODO 73): `cfm-dnsreq` auf einem Router mit `dns.rsc`.

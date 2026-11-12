@@ -1095,6 +1095,36 @@ Liste, Prüfung, Abbau). Hardware: offen; an einem Standort sollen die Cloud-Ger
 
 **Begründung:** Ohne conntrack gibt es kein `invalid`; der Internet-Router sieht weiter die echten Adressen (Kindersicherung, Freigaben), ein Wechsel des VRRP-Masters reißt nichts ab, nur der Upload geht durch den Router. Auf die Zone beschränkt, die ins Internet darf, ist der Verlust der Firewall-Prüfung für diesen Verkehr gering; Verkehr zwischen VLANs bleibt verfolgt. Eigener Schalter, weil es nur für die Migration bestehender Netze Sinn hat (Nutzer). `in-interface-list=WAN`, weil Verkehr an die VIP über `vrrp<VID>` hereinkommt (DR3.1 trägt es ins WAN ein). NAT der Zone ins Internet ginge mit `notrack` verloren: Die Router setzen die Regel dann nicht und warnen; `$cfmCheck` warnt nur (Hostfiles können die policy überschreiben), Fehler bei einem anderen Wert als `internet`, Warnungen bei `l3=no`, `ntp=redirect` und `limit`. Neues Menü `/ip/firewall/raw` in `cfmMenus` (GC räumt die Regel nach dem Abschalten weg). Labor: `e2e-vrrp.sh` Schritte 5c (Ausgangslage verworfen, mit Schalter TCP über die VIP, kein invalid-Drop, Gast-NAT und LAN → IoT unverändert), 6–9 (TCP nach jedem Masterwechsel) und 11 (Abschalten), `e2e.sh` (Prüfung); RouterOS 7.25: `e2e-vrrp.sh` 137, `e2e.sh` 374, grün
 
+##### <a id="dr3.2.1"></a>DR3.2.1 · `asymRouting` auch für private Netze hinter dem Internet-Router
+
+*2026-11-12 · Nachtrag, Befund an einem Standort*
+
+**Frage:** Ein anderer Standort ist über ein VPN des Internet-Routers angebunden (Fritz!Box-LAN-LAN-WireGuard,
+z.B. 192.168.99.0/24). Hosts mit der VIP als Gateway sind von dort nicht erreichbar, Hosts mit dem Internet-Router als
+Gateway schon. Ursache wie in DR3.2: Die Anfrage kommt direkt vom Internet-Router, die Antwort geht über den Master
+zurück zum Internet-Router; der Master sieht nur diese Richtung und verwirft sie. Die Regel aus DR3.2 greift nicht,
+weil das Ziel in `cfm-private` liegt. Der Tunnel soll bleiben, bis eine A/B-Messung gegen die Standortkopplung
+(DR4.3) entschieden hat (Nutzer).
+
+**Optionen (gewählt fett):** **`asymRouting` als Liste: `"internet"` und/oder Netze (`"a.b.c.d/nn"`), je Netz eine
+`notrack`-Regel (herein über `WAN`, Quelle = Netz des VLANs, Ziel = das Netz)** · eigener Schlüssel `asymNets` neben
+`asymRouting` · statische Routen auf den betroffenen Hosts (Netz über den Internet-Router) · Masquerade auf die VIP;
+Netz zugleich in einem Standort-Tunnel mit `pubkey`: **Router lassen die Regel aus und warnen, `$cfmCheck` warnt** ·
+Fehler in der Prüfung · beides bleibt.
+
+**Begründung:** Der Nutzer wollte die bestehende Einstellung erweitern; ein Einzelwert `"internet"` bleibt gültig,
+bestehende Daten ändern sich nicht. Die Zonen-Policy prüft diesen Verkehr nicht (wie bei `internet`): Wer ein Netz
+einträgt, gibt der Zone des WAN-VLANs den Weg dorthin frei. NAT spielt keine Rolle (Policy-Ziele mit NAT gelten nur
+für Ziele außerhalb `cfm-private`), die NAT-Sperre aus DR3.2 betrifft nur `internet`. Führt ein Standort-Tunnel das Netz,
+laufen beide Richtungen über den Router; ein `notrack` auf dem Hinweg würde dann die Verbindungen aus dem Tunnel
+zerreißen (Rückweg ungetrackt, Hinweg getrackt). Deshalb lassen die Router die Regel automatisch aus, sobald der
+`pubkey` eingetragen ist – die Umstellung von einem Tunnel auf den anderen braucht so nur eine Änderung. Die
+Prüfung zog dafür von `lib/mgr-check.rsc` nach `lib/mgr-checkn.rsc` (neben die Standort-Netze; `mgr-check` lag bei
+50,7 KB). Fehler: Eintrag weder `internet` noch Netz, eigenes VLAN, WG-Netz der Admin-Peers. Labor: `e2e-vrrp.sh` 5c
+(192.168.99.0/24 hinter inet: ohne Eintrag invalid verworfen, mit Eintrag TCP über die VIP, auch nach jedem
+Masterwechsel), 5d (Netz von site2 ab dem `pubkey` ohne Regel, Warnung im Log und in der Prüfung), 11 (Abschalten);
+`e2e.sh` (Prüfung).
+
 ### <a id="dr4"></a>DR4 · Fernzugang
 
 #### <a id="dr4.1"></a>DR4.1 · WireGuard-Fernzugang für Admins
@@ -1156,6 +1186,23 @@ aufgelöst, Policy in beide Richtungen, DNS-Weiterleitung, Route am Switch mit e
 Master), 12 (Abbau) – grün am 2026-11-12 (164), nachdem die `dst-nat`-Regel VIP:Port auch für die Standort-Tunnel
 dazukam (ohne sie wechselte die Gegenstelle auf die reale Adresse des Masters). Hardware: offen (TESTSTAND); Reihenfolge
 an den Standorten im Admin-Guide 8.17.
+
+##### <a id="dr4.3.1"></a>DR4.3.1 · Standort ohne `pubkey` nur vorbereitet
+
+*2026-11-12 · Nachtrag vor dem Rollout*
+
+**Frage:** Mit `sites` legten die Router die Routen zu den Netzen der Gegenseite schon ohne `pubkey` an. Der Tunnel
+hat dann keinen Peer, der Verkehr dorthin endet im Interface. Am Standort sind dieselben Netze bis zur Umstellung über
+das VPN des Internet-Routers erreichbar (DR3.2.1) – die Vorbereitung hätte diesen Weg abgeschnitten.
+
+**Optionen (gewählt fett):** **ohne `pubkey`: Interface, Schlüssel, Zone, Portfreigabe und `dst-nat` ja, Routen
+(auch an Geräten mit eigenem Ausgang) und DNS-Weiterleitung nein** · eigener Schalter je Standort (`disabled`) ·
+unverändert, Standort erst bei der Umstellung eintragen.
+
+**Begründung:** Ohne Gegenstelle trägt der Tunnel nichts; die Routen hatten keinen Nutzen, nur das Risiko. Der
+Schlüssel muss trotzdem vorher entstehen, weil die Gegenseite ihn braucht (erstes Release mit `sites`). Kein neuer
+Schalter: Der `pubkey` markiert ohnehin den Moment, ab dem der Tunnel stehen kann; zurück geht es mit leerem
+`pubkey`. Warnung in `$cfmCheck` und `$cfmShow` sagt es dazu. Labor: `e2e-vrrp.sh` 5d (erst ohne, dann mit `pubkey`).
 
 #### <a id="dr4.4"></a>DR4.4 · DynDNS-Client auf den Routern
 
@@ -2254,3 +2301,13 @@ Nebenbei: WireGuard-Prüfungen in `lib/mgr-checkn.rsc` ausgelagert (60-KB-Grenze
 
 Anlass: TODO 15 und 20 sowie der Netinstall-Plan, vom Nutzer in vier Fragerunden entschieden (Nacht auf den
 2026-11-11); Umsetzung und Labortests unbeaufsichtigt.
+
+### Fritz!Box-VPN neben der Standortkopplung (2026-11-12)
+
+Entscheidungen: DR3.2.1 (`asymRouting` auch für Netze hinter dem Internet-Router), DR4.3.1 (Standort ohne `pubkey` nur
+vorbereitet).
+
+Dazu DT3.4 (WLAN-Schild als PDF, `tools/wifi-sign.py`).
+
+Anlass: Hosts mit der VIP als Gateway waren über das LAN-LAN-VPN der Fritz!Boxen nicht erreichbar. Der Nutzer will
+diesen Tunnel behalten, gegen die Standortkopplung messen (A/B) und danach entscheiden (Nutzer, 2026-11-12).

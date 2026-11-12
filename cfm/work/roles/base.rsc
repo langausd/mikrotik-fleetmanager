@@ -291,13 +291,16 @@ $cfmEnsure m="/ip/address" k="ip:mgmt" n=({"interface"=$mif}) p=({"address"=(($c
   :if ($gw != [:tostr ($mn->"gw")] and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
     $cfmEnsure m="/ip/route" k="rt:wg" p=({"dst-address"=[:tostr ($cfmWg->"net")];"gateway"=[:tostr ($mn->"gw")];"disabled"="no"})
   }
-  # ebenso die Netze gekoppelter Standorte (DR4.3): über das MGMT-Gateway zu den Routern, die den Tunnel halten
+  # ebenso die Netze gekoppelter Standorte (DR4.3): über das MGMT-Gateway zu den Routern, die den Tunnel halten -
+  # erst mit pubkey, vorher ist der Standort nur vorbereitet (DR4.3.1)
   :if ($gw != [:tostr ($mn->"gw")] and [:typeof $cfmWg] = "array" and [:len ($cfmWg->"sites")] > 0) do={
     :foreach sn,sd in=($cfmWg->"sites") do={
       :local i 0
-      :foreach n in=($sd->"nets") do={
-        $cfmEnsure m="/ip/route" k=("rt:site:" . $sn . ":" . $i) p=({"dst-address"=[:tostr $n];"gateway"=[:tostr ($mn->"gw")];"disabled"="no"})
-        :set i ($i + 1)
+      :if ([:len [:tostr ($sd->"pubkey")]] > 0) do={
+        :foreach n in=($sd->"nets") do={
+          $cfmEnsure m="/ip/route" k=("rt:site:" . $sn . ":" . $i) p=({"dst-address"=[:tostr $n];"gateway"=[:tostr ($mn->"gw")];"disabled"="no"})
+          :set i ($i + 1)
+        }
       }
     }
   }

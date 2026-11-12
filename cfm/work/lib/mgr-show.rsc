@@ -102,7 +102,9 @@
       :if ([:len [:tostr ($vv->"dhcp")]] > 0) do={ :set t ($t . " DHCP " . ($vv->"dhcp")) }
       :if ([:len [:tostr ($vv->"dhcpGw")]] > 0) do={ :set t ($t . ", Gateway der Clients ." . ($vv->"dhcpGw")) }
       :if ([:tostr ($vv->"ntp")] = "redirect") do={ :set t ($t . ", NTP zum Router (DN2.2)") }
-      :if ([:tostr ($vv->"asymRouting")] = "internet") do={ :set t ($t . ", Internet asymmetrisch (DR3.2)") }
+      :local ar ($vv->"asymRouting")
+      :if ([:typeof $ar] != "array") do={ :local a1 [:tostr $ar]; :set ar ({}); :if ([:len $a1] > 0) do={ :set ($ar->0) $a1 } }
+      :foreach a in=$ar do={ :if ([:tostr $a] = "internet") do={ :set t ($t . ", Internet asymmetrisch (DR3.2)") } else={ :set t ($t . ", " . [:tostr $a] . " asymmetrisch (DR3.2.1)") } }
       :if ([:len [:tostr ($vv->"limit")]] > 0) do={ :set t ($t . ", Limit " . ($vv->"limit")) }
       :if ([:len [:tostr ($vv->"limitClient")]] > 0) do={ :set t ($t . ", je Client " . ($vv->"limitClient")) }
     }
@@ -167,7 +169,7 @@
         :local sp2 [:tostr ($sd->"port")]; :if ([:len $sp2] = 0) do={ :set sp2 "13232" }
         :local t ("  " . [$cfmPad $sn 8] . "Zone " . $sn . ", wg-site-" . $sn . " Port " . $sp2 . ", Endpoint " . [:tostr ($sd->"endpoint")] . ", Netze " . [:tostr ($sd->"nets")])
         :if ([:len [:tostr ($sd->"domain")]] > 0) do={ :set t ($t . ", Namen *." . [:tostr ($sd->"domain")] . " -> " . [:tostr ($sd->"dns")]) }
-        :if ([:len [:tostr ($sd->"pubkey")]] = 0) do={ :set t ($t . " - pubkey fehlt") }
+        :if ([:len [:tostr ($sd->"pubkey")]] = 0) do={ :set t ($t . " - pubkey fehlt: nur vorbereitet, ohne Routen und DNS (DR4.3.1)") }
         :put $t
         # Clients, deren Gateway der Internet-Router ist, brauchen dort Routen zu den Netzen des Standorts (Vorschlag)
         :put ("           Routen am Internet-Router (falls Clients ihn als Gateway nutzen): " . [:tostr ($sd->"nets")] . " -> " . $me . "; Portfreigabe UDP " . $sp2 . " -> " . $me)

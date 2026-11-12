@@ -1,13 +1,14 @@
 # ============================================================
 # cfm lib/mgr-checkn.rsc – Manager-Funktionen: WireGuard-Teil der inhaltlichen Prüfung
 #   $cfmCheckNet z=<Zonen>   prüft wireguard.rsc (Admin-Peers DR4.1/DR4.2, Standortkopplung DR4.3, DynDNS DR4.4)
+#                            und asymRouting in vlans.rsc (DR3.2, DR3.2.1 - Netze im Vergleich mit den Standorten)
 #                            -> {"err"={..};"warn"={..}}
 #   Aufruf nur aus $cfmCheck (lib/mgr-check.rsc), nachdem der die Daten geladen hat. Eigene Datei,
 #   weil /file get nur ca. 60 KB liest (wie lib/mgr-checkw.rsc, DM1.1); $cfmCheck lädt sie aus demselben Stand nach.
 # ============================================================
 
 :global cfmCheckNet do={
-  :global cfmWg; :global cfmVlans; :global cfmG; :global cfmNet; :global cfmVaultGet
+  :global cfmWg; :global cfmVlans; :global cfmG; :global cfmNet; :global cfmVaultGet; :global cfmTarget
   :local err ({}); :local warn ({})
   # WireGuard (Peers zählen als Zone mgmt): Pubkey Pflicht, Tunnel-Adressen eindeutig, eigenes
   # Subnetz darf nicht mit einem VLAN aus vlans.rsc überlappen (sonst wieder Proxy-ARP-Ärger)
@@ -39,7 +40,7 @@
     :if (!($sn ~ "^[a-z0-9]([a-z0-9-]*[a-z0-9])?\$")) do={ :set ($err->[:len $err]) ($sw . "Name nur aus Kleinbuchstaben, Ziffern und \"-\" (wird Zone und Interface wg-site-<Name>)") }
     :if ([:typeof ($z->$sn)] != "nothing" or $sn = "wan" or $sn = "mtupdate") do={ :set ($err->[:len $err]) ($sw . "Name ist schon eine Zone in vlans.rsc") }
     :foreach k,v in=$sd do={ :if (!($k ~ "^(pubkey|endpoint|port|nets|domain|dns)\$")) do={ :set ($warn->[:len $warn]) ($sw . "unbekannter Schlüssel " . $k . " (pubkey, endpoint, port, nets, domain, dns)") } }
-    :if ([:len [:tostr ($sd->"pubkey")]] = 0) do={ :set ($warn->[:len $warn]) ($sw . "pubkey fehlt - Tunnel ohne Gegenstelle, bis der Schlüssel des anderen Standorts eingetragen ist") }
+    :if ([:len [:tostr ($sd->"pubkey")]] = 0) do={ :set ($warn->[:len $warn]) ($sw . "pubkey fehlt - nur vorbereitet (Schlüssel, Zone, Port), ohne Routen und DNS-Weiterleitung, bis der Schlüssel des anderen Standorts eingetragen ist (DR4.3.1)") }
     :if ([:len ($sd->"nets")] = 0) do={ :set ($err->[:len $err]) ($sw . "nets fehlt (Netze des Standorts, z.B. {\"192.168.20.0/24\"})") }
     :foreach n in=($sd->"nets") do={
       :if (![$cidrOk $n]) do={ :set ($err->[:len $err]) ($sw . "nets: " . $n . " ist kein Netz (a.b.c.d/nn)") } else={
@@ -92,6 +93,42 @@
       }
       :if ($dt = "api") do={ :set ($warn->[:len $warn]) ($dw . "type api ist vorgemerkt, noch nicht umgesetzt - kein Update") }
       :if ($dt = "cloud" and [:len ($cfmWg->"sites")] > 0) do={ :set ($warn->[:len $warn]) ($dw . "cloud: der Name gilt je Gerät (<SN>.sn.mynetname.net) - bei VRRP zeigt er auf einen Router, nicht auf den Master") }
+    }
+  }
+  # Asymmetrisches Routing (DR3.2, DR3.2.1): "internet" und/oder Netze hinter dem Internet-Router, als Wert oder Liste.
+  # "internet" läuft ohne conntrack - mit NAT der Zone setzen die Router kein notrack (Warnung, Hostfiles können die
+  # policy überschreiben), NTP-Umleitung und Limit greifen dafür nicht bzw. nur im Upload. Ein Netz, das ein
+  # Standort-Tunnel mit pubkey führt, lassen die Router aus (Warnung: Eintrag aufräumen)
+  :foreach vid,v in=$cfmVlans do={
+    :local ar ($v->"asymRouting")
+    :if ([:typeof $ar] != "array") do={ :local a1 [:tostr $ar]; :set ar ({}); :if ([:len $a1] > 0) do={ :set ($ar->0) $a1 } }
+    :if ([:len $ar] > 0) do={
+      :local vw ("vlans.rsc: VLAN " . $vid . ": asymRouting ")
+      :local inet false
+      :foreach a in=$ar do={
+        :local as [:tostr $a]
+        :if ($as = "internet") do={ :set inet true } else={
+          :if (![$cidrOk $as]) do={ :set ($err->[:len $err]) ($vw . $as . " ist weder internet noch ein Netz (a.b.c.d/nn)") } else={
+            :foreach vid2,v2 in=$cfmVlans do={ :if ([:tostr (([$cfmNet $vid2])->"net")] = $as) do={ :set ($err->[:len $err]) ($vw . $as . " ist das eigene VLAN " . $vid2) } }
+            :if ($as = [:tostr ($cfmWg->"net")]) do={ :set ($err->[:len $err]) ($vw . $as . " ist das WG-Netz der Admin-Peers") }
+            :foreach sn,sd in=($cfmWg->"sites") do={
+              :foreach n in=($sd->"nets") do={
+                :if ([:tostr $n] = $as and [:len [:tostr ($sd->"pubkey")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . $as . " geht durch den Standort-Tunnel " . $sn . " - die Router setzen dafür kein notrack, Eintrag entfernen") }
+              }
+            }
+          }
+        }
+      }
+      :if ([:tostr ($v->"l3")] = "no") do={ :set ($warn->[:len $warn]) ($vw . "ohne Router (l3=no) wirkt nicht") }
+      :if ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . "+ limit: bremst diesen Verkehr nur im Upload (Antworten laufen am Router vorbei)") }
+      :if ($inet) do={
+        :if ([:tostr ($v->"ntp")] = "redirect") do={ :set ($warn->[:len $warn]) ($vw . "+ ntp redirect: NTP an Server im Internet wird nicht umgeleitet") }
+        :local z [:tostr ($v->"zone")]
+        :foreach t0 in=[:toarray ($cfmG->"policy"->$z)] do={
+          :local pt [$cfmTarget $t0]
+          :if ([:len [:tostr ($pt->"nat")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . "internet wirkt nicht, solange die Zone " . $z . " NAT hat (" . $t0 . ") - die Router setzen dann kein notrack") }
+        }
+      }
     }
   }
   :return ({"err"=$err;"warn"=$warn})

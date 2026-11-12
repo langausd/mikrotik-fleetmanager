@@ -177,7 +177,7 @@ $cfmEnsure m="/interface/list" k="il:WAN" n=({"name"="WAN"}) p=({"name"="WAN"})
     :local wvid [:pick $wif 4 [:len $wif]]
     :if ([:typeof ($cfmVlans->$wvid)] = "array" and [:tostr ($cfmVlans->$wvid->"l3")] != "no") do={
       :set wanNet [:tostr ([$cfmNet $wvid]->"net")]
-      :set asym [:tostr ($cfmVlans->$wvid->"asymRouting")]
+      :set asym ($cfmVlans->$wvid->"asymRouting")
       :set asymZ [:tostr ($cfmVlans->$wvid->"zone")]
       :if ($vr) do={
         $cfmEnsure m="/interface/list/member" k="ilm:wan-vrrp" n=({"list"="WAN";"interface"=("vrrp" . $wvid)}) p=({"list"="WAN";"interface"=("vrrp" . $wvid)})
@@ -545,17 +545,39 @@ $cfmBlock m="/ip/firewall/filter" k="fw" l=$r
 }
 $cfmBlock m="/ip/firewall/nat" k="nat" l=$natR
 
-# --- Asymmetrisches Routing ins Internet (DR3.2, "asymRouting"="internet" am WAN-VLAN) ---
+# --- Asymmetrisches Routing (DR3.2, DR3.2.1: "asymRouting" am WAN-VLAN, "internet" und/oder Netze) ---
 # Clients im WAN-VLAN mit Gateway VIP: Hinweg über den Router zum Internet-Router im selben Netz, die
 # Antwort kommt von dort direkt. Ohne conntrack ist der Hinweg nicht "invalid"; "accept untracked" im
-# forward-Block lässt ihn durch. Ohne Schalter bleibt der Block leer (räumt eine alte Regel weg). NATet
-# die Zone ins Internet (policy dieses Routers), ginge das NAT verloren - dann keine Regel, nur Warnung
+# forward-Block lässt ihn durch. "internet" = Ziele außerhalb cfm-private; NATet die Zone ins Internet
+# (policy dieses Routers), ginge das NAT verloren - dann keine Regel, nur Warnung. Ein Netz (DR3.2.1) ist ein
+# privates Ziel hinter dem Internet-Router (z.B. dessen VPN zu einem anderen Standort). Führt ein Standort-Tunnel
+# mit pubkey dasselbe Netz (DR4.3), routet der Router es selbst in beide Richtungen - dann keine Regel, nur
+# Warnung. Ohne Schalter bleibt der Block leer (räumt alte Regeln weg)
 :local rw ({})
-:if ($asym = "internet" and [:len $wanNet] > 0) do={
-  :if (($natZ->$asymZ) = 1) do={
-    $cfmWarn ("asymRouting: Zone " . $asymZ . " hat NAT ins Internet (policy) - notrack nicht gesetzt (DR3.2)")
-  } else={
-    :set ($rw->0) ({"chain"="prerouting";"action"="notrack";"in-interface-list"="WAN";"src-address"=$wanNet;"dst-address-list"="!cfm-private"})
+:if ([:len $wanNet] > 0) do={
+  :local al $asym
+  :if ([:typeof $al] != "array") do={ :local a1 [:tostr $al]; :set al ({}); :if ([:len $a1] > 0) do={ :set ($al->0) $a1 } }
+  :foreach a in=$al do={
+    :local as [:tostr $a]
+    :if ($as = "internet") do={
+      :if (($natZ->$asymZ) = 1) do={
+        $cfmWarn ("asymRouting: Zone " . $asymZ . " hat NAT ins Internet (policy) - notrack nicht gesetzt (DR3.2)")
+      } else={
+        :set ($rw->[:len $rw]) ({"chain"="prerouting";"action"="notrack";"in-interface-list"="WAN";"src-address"=$wanNet;"dst-address-list"="!cfm-private"})
+      }
+    } else={
+      :local tun ""
+      :if ($siteOn) do={
+        :foreach sn,sd in=($cfmWg->"sites") do={
+          :if ([:len [:tostr ($sd->"pubkey")]] > 0) do={ :foreach n in=($sd->"nets") do={ :if ([:tostr $n] = $as) do={ :set tun $sn } } }
+        }
+      }
+      :if ([:len $tun] > 0) do={
+        $cfmWarn ("asymRouting: " . $as . " geht durch den Standort-Tunnel " . $tun . " - notrack nicht gesetzt (DR3.2.1)")
+      } else={
+        :set ($rw->[:len $rw]) ({"chain"="prerouting";"action"="notrack";"in-interface-list"="WAN";"src-address"=$wanNet;"dst-address"=$as})
+      }
+    }
   }
 }
 $cfmBlock m="/ip/firewall/raw" k="raw" l=$rw

@@ -11,6 +11,9 @@
 #    Backups ist der Tunnel aus (on-master/on-backup wie wg-admin), die Route über das Interface inaktiv, die
 #    über die VIP greift - ohne Umschalten per Skript
 #  * DNS-Weiterleitung seiner Domain an seinen Resolver ("domain" -> "dns", FWD mit match-subdomain)
+#  Ohne pubkey (Gegenstelle noch nicht eingerichtet) ist der Standort nur vorbereitet: Interface, Schlüssel, Zone
+#  und Portfreigabe ja, Routen und DNS-Weiterleitung nein - sonst endete Verkehr zu seinen Netzen im Tunnel ohne
+#  Peer, auch wenn sie bis zur Umstellung anders erreichbar sind (z.B. über ein VPN des Internet-Routers, DR4.3.1)
 # Alle Router eines Standorts haben denselben privaten Schlüssel (Vault wg.site, Secret-Push; öffentlich
 # "wgsitepub" im Manifest). Weicht ein Interface ab, fordert die Rolle den Secret-Push an (sv=0, wie DR4.2).
 # Von der Rolle: cfmCtx->"wgV" = VLAN des WAN bei VRRP (leer = Einzelrouter), "mv" = MGMT-VLAN, "up" = Upstream
@@ -67,22 +70,25 @@
     }
     $cfmEnsure m="/interface/wireguard/peers" k=("wgp:site:" . $sn) n=({"interface"=$ifn;"public-key"=$pk}) p=$pp
   } else={
-    :if ([:len $pk] = 0) do={ $cfmWarn ("Standort " . $sn . ": pubkey fehlt - Tunnel ohne Gegenstelle (eigener Schluessel: wgsitepub in \$cfmShow)") }
+    :if ([:len $pk] = 0) do={ $cfmWarn ("Standort " . $sn . ": pubkey fehlt - nur vorbereitet, ohne Routen und DNS (eigener Schluessel: wgsitepub in \$cfmShow)") }
   }
-  # Routen zu den Netzen des Standorts; bei VRRP Rückfall über die MGMT-VIP (Distanz 10), solange der Tunnel hier aus ist
-  :local i 0
-  :foreach n in=($sd->"nets") do={
-    $cfmEnsure m="/ip/route" k=("rts:" . $sn . ":" . $i) p=({"dst-address"=[:tostr $n];"gateway"=$ifn;"distance"=1})
-    :if ([:len $wgV] > 0) do={
-      $cfmEnsure m="/ip/route" k=("rtb:" . $sn . ":" . $i) p=({"dst-address"=[:tostr $n];"gateway"=[:tostr ([$cfmNet $mv]->"gw")];"distance"=10})
+  # Routen zu den Netzen des Standorts; bei VRRP Rückfall über die MGMT-VIP (Distanz 10), solange der Tunnel hier aus ist.
+  # Nur mit pubkey (DR4.3.1): vorher hat der Tunnel keine Gegenstelle
+  :if ([:len $pk] > 0) do={
+    :local i 0
+    :foreach n in=($sd->"nets") do={
+      $cfmEnsure m="/ip/route" k=("rts:" . $sn . ":" . $i) p=({"dst-address"=[:tostr $n];"gateway"=$ifn;"distance"=1})
+      :if ([:len $wgV] > 0) do={
+        $cfmEnsure m="/ip/route" k=("rtb:" . $sn . ":" . $i) p=({"dst-address"=[:tostr $n];"gateway"=[:tostr ([$cfmNet $mv]->"gw")];"distance"=10})
+      }
+      :set i ($i + 1)
     }
-    :set i ($i + 1)
-  }
-  # Namen des Standorts: seine Domain samt Subdomains an seinen Resolver durch den Tunnel
-  :local dom [:tostr ($sd->"domain")]
-  :local dns [:tostr ($sd->"dns")]
-  :if ([:len $dom] > 0 and [:len $dns] > 0) do={
-    $cfmEnsure m="/ip/dns/static" k=("dnssite:" . $sn) n=({"name"=$dom;"type"="FWD"}) p=({"name"=$dom;"type"="FWD";"forward-to"=$dns;"match-subdomain"="yes"})
+    # Namen des Standorts: seine Domain samt Subdomains an seinen Resolver durch den Tunnel
+    :local dom [:tostr ($sd->"domain")]
+    :local dns [:tostr ($sd->"dns")]
+    :if ([:len $dom] > 0 and [:len $dns] > 0) do={
+      $cfmEnsure m="/ip/dns/static" k=("dnssite:" . $sn) n=({"name"=$dom;"type"="FWD"}) p=({"name"=$dom;"type"="FWD";"forward-to"=$dns;"match-subdomain"="yes"})
+    }
   }
 }
 # Endpoint-Namen regelmäßig neu auflösen (DynDNS der Gegenstelle): Skript + Scheduler nur, wenn es Namen gibt;

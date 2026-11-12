@@ -11,6 +11,9 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   bzw. je Client (20, DR2.8/DR2.9) sind umgesetzt und im Labor bestanden (`e2e-vrrp.sh` 164, `e2e.sh` 477). Nächster
   Schritt: Rollout an beiden Standorten (Site-Overlays vorbereitet, Reihenfolge Admin-Guide 8.17), Hardware-Test (80).
   Netinstall/Branding: Plan in [NETINSTALL.md](NETINSTALL.md), Umsetzung 79.
+  *Nachtrag 2026-11-12:* Der LAN-LAN-Tunnel der Fritz!Boxen bleibt vorerst (DR3.2.1: `asymRouting` mit Netzen, damit
+  Hosts mit Gateway VIP darüber erreichbar sind; DR4.3.1: Standort ohne `pubkey` nur vorbereitet). Reihenfolge des
+  Nutzers: erst die offenen Tests an Standort B (74), dann cfm-Tunnel vorbereiten, A/B-Messung gegen den Fritz-Tunnel (81).
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
@@ -31,7 +34,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
 * **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
-  78–80, 82.
+  78–82.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -295,8 +298,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
       gesetzt) startet Skripte. Offen: Release mit dem Fix, dann Umschalten per Taster in beide Richtungen. Ohne Umschalten bleibt (b) bei 802.1X.
 <!-- -->
 67. **VIP als Gateway – Rest** (umgesetzt: `asymRouting`, DR3.2, Admin-Guide 8.13; TCP ins Internet auf
-    Hardware bestanden 2026-10-31): **Offen:** Ausfall des Internet-Routers – bleiben die internen Wege?;
-    VRRP-Wechsel; Portfreigabe auf einen Host mit Gateway VIP. **Ziel danach:** Transfernetz für den
+    Hardware bestanden 2026-10-31; 2026-11-12 auch für Netze hinter dem Internet-Router, DR3.2.1): **Offen:** Ausfall
+    des Internet-Routers – bleiben die internen Wege?; VRRP-Wechsel; Portfreigabe auf einen Host mit Gateway VIP;
+    DR3.2.1 auf Hardware (Standort A: Host mit Gateway VIP aus Standort B über den Fritz-Tunnel, TCP und Ping). **Ziel danach:** Transfernetz für den
     Internet-Router (dann VIP für alle, zweiter Anschluss als Backup möglich), der Schalter entfällt.
 68. **DNS der Router – Rest** (umgesetzt: DN3.1, Abfrage-Log per Syslog an Graylog, Admin-Guide 8.15;
     Hardware: [TESTSTAND.md](TESTSTAND.md#bestanden)): die Resolver-Container eines Standorts nach dem
@@ -340,6 +344,13 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     oder `cloud`. Dazu aus 15 offen: Hardware-Test der Standortkopplung an beiden Standorten (Admin-Guide 8.17),
     `mgmt`↔`mgmt` über den Tunnel (bewusst nicht freigegeben, 2026-11-11), Namen der Standorte: B wechselt die
     Domain auf eine Subdomain von A (`b.example.net`) (Let's Encrypt später).
+81. **A/B-Messung Fritz-Tunnel gegen cfm-Standortkopplung** (Nutzer, 2026-11-12): Beide Standorte bekommen die
+    Kopplung vorbereitet (`sites` ohne `pubkey`, DR4.3.1), A `asymRouting` mit dem Netz von B (DR3.2.1). **A:** über
+    den LAN-LAN-Tunnel der Fritz!Boxen messen. **B:** Fritz-Tunnel an beiden Boxen aus, Fritz!Box-Routen setzen
+    (B: Netze von A → Router von B; A: Netz von B → VIP), `pubkey` beidseitig eintragen, Release; dieselben Messungen. Messgrößen:
+    Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
+    unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
+    Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.
 82. **WLAN-Schild im cfm-Editor** (DT3.4, Nutzer 2026-11-12): eine Seite „Schild drucken“ im cfm-Editor/-Monitor,
     die SSID und Passphrase vom Gerät liest und das Schild über den Druckdialog als A4-PDF ausgibt (wie
     `tools/wifi-sign.py`). Braucht einen eingebetteten QR-Encoder in JavaScript (kein CDN, der Editor lädt seinen Code

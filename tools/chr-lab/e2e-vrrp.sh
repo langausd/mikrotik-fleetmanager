@@ -11,12 +11,14 @@
 #   vm5 = sw1   Switch ohne Rolle router an cm1/ether5, eigener Ausgang über den Internet-Router (gw)
 # Geprüft: VIPs und DHCP nur auf dem Master, Zonen-Policy (LAN -> IoT/Gast ja, IoT -> LAN/Internet nein,
 # Gast -> Internet mit fester NAT-Adresse, Gast -> LAN nein, mgmtExtra -> MGMT ja, DR2.6), DHCP und DNS der
-# Router im LAN, das zugleich ihr WAN ist (DR3.1), TCP ins Internet über die VIP mit asymRouting (DR3.2), WireGuard über die
+# Router im LAN, das zugleich ihr WAN ist (DR3.1), TCP ins Internet und zu einem privaten Netz hinter dem Internet-Router
+# (dessen "VPN" 192.168.99.0/24) über die VIP mit asymRouting (DR3.2, DR3.2.1), WireGuard über die
 # VIP mit gemeinsamem Schlüssel (DR4.2, Client auf inet, auch zu sw1 mit eigenem Ausgang), Ausfall und Rückkehr des Masters
 # (Preemption: VIP danach erreichbar?), kurzer Master-Ausflug eines Backups ohne DHCP/WG (DR1.5), Neustart des
 # Masters, Ausfall von zwei Routern. Standortkopplung (DR4.3): Gegenstelle "site2" auf inet (WireGuard wgs in einer
-# VRF mit 192.168.77.0/24), Tunnel am Master, Routen über die MGMT-VIP auf den Backups, Zone site2 in der Policy,
-# DNS-Weiterleitung; DynDNS (DR4.4) gegen fake-ddns.py auf dem Host.
+# VRF mit 192.168.77.0/24), erst ohne pubkey nur vorbereitet (DR4.3.1), dann Tunnel am Master, Routen über die MGMT-VIP
+# auf den Backups, Zone site2 in der Policy, DNS-Weiterleitung, asymRouting für sein Netz ausgelassen (DR3.2.1);
+# DynDNS (DR4.4) gegen fake-ddns.py auf dem Host.
 # Daten: seed-vrrp/ (Overlay über cfm/work).
 #   ./e2e-vrrp.sh [fresh]      fresh = VM-Disks neu aus dem CHR-Image (Standard: immer neu)
 # ------------------------------------------------------------------
@@ -64,8 +66,10 @@ lanc() { r 4 ':local d [/ip/dhcp-client/get [find interface=mv20]]; :put ("C=" .
 lanlease() { local i; r 4 '/ip/dhcp-client/release [find interface=mv20]' >/dev/null; for i in $(seq 1 15); do [ "$(lanc)" = "bound 192.168.20.42/24 192.168.20.1 192.168.20.2 192.168.20.$1" ] && return 0; sleep 2; done; return 1; }
 dnsq() { r 4 ':onerror e in={ :put ("R=" . [:resolve domain-name="'"$1"'" server=192.168.20.2]) } do={ :put "R=-" }' | grep -o 'R=.*' | cut -d= -f2; }
 # Asymmetrisches Routing (DR3.2): sw1 (.20.240) holt per TCP eine Seite vom "Internet" 198.51.100.1 über die
-# VIP .20.2 (Route lab-asym); die Antwort kommt vom Internet-Router direkt. asymtcp -> ok|err
-asymtcp() { r 5 ':onerror e in={ /tool/fetch url="http://198.51.100.1/" output=none idle-timeout=5s; :put "F=ok" } do={ :put "F=err" }' | grep -o 'F=[a-z]*' | cut -d= -f2; }
+# VIP .20.2 (Route lab-asym); die Antwort kommt vom Internet-Router direkt. asymtcp [Ziel] -> ok|err. Zweites Ziel
+# 192.168.99.1 (lo auf inet, Route lab-asym2) steht für ein privates Netz hinter dem Internet-Router, z.B. sein
+# VPN zu einem anderen Standort (DR3.2.1)
+asymtcp() { r 5 ':onerror e in={ /tool/fetch url="http://'"${1:-198.51.100.1}"'/" output=none idle-timeout=5s; :put "F=ok" } do={ :put "F=err" }' | grep -o 'F=[a-z]*' | cut -d= -f2; }
 # Lage aus Sicht der Clients: VIPs, Policy, NAT. Erwartet: $1 = Name des Masters
 policy() {
   local m=$1 n0 n1
@@ -86,6 +90,7 @@ policy() {
   [ "$(dnsq labpc.internal)" = "192.168.20.42" ] && ok "$m: DNS an der VIP aus dem LAN (Name der festen Lease)" || bad "$m: DNS an der VIP aus dem LAN: $(dnsq labpc.internal)"
   if [ "${ASYM:-0}" = 1 ]; then
     [ "$(asymtcp)" = ok ] && ok "$m: Client mit Gateway VIP erreicht das Internet per TCP (asymRouting, DR3.2)" || bad "$m: TCP über die VIP ins Internet geht nicht (asymRouting)"
+    [ "$(asymtcp 192.168.99.1)" = ok ] && ok "$m: Client mit Gateway VIP erreicht das Netz hinter dem Internet-Router per TCP (DR3.2.1)" || bad "$m: TCP über die VIP zu 192.168.99.1 geht nicht (asymRouting-Netz)"
   fi
 }
 state() { # state <master-vm> <name> [abgetrennte VMs]: genau dieser Router ist Master in allen VLANs und
@@ -213,19 +218,26 @@ mgr '$cfmSecretPush host=r2' >/dev/null; sleep 2
 step "5c. Asymmetrisches Routing ins Internet (DR3.2)"
 # Ausgangslage ohne Schalter: Hinweg über die VIP, Antwort direkt vom Internet-Router -> r1 sieht nur
 # eine Richtung und verwirft die Folgepakete als invalid (Befund am Standort 2026-10-31)
-r 5 '/ip/route/add dst-address=198.51.100.1/32 gateway=192.168.20.2 comment=lab-asym' >/dev/null
+r 5 '/ip/route/add dst-address=198.51.100.1/32 gateway=192.168.20.2 comment=lab-asym; /ip/route/add dst-address=192.168.99.1/32 gateway=192.168.20.2 comment=lab-asym2' >/dev/null
+r 4 '/ip/address/add address=192.168.99.1/32 interface=lo' >/dev/null
 i0=$(invdrop 2); a=$(asymtcp); i1=$(invdrop 2)
 [ "$a" = err ] && [ "${i1:-0}" -gt "${i0:-0}" ] && ok "Ohne asymRouting: TCP über die VIP ins Internet als invalid verworfen" || bad "Ausgangslage: fetch $a, invalid $i0 -> $i1"
+i0=$(invdrop 2); a=$(asymtcp 192.168.99.1); i1=$(invdrop 2)
+[ "$a" = err ] && [ "${i1:-0}" -gt "${i0:-0}" ] && ok "Ohne asymRouting: TCP über die VIP zum Netz hinter dem Internet-Router als invalid verworfen (Befund 2026-11-12)" || bad "Ausgangslage 192.168.99.1: fetch $a, invalid $i0 -> $i1"
 expect 2 '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "r1: ohne Schalter keine raw-Regel von cfm"
-mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"internet\"\n")' >/dev/null
+# als Liste (DR3.2.1): Internet, das "VPN-Netz" des Internet-Routers und das Netz von site2 (Schritt 5d: bekommt
+# einen Standort-Tunnel, dann lassen die Router es aus)
+mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") {\"internet\";\"192.168.99.0/24\";\"192.168.77.0/24\"}\n")' >/dev/null
 mgr '$cfmRelease all=yes' >/dev/null
 for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 3 $n || bad "$n: v3 nicht angewendet"; done
 for i in 2 3 1; do
   expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:raw:" and action=notrack and src-address="192.168.20.0/24" and dst-address-list="!cfm-private" and in-interface-list="WAN"]] = 1' "vm$i: notrack-Regel für LAN -> Internet"
+  expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:raw:" and action=notrack and src-address="192.168.20.0/24" and in-interface-list="WAN" and (dst-address="192.168.99.0/24" or dst-address="192.168.77.0/24")]] = 2' "vm$i: notrack-Regeln für LAN -> 192.168.99.0/24 und 192.168.77.0/24 (DR3.2.1)"
 done
 expect 5 '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "sw1 (ohne Rolle router): keine raw-Regel"
 i0=$(invdrop 2)
 [ "$(asymtcp)" = ok ] && ok "Mit asymRouting: TCP über die VIP ins Internet" || bad "Mit asymRouting: TCP über die VIP geht nicht"
+[ "$(asymtcp 192.168.99.1)" = ok ] && ok "Mit asymRouting-Netz: TCP über die VIP zum Netz hinter dem Internet-Router (DR3.2.1)" || bad "Mit asymRouting-Netz: TCP zu 192.168.99.1 geht nicht"
 [ "$(invdrop 2)" = "$i0" ] && ok "Mit asymRouting: kein invalid-Drop am Master" || bad "invalid-Drop am Master: $i0 -> $(invdrop 2)"
 [ "$(pings 4 '192.168.30.77 src-address=192.168.20.1')" -ge 4 ] && [ "$(pings 4 '198.51.100.1 vrf=guest')" -ge 4 ] && ok "Mit asymRouting: LAN -> IoT und Gast -> Internet (NAT) unverändert" || bad "asymRouting stört LAN -> IoT oder Gast-NAT"
 ASYM=1
@@ -239,8 +251,10 @@ sleep 3
 r 4 '/ip/address/add address=192.168.77.1/24 interface=wgs' >/dev/null
 spub=$(r 4 ':put ("K=" . [/interface/wireguard/get [find name=wgs] public-key])' | grep -o 'K=.*' | cut -d= -f2-)
 rm -f "$LAB/ddns.jsonl"; python3 ./fake-ddns.py $((LABPORT+92)) "$LAB/ddns.jsonl" "lab:geheim" & dpid=$!
-printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}};"self"={"name"="lab";"ddns"={"type"="dyndns2";"url"="http://10.0.2.2:%s/nic/update";"name"="lab.dyn.example";"ipUrl"="http://10.0.2.2:%s/ip";"interval"="1m"}};"sites"={"site2"={"pubkey"="%s";"endpoint"="site2.lab:13232";"nets"={"192.168.77.0/24"};"domain"="site2.lab";"dns"="192.168.77.1"}}}\n' "$cpub" $((LABPORT+92)) $((LABPORT+92)) "$spub" > "$LAB/wg-site.rsc"
-echo "put $LAB/wg-site.rsc cfm/work/wireguard.rsc" | put 1
+# erst vorbereitet ohne pubkey (DR4.3.1, wie am Standort: der Schlüssel der Gegenseite kommt mit deren erstem Release)
+wgsite() { printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}};"self"={"name"="lab";"ddns"={"type"="dyndns2";"url"="http://10.0.2.2:%s/nic/update";"name"="lab.dyn.example";"ipUrl"="http://10.0.2.2:%s/ip";"interval"="1m"}};"sites"={"site2"={"pubkey"="%s";"endpoint"="site2.lab:13232";"nets"={"192.168.77.0/24"};"domain"="site2.lab";"dns"="192.168.77.1"}}}\n' "$cpub" $((LABPORT+92)) $((LABPORT+92)) "$1" > "$LAB/wg-site.rsc"
+  echo "put $LAB/wg-site.rsc cfm/work/wireguard.rsc" | put 1; }
+wgsite ""
 for n in r1 r2 cm1; do mgr ':local f [/file/find name="cfm/work/hosts/'$n'.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmG->\"policy\"->\"site2\") \"lan,iot\"; :set (\$cfmG->\"policy\"->\"lan\") \"iot,guest,wan,site2\"\n")' >/dev/null; done
 # Prüfung: Standort als Zone in der Policy, Warnung ohne Zugang im Vault; Fehlerfälle
 out=$(mgr ':global cfmCheck; :local c [$cfmCheck]; :put ("E=" . [:len ($c->"err")]); :foreach e in=($c->"err") do={ :put ("ERR " . $e) }; :foreach e in=($c->"warn") do={ :put ("W " . $e) }')
@@ -255,6 +269,22 @@ for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=
 mgr '$cfmSecretPush' >/dev/null; sleep 3
 k1=$(mgr ':global cfmJson; :put ("K=" . [:tostr ([$cfmJson "cfm/meta/vault.dat"]->"wgsitepub")])' | grep -o 'K=.*' | cut -d= -f2-)
 [ -n "$k1" ] && [ "$(sitepub 2)" = "$k1" ] && [ "$(sitepub 3)" = "$k1" ] && [ "$(sitepub 1)" = "$k1" ] && ok "wg.site erzeugt (wgsitepub), nach dem Secret-Push auf r1, r2, cm1 derselbe Schlüssel" || bad "Standort-Schlüssel: vault $k1, r1 $(sitepub 2), r2 $(sitepub 3), cm1 $(sitepub 1)"
+# vorbereitet (DR4.3.1): Interface, Zone und Port ja; keine Routen, keine DNS-Weiterleitung, asymRouting für 77 bleibt
+for i in 2 3 1; do
+  expect $i '[:len [/interface/wireguard/find where name="wg-site-site2"]] = 1 and [:len [/interface/wireguard/peers/find where comment~"^cfm:wgp:site:"]] = 0 and [:len [/ip/route/find where comment~"^cfm:rt[sb]:site2"]] = 0 and [:len [/ip/dns/static/find where comment~"^cfm:dnssite:"]] = 0 and [:len [/interface/list/member/find where list="Z-site2"]] = 1' "vm$i: site2 ohne pubkey nur vorbereitet - Interface und Zone, keine Routen, keine DNS-Weiterleitung (DR4.3.1)"
+done
+expect 2 '[:len [/ip/firewall/raw/find where comment~"^cfm:raw:" and dst-address="192.168.77.0/24"]] = 1' "r1: notrack für 192.168.77.0/24 bleibt, solange der Tunnel keinen pubkey hat"
+expect 5 '[:len [/ip/route/find where comment~"^cfm:rt:site:"]] = 0' "sw1 (eigener Ausgang): ohne pubkey keine Route zum Standort"
+# jetzt mit dem Schlüssel der Gegenstelle
+wgsite "$spub"
+out=$(mgr ':global cfmCheck; :local c [$cfmCheck]; :put ("E=" . [:len ($c->"err")]); :foreach e in=($c->"warn") do={ :put ("W " . $e) }')
+echo "$out" | grep -q "^E=0" && echo "$out" | grep -qF "W vlans.rsc: VLAN 20: asymRouting 192.168.77.0/24 geht durch den Standort-Tunnel site2" && ok "Prüfung: asymRouting-Netz = Netz eines Standorts mit pubkey -> Warnung (DR3.2.1)" || { bad "Prüfung asymRouting gegen sites"; echo "$out" | grep -i "asym\|^E=" | head -4; }
+mgr '$cfmRelease all=yes' >/dev/null
+for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 5 $n || bad "$n: v5 nicht angewendet ($(stat $n res))"; done
+for i in 2 3 1; do
+  expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:raw:" and dst-address="192.168.77.0/24"]] = 0 and [:len [/ip/firewall/raw/find where comment~"^cfm:raw:" and dst-address="192.168.99.0/24"]] = 1 and [:len [/ip/firewall/raw/find where comment~"^cfm:raw:"]] = 2' "vm$i: notrack für 192.168.77.0/24 entfällt mit dem Tunnel, Internet und 192.168.99.0/24 bleiben (DR3.2.1)"
+done
+expect 2 '[:len [/log/find where message~"192.168.77.0/24 geht durch den Standort-Tunnel site2"]] >= 1' "r1: Warnung im Log (asymRouting-Netz durch den Tunnel)"
 [ "$(sitestate 2)" = "an/tun" ] && [ "$(sitestate 3)" = "aus/vip" ] && [ "$(sitestate 1)" = "aus/vip" ] && ok "wg-site-site2 nur am Master r1 an (Route durch den Tunnel), Backups routen über die MGMT-VIP (Distanz 10)" || bad "Standort-Zustand r1 $(sitestate 2), r2 $(sitestate 3), cm1 $(sitestate 1)"
 expect 2 '[:tostr [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] endpoint-address]] = "198.51.100.1" and [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] endpoint-port] = 13232 and [:tostr [/interface/wireguard/peers/get [find where comment~"^cfm:wgp:site:site2"] allowed-address]] = "192.168.77.0/24"' "r1: Peer mit Endpoint site2.lab über den Upstream aufgelöst (198.51.100.1:13232), allowed-address = Netze des Standorts"
 expect 2 '[:len [/ip/firewall/nat/find where comment~"^cfm:nat" and action=dst-nat and dst-address="192.168.20.2" and dst-port="13232" and to-addresses="192.168.20.251"]] = 1' "r1: dst-nat VIP:13232 auf die eigene Adresse (Gegenstelle bleibt an der VIP)"
@@ -335,16 +365,17 @@ done
 step "11. asymRouting wieder aus (DR3.2): raw-Regel verschwindet"
 mgr ':local f [/file/find name="cfm/work/vlans.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmVlans->\"20\"->\"asymRouting\") \"\"\n")' >/dev/null
 mgr '$cfmRelease all=yes' >/dev/null
-for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 5 $n || bad "$n: v5 nicht angewendet"; done
+for n in r1 r2 cm1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; esac; agentwait $vm 6 $n || bad "$n: v6 nicht angewendet"; done
 for i in 2 3 1; do expect $i '[:len [/ip/firewall/raw/find where comment~"^cfm:"]] = 0' "vm$i: notrack-Regel entfernt"; done
 [ "$(asymtcp)" = err ] && ok "Ohne asymRouting wieder: TCP über die VIP ins Internet verworfen (bisheriges Verhalten)" || bad "Nach dem Abschalten geht TCP über die VIP noch"
+[ "$(asymtcp 192.168.99.1)" = err ] && ok "Ohne asymRouting wieder: TCP über die VIP zu 192.168.99.1 verworfen" || bad "Nach dem Abschalten geht TCP zu 192.168.99.1 noch"
 
 step "12. Standortkopplung wieder aus: Tunnel, Routen, Zone und Skripte verschwinden"
 printf ':global cfmWg {"listenPort"=13231;"net"="192.168.250.0/24";"peers"={"adm"={"pubkey"="%s";"addr"=2}}}\n' "$cpub" > "$LAB/wg-off.rsc"
 echo "put $LAB/wg-off.rsc cfm/work/wireguard.rsc" | put 1
 for n in r1 r2 cm1; do mgr ':local f [/file/find name="cfm/work/hosts/'$n'.rsc"]; /file/set $f contents=([/file/get $f contents] . ":set (\$cfmG->\"policy\"->\"site2\"); :set (\$cfmG->\"policy\"->\"lan\") \"iot,guest,wan\"\n")' >/dev/null; done
 mgr '$cfmRelease all=yes' >/dev/null
-for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 6 $n || bad "$n: v6 nicht angewendet ($(stat $n res))"; done
+for n in r1 r2 cm1 sw1; do case $n in r1) vm=2;; r2) vm=3;; cm1) vm=1;; sw1) vm=5;; esac; agentwait $vm 7 $n || bad "$n: v7 nicht angewendet ($(stat $n res))"; done
 for i in 2 3 1; do expect $i '[:len [/interface/wireguard/find where name~"^wg-site-"]] = 0 and [:len [/interface/wireguard/peers/find where comment~"^cfm:wgp:site:"]] = 0 and [:len [/ip/route/find where comment~"^cfm:rt[sb]:"]] = 0 and [:len [/interface/list/find where name="Z-site2"]] = 0 and [:len [/ip/dns/static/find where comment~"^cfm:dnssite:"]] = 0 and [:len [/system/script/find where name~"^cfm-(wgsite|ddns)\$"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-(wgsite|ddns)\$"]] = 0 and [:len [/interface/wireguard/find where name="wg-admin"]] = 1' "vm$i: Standortkopplung und DynDNS abgebaut, wg-admin bleibt"; done
 expect 5 '[:len [/ip/route/find where comment~"^cfm:rt:site:"]] = 0' "sw1: Route zum Standort entfernt"
 kill $dpid 2>/dev/null

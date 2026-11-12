@@ -15,8 +15,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
   DNS-Weiterleitung der Domain, Modul `lib/router.site.rsc`, Schlüssel `wg.site`) mit **DynDNS-Client** (DR4.4:
   `self.ddns` dyndns2/cloud/api, Skript `cfm-ddns`, Vault `ddns.auth`). **TODO 20** Freigaben nach Domain (DR2.8:
   `"*.domain"` in `allow` → FWD-Eintrag mit `address-list`) und je Client (DR2.9: `leases.rsc` `allow`). WireGuard-Prüfung
-  in `lib/mgr-checkn.rsc` ausgelagert; `/interface/wireguard` in der GC. Labor: neue Schritte `e2e-vrrp.sh` 5d/12 und
-  `e2e.sh` 14m **noch nicht gelaufen** (kein QEMU auf dem Arbeitsrechner). Admin-Guide 8.17/8.18, Site-Overlays beider
+  in `lib/mgr-checkn.rsc` ausgelagert; `/interface/wireguard` in der GC. Labor am 12.11. (neu aufgesetzt, 7.25.1):
+  `e2e-vrrp.sh` 164 von 164 nach einem Fix (dst-nat VIP:Port je Standort-Tunnel), `e2e.sh` 475 von 477 (zwei veraltete
+  Erwartungen, korrigiert; 14m grün). Admin-Guide 8.17/8.18, Site-Overlays beider
   Standorte vorbereitet (ohne Release). Netinstall/Branding als Plan ([NETINSTALL.md](NETINSTALL.md), DO1.8, DT3.3,
   Prototyp `tools/branding/`), Umsetzung TODO 79; DynDNS-API TODO 80.
 * **Am 2026-11-08 abends (Befunde vom Backup-Manager):** Der unbeförderte Backup weist SSH der Geräte per TCP-Reset
@@ -242,13 +243,13 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     `sites` (Zone je Standort, `pubkey`/`endpoint`/`port`/`nets`/`domain`/`dns`), Schlüssel `wg.site` im Vault
     (Secret-Push, `wgsitepub` im Manifest und in `$cfmShow`), Tunnel am Master des WAN-VLANs, Routen mit Distanz 10 über
     die MGMT-VIP auf den Backups, Endpoint-Namen über den Upstream aufgelöst (`cfm-wgsite`), DynDNS-Client `cfm-ddns`
-    (`self.ddns`, dyndns2/cloud, Vault `ddns.auth`). Labor `e2e-vrrp.sh` 5d/6/7/12 (ausstehend), Admin-Guide 8.17.
+    (`self.ddns`, dyndns2/cloud, Vault `ddns.auth`). Labor `e2e-vrrp.sh` 5d/6/7/12 grün (2026-11-12, 164), Admin-Guide 8.17.
     Rest: Anbieter-API (80), Hardware-Test an beiden Standorten. Der Fernzugang für Admins war schon umgesetzt
     (DR4.1, DR4.2).
 20. ~~**IoT-Isolation ausbauen – Rest: Proxy als Ziel, Freigaben je Client**~~ – *erledigt 2026-11-11 (DR2.8, DR2.9):*
     statt Proxy eine DNS-gefüllte Adressliste (`"*.domain[:tcp/443]"` in `allow` → statischer FWD-Eintrag mit
     `match-subdomain` und `address-list`, `address-list-extra-time` 30 min); Freigaben je Client in `leases.rsc`
-    (`"allow"={"*liste"}` → forward-Regeln mit Adresse + MAC, NAT nach Kennzeichen). Labor `e2e.sh` 14m (ausstehend),
+    (`"allow"={"*liste"}` → forward-Regeln mit Adresse + MAC, NAT nach Kennzeichen). Labor `e2e.sh` 14m grün (2026-11-12),
     Admin-Guide 4 und 8.18 (Liste per Mitschnitt). Volltext unten unter „Frühere Fassungen“. Rest (Standort): eigene
     Listen für die Cloud-Geräte an einem Standort anlegen (`tuya` schon auf Domains umgestellt).
 7. ~~**RouterOS-Versionspflege – Rest: Pakete auf den Backup-Manager**~~ – *umgesetzt 2026-11-05 (Nachtrag DV1.2):*

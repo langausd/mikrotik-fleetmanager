@@ -7,11 +7,10 @@ behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt
 Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 81). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
-* **Neu 2026-11-11, noch ohne Laborlauf:** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
-  bzw. je Client (20, DR2.8/DR2.9) sind umgesetzt; die neuen Schritte in `e2e-vrrp.sh` (5d, 12) und `e2e.sh` (14m)
-  warten auf ein Labor (auf dem Arbeitsrechner fehlen QEMU/KVM und das CHR-Image). Danach: Site-Overlays beider
-  Standorte sind vorbereitet (Admin-Guide 8.17, Reihenfolge der Releases), Hardware-Test. Netinstall/Branding: Plan in
-  [NETINSTALL.md](NETINSTALL.md), Umsetzung 79.
+* **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
+  bzw. je Client (20, DR2.8/DR2.9) sind umgesetzt und im Labor bestanden (`e2e-vrrp.sh` 164, `e2e.sh` 477). Nächster
+  Schritt: Rollout an beiden Standorten (Site-Overlays vorbereitet, Reihenfolge Admin-Guide 8.17), Hardware-Test (80).
+  Netinstall/Branding: Plan in [NETINSTALL.md](NETINSTALL.md), Umsetzung 79.
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.

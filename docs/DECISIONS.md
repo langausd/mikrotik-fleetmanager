@@ -1153,7 +1153,9 @@ Schlüssel der Gegenseite erst nach deren erstem Release). GC: `/interface/wireg
 60-KB-Grenze): Name, Netze (gültig, nicht eigen), Ports eindeutig, Endpoint-Form, `domain` nur mit `dns`.
 Labor: `e2e-vrrp.sh` Schritt 5d (Gegenstelle auf inet in einer VRF, Schlüssel, Zustand Master/Backups, Endpoint
 aufgelöst, Policy in beide Richtungen, DNS-Weiterleitung, Route am Switch mit eigenem Ausgang), 6/7 (Tunnel folgt dem
-Master), 12 (Abbau). Hardware: offen (TESTSTAND); Reihenfolge an den Standorten im Admin-Guide 8.17.
+Master), 12 (Abbau) – grün am 2026-11-12 (164), nachdem die `dst-nat`-Regel VIP:Port auch für die Standort-Tunnel
+dazukam (ohne sie wechselte die Gegenstelle auf die reale Adresse des Masters). Hardware: offen (TESTSTAND); Reihenfolge
+an den Standorten im Admin-Guide 8.17.
 
 #### <a id="dr4.4"></a>DR4.4 · DynDNS-Client auf den Routern
 

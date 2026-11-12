@@ -213,7 +213,7 @@ $cfmSet m="/ip/dns" p=$dp
     :if ([:len $fwdTo] = 0) do={ $cfmWarn "allow: *.domain braucht einen Upstream (wan.dns oder dns.rsc servers) - Domain-Freigaben nicht angelegt (DR2.8)" }
   }
   # Geräte mit eigenem DNS-Cache halten Adressen länger als die TTL: Einträge 30 min über die TTL hinaus behalten
-  :if ([:typeof ([/ip/dns/get]->"address-list-extra-time")] != "nothing") do={ $cfmSet m="/ip/dns" p=({"address-list-extra-time"="30m"}) }
+  :if ([:typeof ([/ip/dns/get]->"address-list-extra-time")] != "nothing") do={ $cfmSet m="/ip/dns" p=({"address-list-extra-time"=[:totime "30m"]}) }
 }
 # Forwarder cfm-upstream mit allen Upstreams für Ausnahmen (allow), Domain-Freigaben (DR2.8) und die Selbstbedienung
 # (DN3.2); er bleibt, solange Freischaltungen der Selbstbedienung (dnsui:) auf ihn zeigen - auch ohne dns.rsc

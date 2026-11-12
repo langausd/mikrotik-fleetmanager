@@ -73,7 +73,7 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 14' "cm1: 14 Manager-Module als Skripte (von der Rolle übernommen)"
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 15' "cm1: 15 Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (DT3.2)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and action=accept and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
@@ -1259,7 +1259,7 @@ mgr ':global e2eG14m; :global e2eL14m; /file/set [/file/find name="cfm/work/glob
 rv=$(mgr '$cfmRelease msg=" Domain/Lease-allow" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 && [ "$(stat sw1 res)" = ok ] && ok "sw1 hat v$rv (Domain- und Lease-Freigabe) angewendet" || { bad "sw1 Apply v$rv: $(stat sw1 res)"; r 2 '/log/print where message~"^cfm: "' | tail -5; }
 expect 2 '[:len [/ip/dns/static/find where name="example.com" and type="FWD" and match-subdomain and address-list="cfm-allow-iot-cloud-tcp443" and comment~"^cfm:dnsal:iot-cloud:"]] = 1 and [:len [/ip/dns/static/get [find where name="example.com" and type="FWD"] forward-to]] > 0 and [:tostr [/ip/dns/static/get [find where name="example.com" and type="FWD"] forward-to]] != "cfm-upstream"' "sw1: *.example.com als FWD mit match-subdomain und address-list, Ziel die dynamischen DNS-Server (WAN per DHCP)"
-expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud-tcp443" and address="*.example.com"]] = 0 and [:tostr [/ip/dns/get address-list-extra-time]] = "30m"' "sw1: kein Adresslisten-Eintrag *.example.com, address-list-extra-time 30m"
+expect 2 '[:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud-tcp443" and address="*.example.com"]] = 0 and [:tostr [/ip/dns/get address-list-extra-time]] = "00:30:00"' "sw1: kein Adresslisten-Eintrag *.example.com, address-list-extra-time 30 min"
 # Auflösung über den Router füllt die Liste (das Labor hat Internet); Anfrage an die eigene VIP .30.1
 r 2 ':onerror e in={ :put [:resolve domain-name="www.example.com" server=192.168.30.1] } do={ :put ("R=" . $e) }' | tail -1
 for _ in $(seq 1 5); do r 2 ':put [:len [/ip/firewall/address-list/find where list="cfm-allow-iot-cloud-tcp443" and dynamic]]' | tail -1 | grep -qv '^0$' && break; sleep 2; done

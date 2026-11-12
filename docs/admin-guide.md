@@ -1795,8 +1795,11 @@ darf). `mgmt`↔`mgmt` bewusst nicht (Entscheidung 2026-11-11); Router↔Router 
 
 **Reihenfolge:**
 
-1. DynDNS: `self.ddns` eintragen, `$cfmSecret key=ddns.auth value="user:passwort"`; Portfreigabe UDP `port`
-   (Standard 13232) am Internet-Router auf die VIP des WAN-VLANs (bzw. den Router).
+1. DynDNS: `self.ddns` eintragen – `type="cloud"` (MikroTik-Cloud, kein Zugang: jeder Router meldet
+   `<seriennummer klein>.sn.mynetname.net`, braucht UDP 15252 zu cloud2.mikrotik.com; hängen alle Router eines Standorts
+   hinter demselben Internet-Router, zeigt jeder dieser Namen auf dieselbe öffentliche Adresse, die Gegenseite nimmt den
+   des üblichen Masters) oder `type="dyndns2"` mit `$cfmSecret key=ddns.auth value="user:passwort"`; Portfreigabe UDP
+   `port` (Standard 13232) am Internet-Router auf die VIP des WAN-VLANs (bzw. den Router).
 2. `sites` mit `nets`, `endpoint`, `domain`/`dns` der Gegenseite, **`pubkey` zunächst leer** (Warnung, kein Fehler),
    Policy ergänzen → `$cfmRelease … all=yes`. Das erste Release erzeugt `wg.site` und zeigt `wgsitepub` in
    `$cfmShow host=<router>` (bzw. `meta/vault.dat`). Wie bei `wg.admin` braucht es nach einem Framework-Update zwei

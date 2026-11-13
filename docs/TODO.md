@@ -316,6 +316,13 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     `radios` → `{"<ap>"={"5"="off"}}` (keine Provisionierung dieses Bands, Radio aus) und `antennaGain` je AP und
     Band (Parameter in der RouterOS-wifi-Doku prüfen; hält er beim Provisionieren durch den CAPsMAN?). Alternative
     ohne Framework: eigener Außen-AP (dieselbe 5-GHz-Regel). Offen, Entscheidung des Nutzers.
+    *Neuer Anlass 2026-11-13 (Nutzer):* Die Antennen einer CRS418 im Stahlrack sollen per Pigtail und Magnetfuß-Antennen
+    aufs Rack (Kabel ≈ 1 m, ≈ 2–3 dB Dämpfung). Befund: Die Radios haben kein `min-antenna-gain`, `monitor` zeigt die
+    volle EU-EIRP als `tx-power` und blieb mit `antenna-gain=5` am Interface gleich (ROUTEROS-EIGENHEITEN). Vor der
+    Umsetzung klären, ob `antenna-gain` wirkt und wo (Interface oder Konfiguration) – Pegelmessung an einem festen
+    Empfänger mit und ohne Wert. Wirkt die Formel „Sendeleistung + Gewinn ≤ Limit“ und rechnet RouterOS ohne Wert mit
+    0 dBi, sendet ein Gerät mit externen Antennen über dem Limit → `antennaGain` je AP und Band dann für alle Geräte mit
+    abnehmbaren/externen Antennen eintragen.
 73. **Feature-Module – Rest** (umgesetzt: DG4.6; Labor und Hardware an einem Standort:
     [TESTSTAND.md](TESTSTAND.md#bestanden)):
     * Hardware an einem Router mit `dns.rsc`: `/system/script/get cfm-dnsreq source` prüfen

@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-12).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-13).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -243,16 +243,29 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   selbst die neue Version hatte. HA schaltet per `cfm_port.py` in beide Richtungen, jeder Wechsel kommt als `ev`
   `port` am Webhook an. Ein Container von Hand auf dem Gerät (eigene Bridge, veth, NAT) blieb unberührt.
 
+* **`asymRouting` mit Netzen, Standort ohne `pubkey`, DynDNS `cloud`** (DR3.2.1, DR4.3.1, DR4.4) – 2026-11-13 an
+  beiden Standorten, remote (vier VRRP-Router mit RouterOS 7.25.1 bzw. ein CRS418 als Router und CAPsMAN mit 7.25):
+  Release mit `sites` ohne `pubkey` legt Schlüssel, Zone, Interface `wg-site-<name>` und die Portfreigabe an, **keine**
+  Routen `cfm:rts`/`cfm:rtb` und keine DNS-Weiterleitung; der Weg über den LAN-LAN-Tunnel der Fritz!Boxen bleibt. Der
+  Tunnel läuft nur am VRRP-Master, an den Backups ist er aus; den gemeinsamen Schlüssel bringt der Secret-Push, den
+  die Rolle selbst anfordert (`sv=0`, Log „Schluessel … weicht vom gemeinsamen … ab“). `/ip/cloud` meldet je Router
+  `<SN>.sn.mynetname.net` mit der öffentlichen Adresse (`status: updated`, Hinweis „behind a NAT“). **DR3.2.1:** Host
+  mit Gateway VIP aus dem anderen Standort über den Fritz-Tunnel erreichbar – Ping und HTTP (200), die `notrack`-Regel
+  für das Netz zählt (0 → 13 Pakete); Vergleichshost mit Fritz!Box-Gateway ebenso (TTL 62 gegen 61 zeigt den Weg der
+  Antwort). Dabei: Steering 5 GHz mit `join`/`drop` braucht beim ersten Einschalten je Band eigene Datapaths – die
+  CAP-Radios übernehmen sie erst nach `cfm-reprov` (Warnung im Plan), die Radios des CAPsMAN sofort.
 
 ## Offen auf Hardware
 
 * **Standortkopplung und DynDNS** (DR4.3, DR4.4, 2026-11-11; Labor grün 2026-11-12): Tunnel zwischen zwei Standorten hinter Fritz!Boxen
   (Portfreigaben, DynDNS-Update beim echten Anbieter, Endpoint-Auflösung nach einem Adresswechsel), VRRP-Wechsel mit
-  stehendem Tunnel, Fritz!Box-Routen für Clients mit dem Internet-Router als Gateway, DNS-Namen der Gegenseite. Site-Overlays
-  beider Standorte sind vorbereitet (Admin-Guide 8.17).
+  stehendem Tunnel, Fritz!Box-Routen für Clients mit dem Internet-Router als Gateway, DNS-Namen der Gegenseite.
+  *2026-11-13:* beide Standorte vorbereitet ohne `pubkey`, Cloud-DDNS meldet (siehe oben); der Tunnel selbst folgt mit
+  der Messung B (TODO 81).
 * **Freigaben nach Domain und je Client** (DR2.8, DR2.9, 2026-11-11; Labor grün 2026-11-12): Füllt ein echtes IoT-Gerät die Adressliste über
   den Router-DNS (TTL, `address-list-extra-time`)? Regel mit Adresse + MAC an einem VRRP-Router; `tuya`-Liste an
-  einem Standort auf Domains umgestellt.
+  einem Standort auf Domains umgestellt (*2026-11-13 ausgerollt*: statische Einträge raus, `dnsal:`-Einträge am
+  Router-DNS da; die Liste steht in keiner Policy, gefüllt erst beim Anlernen eines Tuya-Geräts).
 * **Onboarding-Push gegen echte Werks-Configs:** Router (ether1 = WAN mit Firewall), CRS-Switches, Geräte mit
   `flash/`-Verzeichnis; Aufkleber-Passwort (beim einzigen Versuch, einem hAP ax³ mit RouterOS 7.8, passte es nicht –
   das Gerät hatte ein leeres Passwort, der Fallback griff). Im CAPs-Modus das LED-Verhalten je Modell.
@@ -263,10 +276,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **PPSK** (DW2.2): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). *2026-11-12 (CRS418 als CAPsMAN,
   7.25, v37):* normale Passphrase als Gruppeneintrag (DW2.2.1) und PPSK nebeneinander in einer SSID, Secret-Push trennt
   verbundene PPSK-Clients nicht mehr, FT-Wechsel zwischen den Bändern eines Radios-Paars behält das VLAN (der Kommentar
-  mit der Gruppe steht nur nach einer vollen Anmeldung). **Befund:** In einer SSID mit WPA2+WPA3 versucht ein neues
-  Android-Profil zuerst SAE – mit der PPSK „falsches Passwort“ (MikroTik: multi-passphrase nicht mit WPA3-PSK), erst
-  ein späterer Versuch nimmt WPA2. Offen: Roaming mit PPSK zwischen zwei CAPs, `ppskOnly`; SSIDs mit `ppsk` nur WPA2
-  (Daten oder `$cfmCheck`-Warnung, nicht entschieden).
+  mit der Gruppe steht nur nach einer vollen Anmeldung). Ein neues Android-Profil
+  meldete mit der PPSK zunächst „falsches Passwort“, ein späterer Versuch ging. *Korrektur 2026-11-13:* Die SSID bot
+  nur WPA2 an (`authentication-types=wpa2-psk` an allen Radios) – die Vermutung „zuerst SAE“ trifft nicht zu, Ursache
+  offen (Tippfehler oder WPA3 im Profil gewählt?), Wiederholung vor Ort. Offen: Roaming mit PPSK zwischen zwei CAPs,
+  `ppskOnly`; SSIDs mit `ppsk` nur WPA2 (Daten oder `$cfmCheck`-Warnung, nicht entschieden – MikroTik: multi-passphrase
+  nicht mit WPA3-PSK).
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5) – bisher nur im Labor (`e2e.sh`: cm2, auch als
   `manager-backup,ap`). *2026-11-08 an einem Standort bestanden (siehe oben):* Spiegel, gesperrte Geräte-User,
   `primary/on`/`off` am Webhook, Geräte ziehen nicht vom Backup. Offen: Platz auf dem Backup über längere Zeit,
@@ -325,6 +340,6 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Bandbreitenlimit** (DR2.7): zwei Clients gleichzeitig (Aufteilung, Gesamtgrenze); Gegenprobe der Annahme aus der
   MikroTik-Doku – Ausnahme kurz abschalten, läuft der Gast dann ungebremst?; CPU-Last der CRS418 unter Volllast.
 * **`asymRouting`** (DR3.2, TODO 67): Ausfall des Internet-Routers – bleiben die internen Wege?; VRRP-Wechsel;
-  Portfreigabe auf einen Host mit Gateway VIP. **Netze** (DR3.2.1): Host mit Gateway VIP aus dem anderen Standort über
-  den Fritz!Box-LAN-LAN-Tunnel (TCP und Ping), Regel entfällt mit dem `pubkey` der Standortkopplung (TODO 81).
+  Portfreigabe auf einen Host mit Gateway VIP. **Netze** (DR3.2.1): bestanden 2026-11-13 (siehe oben); offen nur, dass
+  die Regel mit dem `pubkey` der Standortkopplung entfällt (TODO 81).
 * **Feature-Module** (DG4.6, TODO 73): `cfm-dnsreq` auf einem Router mit `dns.rsc`.

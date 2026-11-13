@@ -299,8 +299,8 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 <!-- -->
 67. **VIP als Gateway – Rest** (umgesetzt: `asymRouting`, DR3.2, Admin-Guide 8.13; TCP ins Internet auf
     Hardware bestanden 2026-10-31; 2026-11-12 auch für Netze hinter dem Internet-Router, DR3.2.1): **Offen:** Ausfall
-    des Internet-Routers – bleiben die internen Wege?; VRRP-Wechsel; Portfreigabe auf einen Host mit Gateway VIP;
-    DR3.2.1 auf Hardware (Standort A: Host mit Gateway VIP aus Standort B über den Fritz-Tunnel, TCP und Ping). **Ziel danach:** Transfernetz für den
+    des Internet-Routers – bleiben die internen Wege?; VRRP-Wechsel; Portfreigabe auf einen Host mit Gateway VIP
+    (DR3.2.1 auf Hardware bestanden 2026-11-13, [TESTSTAND.md](TESTSTAND.md#bestanden)). **Ziel danach:** Transfernetz für den
     Internet-Router (dann VIP für alle, zweiter Anschluss als Backup möglich), der Schalter entfällt.
 68. **DNS der Router – Rest** (umgesetzt: DN3.1, Abfrage-Log per Syslog an Graylog, Admin-Guide 8.15;
     Hardware: [TESTSTAND.md](TESTSTAND.md#bestanden)): die Resolver-Container eines Standorts nach dem
@@ -331,8 +331,8 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
     der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
     nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.
-    *2026-11-12 an einem Standort (v37):* (b) bestanden bis auf das Roaming zwischen zwei CAPs (Befund WPA3+PPSK, siehe
-    TESTSTAND), (c) bestanden an den Radios des CAPsMAN, die lokale Kopie aus (a) hängt an; offen: (a) Client-Test im
+    *2026-11-12 an einem Standort (v37):* (b) bestanden bis auf das Roaming zwischen zwei CAPs (Befund „falsches
+    Passwort“ beim ersten PPSK-Versuch, Ursache offen – nicht WPA3, Korrektur 2026-11-13, siehe TESTSTAND), (c) bestanden an den Radios des CAPsMAN, die lokale Kopie aus (a) hängt an; offen: (a) Client-Test im
     Fallback, (c) an zwei APs mit Zählern, (d), der zweite Standort.
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
@@ -350,7 +350,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 81. **A/B-Messung Fritz-Tunnel gegen cfm-Standortkopplung** (Nutzer, 2026-11-12): Beide Standorte bekommen die
     Kopplung vorbereitet (`sites` ohne `pubkey`, DR4.3.1), A `asymRouting` mit dem Netz von B (DR3.2.1). **A:** über
     den LAN-LAN-Tunnel der Fritz!Boxen messen. **B:** Fritz-Tunnel an beiden Boxen aus, Fritz!Box-Routen setzen
-    (B: Netze von A → Router von B; A: Netz von B → VIP), `pubkey` beidseitig eintragen, Release; dieselben Messungen. Messgrößen:
+    (B: Netze von A → Router von B; A: Netz von B → VIP), `pubkey` beidseitig eintragen, Release; dieselben Messungen. *Stand 2026-11-13:* Vorbereitung an beiden Standorten
+    ausgerollt (ohne `pubkey`, DR3.2.1 bestanden); beide `wgsitepub` notiert (Site-Logbücher). Als Nächstes Messung A
+    (Laptop am Kabel im LAN von B, vor Ort). Messgrößen:
     Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
     unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
     Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.

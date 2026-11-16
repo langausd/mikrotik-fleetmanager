@@ -5,7 +5,8 @@
 #  Lokaler Fallback (DW1.6): Jedes Radio trägt zusätzlich eine lokale Kopie der Master-SSID
 #  (configuration.manager=capsman-or-local). Reißt die Verbindung zum CAPsMAN ab, sendet der AP nach
 #  ~10 s mit der lokalen Konfiguration weiter, statt die Radios abzuschalten; kommt der CAPsMAN
-#  zurück, übernimmt er wieder. Passphrasen per Secret-Push aus dem Vault (wie beim CAPsMAN).
+#  zurück, übernimmt er wieder. Passphrasen per Secret-Push aus dem Vault (wie beim CAPsMAN). Weitere SSIDs mit
+#  fallback="yes" über eigene lokale virtuelle APs, geschaltet vom Skript cfm-fallback (DW1.12).
 #  Lokales Forwarding: SSIDs landen per datapath vlan-id im VLAN,
 #  der Uplink braucht daher das Profil "trunk-ap".
 # ============================================================
@@ -105,6 +106,8 @@ $cfmPskMissing
 :foreach x in=[/interface/wifi/find where !dynamic] do={
   :if ([:len [:tostr ([/interface/wifi/get $x]->"mld-name")]] > 0) do={ :set smld true }
 }
+# Radios mit lokaler Konfiguration {Name=Band} - für die lokalen virtuellen APs der Fallback-SSIDs (DW1.12)
+:local rads ({})
 :foreach i in=[/interface/wifi/find where default-name~"^wifi"] do={
   :local rn [/interface/wifi/get $i name]
   :local b ""
@@ -127,6 +130,7 @@ $cfmPskMissing
     }
   } else={
   :if ([:len $cfg] > 0) do={
+    :set ($rads->$rn) $b
     :if ($curM != "capsman-or-local" or $curC != $cfg or $curD != $mdpn or $curX = true) do={
       :if ($cfmDry != true) do={ /interface/wifi/set $i configuration=$cfg configuration.manager=capsman-or-local datapath=$mdpn disabled=no }
       $cfmLog ("Radio " . $rn . ": CAPsMAN mit lokalem Fallback " . $cfg . ", Datapath " . $mdpn)
@@ -141,74 +145,61 @@ $cfmPskMissing
   }
 }
 
-# Weitere SSIDs im lokalen Fallback (TODO 40a, DW1.8): fallback="yes" an einer SSID in wifi.rsc schaltet
-# slaves-static ein - der CAP behält die virtuellen APs des CAPsMAN als statische Interfaces. cfm
-# hängt ihnen wie den Radios eine lokale Kopie ihrer SSID an (capsman-or-local, Datapath der SSID mit
-# Bridge + VLAN). Die SSID eines virtuellen AP liest es aus seiner Konfiguration bzw. dem Monitor.
-# Auf Hardware noch nicht geprüft: ob RouterOS sie im Fallback weitersenden lässt (Test: CAPsMAN-
-# Dienst kurz aus, TODO 40a). Statische virtuelle APs, die bei ausgeschaltetem Schalter übrig
-# bleiben, löscht cfm nicht - der CAPsMAN legt sie beim Verbinden ohnehin neu an.
-:local fbk ({})
+# Weitere SSIDs im lokalen Fallback (TODO 84, DW1.12, ersetzt DW1.8): fallback="yes" an einer SSID -> je Radio, dessen
+# Band die SSID trägt, ein eigener lokaler virtueller AP fb-<key>-<Radio> mit der lokalen Konfiguration der SSID
+# (cfm-<key> bzw. cfm-<key>-<Band>g; deren Datapath: Bridge + VLAN, cfm-iso bei isolierten VLANs). Normal aus - das
+# Skript cfm-fallback (unten) schaltet ihn ein, wenn der CAP ~20 s keinen CAPsMAN hat, und beim Wiederverbinden aus;
+# der Apply rührt den Schaltzustand nicht an. Die vom CAPsMAN angelegten virtuellen APs nimmt RouterOS im Fallback
+# außer Betrieb, auch mit slaves-static und lokaler Konfiguration daran (Hardware 2026-11-16).
+# /interface/wifi steht nicht in cfmMenus (das Audit meldete sonst jedes Radio und jedes Interface des CAPsMAN als
+# unverwaltet): hier bei jedem Lauf indizieren, damit der Abgleich fb-… auch nach dem Entfernen von fallback abräumt
+:global cfmIndex
+$cfmIndex "/interface/wifi"
+:local fbs ""
 :foreach k,s in=($cfmWifi->"ssids") do={
-  :if ($k != [:tostr ($cfmWifi->"master")] and [:tostr ($s->"fallback")] = "yes") do={ :set ($fbk->[:tostr ($s->"ssid")]) $k }
+  :if ($k != [:tostr ($cfmWifi->"master")] and [:tostr ($s->"fallback")] = "yes") do={
+    :foreach rn,b in=$rads do={
+      :if (("," . [:tostr ($s->"bands")] . ",") ~ ("," . $b . ",")) do={
+        :local cfg ("cfm-" . $k)
+        :if ([:len [/interface/wifi/configuration/find where name=($cfg . "-" . $b . "g")]] > 0) do={ :set cfg ($cfg . "-" . $b . "g") }
+        :local nm ("fb-" . $k . "-" . $rn)
+        :local fi [$cfmEnsure m="/interface/wifi" k=("wfb:" . $k . "-" . $rn) n=({"name"=$nm}) p=({"name"=$nm;"master-interface"=$rn;"configuration"=$cfg}) a=({"disabled"="yes";"configuration.manager"="local"})]
+        :if ($cfmDry != true and [:typeof $fi] = "id") do={
+          :if ([:tostr [/interface/wifi/get $fi configuration.manager]] != "local") do={ /interface/wifi/set $fi configuration.manager=local }
+        }
+        :set fbs ($fbs . " " . $nm)
+      }
+    }
+  }
 }
-:local sst "no"
-:if ([:len $fbk] > 0) do={ :set sst "yes" }
-# Nur setzen, wenn ein fallback es verlangt oder der Wert gerade an ist: Jedes Setzen unter
-# /interface/wifi/cap - auch von "nicht gesetzt" auf no - trennt den CAP 3-24 s vom CAPsMAN (TODO 40)
+# slaves-static (DW1.8) braucht der Fallback nicht mehr: Mit slaves-static bekamen die virtuellen APs bei jedem
+# Neuprovisionieren neue Namen, die alten blieben liegen (TODO 85). Ist es noch an, einmal abschalten - das trennt den
+# CAP kurz vom CAPsMAN (DW1.9); danach räumt der zweite Apply die übrig gebliebenen statischen auf (unten)
 :local cst ""
 :onerror e in={ :set cst [:tostr [/interface/wifi/cap/get slaves-static]] } do={}
-:if ($sst = "yes" or $cst = "true" or $cst = "yes") do={
+:local sstOn ($cst = "true" or $cst = "yes")
+:if ($sstOn) do={
   :onerror e in={
-    $cfmSet m="/interface/wifi/cap" p=({"slaves-static"=$sst})
-    # Umgestellt: Der CAP baut seine virtuellen APs nach dem Neuverbinden neu auf (mit slaves-static als feste
-    # Interfaces mit neuen Namen). Fallback-Kopie und cfm-iso stimmen erst danach - der Agent stößt dafür einen
-    # zweiten Apply an, sobald der CAP wieder verbunden ist (Hardware 2026-11-04)
-    :if ($cfmDry != true and (($sst = "yes") != ($cst = "true" or $cst = "yes"))) do={ :global cfmApFollow; :set cfmApFollow true }
-  } do={ $cfmLog ("slaves-static nicht gesetzt: " . $e) }
+    $cfmSet m="/interface/wifi/cap" p=({"slaves-static"="no"})
+    :if ($cfmDry != true) do={ :global cfmApFollow; :set cfmApFollow true }
+  } do={ $cfmLog ("slaves-static nicht abgeschaltet: " . $e) }
 }
-:if ([:len $fbk] > 0) do={
+# Übrig gebliebene statische virtuelle APs (TODO 85, DW1.12): Ohne slaves-static legt der CAPsMAN seine virtuellen
+# APs dynamisch an; statische mit master-interface ohne Kommentar cfm… stammen aus der Zeit mit slaves-static (je
+# Neuprovisionieren neue, die alten deaktiviert). Entfernen - nicht im Apply, der slaves-static gerade abschaltet (dort
+# sind sie noch in Gebrauch), nicht auf dem CAPsMAN-Gerät (dessen eigene Radios haben statische virtuelle APs aus der
+# Provisionierung). Eigene von Hand: Kommentar mit "cfm" beginnen lassen (z.B. cfm-override), dann bleiben sie.
+:global cfmIsCapsman
+:if (!$sstOn and ![$cfmIsCapsman]) do={
   :foreach i in=[/interface/wifi/find where !dynamic] do={
     :local mi ""
     :onerror e in={ :set mi [:tostr [/interface/wifi/get $i master-interface]] } do={}
-    :if ([:len $mi] > 0) do={
+    :local cm [:tostr [/interface/wifi/get $i comment]]
+    :if ([:len $mi] > 0 and !($cm ~ "^cfm")) do={
       :local vn [/interface/wifi/get $i name]
-      :local sid ""
-      :onerror e in={ :set sid [:tostr [/interface/wifi/get $i configuration.ssid]] } do={}
-      :if ([:len $sid] = 0) do={ :onerror e in={ :set sid [:tostr ([/interface/wifi/monitor $i once as-value]->"ssid")] } do={} }
-      # Virtuelle APs vom CAPsMAN: SSID steht nur in about ("...;mode: AP, SSID: Gast", hAP ax², 7.25,
-      # 2026-11-04) - bis zum nächsten Feld (", channel: ") bzw. Eintrag (";")
-      :if ([:len $sid] = 0) do={
-        :onerror e in={
-          :local ab [:tostr ([/interface/wifi/monitor $i once as-value]->"about")]
-          :local p [:find $ab "SSID: "]
-          :if ([:typeof $p] = "num") do={
-            :set sid [:pick $ab ($p + 6) [:len $ab]]
-            :foreach t in={";";", channel: "} do={ :local q [:find $sid $t]; :if ([:typeof $q] = "num") do={ :set sid [:pick $sid 0 $q] } }
-          }
-        } do={}
-      }
-      # abgeschaltete (schaltbare SSID, DW4.1) liefern kein about - nur laufende melden
-      :if ([:len $sid] = 0 and ![/interface/wifi/get $i disabled]) do={ $cfmWarn ("virtueller AP " . $vn . ": SSID nicht erkennbar - keine lokale Fallback-Kopie") }
-      :local k [:tostr ($fbk->$sid)]
-      :if ([:len $k] > 0) do={
-        # Band über das Radio des Masters; je Band eigene Konfiguration, wenn wifi.rsc sie vorsieht
-        :local b ""
-        :onerror e in={
-          :local bs [:tostr [/interface/wifi/radio/get [find where interface=$mi] bands]]
-          :if ($bs ~ "2ghz") do={ :set b "2" }
-          :if ($bs ~ "5ghz") do={ :set b "5" }
-          :if ($bs ~ "6ghz") do={ :set b "6" }
-        } do={}
-        :local cfg ("cfm-" . $k)
-        :if ([:len $b] > 0 and [:len [/interface/wifi/configuration/find where name=($cfg . "-" . $b . "g")]] > 0) do={ :set cfg ($cfg . "-" . $b . "g") }
-        :local curM [:tostr [/interface/wifi/get $i configuration.manager]]
-        :local curC [:tostr [/interface/wifi/get $i configuration]]
-        :local curD [:tostr [/interface/wifi/get $i datapath]]
-        :if ($curM != "capsman-or-local" or $curC != $cfg or $curD != ("cfm-" . $k)) do={
-          :if ($cfmDry != true) do={ /interface/wifi/set $i configuration=$cfg configuration.manager=capsman-or-local datapath=("cfm-" . $k) }
-          $cfmLog ("virtueller AP " . $vn . " (" . $sid . "): lokaler Fallback " . $cfg)
-        }
+      :if ($cfmDry = true) do={ $cfmLog ("statischer virtueller AP " . $vn . " (an " . $mi . ", ohne cfm-Kommentar) wuerde entfernt") } else={
+        /interface/wifi/remove $i
+        $cfmLog ("statischer virtueller AP " . $vn . " (an " . $mi . ") entfernt - Rest aus slaves-static")
       }
     }
   }
@@ -233,4 +224,18 @@ $cfmPskMissing
       }
     }
   }
+}
+
+# Skript cfm-fallback (DW1.12, Rumpf lib/ap.fbwatch.rsc, DG4.6): alle 10 s - lokale Fallback-SSIDs ein/aus nach der
+# Verbindung zum CAPsMAN, cfm-iso nach dem Wiederverbinden. Nur mit Fallback-SSIDs oder isolierten VLANs; sonst
+# entfernt der Apply Skript und Scheduler (nicht mehr gesehen)
+:if ([:len $fbs] > 0 or [:len $isv] > 0) do={
+  :global cfmBody
+  :local isl ""
+  :foreach vid,x in=$isv do={ :set isl ($isl . ";\"" . $vid . "\"=1") }
+  :if ([:len $isl] > 0) do={ :set isl [:pick $isl 1 [:len $isl]] }
+  :local src ("# cfm (Rolle ap, DW1.12): lokale Fallback-SSIDs nach der CAPsMAN-Verbindung schalten, cfm-iso nachtragen. Jeder Apply schreibt es neu\n:local iso ({" . $isl . "})\n")
+  :set src ($src . [$cfmBody "ap.fbwatch"] . "\n\$fbwatch iso=\$iso\n")
+  $cfmEnsure m="/system/script" k="sys:fallback" n=({"name"="cfm-fallback"}) p=({"name"="cfm-fallback";"source"=$src;"policy"="read,write,test"})
+  $cfmEnsure m="/system/scheduler" k="sys:fallback" n=({"name"="cfm-fallback"}) p=({"name"="cfm-fallback";"interval"="10s";"start-time"="startup";"on-event"="/system/script/run cfm-fallback";"disabled"="no"})
 }

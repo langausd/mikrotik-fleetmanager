@@ -365,6 +365,9 @@
     }
   }
   :set ($fneed->"capsman.reprov") "CAPsMAN"
+  # lokaler Fallback weiterer SSIDs und cfm-iso nach dem Verbinden (DW1.12): Rumpf von cfm-fallback auf den APs
+  :foreach k,s in=($cfmWifi->"ssids") do={ :if ([:tostr ($s->"fallback")] = "yes") do={ :set ($fneed->"ap.fbwatch") ("wifi.rsc fallback, SSID " . $k) } }
+  :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($fneed->"ap.fbwatch") ("vlans.rsc isolate, VLAN " . $vid) } }
   # bonds im Hostfile: unten beim Import der Hostfiles, geprüft am Ende
   :foreach n,d in=$inv do={
     :local ip [:tostr ($d->"ip")]

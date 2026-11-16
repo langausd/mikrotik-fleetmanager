@@ -155,7 +155,7 @@
     } do={}
     :set ($s->"radios") $rd
     # Lokaler Fallback (DW1.6): CAP eingeschaltet, aber mit keinem CAPsMAN verbunden -> die Radios senden
-    # mit der lokalen Kopie der Master-SSID, weitere SSIDs fehlen ($cfmStatus: "WLAN lokal", TODO 40d)
+    # mit der lokalen Kopie der Master-SSID, weitere nur mit fallback (DW1.12) ($cfmStatus: "WLAN lokal", TODO 40d)
     :local fb false
     :if ($isAp) do={
       :onerror e in={
@@ -528,8 +528,8 @@
     :set ($st->"iso")
     :if ([:typeof $cfmIsoV] = "array" and [:len $cfmIsoV] > 0) do={ :set ($st->"iso") $cfmIsoV }
     :set cfmIsoV
-    # slaves-static umgestellt (Rolle ap): zweiter Apply, sobald der CAP wieder am CAPsMAN hängt und seine
-    # virtuellen APs neu angelegt hat - erst dann hängen Fallback-Kopie und cfm-iso an den richtigen Interfaces
+    # slaves-static umgestellt (Rolle ap; seit DW1.12 nur noch das Abschalten): zweiter Apply, sobald der CAP wieder
+    # am CAPsMAN hängt und seine virtuellen APs neu angelegt hat - er räumt die übrig gebliebenen statischen ab (TODO 85)
     :global cfmApFollow
     :if ($cfmApFollow = true) do={
       /system/scheduler/remove [find where name="cfm-apfollow"]
@@ -715,9 +715,10 @@
   }
 
   # --- Isolierte VLANs (DP3.1) an einem AP: Der CAP legt seine WLAN-Interfaces bei jedem Neuverbinden bzw.
-  #     mit slaves-static neu an (neue Namen); der CAPsMAN gibt interface-list nicht weiter (Hardware 2026-11-04).
+  #     Neuprovisionieren neu an; der CAPsMAN gibt interface-list nicht weiter (Hardware 2026-11-04).
   #     Deshalb hier bei jedem Lauf: Interfaces der isolierten VLANs in cfm-iso nachtragen, Verweise auf
-  #     verschwundene Interfaces entfernen. Gleiche Schlüssel wie die Rolle ap (ilm:ISO:<Interface>).
+  #     verschwundene Interfaces entfernen. Gleiche Schlüssel wie die Rolle ap (ilm:ISO:<Interface>). Gleich nach dem
+  #     Wiederverbinden tut das schon das Skript cfm-fallback (DW1.12, lib/ap.fbwatch.rsc).
   :if (("," . [:tostr ($mf->"role")] . ",") ~ ",ap," and [:typeof ($st->"iso")] = "array" and [:len [/interface/list/find where name="cfm-iso"]] > 0) do={
     :onerror e in={
       :foreach bp in=[/interface/bridge/port/find where dynamic] do={

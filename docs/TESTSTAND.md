@@ -22,8 +22,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   ([ERLEDIGT.md](ERLEDIGT.md#behobene-fehler)) oder stehen in [TODO.md](TODO.md#bekannte-fehler) unter „Bekannte Fehler“.
 * **Noch nicht auf Hardware:** Beförderung und Rekey mit dem Backup-Manager (Spiegel und Ausfallmeldung am
   2026-11-08 bestanden), Onboarding gegen Werks-Configs von Routern
-  und CRS-Switches, die Fixes vom 2026-11-04 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im lokalen
-  Fallback, `cfm-iso` nach `slaves-static`), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
+  und CRS-Switches, die Fixes vom 2026-11-04 und 2026-11-16 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im
+  lokalen Fallback über eigene lokale virtuelle APs, `cfm-iso` nach dem Verbinden – DW1.12), `txPower`/Band aus je AP
+  (DW3.7), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
   Gerätetyp einen Pilotbetrieb mit einem Testgerät ein. Neu seit 2026-11-05: `$cfmSniff mirror=` (DU2.3.1), Pakete
   auf dem Backup (TODO 7); der umschaltbare Port (DP1.4) nur an einem hAP be³ Media, nicht an einem CRS.
 
@@ -34,8 +35,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * `e2e.sh` (Gesamttest): Manager-Bootstrap mit Reset, Aufnahme, Firewall, Probelauf, `$cfmShow`/`$cfmDiff`,
   Prüfung, Rollback und Watchdog-Rollback, Backup-Manager, Schlüsselwechsel, Archiv, Router-Rolle mit festen
   Leases, DNS-Namen, NTP-Umleitung und Bandbreitenlimit, DNS der Router samt Selbstbedienung, Netzplan, PPSK
-  (mit normaler Passphrase und `ppskOnly`), WLAN-Scan, CAPsMAN-Rolle und -Umzug, AP-Rolle mit `slaves-static`
-  (zweiter Apply, Abgleich von `cfm-iso`), Mitschnitt per `$cfmSniff`, Bestandsgeräte, Admin-Keys je User, Benachrichtigungen, Gerätesuche,
+  (mit normaler Passphrase und `ppskOnly`), WLAN-Scan, CAPsMAN-Rolle und -Umzug, AP-Rolle mit Fallback-Skript
+  `cfm-fallback` (Abschalten von `slaves-static`, Abgleich von `cfm-iso` nach dem Verbinden und im Agent, DW1.12),
+  Pool/`txPower`/Band aus je AP (DW3.7), Mitschnitt per `$cfmSniff`, Bestandsgeräte, Admin-Keys je User, Benachrichtigungen, Gerätesuche,
   SNMPv3, Syslog-Inhalt, Feature-Module, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
   Spiegel; seit 2026-11-11 Freigaben nach Domain und je Client (Schritt 14m, DR2.8/DR2.9); seit 2026-11-16 die Ausgabe
   von `$cfmCheck` (Schritt 7), `$cfmIsPrimary` ohne Daten auf dem Backup (Schritt 10) und Manager-Module aus `work/`
@@ -336,9 +338,20 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Feste Leases** (DN1.1): Stört eine schon dynamisch vergebene Lease derselben MAC das Anlegen der festen? (Am
   Standort vorher von Hand gelöscht.)
 * **Schaltbare SSID** (DW4.1/DW4.2, TODO 58): Aufräumen der festen Interfaces eines abgebauten AP; bleiben beim
-  Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen? Zusammenspiel mit `slaves-static`
-  (DW1.8).
-* **Weitere SSIDs im lokalen Fallback** (DW1.8, TODO 40a) und der Client-Test im Fallback. 2026-11-04 hing keine
+  Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen?
+* **Fallback weiterer SSIDs (DW1.12, Testplan für den nächsten Termin, TODO 74 a):** Nach Framework-Upload und Release
+  (Release-Notiz: „DW1.12“) an jedem AP mit `fallback`: (1) Log `slaves-static` abgeschaltet und `cfm-apfollow`, nach
+  dem Wiederverbinden zweiter Apply mit „statischer virtueller AP … entfernt“ (an einem AP lagen fünf alte); danach
+  `/interface/wifi/print where !dynamic and master-interface!=""` nur noch `fb-…`. (2) `fb-guest-wifi1`/`-wifi2` da,
+  `X` (aus), CAPsMAN-Betrieb ungestört: Gast-SSID am AP weiter vom CAPsMAN (`/interface/wifi/print` am CAPsMAN), keine
+  Fehlermeldung zu `fb-…` im Log. **Wenn doch** (Konflikt mit dem vom CAPsMAN betriebenen Radio): festhalten,
+  Rückfall „anlegen/löschen im Skript“ (DW1.12 verworfen) umsetzen. (3) Trennung wie 2026-11-16 (Bridge-Filter
+  `output` auf die CAPsMAN-MAC, 3 min): nach ~20 s Log „kein CAPsMAN seit ~20 s - lokale Fallback-SSIDs an“, Gast-SSID
+  im Scan, Laptop mit fester BSSID verbindet (`fb-…` hat eine eigene MAC – BSSID notieren), Lease im Gast-VLAN,
+  Isolation (Ping zu einem zweiten Gast scheitert). (4) Filter weg: „CAPsMAN wieder verbunden - lokale Fallback-SSIDs
+  aus“, ~20 s später `cfm-iso` nachgetragen (Log „nach dem Verbinden“), Gast wieder über den CAPsMAN. (5) Wieviel
+  Zeit vergeht bis zur Gast-SSID (Ziel: ~30 s nach dem Abriss)? 5 GHz nach CAC?
+* **Weitere SSIDs im lokalen Fallback** (bis 2026-11-16 DW1.8, TODO 40a) und der Client-Test im Fallback. 2026-11-04 hing keine
   lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent.
   *2026-11-12 (v37):* beide hAP ax² hängen die lokale Kopie `cfm-guest` an die Gast-Interfaces, ohne `force`-Push.
   Offen: der Client-Test im Fallback (CAPWAP zu einem AP sperren).
@@ -348,7 +361,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   `ssid-not-found` nach 16 s; Scan im Fallback zeigt am AP nur die Master-SSID, obwohl `cfm-guest` an den
   Gast-Interfaces hängt und sie nach der Rückkehr `running` sind. cfm greift im Fallback nicht ein (erst der
   Agent-Lauf meldet „WLAN im lokalen Fallback“). Diagnose (Log aus dem AP nach 60 s ohne CAPsMAN): nur die Master
-  aktiv, die vom CAPsMAN angelegten Slaves deaktiviert oder weg – Ursache gefunden, Lösung TODO 84. Dabei 5 GHz im
+  aktiv, die vom CAPsMAN angelegten Slaves deaktiviert oder weg – Ursache gefunden, neu gelöst mit DW1.12 (oben). Dabei 5 GHz im
   Fallback in DFS-CAC (lokale Kanalwahl). Clients ohne feste BSSID wechseln in 1–3 s zum Nachbarn.
 * **MLO mit FT** unter 7.25 („wifi - add fast transition support for MLD devices“, DW2.3, TODO 48).
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der

@@ -145,10 +145,10 @@ class UploadSeed(unittest.TestCase):
         with open(os.path.join(ov, "authorized_keys.netadmin"), "w") as fh:
             fh.write("ssh-ed25519 AAAA x\n")
         self.upload("--overlay", ov, "--site")
-        self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
+        self.assertEqual(self.lib(), ["ap.fbwatch.rsc", "base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
         # später ohne --site: zählen die Daten des Managers (dort liegen sie jetzt)
         self.upload("--overlay", ov)
-        self.assertEqual(self.lib(), ["base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
+        self.assertEqual(self.lib(), ["ap.fbwatch.rsc", "base.iso.rsc", "base.sshkeys.rsc", "capsman.reprov.rsc"])
 
     def test_site_ohne_hostfiles_der_vorlage(self):
         # mit --site und Overlay: Hostfiles nur aus dem Overlay, nie die der Vorlage (Labor: ap1, cm1 …);

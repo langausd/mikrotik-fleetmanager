@@ -42,8 +42,9 @@
 #            Nicht für SSIDs in isolierten VLANs (DP3.1).
 #  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab;
 #            eine laufende Verbindung trennt er deshalb nicht (dafür drop in steer)
-#  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback (DW1.8,
-#            slaves-static; die Master-SSID tut das immer)
+#  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback der APs über einen eigenen
+#            lokalen virtuellen AP je Radio, den das Skript cfm-fallback ~20 s nach dem Verlust des CAPsMAN einschaltet
+#            (DW1.12; die Master-SSID sendet im Fallback immer, DW1.6). Nicht zusammen mit switch (im Fallback ohne Schalter)
 #  switch    an einer weiteren SSID: "switch"="off"|"on" -> per Skript schaltbar (DW4.1), Wert =
 #            Grundzustand. Der CAPsMAN bekommt cfm-ssid-<key>-on/-off (z.B. für Home Assistant über
 #            capsmanApi), :global cfmSsid<key> zeigt den Zustand; Schlüssel nur a-z0-9

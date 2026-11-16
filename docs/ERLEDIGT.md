@@ -761,7 +761,43 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     Zigbee/Thread-Überdeckung für jede Frequenz eines Pools; `$cfmShow` nennt beides. Labor: `e2e.sh` Schritt 14.
     Offen auf Hardware ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)). Frühere Fassung unten.
 
+84. ~~**Weitere SSIDs im lokalen Fallback neu lösen**~~ – *umgesetzt 2026-11-16 (DW1.12, Nutzer):* Befund vom selben
+    Tag: RouterOS nimmt im Fallback die Slaves des CAPsMAN außer Betrieb. Jetzt je Fallback-SSID und Radio ein eigener
+    lokaler virtueller AP `fb-<key>-<Radio>` (dauerhaft angelegt, normal aus); das Skript `cfm-fallback` (Rumpf
+    `lib/ap.fbwatch.rsc`, Feature-Modul, alle 10 s) schaltet sie nach zwei Takten ohne CAPsMAN ein und beim
+    Wiederverbinden sofort aus und trägt danach `cfm-iso` nach (an jedem AP mit isolierten VLANs). `slaves-static`
+    schaltet cfm ab. Kanal im Fallback unverändert (CAC auf DFS hingenommen). `$cfmCheck` warnt bei `fallback` mit
+    `switch`. Labor: `e2e.sh` Schritt 14c. Hardware-Test offen (74 a).
+85. ~~**Alte virtuelle APs am CAP aufräumen**~~ – *umgesetzt 2026-11-16 (DW1.12, Nutzer):* Ist `slaves-static` aus,
+    entfernt die Rolle `ap` statische virtuelle APs mit `master-interface`, deren Kommentar nicht mit `cfm` beginnt –
+    nicht im Apply, der `slaves-static` abschaltet, nicht auf dem CAPsMAN-Gerät; der Probelauf nennt sie. Ohne
+    `slaves-static` entstehen keine neuen mehr. Hardware-Test offen (74).
+
 ## Frühere Fassungen
+
+### 40 · Lokaler Fallback der APs: weitere SSIDs (Stand bis 2026-11-16)
+
+40. **Lokaler Fallback der APs: weitere SSIDs** (DW1.6) – *vorbereitet (DW1.8):* `fallback="yes"` an einer
+    SSID schaltet `slaves-static` ein und hängt den virtuellen APs eine lokale Kopie an. Offen ist der Test vor
+    Ort (CAPsMAN-Dienst kurz aus): Lässt `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten
+    virtuellen APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen? Erst mit einer zweiten aktiven
+    SSID auf Hardware testbar; bis dahin fallen Gast/IoT im Fallback aus. *2026-11-04:* an einem Standort aktiv
+    (`slaves-static` gesetzt, virtuelle APs statisch), die lokale Kopie fehlt wegen eines Fehlers („Bekannte Fehler“);
+    Test nach dem Fix (74). Die erledigten Teile (b)–(e) stehen
+    in [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
+
+### 84 · Weitere SSIDs im lokalen Fallback neu lösen (Stand bis 2026-11-16)
+
+84. **Weitere SSIDs im lokalen Fallback neu lösen** (Befund 2026-11-16, „Bekannte Fehler“): RouterOS nimmt im Fallback
+    die vom CAPsMAN angelegten statischen Slaves außer Betrieb, eine daran gehängte lokale Konfiguration kommt nie zum
+    Zug. Idee: eigene lokale virtuelle APs je Fallback-SSID (nicht vom CAPsMAN), im Normalbetrieb aus, eingeschaltet
+    vom Agent bzw. einem Netwatch/Scheduler auf dem AP, sobald `/interface/wifi/cap` keinen CAPsMAN mehr meldet, und
+    beim Wiederverbinden aus. Vorher klären: Darf ein lokaler virtueller AP am Master hängen, während der Master vom
+    CAPsMAN betrieben wird (Zustand nach der Rückkehr)? Wie schnell reagiert der AP (Agent alle 15 min reicht nicht)?
+    Dazu **DFS im Fallback**: Die lokale Konfiguration wählt aus demselben Kanal-Pool, liegt der neue Kanal im DFS-Bereich,
+    ist 5 GHz am AP mindestens 1 min still (CAC) – lokaler Pool ohne DFS-Kanäle oder der zuletzt genutzte Kanal.
+    Diagnose am Gerät (SSH hängt während der Trennung): Zustand per `:execute` ins Log schreiben – nur Einzelfelder,
+    nie `[:tostr [/interface/wifi/get …]]` (enthält die Passphrase, ROUTEROS-EIGENHEITEN).
 
 ### 72 · Band je AP abschalten, Antennengewinn je AP (Stand bis 2026-11-16)
 
@@ -1104,6 +1140,22 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* ~~**Zweiter Apply nach `slaves-static` stellt noch einmal um**~~ und ~~**`fallback="yes"` hängt keine lokale Kopie an**~~ –
+  *gegenstandslos 2026-11-16 (DW1.12):* cfm setzt `slaves-static` nicht mehr (nur noch einmal ab) und hängt keine
+  Kopie mehr an die Slaves des CAPsMAN, die RouterOS im Fallback ohnehin außer Betrieb nimmt. Frühere Texte:
+
+  * **Zweiter Apply nach `slaves-static` stellt noch einmal um** (DW1.8.1, Labor 7.25.1, 2026-11-05): Nach dem
+    Umstellen startet `cfm-apfollow` den zweiten Apply; der setzt `slaves-static` erneut („gesetzt: /interface/wifi/cap:
+    slaves-static“) und legt `cfm-apfollow` noch einmal an – ein zusätzliches Neuverbinden des CAP, danach ist Ruhe.
+    In zwei Läufen gesehen, in den Läufen auf 7.25 nicht. Von Hand nicht nachgestellt: Mit zwei VMs (CAPsMAN + CAP,
+    7.25.1) bleibt der Wert nach dem Neuverbinden `true`. Ursache offen; bis dahin `fallback` an weiteren SSIDs nur zu
+    ruhiger Zeit einschalten. Der e2e-Test traf das Zeitfenster nur manchmal (wackelt).
+  * **`fallback="yes"` hängt keine lokale Kopie an** (DW1.8, `roles/ap.rsc`): Die Rolle erkennt die SSID eines vom
+    CAPsMAN angelegten virtuellen AP an `configuration.ssid` bzw. `monitor`→`ssid` – am CAP ist beides leer, die SSID
+    steht nur in `monitor`→`about` („mode: AP, SSID: Gast“). Folge: Nur `slaves-static` wirkt, im Fallback fällt die
+    SSID weiter aus. Fix: SSID ersatzweise aus `about` lesen (Text nach `SSID: ` bis `,`/`;` – wie schon der Kanal
+    im Agent), im Probelauf melden, wenn ein virtueller AP ohne erkennbare SSID bleibt.
 
 * ~~**Tick des Backup-Managers bricht ab: `no such item (/file/get; line 237)`**~~ – *behoben 2026-11-16 (DM3.3):*
   `$cfmIsPrimary` lädt die Daten in `:onerror` und nimmt sonst die Managerliste aus `cfm-conf`; `$cfmNotifyBackupTick`

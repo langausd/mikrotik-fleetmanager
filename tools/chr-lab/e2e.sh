@@ -791,42 +791,53 @@ fi
 applied cm2 || true
 stat cm2 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "Rolle ap idempotent" || bad "ap idempotent: $(stat cm2 stats)"
 expect 3 '[:len [/log/find where message~"slaves-static"]] = 0' "cm2: slaves-static ohne fallback nicht gesetzt (kein Abriss zum CAPsMAN, TODO 40)"
-# Gast-SSID mit fallback, Gast-VLAN isoliert (DW1.8.1, DP3.1.1): slaves-static umgestellt -> der Agent stößt den
-# zweiten Apply an, sobald der CAP verbunden ist (Scheduler cfm-apfollow); er merkt sich die isolierten VLANs und
-# räumt bei jedem Lauf Einträge in cfm-iso ab, deren Interface verschwunden ist (CHR ohne Radios: nur das)
+# Gast-SSID mit fallback, Gast-VLAN isoliert (DW1.12, DP3.1.1). Übergang von DW1.8: slaves-static noch an (von Hand
+# gesetzt) -> die Rolle schaltet es ab und kündigt den zweiten Apply an. Lokale virtuelle APs entstehen nur an Radios
+# (CHR hat keine); das Skript cfm-fallback (alle 10 s) kommt wegen fallback/isolate und trägt nach dem Verbinden
+# cfm-iso nach bzw. räumt Verweise auf verschwundene Interfaces ab - wie der Agent bei jedem Lauf
+r 3 '/interface/wifi/cap/set slaves-static=yes' >/dev/null
 mgr ':global e2eWf [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; :global e2eVf [/file/get [/file/find name="cfm/work/vlans.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eWf . ":set (\$cfmWifi->\"ssids\"->\"guest\"->\"fallback\") \"yes\"\n"); /file/set [/file/find name="cfm/work/vlans.rsc"] contents=($e2eVf . ":set (\$cfmVlans->\"40\"->\"isolate\") \"yes\"\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" Gast fallback+isolate" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 3 "$rv" cm2 && ok "cm2 (ap) hat v$rv (Gast fallback, VLAN 40 isoliert) angewendet" || { bad "cm2 Apply v$rv"; r 3 '/log/print where message~"^cfm: "' | tail -6; }
 agentwait 1 "$rv" cm1 || true; agentwait 2 "$rv" sw1 || true
-expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "yes|true" and [:len [/log/find where message~"slaves-static umgestellt - zweiter Apply folgt"]] >= 1' "cm2: slaves-static an, zweiter Apply angekündigt (DW1.8.1)"
+expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "no|false" and [:len [/log/find where message~"slaves-static umgestellt - zweiter Apply folgt"]] >= 1' "cm2: slaves-static aus DW1.8 abgeschaltet, zweiter Apply angekündigt (DW1.12)"
+expect 3 '[:len [/file/find where name="cfm/dl/lib/ap.fbwatch.rsc"]] = 1 and [:len [/system/script/find where name="cfm-fallback" and source~"fbwatch iso="]] = 1 and [/system/scheduler/get [find name="cfm-fallback"] interval] = 00:00:10' "cm2: Skript cfm-fallback (Rumpf ap.fbwatch) alle 10 s"
+expect 3 '[:typeof [:find [/system/script/get [find name="cfm-fallback"] source] ":local iso ({\"40\"=1})"]] = "num" and [:len [/interface/wifi/find where comment~"^cfm:wfb:"]] = 0' "cm2: cfm-fallback kennt das isolierte VLAN 40; ohne Radios keine lokalen Fallback-APs"
 expect 3 '[:typeof ([:deserialize from=json [/file/get cfm/state.json contents]]->"iso"->"40")] != "nothing" and [:len [/interface/list/find where name="cfm-iso"]] = 1' "cm2: Agent merkt sich das isolierte VLAN 40 (DP3.1.1)"
 if [ "${conn:-0}" != 0 ]; then
-  # bis Scheduler und Agent-Läufe ruhen: auf 7.25.1 stellt der zweite Apply slaves-static gelegentlich noch einmal
-  # um (TODO, Bekannte Fehler) - dann folgt eine weitere Runde
   for _ in $(seq 1 60); do r 3 ':put ([:len [/system/scheduler/find where name="cfm-apfollow"]] + [:len [/system/script/job/find where script="cfm-agent"]])' | tail -1 | grep -qx 0 && break; sleep 4; done
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow"]] = 0 and [:len [/log/find where message~"zweiter Apply nach slaves-static"]] >= 1' "cm2: CAP verbunden -> zweiter Apply von selbst, Scheduler weg"
+  # cfm-fallback nach dem Wiederverbinden: Verweis auf ein verschwundenes Interface zwei Takte später entfernt
+  for _ in $(seq 1 30); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+  r 3 '/system/scheduler/disable [find name="cfm-fallback"]; /interface/bridge/add name=isotmp; /interface/list/member/add list=cfm-iso interface=isotmp comment="cfm:ilm:ISO:isotmp"; /interface/bridge/remove [find name=isotmp]; :global cfmFbC false; :global cfmFbIso; /system/script/run cfm-fallback' >/dev/null
+  expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 1' "cm2: cfm-fallback wartet nach dem Verbinden zwei Takte"
+  r 3 '/system/script/run cfm-fallback; /system/script/run cfm-fallback' >/dev/null
+  expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 0 and [:len [/log/find where message~"cfm-iso: Verweis auf isotmp entfernt"]] >= 1' "cm2: cfm-fallback räumt cfm-iso nach dem Verbinden auf (DW1.12)"
+  r 3 '/system/scheduler/enable [find name="cfm-fallback"]' >/dev/null
 else
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow" and interval=30s]] = 1' "cm2: Scheduler cfm-apfollow wartet auf die CAPsMAN-Verbindung"
   r 3 ':global cfmApN 20; :local f [:parse [/system/scheduler/get [find name="cfm-apfollow"] on-event]]; $f' >/dev/null
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow"]] = 0' "cm2: cfm-apfollow gibt nach 20 Versuchen ohne CAPsMAN auf"
+  r 3 ':global cfmFbN 0; /system/script/run cfm-fallback; /system/script/run cfm-fallback' >/dev/null
+  r 3 ':global cfmFbN; :put ($cfmFbN >= 2)' | grep -q true && ok "cm2: cfm-fallback zählt die Takte ohne CAPsMAN" || bad "cm2: cfm-fallback zählt nicht"
 fi
-# Erst den zweiten Apply (cfm-apfollow startet ihn 20 s nach dem Verbinden) abwarten - sonst räumt dessen GC den
-# Testeintrag ab, nicht der Agent-Abgleich (Labor 2026-11-04)
+# Agent-Abgleich (DP3.1.1) bleibt: erst den zweiten Apply abwarten - sonst räumt dessen GC den Testeintrag ab
 sleep 30
 for _ in $(seq 1 60); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
-r 3 '/interface/bridge/add name=isotmp; /interface/list/member/add list=cfm-iso interface=isotmp comment="cfm:ilm:ISO:isotmp"; /interface/bridge/remove [find name=isotmp]' >/dev/null
+r 3 '/system/scheduler/disable [find name="cfm-fallback"]; /interface/bridge/add name=isotmp2; /interface/list/member/add list=cfm-iso interface=isotmp2 comment="cfm:ilm:ISO:isotmp2"; /interface/bridge/remove [find name=isotmp2]' >/dev/null
 # Agent-Lauf per $cfmPush: Als admin (SSH) holt er kein Manifest und bricht vor dem Abgleich ab (Labor 2026-11-05)
 for _ in 1 2 3; do
   for _ in $(seq 1 30); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
   mgr '$cfmPush host=cm2' >/dev/null
-  for _ in $(seq 1 12); do r 3 ':put [:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]]' | tail -1 | grep -qx 0 && break 2; sleep 5; done
+  for _ in $(seq 1 12); do r 3 ':put [:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp2"]]' | tail -1 | grep -qx 0 && break 2; sleep 5; done
 done
-expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 0 and [:len [/log/find where message~"cfm-iso: Verweis auf isotmp entfernt"]] >= 1' "cm2: Agent entfernt den cfm-iso-Eintrag eines verschwundenen Interface (DP3.1.1)"
+expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp2"]] = 0 and [:len [/log/find where message~"cfm-iso: Verweis auf isotmp2 entfernt"]] >= 1' "cm2: Agent entfernt den cfm-iso-Eintrag eines verschwundenen Interface (DP3.1.1)"
+r 3 '/system/scheduler/enable [find name="cfm-fallback"]' >/dev/null
 mgr ':global e2eWf; :global e2eVf; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eWf; /file/set [/file/find name="cfm/work/vlans.rsc"] contents=$e2eVf' >/dev/null
 rv=$(mgr '$cfmRelease msg=" Gast fallback+isolate aus" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 3 "$rv" cm2 && ok "cm2 hat v$rv (ohne fallback/isolate) angewendet" || bad "cm2 Apply v$rv"
 agentwait 1 "$rv" cm1 || true; agentwait 2 "$rv" sw1 || true
-expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "no|false" and [:len [/interface/list/find where name="cfm-iso"]] = 0' "cm2: slaves-static wieder aus, cfm-iso abgeräumt"
+expect 3 '[:tostr [/interface/wifi/cap/get slaves-static]] ~ "no|false" and [:len [/interface/list/find where name="cfm-iso"]] = 0 and [:len [/system/script/find where name="cfm-fallback"]] = 0 and [:len [/system/scheduler/find where name="cfm-fallback"]] = 0' "cm2: slaves-static bleibt aus, cfm-iso und cfm-fallback abgeräumt"
 r 3 '/system/scheduler/remove [find where name="cfm-apfollow"]' >/dev/null
 # AP mit wifi-qcom-ac (TODO 23): \$cfmCheck warnt anhand der gemeldeten Pakete (Status kurz verändert)
 out=$(mgr ':local f [/file/find name="cfm/state/cm2/status.dat"]; :local c [/file/get $f contents]; :local j [:deserialize from=json $c]; :set ($j->"pkgs") ({"routeros";"wifi-qcom-ac"}); /file/set $f contents=[:serialize to=json $j]; :global cfmCheck; :foreach e in=([$cfmCheck]->"warn") do={ :put ("W " . $e) }; /file/set $f contents=$c')

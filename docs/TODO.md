@@ -14,9 +14,11 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   *Nachtrag 2026-11-12:* Der LAN-LAN-Tunnel der Fritz!Boxen bleibt vorerst (DR3.2.1: `asymRouting` mit Netzen, damit
   Hosts mit Gateway VIP darüber erreichbar sind; DR4.3.1: Standort ohne `pubkey` nur vorbereitet). Reihenfolge des
   Nutzers: erst die offenen Tests an Standort B (74), dann cfm-Tunnel vorbereiten, A/B-Messung gegen den Fritz-Tunnel (81).
-* **Neu 2026-11-16 (Hardware):** Gast-Kopie im lokalen Fallback sendet nicht – RouterOS nimmt die Slaves des CAPsMAN
-  im Fallback außer Betrieb (TODO 84, „Bekannte Fehler“); `antenna-gain` wirkungslos, 5-GHz-Kanalwahl kostet bis zu
-  13 dB (TODO 72, 87); kleinere Punkte 85, 86.
+* **Neu 2026-11-16 (Hardware), abends umgesetzt (unbeaufsichtigt, Labor):** Fallback weiterer SSIDs über eigene lokale
+  virtuelle APs und das Skript `cfm-fallback`, `slaves-static` entfällt samt Resten (84, 85 → DW1.12); `txPower`, Pool
+  je AP und Band aus (72 → DW3.7); 5-GHz-Pool der Vorlage mit DFS (87 → DW3.6); Hinweis in `upload-seed.sh` (86).
+  **Nächster Schritt:** Framework-Upload und Release an einem Standort, dann Test vor Ort (74, Testplan in
+  [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
@@ -36,8 +38,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
-* **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
-  79–81, 84–87.
+* **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 73–75,
+  79–81.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -88,27 +90,18 @@ was auf Hardware und im Labor schon bestanden hat.
 
 ## Bekannte Fehler
 
-Drei Fehler aus dem Hardware-Test vom 2026-11-04 (CRS418 als CAPsMAN, hAP ax² als CAPs, 7.25; Eigenheiten dazu in
-[ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). *Im Code behoben
-2026-11-05 (DW1.8.1, DW2.2.1, DP3.1.1), im Labor geprüft soweit ohne Funk möglich ([TESTSTAND.md](TESTSTAND.md)); der
-Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
+Fehler aus den Hardware-Tests vom 2026-11-04 und 2026-11-16 (CRS418 als CAPsMAN, hAP ax² als CAPs, 7.25; Eigenheiten
+dazu in [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). *Im Code
+behoben 2026-11-05 (DW2.2.1, DP3.1.1) bzw. neu gelöst 2026-11-16 (DW1.12), im Labor geprüft soweit ohne Funk möglich
+([TESTSTAND.md](TESTSTAND.md)); der Test vor Ort (74) steht aus – bis dahin bleiben sie hier. Die beiden Fehler rund um
+`slaves-static` (zweiter Apply stellt noch einmal um, SSID der Slaves nur in `about`) sind mit DW1.12 gegenstandslos:
+[ERLEDIGT.md](ERLEDIGT.md#behobene-fehler).*
 
-* **Zweiter Apply nach `slaves-static` stellt noch einmal um** (DW1.8.1, Labor 7.25.1, 2026-11-05): Nach dem
-  Umstellen startet `cfm-apfollow` den zweiten Apply; der setzt `slaves-static` erneut („gesetzt: /interface/wifi/cap:
-  slaves-static“) und legt `cfm-apfollow` noch einmal an – ein zusätzliches Neuverbinden des CAP, danach ist Ruhe.
-  In zwei Läufen gesehen, in den Läufen auf 7.25 nicht. Von Hand nicht nachgestellt: Mit zwei VMs (CAPsMAN + CAP,
-  7.25.1) bleibt der Wert nach dem Neuverbinden `true`. Ursache offen; bis dahin `fallback` an weiteren SSIDs nur zu
-  ruhiger Zeit einschalten. Der e2e-Test traf das Zeitfenster nur manchmal (wackelt).
-* **`fallback="yes"` hängt keine lokale Kopie an** (DW1.8, `roles/ap.rsc`): Die Rolle erkennt die SSID eines vom
-  CAPsMAN angelegten virtuellen AP an `configuration.ssid` bzw. `monitor`→`ssid` – am CAP ist beides leer, die SSID
-  steht nur in `monitor`→`about` („mode: AP, SSID: Gast“). Folge: Nur `slaves-static` wirkt, im Fallback fällt die
-  SSID weiter aus. Fix: SSID ersatzweise aus `about` lesen (Text nach `SSID: ` bis `,`/`;` – wie schon der Kanal
-  im Agent), im Probelauf melden, wenn ein virtueller AP ohne erkennbare SSID bleibt.
-* **Gast-Kopie im lokalen Fallback sendet nicht** (DW1.8/DW1.8.1, Hardware 2026-11-16, hAP ax² als CAPs, 7.25): Die
-  lokale Kopie (`cfm-guest`) hängt seit DW1.8.1 an den statischen Slaves, die SSID ist im Fallback trotzdem weg. Ein
-  Log aus dem AP nach 60 s ohne CAPsMAN zeigt nur noch die beiden Master-Interfaces aktiv („managed locally“), die
-  vom CAPsMAN angelegten Slaves sind deaktiviert oder fehlen; nach der Rückkehr sind sie wieder da (Eigenheit unten).
-  Die Master-SSID sendet lokal weiter. Lösung offen (TODO 84). Bis dahin: `fallback` an weiteren SSIDs wirkt nicht.
+* **Gast-Kopie im lokalen Fallback sendet nicht** (DW1.8/DW1.8.1, Hardware 2026-11-16, hAP ax² als CAPs, 7.25):
+  RouterOS nimmt die vom CAPsMAN angelegten Slaves im Fallback außer Betrieb, auch mit `slaves-static` und lokaler
+  Konfiguration daran; nur die Master-SSID sendet lokal weiter. *Neu gelöst 2026-11-16 (DW1.12, TODO 84):* eigene
+  lokale virtuelle APs je Fallback-SSID, geschaltet vom Skript `cfm-fallback` (alle 10 s); `slaves-static` schaltet
+  cfm ab. Im Labor geprüft ohne Funk, Test vor Ort offen (74 a).
 * **Mit PPSK geht die normale Passphrase der SSID nicht mehr** (DW2.2, `lib/lib-wifi.rsc`, Secret-Push): RouterOS
   ignoriert die `passphrase` eines Profils mit `multi-passphrase-group`. Fix: Für jede SSID mit `ppsk` einen
   Gruppeneintrag ohne `vlan-id` (Kommentar z.B. `cfm:mpp:<ssid>`) mit der Passphrase aus `psk.<ssid>` anlegen – auf
@@ -116,17 +109,12 @@ Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
   Entfernen eines Eintrags dessen Clients trennt: Secret-Push und Rolle setzen die Passphrase nur, wenn sie sich
   ändert (Vergleich vor dem `set`; ob ein `set` mit gleichem Wert trennt, ist offen), und legen Einträge nicht neu an.
   Admin-Guide (PPSK) und DW2.2 ergänzen. Bis dahin ist die betroffene SSID an einem Standort aus.
-* **`cfm-iso` nach dem Umstellen auf `slaves-static` veraltet** (DP3.1/DW1.8, `roles/ap.rsc`; *auf Hardware bestätigt
-  2026-11-12 und 2026-11-16 – `cfm-iso` folgte neuen Interface-Namen nach dem Neuprovisionieren*): Der Apply, der
-  `slaves-static` setzt, trennt den CAP vom CAPsMAN; der CAP legt die virtuellen APs danach mit neuen Namen an. Die
-  Rolle trug im selben Lauf noch das alte Interface ein (`wifi3`), erst der zweite Apply die neuen – dazwischen
-  (12 min) griff der Bridge-Filter für Gäste vermutlich nicht. Dieselbe Lücke hat die Fallback-Kopie (braucht ohnehin
-  den zweiten Apply). Fix: Nach einer Änderung von `slaves-static` stößt der Agent selbst einen zweiten Apply an,
-  sobald der CAP wieder verbunden ist (ähnlich dem Nachfassen in DW1.11), statt auf `$cfmPush … force=yes` zu bauen.
-  Dazu die Frage, ob isolierte SSIDs ohne `slaves-static` sicher sind: Dynamische Interfaces entstehen bei jedem
-  Neuverbinden des CAP neu, das statische Mitglied in `cfm-iso` zeigt dann bis zum nächsten Apply ins Leere
-  (Eigenheit „Verweis auf ein Interface“). Vorschlag zur Entscheidung: `isolate` an einer SSID setzt `slaves-static`
-  mit, oder der Agent prüft `cfm-iso` bei jedem Lauf.
+* **`cfm-iso` nach dem Neuverbinden veraltet** (DP3.1/DW1.8, `roles/ap.rsc`; *auf Hardware bestätigt 2026-11-12 und
+  2026-11-16*): Der CAP legt seine virtuellen APs nach jedem Neuverbinden (mit `slaves-static` auch nach jedem
+  Neuprovisionieren) mit neuen Namen an; das statische Mitglied in `cfm-iso` zeigt dann ins Leere, bis Rolle oder Agent
+  nachtragen (bis zu 15 min greift der Bridge-Filter für Gäste nicht). *Neu gelöst 2026-11-16 (DW1.12):* Ohne
+  `slaves-static` keine neuen Namen beim Neuprovisionieren; das Skript `cfm-fallback` trägt zwei Takte (~20 s) nach
+  dem Wiederverbinden nach – an jedem AP mit isolierten VLANs. Im Labor geprüft, Test vor Ort offen (74 c/d).
 
 * **Backup-Manager: Einspielen der Manager-Module scheitert** (`roles/manager.rsc`, hAP be³ Media 7.25.1,
   2026-11-08): zweimal `no such item (/file/get; line 26)` gleich nach dem Ersetzen eines anderen Modul-Skripts,
@@ -217,14 +205,10 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 37. **Paketprüfung – Rest** (umgesetzt: DV1.4, NPK-Kennung): Prüfsummen von MikroTik nutzen, falls es eine
     Liste gibt.
 <!-- -->
-40. **Lokaler Fallback der APs: weitere SSIDs** (DW1.6) – *vorbereitet (DW1.8):* `fallback="yes"` an einer
-    SSID schaltet `slaves-static` ein und hängt den virtuellen APs eine lokale Kopie an. Offen ist der Test vor
-    Ort (CAPsMAN-Dienst kurz aus): Lässt `/interface/wifi/cap slaves-static=yes` die vom CAPsMAN angelegten
-    virtuellen APs im Fallback mit ihrer lokalen Konfiguration weiterlaufen? Erst mit einer zweiten aktiven
-    SSID auf Hardware testbar; bis dahin fallen Gast/IoT im Fallback aus. *2026-11-04:* an einem Standort aktiv
-    (`slaves-static` gesetzt, virtuelle APs statisch), die lokale Kopie fehlt wegen eines Fehlers („Bekannte Fehler“);
-    Test nach dem Fix (74). Die erledigten Teile (b)–(e) stehen
-    in [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
+40. **Lokaler Fallback der APs: weitere SSIDs** (DW1.6) – *neu gelöst 2026-11-16 (DW1.12, TODO 84):* `fallback="yes"`
+    an einer SSID → eigene lokale virtuelle APs je Radio, normal aus, das Skript `cfm-fallback` schaltet sie ~20 s nach
+    dem Verlust des CAPsMAN ein und beim Wiederverbinden aus; `slaves-static` (DW1.8) entfällt. Offen: Test vor Ort
+    (74 a, [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)). Frühere Teile in [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
 <!-- -->
 48. **RouterOS 7.25 – Rest** (Befunde und Changelog-Durchsicht: [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen),
     Läufe: [TESTSTAND.md](TESTSTAND.md)): **FT für MLD-Geräte** („wifi - add fast transition support for MLD
@@ -265,8 +249,7 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein
     startet das Radio nicht neu – andere SSIDs ohne Unterbrechung). Offen: Aufräumen der festen Interfaces eines abgebauten AP (bisher von Hand, Admin-Guide 7.4); bleiben beim
-    Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen? Zusammenspiel mit
-    `slaves-static` (DW1.8). Rückfall, falls feste Interfaces nicht tragen: nacheinander provisionieren (je AP
+    Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen? Rückfall, falls feste Interfaces nicht tragen: nacheinander provisionieren (je AP
     `/interface/wifi/radio/provision` mit einigen Sekunden Abstand; die Unterbrechung je AP bleibt).
 <!-- -->
 62. **Mitschnitt der Wechselvorschläge (802.11v) per Sniffer** (Wunsch des Nutzers, 2026-10-23; zu 61/DW2.5) –
@@ -334,6 +317,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     „Weitere SSIDs im lokalen Fallback“) – Ursache offen, nächster Schritt: Diagnose-Durchgang mit Log aus dem AP;
     (d) `cfm-iso` folgte nach dem Neuprovisionieren (Kanalwechsel) den neuen Interface-Namen. Nebenbefund:
     deaktivierte alte virtuelle APs bleiben am CAP liegen (je Neuprovisionierung neue Namen).
+    *2026-11-16 abends (unbeaufsichtigt, DW1.12):* (a) neu gelöst über eigene lokale virtuelle APs und das Skript
+    `cfm-fallback`, (d) entfällt (`slaves-static` wird abgeschaltet, die Reste räumt die Rolle ab, TODO 85). Testplan
+    für den nächsten Termin: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware) „Fallback weiterer SSIDs (DW1.12)“.
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.
@@ -358,17 +344,3 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
     unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
     Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.
-84. **Weitere SSIDs im lokalen Fallback neu lösen** (Befund 2026-11-16, „Bekannte Fehler“): RouterOS nimmt im Fallback
-    die vom CAPsMAN angelegten statischen Slaves außer Betrieb, eine daran gehängte lokale Konfiguration kommt nie zum
-    Zug. Idee: eigene lokale virtuelle APs je Fallback-SSID (nicht vom CAPsMAN), im Normalbetrieb aus, eingeschaltet
-    vom Agent bzw. einem Netwatch/Scheduler auf dem AP, sobald `/interface/wifi/cap` keinen CAPsMAN mehr meldet, und
-    beim Wiederverbinden aus. Vorher klären: Darf ein lokaler virtueller AP am Master hängen, während der Master vom
-    CAPsMAN betrieben wird (Zustand nach der Rückkehr)? Wie schnell reagiert der AP (Agent alle 15 min reicht nicht)?
-    Dazu **DFS im Fallback**: Die lokale Konfiguration wählt aus demselben Kanal-Pool, liegt der neue Kanal im DFS-Bereich,
-    ist 5 GHz am AP mindestens 1 min still (CAC) – lokaler Pool ohne DFS-Kanäle oder der zuletzt genutzte Kanal.
-    Diagnose am Gerät (SSH hängt während der Trennung): Zustand per `:execute` ins Log schreiben – nur Einzelfelder,
-    nie `[:tostr [/interface/wifi/get …]]` (enthält die Passphrase, ROUTEROS-EIGENHEITEN).
-85. **Alte virtuelle APs am CAP aufräumen** (Befund 2026-11-16): Mit `slaves-static` legt der CAP bei jedem
-    Neuprovisionieren (z. B. nach einer Kanaländerung) neue Interfaces an; die alten bleiben deaktiviert liegen (nach
-    drei Durchläufen fünf Stück an einem AP). Die Rolle `ap` könnte deaktivierte Slaves ohne CAPsMAN-Bezug entfernen –
-    erst prüfen, ob RouterOS sie beim nächsten Verbinden wieder verwendet.

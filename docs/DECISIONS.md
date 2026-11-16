@@ -1430,7 +1430,7 @@ Hardware: offen.
 
 **Verworfen:** nur ein Standby-CAPsMAN · nur die Ursache des Abrisses beheben
 
-**Begründung:** Hardware-Test (cAP ax, 7.24.4): Abriss per Bridge-Filter auf die MAC des CAPsMAN; nach 6 s „no connection to CAPsMAN, managed locally“, nach 8–9 s sendet der AP mit der lokalen Kopie weiter; Rückkehr ~20 s nach dem Ende, danach ~10 s Neuprovisionierung. Die MikroTik-Doku beschreibt `capsman-or-local` anders („wenn `/interface/wifi/cap` nicht aktiv ist“), verlässlich ist hier nur der Test. Im Fallback ruht FT zwischen den APs (jeder AP ist allein). Datapath des Radios = Datapath der `master`-SSID (Bridge + VLAN): dieselbe `vlan-id` schickt auch der CAPsMAN, sie gilt damit in beiden Betriebsarten. Radios ohne Band in `wifi.rsc` (6 GHz) bleiben reine CAPs. Wi-Fi 7 (hAP be³, 7.25beta5): Ab Werk hängen die Radios am statischen, abgeschalteten MLD `mld1`; im Fallback meldeten sie „mld-interface not enabled“ und blieben aus. Die Rolle löst sie davon (`mld-interface` leer, bei jedem Apply, sobald das Gerät ein statisches MLD hat) – lokal senden sie dann nach ~4–7 s als getrennte APs ohne MLO; im CAPsMAN-Betrieb baut der CAPsMAN sein MLD weiter dynamisch auf (geprüft). Fehlt die PSK in einem neu angelegten Profil, fordert die Rolle einen Secret-Push an (`sv=0` am Geräteschlüssel, der Agent meldet es gleich nach dem Apply). Weitere SSIDs im Fallback: DW1.8 (vorbereitet, standardmäßig aus). Offen bleibt der Client-Test im Fallback ([TODO.md](TODO.md) Punkt 40a).
+**Begründung:** Hardware-Test (cAP ax, 7.24.4): Abriss per Bridge-Filter auf die MAC des CAPsMAN; nach 6 s „no connection to CAPsMAN, managed locally“, nach 8–9 s sendet der AP mit der lokalen Kopie weiter; Rückkehr ~20 s nach dem Ende, danach ~10 s Neuprovisionierung. Die MikroTik-Doku beschreibt `capsman-or-local` anders („wenn `/interface/wifi/cap` nicht aktiv ist“), verlässlich ist hier nur der Test. Im Fallback ruht FT zwischen den APs (jeder AP ist allein). Datapath des Radios = Datapath der `master`-SSID (Bridge + VLAN): dieselbe `vlan-id` schickt auch der CAPsMAN, sie gilt damit in beiden Betriebsarten. Radios ohne Band in `wifi.rsc` (6 GHz) bleiben reine CAPs. Wi-Fi 7 (hAP be³, 7.25beta5): Ab Werk hängen die Radios am statischen, abgeschalteten MLD `mld1`; im Fallback meldeten sie „mld-interface not enabled“ und blieben aus. Die Rolle löst sie davon (`mld-interface` leer, bei jedem Apply, sobald das Gerät ein statisches MLD hat) – lokal senden sie dann nach ~4–7 s als getrennte APs ohne MLO; im CAPsMAN-Betrieb baut der CAPsMAN sein MLD weiter dynamisch auf (geprüft). Fehlt die PSK in einem neu angelegten Profil, fordert die Rolle einen Secret-Push an (`sv=0` am Geräteschlüssel, der Agent meldet es gleich nach dem Apply). Weitere SSIDs im Fallback: DW1.12 (früher DW1.8; standardmäßig aus). Offen bleibt der Client-Test im Fallback ([TODO.md](TODO.md) Punkt 40a).
 
 #### <a id="dw1.7"></a>DW1.7 · Eigene Radios des CAPsMAN-Geräts
 
@@ -1458,7 +1458,9 @@ Ab Werk hängen die Radios des hAP be³ am statischen, abgeschalteten MLD `mld1`
 
 **Begründung:** Wie bei der Master-SSID (DW1.6), wenig Code. Ob RouterOS statische virtuelle APs im Fallback weitersenden lässt, zeigt nur der Test vor Ort. Bei ausgeschaltetem Schalter bleiben schon angelegte statische virtuelle APs stehen (der CAPsMAN legt sie beim Verbinden ohnehin neu an).
 
-**Status:** ergänzt durch DW1.8.1 (2026-11-04): SSID der CAP-Slaves aus `about`, zweiter Apply vom Agent.
+**Status:** ergänzt durch DW1.8.1 (2026-11-04): SSID der CAP-Slaves aus `about`, zweiter Apply vom Agent. **Ersetzt
+durch DW1.12 (2026-11-16):** RouterOS nimmt die Slaves des CAPsMAN im Fallback außer Betrieb, auch mit `slaves-static`
+und lokaler Konfiguration daran (Hardware 2026-11-16) – genau die hier verworfene Variante trägt.
 
 ##### <a id="dw1.8.1"></a>DW1.8.1 · Zweiter Apply nach `slaves-static` kommt vom Agent
 
@@ -1476,13 +1478,15 @@ Rolle zusätzlich aus `monitor`→`about` („mode: AP, SSID: …“): Konfigura
 sofort im selben Lauf (die Interfaces entstehen erst nach dem Neuverbinden)
 
 **Begründung:** Am 2026-11-04 hing ohne den zweiten Apply weder die Fallback-Kopie an noch stimmte `cfm-iso` (DP3.1.1).
-Rückbau: Scheduler-Anlage im Agent entfernen, dann gilt wieder der Push von Hand.
+Rückbau: Scheduler-Anlage im Agent entfernen, dann gilt wieder der Push von Hand. *Seit DW1.12 (2026-11-16) stößt
+`cfm-apfollow` nur noch nach dem Abschalten von `slaves-static` den zweiten Apply an (er räumt die übrig gebliebenen
+statischen virtuellen APs ab); die SSID aus `about` braucht die Rolle nicht mehr.*
 
 #### <a id="dw1.9"></a>DW1.9 · `slaves-static` nur bei Bedarf setzen
 
 *2026-10-04 · technisch, nicht abgefragt*
 
-`slaves-static` setzt die Rolle `ap` nur noch, wenn ein `fallback` es verlangt (DW1.8) oder der Wert schon an ist (TODO 40): Jedes Setzen unter `/interface/wifi/cap` trennt den CAP kurz vom CAPsMAN.
+`slaves-static` setzt die Rolle `ap` nur noch, wenn ein `fallback` es verlangt (DW1.8) oder der Wert schon an ist (TODO 40): Jedes Setzen unter `/interface/wifi/cap` trennt den CAP kurz vom CAPsMAN. *Seit DW1.12 setzt sie es nur noch ab (einmal, wenn es an ist).*
 
 #### <a id="dw1.10"></a>DW1.10 · Warnung bei `wifi-qcom-ac`
 
@@ -1501,6 +1505,44 @@ Die Rolle `ap` und `$cfmCheck` warnen bei CAPs mit `wifi-qcom-ac`: Das Paket üb
 **Verworfen:** Profile vorab anlegen: der Secret-Push legt fehlende Security-Profile samt Passphrase vor dem Anstoßen an (kein Ausfall, aber die Profile je Band müsste der Manager selbst herleiten) · beides
 
 **Begründung:** Der Ausfall schrumpft auf die Dauer des Applys plus höchstens 30 s. Nur CAPsMAN-Geräte: Nur dort führt eine fehlende Passphrase zum Ausfall (die APs brauchen sie nur für den lokalen Fallback), und je Gerät kostet das Abholen gut 1 s. `seen` im Status (Start des Laufs, der ihn schrieb) muss nach dem Push liegen – sonst zählte ein alter Status; bei falsch gehender Uhr des Geräts übernimmt nach 10 min wieder der allgemeine Tick. Der Scheduler läuft nicht, während der allgemeine Tick arbeitet (`cfmTickBusy`), und entfernt sich, sobald nichts mehr offen ist (`cfm-sys:follow`, kein GC). Der erzwungene Apply startet erst nach dem neuen SV im Gerät, sonst meldete er noch den alten. Labor: `e2e.sh` Schritt 14 (neues 6-GHz-Profil ohne Passphrase, der Tick per `cfmSpTry` gesperrt); die eigenen Radios gibt es im CHR nicht
+
+#### <a id="dw1.12"></a>DW1.12 · Weitere SSIDs im Fallback über eigene lokale virtuelle APs
+
+*2026-11-16 · Nutzer (TODO 84, 85; ersetzt DW1.8, DW1.8.1, DW1.9)*
+
+**Frage:** Wie senden Gast/IoT im lokalen Fallback, nachdem RouterOS die Slaves des CAPsMAN dort außer Betrieb nimmt
+(Hardware 2026-11-16: nach 60 s ohne CAPsMAN nur noch die Master-Interfaces aktiv, auch mit `slaves-static` und lokaler
+Konfiguration an den Slaves)?
+
+**Entscheidung:** `fallback="yes"` an einer SSID → je Radio mit lokaler Konfiguration, dessen Band die SSID trägt, ein
+eigener lokaler virtueller AP `fb-<key>-<Radio>` (Kommentar `cfm:wfb:…`, `master-interface` = Radio, Konfiguration
+`cfm-<key>` bzw. `cfm-<key>-<Band>g`, `configuration.manager=local`), **dauerhaft angelegt, normal aus**. Das Skript
+`cfm-fallback` (Rumpf `lib/ap.fbwatch.rsc`, Feature-Modul der Rolle `ap`, Scheduler alle **10 s**) liest
+`/interface/wifi/cap` → `current-caps-man-identity`: zweimal hintereinander leer (~20 s) → die lokalen virtuellen APs
+an; wieder verbunden → sofort aus. Log nur beim Wechsel; der Apply rührt den Schaltzustand nicht an. **`slaves-static`
+schaltet cfm ab** (einmal, trennt den CAP kurz; der zweite Apply über `cfm-apfollow` räumt danach auf). **Aufräumen
+(TODO 85):** Ist `slaves-static` aus, entfernt die Rolle statische virtuelle APs mit `master-interface`, deren Kommentar
+nicht mit `cfm` beginnt (Reste aus `slaves-static`; nicht im Apply, der es abschaltet, nicht auf dem CAPsMAN-Gerät;
+Probelauf nennt sie). **Isolierte VLANs:** Dasselbe Skript trägt zwei Takte nach dem Wiederverbinden (und nach dem
+Start) die WLAN-Interfaces isolierter VLANs in `cfm-iso` nach und entfernt Verweise auf verschwundene – an jedem AP mit
+isolierten VLANs, auch ohne `fallback` (der CAP legt seine virtuellen APs bei jedem Verbinden neu an, bisher griff das
+erst mit dem nächsten Agent-Lauf, bis zu 15 min). **Kanal im Fallback:** unverändert der Pool bzw. Pin (DW1.6) – liegt
+er im DFS-Bereich, ist 5 GHz im Fallback mindestens 60 s still (CAC), hingenommen. Alles Nutzer
+
+**Verworfen:** Netwatch auf die IP des CAPsMAN (merkt nicht, ob CAPWAP läuft) · Takt 5 s · lokale virtuelle APs erst im
+Fallback anlegen und danach löschen (Objekte außerhalb des Apply, Reste nach einem Absturz) – Rückfall, falls der
+Hardware-Test zeigt, dass ein lokaler virtueller AP an einem vom CAPsMAN betriebenen Radio stört · `slaves-static`
+behalten · lokaler Pool ohne DFS bzw. zuletzt genutzter Kanal · nur melden statt löschen (85) · nur deaktivierte löschen
+
+**Begründung:** Die Master-SSID überlebt den Fallback über die lokale Konfiguration der Radios (DW1.6, bestanden
+2026-11-16); ein lokaler virtueller AP am selben Radio ist der naheliegende Weg für weitere SSIDs. 20 s liegen knapp
+hinter dem Umschalten der Master-SSID (~10 s) und überbrücken kurze Aussetzer beim Neuverbinden. Ohne `slaves-static`
+entfallen die neuen Interface-Namen bei jedem Neuprovisionieren, die liegen gebliebenen alten (fünf an einem AP nach drei
+Durchläufen) und die Lücke in `cfm-iso` bis zum zweiten Apply. Der Schalter einer SSID (`switch`, DW4.1) lebt auf dem
+CAPsMAN – im Fallback sendet eine schaltbare SSID mit `fallback` unabhängig davon (`$cfmCheck` warnt). Labor: `e2e.sh`
+Schritt 14c (Übergang `slaves-static`, Skript, `cfm-iso` nach dem Verbinden; CHR hat keine Radios). **Offen auf
+Hardware:** ob RouterOS den lokalen virtuellen AP am vom CAPsMAN betriebenen Radio duldet (aus) und im Fallback sendet
+(an), Zeit bis zur Gast-SSID, Rückkehr, Aufräumen der Reste, MAC-Adresse der lokalen virtuellen APs.
 
 ### <a id="dw2"></a>DW2 · Sicherheit und Clients
 

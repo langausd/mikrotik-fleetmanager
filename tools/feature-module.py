@@ -175,6 +175,11 @@ def bedarf(site):
     for m in ("capsman.ssid", "capsman.ssidcheck"):
         r[m] = (sw, "wifi.rsc switch" + ("" if sw else " an keiner SSID"))
     r["capsman.reprov"] = (True, "CAPsMAN immer (cfm-reprov)")
+
+    # lokaler Fallback weiterer SSIDs und cfm-iso nach dem Verbinden (DW1.12): Rumpf von cfm-fallback auf den APs
+    fbk = any(p is None or wert(wi, p) not in ("no", "") for p in nennungen(wi, "fallback"))
+    grund = [x for x, ja in (("wifi.rsc fallback", fbk), ("vlans.rsc isolate", iso)) if ja]
+    r["ap.fbwatch"] = (bool(grund), ", ".join(grund) if grund else "kein fallback, kein isoliertes VLAN")
     return r
 
 

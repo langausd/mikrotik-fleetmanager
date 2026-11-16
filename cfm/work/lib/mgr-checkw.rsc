@@ -222,6 +222,9 @@
   # Fallback weiterer SSIDs (TODO 40a): die Master-SSID hat ihn immer
   :foreach k,s in=($cfmWifi->"ssids") do={
     :if ([:tostr ($s->"fallback")] = "yes" and $k = [:tostr ($cfmWifi->"master")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: fallback an der Master-SSID " . $k . " ist überflüssig (DW1.6)") }
+    :if ([:len [:tostr ($s->"fallback")]] > 0 and !([:tostr ($s->"fallback")] ~ "^(yes|no)\$")) do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": fallback = yes oder no") }
+    # Der Schalter (DW4.1) lebt auf dem CAPsMAN - im Fallback weiß der AP nichts davon (DW1.12)
+    :if ([:tostr ($s->"fallback")] = "yes" and [:len [:tostr ($s->"switch")]] > 0) do={ :set ($warn->[:len $warn]) ("wifi.rsc: SSID " . $k . ": fallback mit switch - im lokalen Fallback sendet sie unabhängig vom Schalter") }
   }
   # DFS (TODO 87): Kanäle 5260-5720 MHz im Pool oder in radios - gewollt, aber mit Nebenwirkung -> Hinweis
   :local dfs do={

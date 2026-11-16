@@ -53,7 +53,8 @@ class Bedarf(unittest.TestCase):
 
     def test_iso_und_limit(self):
         self.anhaengen("vlans.rsc", ':set ($cfmVlans->"30"->"isolate") "yes"\n')
-        self.assertEqual(self.genutzt(), ["base.iso"])
+        # cfm-fallback trägt cfm-iso nach dem Verbinden nach (DW1.12)
+        self.assertEqual(self.genutzt(), ["ap.fbwatch", "base.iso"])
         self.schreiben("vlans.rsc", ':global cfmVlans {"30"={"isolate"="no";"limit"=""};"40"={"limitClient"="10M/2M"}}\n')
         self.assertEqual(self.genutzt(), ["router.limit"])
 
@@ -101,6 +102,13 @@ class Bedarf(unittest.TestCase):
         self.anhaengen("wifi.rsc", ':set ($cfmWifi->"ssids"->"guest"->"switch") "off"\n')
         self.assertEqual(self.genutzt(), ["capsman.ssid", "capsman.ssidcheck"])
         self.schreiben("wifi.rsc", ':global cfmWifi {"ssids"={"guest"={"ssid"="Gast";"switch"=""}}}\n')
+        self.assertEqual(self.genutzt(), [])
+
+    def test_fallback(self):
+        # fallback an einer SSID: Rumpf von cfm-fallback auf den APs (DW1.12)
+        self.anhaengen("wifi.rsc", ':set ($cfmWifi->"ssids"->"guest"->"fallback") "yes"\n')
+        self.assertEqual(self.genutzt(), ["ap.fbwatch"])
+        self.schreiben("wifi.rsc", ':global cfmWifi {"ssids"={"guest"={"ssid"="Gast";"fallback"="no"}}}\n')
         self.assertEqual(self.genutzt(), [])
 
     def test_ausgabe(self):

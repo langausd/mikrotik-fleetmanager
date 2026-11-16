@@ -328,6 +328,13 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent.
   *2026-11-12 (v37):* beide hAP ax² hängen die lokale Kopie `cfm-guest` an die Gast-Interfaces, ohne `force`-Push.
   Offen: der Client-Test im Fallback (CAPWAP zu einem AP sperren).
+  *2026-11-16 (v39, hAP ax², 7.25; Trennung per Bridge-Filter `output` auf die CAPsMAN-MAC, 3 min):* die
+  **Master-SSID sendet lokal weiter** (gleiche BSSID, Client nach ~10 s wieder verbunden, VLAN des Masters geht,
+  Rückkehr ohne Aussetzer). Die **Gast-Kopie sendet nicht**: Laptop mit fester BSSID der Gast-SSID → NetworkManager
+  `ssid-not-found` nach 16 s; Scan im Fallback zeigt am AP nur die Master-SSID, obwohl `cfm-guest` an den
+  Gast-Interfaces hängt und sie nach der Rückkehr `running` sind. cfm greift im Fallback nicht ein (erst der
+  Agent-Lauf meldet „WLAN im lokalen Fallback“). Offen: Zustand der Gast-Interfaces *während* des Fallbacks
+  (Diagnose-Durchgang mit Log aus dem Gerät, remote möglich). Clients ohne feste BSSID wechseln in 1–3 s zum Nachbarn.
 * **MLO mit FT** unter 7.25 („wifi - add fast transition support for MLD devices“, DW2.3, TODO 48).
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer

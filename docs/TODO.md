@@ -340,6 +340,10 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     *2026-11-12 an einem Standort (v37):* (b) bestanden bis auf das Roaming zwischen zwei CAPs (Befund „falsches
     Passwort“ beim ersten PPSK-Versuch, Ursache offen – nicht WPA3, Korrektur 2026-11-13, siehe TESTSTAND), (c) bestanden an den Radios des CAPsMAN, die lokale Kopie aus (a) hängt an; offen: (a) Client-Test im
     Fallback, (c) an zwei APs mit Zählern, (d), der zweite Standort.
+    *2026-11-16 (v39):* (a) Master-SSID im Fallback bestanden, **Gast-Kopie sendet im Fallback nicht** (TESTSTAND,
+    „Weitere SSIDs im lokalen Fallback“) – Ursache offen, nächster Schritt: Diagnose-Durchgang mit Log aus dem AP;
+    (d) `cfm-iso` folgte nach dem Neuprovisionieren (Kanalwechsel) den neuen Interface-Namen. Nebenbefund:
+    deaktivierte alte virtuelle APs bleiben am CAP liegen (je Neuprovisionierung neue Namen).
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.

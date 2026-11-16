@@ -18,9 +18,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
   (DM1.4, Nutzer). **TODO 82** Knopf „WLAN-Schild“ im cfm-Editor mit eigenem QR-Encoder (`tools/editor/cfm-qr.js`,
   Test mit gjs und libzbar), Passphrase der SSID oder ein PPSK-Eintrag aus dem Vault (DT3.4.1, Nutzer). Dazu im
   Editor „Promote“ und „Status“ sowie eine eigene Rückfrage bei leerer Release-Notiz (DT3.1.2, Nutzer). Labor 7.25.1:
-  `e2e.sh` 478 von 485 – die sieben Fehlschläge in Schritt 13 gingen auf einen einmaligen Abbruch des Paket-Downloads
-  der Labor-VM zurück (`/tool/fetch`: „Bad message“; derselbe Download gelang im selben Schritt kurz darauf),
-  Wiederholung siehe [TESTSTAND.md](TESTSTAND.md).
+  `e2e.sh` **485 von 485** (erster Lauf 478 – sieben Folgefehler eines einmaligen Download-Abbruchs der Labor-VM in
+  Schritt 13, [TESTSTAND.md](TESTSTAND.md)). Dazu offene Frage O8 in [NETINSTALL.md](NETINSTALL.md) (Branding-Paket
+  auf Bestandsgeräten).
 
 * **Am 2026-11-12 (Befund an einem Standort, vor dem Rollout der Standortkopplung):** `asymRouting` auch für private
   Netze hinter dem Internet-Router, als Liste `{"internet";"<Netz>"}` (DR3.2.1): Hosts mit der VIP als Gateway sind

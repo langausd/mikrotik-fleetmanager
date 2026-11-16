@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-13).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-16).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -12,7 +12,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-12 abends der Gesamttest (477 Prüfungen) und drei VRRP-Router mit
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-16 der Gesamttest (485 Prüfungen), am 2026-11-12 abends der Gesamttest (477) und drei VRRP-Router mit
   Standortkopplung (184, dazu `asymRouting` mit Netzen DR3.2.1 und Standort ohne `pubkey` DR4.3.1), am Vormittag
   desselben Tages der Gesamttest (477, zwei veraltete Erwartungen korrigiert) und VRRP (164); am 2026-11-08 der Gesamttest (469), VRRP (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
@@ -108,6 +108,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   kommt als `00:30:00`), Schritt 14m inhaltlich grün (Liste füllt sich über den Router-DNS mit einer echten Antwort
   auf `www.example.com`). Erkenntnis: Der Endpoint der Gegenstelle bleibt nur mit `dst-nat` an der VIP; die
   Distanz-Umschaltung der Routen (Tunnel 1, VIP 10) trägt beim Ausfall, bei der Rückkehr und nach dem Neustart.
+  2026-11-16 mit DG2.4.1 (`$cfmCheck` gibt aus), DM3.3 (Backup-Tick ohne Daten), DM1.4 (Manager-Module aus `work/`,
+  Sperre nach einem Rollback, neuer Schritt 17), DT3.4.1/DT3.1.2 (Editor): `e2e.sh` erster Lauf 478 von 485 – rot nur
+  Schritt 13, ein einmaliger Abbruch des Paket-Downloads auf cm1 (`/tool/fetch`: „Bad message“, 7 Folgefehler; derselbe
+  Download gelang im selben Schritt kurz darauf und danach dreimal von Hand), Wiederholung **485 von 485**. Der
+  QR-Encoder des Editors hat einen eigenen Test (`tools/editor/cfm-qr-test.py`, gjs + libzbar).
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

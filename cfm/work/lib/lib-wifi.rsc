@@ -254,8 +254,10 @@
     :if ([:len [:tostr $tx]] > 0) do={ :set ($p->"tx-power") [:tonum $tx] }
     $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=$p
     :if ([:len [:tostr $tx]] = 0 and $cfmDry != true) do={
+      # eigene Variable: in "find where name=$name" läse RouterOS $name als Eigenschaft (träfe alle Einträge)
+      :local cn $name
       :onerror e in={
-        :local i [/interface/wifi/configuration/find where name=$name]
+        :local i [/interface/wifi/configuration/find where name=$cn]
         :if ([:len $i] > 0 and [:len [:tostr [/interface/wifi/configuration/get $i tx-power]]] > 0) do={
           /interface/wifi/configuration/unset $i tx-power
           $cfmLog ("Konfiguration " . $name . ": tx-power entfernt")

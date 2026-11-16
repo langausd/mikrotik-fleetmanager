@@ -1014,7 +1014,10 @@ führt der Manager (DT2.2). Du bearbeitest sie auf einem dieser Wege:
   Strg+S (speichert per REST, prüft danach die Syntax; war die Datei inzwischen anderswo geändert,
   fragt er nach). Die Knöpfe oben: „Prüfen“ (`$cfmParseWork`, `$cfmCheck`), „Diff zum Release“
   (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten
-  geht). `lib/`, `roles/` und `web/` zeigt er nur an. Voraussetzung: Dienst `www` bzw. `www-ssl` in `services`;
+  geht; ohne Notiz fragt er eigens nach), „Promote“ (`$cfmPromote`, Ring wählbar, mit Rückfrage), „Status“
+  (`$cfmStatus`), „WLAN-Schild“ (A4-Schild mit QR-Code, SSID und Passphrase aus dem Vault – auch für einen PPSK-Eintrag;
+  „Drucken / als PDF speichern“ öffnet den Druckdialog, dort A4, Ränder keine, 100 %; DT3.4.1). `lib/`, `roles/`
+  und `web/` zeigt er nur an. Voraussetzung: Dienst `www` bzw. `www-ssl` in `services`;
   das Lesezeichen lädt nichts aus dem Netz, sondern den Code vom Manager (`cfm/dl/web/`, kommt mit dem
   Framework-Update). Nach einer neuen Version von `cfm-editor.js`: `tools/editor/build.py`, hochladen,
   releasen – das Lesezeichen bleibt;

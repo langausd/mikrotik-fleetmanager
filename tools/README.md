@@ -153,7 +153,7 @@ Drei Werkzeuge für WebFig, die über die REST-API derselben Adresse arbeiten. G
 festes Lesezeichen „cfm“ (DT3.2), das ihren Code vom Gerät lädt. Aus dem Netz wird nichts geladen.
 
 * **cfm-Editor** (DT3.1): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
-  Release an Ring 0. Anmelden mit einem User der Gruppe `full`.
+  Release an Ring 0 (ohne Notiz nur nach Rückfrage), Promote, Status, WLAN-Schild drucken (DT3.4.1, Passphrase aus dem Vault). Anmelden mit einem User der Gruppe `full`.
 * **cfm-Monitor** (DU2.2, DU1.4; früher cfm-WLAN): Reiter WLAN mit den Clients je AP live und Roaming als
   Zeitleiste (in WebFig des CAPsMAN, Leserecht genügt); Reiter Suche findet Geräte nach MAC, IP, Name,
   Port, AP oder SSID (`$cfmFind`, in WebFig des Managers, Gruppe `full`).
@@ -172,7 +172,8 @@ So richtest du sie ein:
    Voraussetzung: Dienst `www` (oder `www-ssl`) in `services`.
 
 Den Code legt `tools/editor/build.py` nach `cfm/work/web/` (und baut `install.html`). Nach einer Änderung an
-`cfm-editor.js`, `cfm-monitor.js` oder `cfm-dns.js`: `build.py`, mit `upload-seed.sh` hochladen, releasen – das
+`cfm-editor.js`, `cfm-qr.js` (QR-Encoder des WLAN-Schilds, Test: `tools/editor/cfm-qr-test.py` mit gjs und libzbar),
+`cfm-monitor.js` oder `cfm-dns.js`: `build.py`, mit `upload-seed.sh` hochladen, releasen – das
 Lesezeichen bleibt. Für Geräte mit einem Framework-Stand ohne `web/` stehen in `install.html` weiter die
 vollständigen Lesezeichen (Code im Lesezeichen, nach jeder Fassung neu ziehen). Alte Lesezeichen
 „cfm-Editor“, „cfm-Monitor“ und „cfm-WLAN“ kannst du danach löschen. Mehr im Admin-Guide, 8.1, 8.10, 8.11.
@@ -237,6 +238,7 @@ Optionen: `--title "Gäste-WLAN|Guest Wi-Fi"` (zwei Zeilen), `--hint "…"` (Zei
 nicht ausgestrahlt). Typ im QR-Code: `WPA` für WPA2 und gemischt WPA2/WPA3, `SAE` nur bei reinem WPA3. Das PDF enthält
 die Passphrase und entsteht mit Rechten `0600` – nicht ins Repo legen, nach einem Passwortwechsel neu erzeugen. Braucht
 `python3-segno` und `python3-cairo` (Debian/Ubuntu). Tests: `tools/wifi-sign-test.py`.
+Dasselbe Schild ohne Python: Knopf „WLAN-Schild“ im cfm-Editor (DT3.4.1).
 
 ## `wg-client-setup.sh`
 

@@ -1,6 +1,6 @@
-// cfm-editor.js 22822934d7b7 - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-editor.js 8af4ba0e2dd6 - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = '22822934d7b7';
+const STAND = '8af4ba0e2dd6';
 const alt = window.__cfmEd;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
@@ -18,6 +18,219 @@ return e;
 const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\r/g, '').replace(/\n/g, '\\n');
 const bytes = (s) => new TextEncoder().encode(s).length;
 const clean = (t) => t.replace(/\r/g, '').split('\n').filter((l) => !/^Script file loaded and executed successfully$/.test(l.trim())).join('\n');
+const cfmQr = (() => {
+const ECC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28,
+28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
+const BLK = [0, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29,
+31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
+const mul = (x, y) => {
+let z = 0;
+for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; }
+return z & 0xff;
+};
+const divisor = (d) => {
+const r = new Array(d).fill(0);
+r[d - 1] = 1;
+let root = 1;
+for (let i = 0; i < d; i++) {
+for (let j = 0; j < d; j++) { r[j] = mul(r[j], root); if (j + 1 < d) r[j] ^= r[j + 1]; }
+root = mul(root, 2);
+}
+return r;
+};
+const remainder = (data, div) => {
+const r = div.map(() => 0);
+data.forEach((b) => {
+const f = b ^ r.shift();
+r.push(0);
+div.forEach((c, i) => { r[i] ^= mul(c, f); });
+});
+return r;
+};
+const rawModules = (v) => {
+let n = (16 * v + 128) * v + 64;
+if (v >= 2) { const a = Math.floor(v / 7) + 2; n -= (25 * a - 10) * a - 55; if (v >= 7) n -= 36; }
+return n;
+};
+const dataCodewords = (v) => Math.floor(rawModules(v) / 8) - ECC[v] * BLK[v];
+const alignPos = (v) => {
+if (v === 1) return [];
+const n = Math.floor(v / 7) + 2;
+const size = v * 4 + 17;
+const step = v === 32 ? 26 : Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2;
+const r = [6];
+for (let p = size - 7; r.length < n; p -= step) r.splice(1, 0, p);
+return r;
+};
+const MASK = [
+(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+(x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => (x * y) % 2 + (x * y) % 3 === 0,
+(x, y) => ((x * y) % 2 + (x * y) % 3) % 2 === 0, (x, y) => ((x + y) % 2 + (x * y) % 3) % 2 === 0,
+];
+function penalty(m) {
+const n = m.length;
+let p = 0;
+const line = (get) => {
+for (let i = 0; i < n; i++) {
+let run = 1;
+for (let j = 1; j <= n; j++) {
+if (j < n && get(i, j) === get(i, j - 1)) { run++; continue; }
+if (run >= 5) p += run - 2;
+run = 1;
+}
+for (let j = 0; j + 11 <= n; j++) {
+const s = [];
+for (let k = 0; k < 11; k++) s.push(get(i, j + k) ? 1 : 0);
+const t = s.join('');
+if (t === '10111010000' || t === '00001011101') p += 40;
+}
+}
+};
+line((i, j) => m[i][j]);
+line((i, j) => m[j][i]);
+for (let y = 0; y + 1 < n; y++) {
+for (let x = 0; x + 1 < n; x++) {
+const c = m[y][x];
+if (c === m[y][x + 1] && c === m[y + 1][x] && c === m[y + 1][x + 1]) p += 3;
+}
+}
+let dark = 0;
+m.forEach((row) => row.forEach((c) => { if (c) dark++; }));
+p += Math.floor(Math.abs(dark * 20 - n * n * 10) / (n * n)) * 10;
+return p;
+}
+function encode(text) {
+const bytes = Array.from(new TextEncoder().encode(text));
+let v = 1;
+while (v <= 40 && 4 + (v < 10 ? 8 : 16) + bytes.length * 8 > dataCodewords(v) * 8) v++;
+if (v > 40) throw new Error('Text zu lang für einen QR-Code');
+const bits = [];
+const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+put(4, 4);
+put(bytes.length, v < 10 ? 8 : 16);
+bytes.forEach((b) => put(b, 8));
+const cap = dataCodewords(v) * 8;
+put(0, Math.min(4, cap - bits.length));
+put(0, (8 - (bits.length % 8)) % 8);
+for (let pad = 0xec; bits.length < cap; pad ^= 0xec ^ 0x11) put(pad, 8);
+const data = [];
+for (let i = 0; i < bits.length; i += 8) data.push(parseInt(bits.slice(i, i + 8).join(''), 2));
+const nb = BLK[v];
+const el = ECC[v];
+const raw = Math.floor(rawModules(v) / 8);
+const nShort = nb - (raw % nb);
+const shortLen = Math.floor(raw / nb);
+const div = divisor(el);
+const blocks = [];
+for (let i = 0, k = 0; i < nb; i++) {
+const len = shortLen - el + (i < nShort ? 0 : 1);
+const d = data.slice(k, k + len);
+k += len;
+const e = remainder(d, div);
+if (i < nShort) d.push(0);
+blocks.push(d.concat(e));
+}
+const cw = [];
+for (let i = 0; i < blocks[0].length; i++) {
+blocks.forEach((b, j) => { if (i !== shortLen - el || j >= nShort) cw.push(b[i]); });
+}
+const size = v * 4 + 17;
+const mod = Array.from({ length: size }, () => new Array(size).fill(false));
+const fn = Array.from({ length: size }, () => new Array(size).fill(false));
+const set = (x, y, d) => { mod[y][x] = d; fn[y][x] = true; };
+for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+[[3, 3], [size - 4, 3], [3, size - 4]].forEach(([cx, cy]) => {
+for (let dy = -4; dy <= 4; dy++) {
+for (let dx = -4; dx <= 4; dx++) {
+const x = cx + dx;
+const y = cy + dy;
+const dist = Math.max(Math.abs(dx), Math.abs(dy));
+if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, dist !== 2 && dist !== 4);
+}
+}
+});
+const ap = alignPos(v);
+ap.forEach((ay, i) => ap.forEach((ax, j) => {
+const last = ap.length - 1;
+if ((i === 0 && j === 0) || (i === 0 && j === last) || (i === last && j === 0)) return;
+for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(ax + dx, ay + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+}));
+const format = (mask) => {
+const d = (0 << 3) | mask;           // Stufe M = 00
+let r = d;
+for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+const b = ((d << 10) | r) ^ 0x5412;
+const bit = (i) => ((b >>> i) & 1) === 1;
+for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+for (let i = 9; i < 15; i++) set(14 - i, 8, bit(i));
+for (let i = 0; i < 8; i++) set(size - 1 - i, 8, bit(i));
+for (let i = 8; i < 15; i++) set(8, size - 15 + i, bit(i));
+set(8, size - 8, true);
+};
+format(0);                              // reserviert die Felder vor dem Einsetzen der Daten
+if (v >= 7) {
+let r = v;
+for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+const b = (v << 12) | r;
+for (let i = 0; i < 18; i++) {
+const d = ((b >>> i) & 1) === 1;
+const a = size - 11 + (i % 3);
+const c = Math.floor(i / 3);
+set(a, c, d); set(c, a, d);
+}
+}
+let bi = 0;
+for (let right = size - 1; right >= 1; right -= 2) {
+if (right === 6) right = 5;
+for (let vert = 0; vert < size; vert++) {
+for (let j = 0; j < 2; j++) {
+const x = right - j;
+const y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+if (!fn[y][x] && bi < cw.length * 8) { mod[y][x] = ((cw[bi >>> 3] >>> (7 - (bi & 7))) & 1) === 1; bi++; }
+}
+}
+}
+const apply = (mask) => {
+for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!fn[y][x] && MASK[mask](x, y)) mod[y][x] = !mod[y][x];
+};
+let best = 0;
+let bestP = Infinity;
+for (let mask = 0; mask < 8; mask++) {
+apply(mask); format(mask);
+const p = penalty(mod);
+if (p < bestP) { bestP = p; best = mask; }
+apply(mask);
+}
+apply(best); format(best);
+return { size, mod, version: v, mask: best };
+}
+function svg(text) {
+const q = encode(text);
+const n = q.size + 8;
+let d = '';
+q.mod.forEach((row, y) => {
+for (let x = 0; x < q.size; x++) {
+if (!row[x]) continue;
+let w = 1;
+while (x + w < q.size && row[x + w]) w++;
+d += 'M' + (x + 4) + ' ' + (y + 4) + 'h' + w + 'v1h-' + w + 'z';
+x += w - 1;
+}
+});
+return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n + ' ' + n + '" shape-rendering="crispEdges">' +
+'<rect width="' + n + '" height="' + n + '" fill="#fff"/><path fill="#000" d="' + d + '"/></svg>';
+}
+const authType = (sec) => {
+const s = String(sec || '').toLowerCase();
+if (!s || s === 'none') return 'nopass';
+if (s.includes('wpa3') && !s.includes('wpa2') && !s.includes('wpa-')) return 'SAE';
+return 'WPA';
+};
+const wifiEsc = (s) => String(s).replace(/([\\;,:"])/g, '\\$1');
+const wifi = (ssid, pass, typ) => 'WIFI:T:' + typ + ';S:' + wifiEsc(ssid) + ';' + (typ !== 'nopass' ? 'P:' + wifiEsc(pass) + ';' : '') + ';';
+return { encode, svg, authType, wifi };
+})();
 const css = `
 #cfmed{position:fixed;inset:0;z-index:2147483000;background:#f4f5f4;color:#1d2321;font:13px system-ui,sans-serif;display:flex;flex-direction:column}
 #cfmed *{box-sizing:border-box}
@@ -29,7 +242,7 @@ const css = `
 #cfmed header button{border-color:#fff3}
 #cfmed input,#cfmed select{font:inherit;padding:3px 6px;border:1px solid #9aa;border-radius:4px}
 #cfmed .sp{flex:1}
-#cfmed main{flex:1;display:flex;min-height:0}
+#cfmed main{flex:1;display:flex;min-height:0;position:relative}
 #cfmed nav{width:260px;overflow:auto;border-right:1px solid #ccd;background:#fff;padding:6px 0}
 #cfmed nav h4{margin:8px 10px 4px;font-size:11px;text-transform:uppercase;color:#667}
 #cfmed nav div{padding:2px 10px 2px 16px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -45,7 +258,33 @@ const css = `
 #cfmed .stat{padding:3px 8px;font-size:12px;color:#556;border-top:1px solid #ccd;background:#fafbfa}
 #cfmed pre{margin:0;height:34%;overflow:auto;padding:6px 8px;background:#1d2321;color:#dfe;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
 #cfmed .login{margin:12vh auto;background:#fff;padding:20px 24px;border-radius:8px;box-shadow:0 2px 12px #0002;display:grid;gap:8px;width:320px}
-#cfmed .fehler{color:#b3261e}`;
+#cfmed .fehler{color:#b3261e}
+#cfmed .sign{position:absolute;inset:0;z-index:5;display:flex;background:#e9ecea}
+#cfmed .sign .ctl{width:300px;padding:12px;display:flex;flex-direction:column;gap:8px;background:#fff;border-right:1px solid #ccd;overflow:auto}
+#cfmed .sign .ctl label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#556}
+#cfmed .sign .vor{flex:1;overflow:auto;padding:16px}
+#cfmed .blatt{width:210mm;height:297mm;background:#fff;color:#000;box-shadow:0 2px 10px #0003;transform-origin:0 0;position:relative;
+font-family:"DejaVu Sans",Arial,sans-serif;text-align:center;overflow:hidden}
+#cfmed .blatt .t1{position:absolute;top:24mm;left:18mm;right:18mm;font-size:40pt;font-weight:bold;line-height:1.1}
+#cfmed .blatt .t2{position:absolute;top:39mm;left:18mm;right:18mm;font-size:26pt;color:#595959}
+#cfmed .blatt .qr{position:absolute;top:52mm;left:45mm;width:120mm;height:120mm}
+#cfmed .blatt .qr svg{width:100%;height:100%;display:block}
+#cfmed .blatt .scan{position:absolute;top:174mm;left:18mm;right:18mm;font-size:11pt;color:#595959}
+#cfmed .blatt .unten{position:absolute;top:186mm;left:18mm;right:18mm}
+#cfmed .blatt .lab{font-size:13pt;color:#595959;margin-top:5mm}
+#cfmed .blatt .wert{font-size:30pt;font-weight:bold;overflow-wrap:anywhere;margin-top:2mm}
+#cfmed .blatt .pw{font:bold 26pt "DejaVu Sans Mono",Consolas,monospace;margin-top:2mm;white-space:pre;line-height:1.3}
+#cfmed .blatt .hint{position:absolute;bottom:18mm;left:18mm;right:18mm;font-size:12pt;color:#595959}
+@media print{body>*:not(#cfmed){display:none!important}
+#cfmed{position:static!important;display:block!important;background:#fff}
+#cfmed>header,#cfmed main>:not(.sign){display:none!important}
+#cfmed main{display:block}
+#cfmed .sign{position:static;display:block;background:#fff}
+#cfmed .sign .ctl{display:none}
+#cfmed .sign .vor{padding:0;overflow:visible}
+#cfmed .sign .vor>div{width:auto!important;height:auto!important}
+#cfmed .blatt{transform:none!important;box-shadow:none}
+@page{size:A4;margin:0}}`;
 const root = el('div', { id: 'cfmed' });
 root.append(el('style', {}, css));
 document.body.append(root);
@@ -136,12 +375,17 @@ async function mainView(identity) {
 root.querySelectorAll('header,main,.login').forEach((n) => n.remove());
 const hosts = el('select', { title: 'Gerät für den Probelauf' });
 const msg = el('input', { placeholder: 'Release-Notiz', size: 28 });
+const ring = el('select', { title: 'Ring für $cfmPromote' },
+el('option', { value: '' }, 'nächster Ring'), el('option', { value: '1' }, 'Ring 1'), el('option', { value: '2' }, 'Ring 2'));
 root.append(el('header', {},
 el('b', {}, 'cfm-Editor – ' + identity),
 el('button', { onclick: check, 'data-cmd': 1 }, 'Prüfen'),
 el('button', { onclick: diff, 'data-cmd': 1 }, 'Diff zum Release'),
 hosts, el('button', { onclick: () => plan(hosts.value), 'data-cmd': 1 }, 'Probelauf'),
 msg, el('button', { onclick: () => release(msg.value), 'data-cmd': 1 }, 'Release (Ring 0)'),
+ring, el('button', { onclick: () => promote(ring.value), 'data-cmd': 1, title: 'Version des vorigen Rings freigeben ($cfmPromote)' }, 'Promote'),
+el('button', { onclick: fleetStatus, 'data-cmd': 1, title: 'Flottenübersicht ($cfmStatus)' }, 'Status'),
+el('button', { onclick: sign, 'data-cmd': 1, title: 'WLAN-Schild als A4-PDF (QR-Code, SSID, Passphrase aus dem Vault)' }, 'WLAN-Schild'),
 el('span', { class: 'sp' }),
 el('button', { onclick: hide }, 'Schließen')));
 const ta = el('textarea', { spellcheck: 'false', readonly: '' });
@@ -278,8 +522,113 @@ run('Probelauf $cfmPlan host=' + h, '$cfmPlan host="' + esc(h) + '"', ['cfmPlan'
 }
 function release(m) {
 if (unsaved()) return;
-if (!confirm('Release aus work/ erstellen und an Ring 0 verteilen?' + (m ? '\nNotiz: ' + m : ''))) return;
+m = (m || '').trim();
+if (!m && !confirm('Achtung: Die Release-Notiz ist leer.\nArchiv, Git-Hook und Log zeigen dann nur die Versionsnummer.\n\nTrotzdem ohne Notiz releasen?')) return;
+if (!confirm('Release aus work/ erstellen und an Ring 0 verteilen?' + (m ? '\nNotiz: ' + m : '\n(ohne Notiz)'))) return;
 run('Release ($cfmRelease, Ring 0)', '$cfmRelease msg="' + esc(m ? ' ' + m : '') + '"', ['cfmRelease']);
+}
+function promote(r) {
+if (r !== '' && r !== '1' && r !== '2') return;
+if (!confirm((r ? 'Ring ' + r : 'Den nächsten Ring') + ' auf die Version des vorigen Rings heben ($cfmPromote)?\nDie Geräte des Rings bekommen sie sofort per Push.')) return;
+run('Promote ($cfmPromote' + (r ? ' ring=' + r : '') + ')', '$cfmPromote' + (r ? ' ring=' + r : ''), ['cfmPromote']);
+}
+function fleetStatus() { run('Flottenübersicht ($cfmStatus)', '$cfmStatus', ['cfmStatus']); }
+async function sign() {
+if (S.busy || $('.sign')) return;
+busy(true);
+const out = $('pre');
+let d = null;
+try {
+const t = await exec('/system script run cfm-mgr; :global cfmLoadData; :global cfmWifi; :local v [$cfmLoadData]; ' +
+':local df ($cfmWifi->"defaults"); :local o ({}); :foreach k,x in=($cfmWifi->"ssids") do={ ' +
+':local sec [:tostr ($x->"sec")]; :if ([:len $sec] = 0) do={ :set sec [:tostr ($df->"sec")] }; :local pp ""; ' +
+':foreach n,e in=($cfmWifi->"ppsk"->$k) do={ :set pp ($pp . $n . ",") }; ' +
+':set ($o->$k) ({"ssid"=[:tostr ($x->"ssid")];"sec"=$sec;"ppsk"=$pp;"only"=[:tostr ($x->"ppskOnly")]}) }; ' +
+':put ("J=" . [:serialize to=json ({"v"=$v;"s"=$o})])');
+const j = t.split('\n').map((l) => l.trim()).find((l) => l.startsWith('J='));
+if (!j) throw new Error('keine WLAN-Daten vom Manager: ' + clean(t).trim().slice(0, 200));
+d = JSON.parse(j.slice(2));
+} catch (e) { out.textContent = 'FEHLER beim Lesen der WLAN-Daten: ' + e.message; busy(false); return; }
+busy(false);
+const ssids = Array.isArray(d.s) ? {} : (d.s || {});
+const keys = Object.keys(ssids).sort((a, b) => a.localeCompare(b));
+if (!keys.length) { out.textContent = 'Keine SSID in wifi.rsc (v' + d.v + ').'; return; }
+const selS = el('select', {});
+keys.forEach((k) => selS.append(el('option', { value: k }, ssids[k].ssid + ' (' + k + ')')));
+if (ssids.guest) selS.value = 'guest';
+const selP = el('select', {});
+const t1 = el('input', {});
+const hint = el('input', { placeholder: 'z.B. Gültigkeit oder Ansprechpartner' });
+const info = el('div', { class: 'fehler' });
+const druck = el('button', { class: 'prim', onclick: () => window.print() }, 'Drucken / als PDF speichern');
+const vor = el('div', { class: 'vor' });
+const pane = el('div', { class: 'sign' },
+el('div', { class: 'ctl' },
+el('b', {}, 'WLAN-Schild'),
+el('div', {}, 'Stand: Release v' + d.v + ' (was die Geräte ausstrahlen). Passphrase aus dem Vault.'),
+el('label', {}, 'SSID', selS),
+el('label', {}, 'Passphrase', selP),
+el('label', {}, 'Überschrift (deutsch | englisch)', t1),
+el('label', {}, 'Hinweis unten (optional)', hint),
+druck,
+el('button', { onclick: () => pane.remove() }, 'Schließen'),
+info,
+el('div', { style: 'font-size:11px;color:#667' }, 'Im Druckdialog A4, Ränder „keine“, Skalierung 100 %. Das PDF enthält die Passphrase – nicht ins Repo legen.')),
+vor);
+$('main').append(pane);
+const pass = {};
+const fillP = () => {
+const k = selS.value;
+const x = ssids[k];
+selP.textContent = '';
+if (x.only !== 'yes') selP.append(el('option', { value: 'psk.' + k }, 'Passphrase der SSID (psk.' + k + ')'));
+String(x.ppsk || '').split(',').filter(Boolean).forEach((n) => selP.append(el('option', { value: 'ppsk.' + k + '.' + n }, 'PPSK ' + n + ' (ppsk.' + k + '.' + n + ')')));
+t1.value = /gast|guest/i.test(k + ' ' + x.ssid) ? 'Gäste-WLAN | Guest Wi-Fi' : 'WLAN | Wi-Fi';
+};
+const draw = async () => {
+const x = ssids[selS.value];
+const key = selP.value;
+info.textContent = '';
+if (!key && cfmQr.authType(x.sec) !== 'nopass') { info.textContent = 'Keine Passphrase wählbar (ppskOnly ohne ppsk-Eintrag).'; druck.disabled = true; return; }
+const typ = !key ? 'nopass' : (key.startsWith('ppsk.') ? 'WPA' : cfmQr.authType(x.sec));
+let pw = '';
+if (typ !== 'nopass') {
+if (pass[key] === undefined) {
+try {
+const r = await exec(':local i [/ppp/secret/find where name="' + esc('cfm:' + key) + '"]; :if ([:len $i] = 0) do={ :put "P-" } else={ :put ("P=" . [/ppp/secret/get $i password]) }');
+const l = r.replace(/\r/g, '').split('\n').find((z) => z.startsWith('P=') || z.startsWith('P-')) || '';
+pass[key] = l.startsWith('P=') ? l.slice(2) : '';
+} catch (e) { info.textContent = 'Vault nicht lesbar: ' + e.message; druck.disabled = true; return; }
+}
+pw = pass[key];
+if (!pw) { info.textContent = 'Vault: cfm:' + key + ' fehlt ($cfmSecret key=' + key + ' value=…)'; }
+}
+const [de, en] = t1.value.includes('|') ? t1.value.split('|').map((z) => z.trim()) : [t1.value.trim(), ''];
+const qr = el('div', { class: 'qr' });
+qr.innerHTML = cfmQr.svg(cfmQr.wifi(x.ssid, pw, typ));
+const unten = el('div', { class: 'unten' },
+el('div', { class: 'lab' }, 'Netzwerk / Network'), el('div', { class: 'wert' }, x.ssid));
+if (typ !== 'nopass') {
+const zeilen = (pw.match(/.{1,24}/g) || ['']).join('\n');
+unten.append(el('div', { class: 'lab' }, 'Passwort / Password'), el('div', { class: 'pw' }, zeilen));
+}
+const blatt = el('div', { class: 'blatt' },
+el('div', { class: 't1' }, de), el('div', { class: 't2' }, en && en !== de ? en : ''), qr,
+el('div', { class: 'scan' }, 'QR-Code mit der Kamera scannen · Scan the QR code with your camera'), unten,
+el('div', { class: 'hint' }, hint.value));
+const mm = 96 / 25.4;
+const sc = Math.min(1, (vor.clientWidth - 32) / (210 * mm), (vor.clientHeight - 32) / (297 * mm));
+blatt.style.transform = 'scale(' + sc + ')';
+vor.textContent = '';
+vor.append(el('div', { style: 'width:' + (210 * mm * sc) + 'px;height:' + (297 * mm * sc) + 'px' }, blatt));
+druck.disabled = !!info.textContent;
+};
+selS.addEventListener('change', () => { fillP(); draw(); });
+selP.addEventListener('change', draw);
+t1.addEventListener('input', draw);
+hint.addEventListener('input', draw);
+fillP();
+await draw();
 }
 function hide() {
 if (dirty() && !confirm('Ungespeicherte Änderungen an ' + S.cur.rel + ' verwerfen?')) return;

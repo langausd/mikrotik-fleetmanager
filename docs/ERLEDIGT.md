@@ -10,6 +10,18 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-16 (unbeaufsichtigt nach einer Fragerunde):** **TODO 83** `$cfmCheck` gibt Warnungen, Fehler und
+  „Prüfung: N Fehler, M Warnungen“ selbst aus, `quiet=yes` für interne Aufrufer (DG2.4.1). Bekannter Fehler behoben:
+  Der Tick des Backup-Managers bricht ohne geladene Daten nicht mehr ab, `$cfmIsPrimary` nimmt dann die Managerliste
+  aus `cfm-conf` (DM3.3). **TODO 78** `cfm-mgr` lädt abweichende Manager-Module aus `work/lib/`; nach einem Rollback
+  auf dem Manager (Apply-Fehler oder Watchdog) gilt der installierte Code, `$cfmRelease` warnt und läuft trotzdem
+  (DM1.4, Nutzer). **TODO 82** Knopf „WLAN-Schild“ im cfm-Editor mit eigenem QR-Encoder (`tools/editor/cfm-qr.js`,
+  Test mit gjs und libzbar), Passphrase der SSID oder ein PPSK-Eintrag aus dem Vault (DT3.4.1, Nutzer). Dazu im
+  Editor „Promote“ und „Status“ sowie eine eigene Rückfrage bei leerer Release-Notiz (DT3.1.2, Nutzer). Labor 7.25.1:
+  `e2e.sh` 478 von 485 – die sieben Fehlschläge in Schritt 13 gingen auf einen einmaligen Abbruch des Paket-Downloads
+  der Labor-VM zurück (`/tool/fetch`: „Bad message“; derselbe Download gelang im selben Schritt kurz darauf),
+  Wiederholung siehe [TESTSTAND.md](TESTSTAND.md).
+
 * **Am 2026-11-12 (Befund an einem Standort, vor dem Rollout der Standortkopplung):** `asymRouting` auch für private
   Netze hinter dem Internet-Router, als Liste `{"internet";"<Netz>"}` (DR3.2.1): Hosts mit der VIP als Gateway sind
   über ein VPN des Internet-Routers (Fritz!Box-LAN-LAN-WireGuard) erreichbar; führt ein Standort-Tunnel mit `pubkey`
@@ -716,6 +728,13 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     aus `work/lib/` (`$cfmMgrFromWork`) und nennt es. Nach einem Rollback auf dem Manager (Apply-Fehler oder Watchdog:
     `bad` neuer als `v` im Agent-Zustand) bleibt `work/lib/` ungenutzt, `$cfmRelease` warnt und läuft trotzdem
     (Nutzer). Der Hinweis von `upload-seed.sh` stimmt damit wieder. Labor: `e2e.sh` Schritt 17.
+82. ~~**WLAN-Schild im cfm-Editor**~~ – *umgesetzt 2026-11-16 (DT3.4.1):* Knopf „WLAN-Schild“: SSID aus der
+    neuesten Version, Passphrase der SSID oder ein PPSK-Eintrag aus dem Vault (Nutzer), Vorschau als A4-Blatt wie
+    `tools/wifi-sign.py`, Druck über den Druckdialog als PDF; fehlt die Passphrase, nennt die Seite den
+    `$cfmSecret`-Befehl und sperrt den Druck. Eigener QR-Encoder `tools/editor/cfm-qr.js` (kein CDN), Test
+    `tools/editor/cfm-qr-test.py` (gjs erzeugt, libzbar dekodiert; Version 1–40, Umlaute, alle Masken). Im Browser
+    mit nachgebildeter REST-API geprüft (Firefox headless: Vorschau, Druckansicht, QR aus dem Screenshot dekodiert);
+    auf dem echten Manager steht der Test aus.
 83. ~~**`$cfmCheck` im Terminal ohne Ausgabe**~~ – *umgesetzt 2026-11-16 (DG2.4.1):* Befund beim Rollout an beiden
     Standorten (2026-11-13): `$cfmCheck` gab nur `{"err"=…;"warn"=…}` zurück, im Terminal erschien nichts, auch bei
     Fehlern. Jetzt gibt es Warnungen, Fehler und „Prüfung: N Fehler, M Warnungen“ selbst aus und liefert das Ergebnis

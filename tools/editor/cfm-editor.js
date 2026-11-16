@@ -26,6 +26,8 @@
   const bytes = (s) => new TextEncoder().encode(s).length;
   // Meldungen der Imports beim Laden der Manager-Funktionen gehören nicht zur Ausgabe
   const clean = (t) => t.replace(/\r/g, '').split('\n').filter((l) => !/^Script file loaded and executed successfully$/.test(l.trim())).join('\n');
+  // QR-Encoder fürs WLAN-Schild (cfm-qr.js, setzt build.py hier ein)
+  /*@@cfm-qr.js@@*/
 
   const css = `
 #cfmed{position:fixed;inset:0;z-index:2147483000;background:#f4f5f4;color:#1d2321;font:13px system-ui,sans-serif;display:flex;flex-direction:column}
@@ -38,7 +40,7 @@
 #cfmed header button{border-color:#fff3}
 #cfmed input,#cfmed select{font:inherit;padding:3px 6px;border:1px solid #9aa;border-radius:4px}
 #cfmed .sp{flex:1}
-#cfmed main{flex:1;display:flex;min-height:0}
+#cfmed main{flex:1;display:flex;min-height:0;position:relative}
 #cfmed nav{width:260px;overflow:auto;border-right:1px solid #ccd;background:#fff;padding:6px 0}
 #cfmed nav h4{margin:8px 10px 4px;font-size:11px;text-transform:uppercase;color:#667}
 #cfmed nav div{padding:2px 10px 2px 16px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -54,7 +56,33 @@
 #cfmed .stat{padding:3px 8px;font-size:12px;color:#556;border-top:1px solid #ccd;background:#fafbfa}
 #cfmed pre{margin:0;height:34%;overflow:auto;padding:6px 8px;background:#1d2321;color:#dfe;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
 #cfmed .login{margin:12vh auto;background:#fff;padding:20px 24px;border-radius:8px;box-shadow:0 2px 12px #0002;display:grid;gap:8px;width:320px}
-#cfmed .fehler{color:#b3261e}`;
+#cfmed .fehler{color:#b3261e}
+#cfmed .sign{position:absolute;inset:0;z-index:5;display:flex;background:#e9ecea}
+#cfmed .sign .ctl{width:300px;padding:12px;display:flex;flex-direction:column;gap:8px;background:#fff;border-right:1px solid #ccd;overflow:auto}
+#cfmed .sign .ctl label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#556}
+#cfmed .sign .vor{flex:1;overflow:auto;padding:16px}
+#cfmed .blatt{width:210mm;height:297mm;background:#fff;color:#000;box-shadow:0 2px 10px #0003;transform-origin:0 0;position:relative;
+font-family:"DejaVu Sans",Arial,sans-serif;text-align:center;overflow:hidden}
+#cfmed .blatt .t1{position:absolute;top:24mm;left:18mm;right:18mm;font-size:40pt;font-weight:bold;line-height:1.1}
+#cfmed .blatt .t2{position:absolute;top:39mm;left:18mm;right:18mm;font-size:26pt;color:#595959}
+#cfmed .blatt .qr{position:absolute;top:52mm;left:45mm;width:120mm;height:120mm}
+#cfmed .blatt .qr svg{width:100%;height:100%;display:block}
+#cfmed .blatt .scan{position:absolute;top:174mm;left:18mm;right:18mm;font-size:11pt;color:#595959}
+#cfmed .blatt .unten{position:absolute;top:186mm;left:18mm;right:18mm}
+#cfmed .blatt .lab{font-size:13pt;color:#595959;margin-top:5mm}
+#cfmed .blatt .wert{font-size:30pt;font-weight:bold;overflow-wrap:anywhere;margin-top:2mm}
+#cfmed .blatt .pw{font:bold 26pt "DejaVu Sans Mono",Consolas,monospace;margin-top:2mm;white-space:pre;line-height:1.3}
+#cfmed .blatt .hint{position:absolute;bottom:18mm;left:18mm;right:18mm;font-size:12pt;color:#595959}
+@media print{body>*:not(#cfmed){display:none!important}
+#cfmed{position:static!important;display:block!important;background:#fff}
+#cfmed>header,#cfmed main>:not(.sign){display:none!important}
+#cfmed main{display:block}
+#cfmed .sign{position:static;display:block;background:#fff}
+#cfmed .sign .ctl{display:none}
+#cfmed .sign .vor{padding:0;overflow:visible}
+#cfmed .sign .vor>div{width:auto!important;height:auto!important}
+#cfmed .blatt{transform:none!important;box-shadow:none}
+@page{size:A4;margin:0}}`;
 
   const root = el('div', { id: 'cfmed' });
   root.append(el('style', {}, css));
@@ -162,12 +190,18 @@
     root.querySelectorAll('header,main,.login').forEach((n) => n.remove());
     const hosts = el('select', { title: 'Gerät für den Probelauf' });
     const msg = el('input', { placeholder: 'Release-Notiz', size: 28 });
+    // $cfmPromote ohne ring= nimmt Ring 1, ist der schon auf dem Stand von Ring 0, Ring 2
+    const ring = el('select', { title: 'Ring für $cfmPromote' },
+      el('option', { value: '' }, 'nächster Ring'), el('option', { value: '1' }, 'Ring 1'), el('option', { value: '2' }, 'Ring 2'));
     root.append(el('header', {},
       el('b', {}, 'cfm-Editor – ' + identity),
       el('button', { onclick: check, 'data-cmd': 1 }, 'Prüfen'),
       el('button', { onclick: diff, 'data-cmd': 1 }, 'Diff zum Release'),
       hosts, el('button', { onclick: () => plan(hosts.value), 'data-cmd': 1 }, 'Probelauf'),
       msg, el('button', { onclick: () => release(msg.value), 'data-cmd': 1 }, 'Release (Ring 0)'),
+      ring, el('button', { onclick: () => promote(ring.value), 'data-cmd': 1, title: 'Version des vorigen Rings freigeben ($cfmPromote)' }, 'Promote'),
+      el('button', { onclick: fleetStatus, 'data-cmd': 1, title: 'Flottenübersicht ($cfmStatus)' }, 'Status'),
+      el('button', { onclick: sign, 'data-cmd': 1, title: 'WLAN-Schild als A4-PDF (QR-Code, SSID, Passphrase aus dem Vault)' }, 'WLAN-Schild'),
       el('span', { class: 'sp' }),
       el('button', { onclick: hide }, 'Schließen')));
     const ta = el('textarea', { spellcheck: 'false', readonly: '' });
@@ -313,8 +347,123 @@
   }
   function release(m) {
     if (unsaved()) return;
-    if (!confirm('Release aus work/ erstellen und an Ring 0 verteilen?' + (m ? '\nNotiz: ' + m : ''))) return;
+    m = (m || '').trim();
+    // ohne Notiz erst nach eigener Rückfrage (Archiv, Hook und Log zeigen sonst nur die Nummer)
+    if (!m && !confirm('Achtung: Die Release-Notiz ist leer.\nArchiv, Git-Hook und Log zeigen dann nur die Versionsnummer.\n\nTrotzdem ohne Notiz releasen?')) return;
+    if (!confirm('Release aus work/ erstellen und an Ring 0 verteilen?' + (m ? '\nNotiz: ' + m : '\n(ohne Notiz)'))) return;
     run('Release ($cfmRelease, Ring 0)', '$cfmRelease msg="' + esc(m ? ' ' + m : '') + '"', ['cfmRelease']);
+  }
+  function promote(r) {
+    if (r !== '' && r !== '1' && r !== '2') return;
+    if (!confirm((r ? 'Ring ' + r : 'Den nächsten Ring') + ' auf die Version des vorigen Rings heben ($cfmPromote)?\nDie Geräte des Rings bekommen sie sofort per Push.')) return;
+    run('Promote ($cfmPromote' + (r ? ' ring=' + r : '') + ')', '$cfmPromote' + (r ? ' ring=' + r : ''), ['cfmPromote']);
+  }
+  function fleetStatus() { run('Flottenübersicht ($cfmStatus)', '$cfmStatus', ['cfmStatus']); }
+
+  // ---------- WLAN-Schild (DT3.4.1) ----------
+  // SSIDs aus der neuesten Version (das, was die Geräte ausstrahlen), Passphrase aus dem Vault per REST
+  // (/ppp/secret cfm:psk.<key> bzw. cfm:ppsk.<key>.<name>, braucht die Gruppe full wie der Editor). Druck über den
+  // Druckdialog des Browsers („Als PDF speichern“); die Passphrase bleibt nur in dieser Seite.
+  async function sign() {
+    if (S.busy || $('.sign')) return;
+    busy(true);
+    const out = $('pre');
+    let d = null;
+    try {
+      const t = await exec('/system script run cfm-mgr; :global cfmLoadData; :global cfmWifi; :local v [$cfmLoadData]; ' +
+        ':local df ($cfmWifi->"defaults"); :local o ({}); :foreach k,x in=($cfmWifi->"ssids") do={ ' +
+        ':local sec [:tostr ($x->"sec")]; :if ([:len $sec] = 0) do={ :set sec [:tostr ($df->"sec")] }; :local pp ""; ' +
+        ':foreach n,e in=($cfmWifi->"ppsk"->$k) do={ :set pp ($pp . $n . ",") }; ' +
+        ':set ($o->$k) ({"ssid"=[:tostr ($x->"ssid")];"sec"=$sec;"ppsk"=$pp;"only"=[:tostr ($x->"ppskOnly")]}) }; ' +
+        ':put ("J=" . [:serialize to=json ({"v"=$v;"s"=$o})])');
+      const j = t.split('\n').map((l) => l.trim()).find((l) => l.startsWith('J='));
+      if (!j) throw new Error('keine WLAN-Daten vom Manager: ' + clean(t).trim().slice(0, 200));
+      d = JSON.parse(j.slice(2));
+    } catch (e) { out.textContent = 'FEHLER beim Lesen der WLAN-Daten: ' + e.message; busy(false); return; }
+    busy(false);
+    const ssids = Array.isArray(d.s) ? {} : (d.s || {});
+    const keys = Object.keys(ssids).sort((a, b) => a.localeCompare(b));
+    if (!keys.length) { out.textContent = 'Keine SSID in wifi.rsc (v' + d.v + ').'; return; }
+    const selS = el('select', {});
+    keys.forEach((k) => selS.append(el('option', { value: k }, ssids[k].ssid + ' (' + k + ')')));
+    if (ssids.guest) selS.value = 'guest';
+    const selP = el('select', {});
+    const t1 = el('input', {});
+    const hint = el('input', { placeholder: 'z.B. Gültigkeit oder Ansprechpartner' });
+    const info = el('div', { class: 'fehler' });
+    const druck = el('button', { class: 'prim', onclick: () => window.print() }, 'Drucken / als PDF speichern');
+    const vor = el('div', { class: 'vor' });
+    const pane = el('div', { class: 'sign' },
+      el('div', { class: 'ctl' },
+        el('b', {}, 'WLAN-Schild'),
+        el('div', {}, 'Stand: Release v' + d.v + ' (was die Geräte ausstrahlen). Passphrase aus dem Vault.'),
+        el('label', {}, 'SSID', selS),
+        el('label', {}, 'Passphrase', selP),
+        el('label', {}, 'Überschrift (deutsch | englisch)', t1),
+        el('label', {}, 'Hinweis unten (optional)', hint),
+        druck,
+        el('button', { onclick: () => pane.remove() }, 'Schließen'),
+        info,
+        el('div', { style: 'font-size:11px;color:#667' }, 'Im Druckdialog A4, Ränder „keine“, Skalierung 100 %. Das PDF enthält die Passphrase – nicht ins Repo legen.')),
+      vor);
+    $('main').append(pane);
+    const pass = {};
+    const fillP = () => {
+      const k = selS.value;
+      const x = ssids[k];
+      selP.textContent = '';
+      if (x.only !== 'yes') selP.append(el('option', { value: 'psk.' + k }, 'Passphrase der SSID (psk.' + k + ')'));
+      String(x.ppsk || '').split(',').filter(Boolean).forEach((n) => selP.append(el('option', { value: 'ppsk.' + k + '.' + n }, 'PPSK ' + n + ' (ppsk.' + k + '.' + n + ')')));
+      t1.value = /gast|guest/i.test(k + ' ' + x.ssid) ? 'Gäste-WLAN | Guest Wi-Fi' : 'WLAN | Wi-Fi';
+    };
+    const draw = async () => {
+      const x = ssids[selS.value];
+      const key = selP.value;
+      info.textContent = '';
+      if (!key && cfmQr.authType(x.sec) !== 'nopass') { info.textContent = 'Keine Passphrase wählbar (ppskOnly ohne ppsk-Eintrag).'; druck.disabled = true; return; }
+      // PPSK gibt es nur mit WPA2-PSK
+      const typ = !key ? 'nopass' : (key.startsWith('ppsk.') ? 'WPA' : cfmQr.authType(x.sec));
+      let pw = '';
+      if (typ !== 'nopass') {
+        if (pass[key] === undefined) {
+          // per Skript wie tools/wifi-sign.py: /ppp/secret/get liefert das Passwort, eine REST-Liste blendet es u.U. aus
+          try {
+            const r = await exec(':local i [/ppp/secret/find where name="' + esc('cfm:' + key) + '"]; :if ([:len $i] = 0) do={ :put "P-" } else={ :put ("P=" . [/ppp/secret/get $i password]) }');
+            const l = r.replace(/\r/g, '').split('\n').find((z) => z.startsWith('P=') || z.startsWith('P-')) || '';
+            pass[key] = l.startsWith('P=') ? l.slice(2) : '';
+          } catch (e) { info.textContent = 'Vault nicht lesbar: ' + e.message; druck.disabled = true; return; }
+        }
+        pw = pass[key];
+        if (!pw) { info.textContent = 'Vault: cfm:' + key + ' fehlt ($cfmSecret key=' + key + ' value=…)'; }
+      }
+      const [de, en] = t1.value.includes('|') ? t1.value.split('|').map((z) => z.trim()) : [t1.value.trim(), ''];
+      const qr = el('div', { class: 'qr' });
+      qr.innerHTML = cfmQr.svg(cfmQr.wifi(x.ssid, pw, typ));
+      const unten = el('div', { class: 'unten' },
+        el('div', { class: 'lab' }, 'Netzwerk / Network'), el('div', { class: 'wert' }, x.ssid));
+      if (typ !== 'nopass') {
+        const zeilen = (pw.match(/.{1,24}/g) || ['']).join('\n');
+        unten.append(el('div', { class: 'lab' }, 'Passwort / Password'), el('div', { class: 'pw' }, zeilen));
+      }
+      const blatt = el('div', { class: 'blatt' },
+        el('div', { class: 't1' }, de), el('div', { class: 't2' }, en && en !== de ? en : ''), qr,
+        el('div', { class: 'scan' }, 'QR-Code mit der Kamera scannen · Scan the QR code with your camera'), unten,
+        el('div', { class: 'hint' }, hint.value));
+      // Vorschau auf die Breite bzw. Höhe der Fläche verkleinern (Druck: 100 %)
+      const mm = 96 / 25.4;
+      const sc = Math.min(1, (vor.clientWidth - 32) / (210 * mm), (vor.clientHeight - 32) / (297 * mm));
+      blatt.style.transform = 'scale(' + sc + ')';
+      vor.textContent = '';
+      vor.append(el('div', { style: 'width:' + (210 * mm * sc) + 'px;height:' + (297 * mm * sc) + 'px' }, blatt));
+      // ohne Passphrase kein Schild, das niemanden ins Netz lässt
+      druck.disabled = !!info.textContent;
+    };
+    selS.addEventListener('change', () => { fillP(); draw(); });
+    selP.addEventListener('change', draw);
+    t1.addEventListener('input', draw);
+    hint.addEventListener('input', draw);
+    fillP();
+    await draw();
   }
 
   function hide() {

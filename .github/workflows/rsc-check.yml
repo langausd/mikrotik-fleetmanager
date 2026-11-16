@@ -21,6 +21,11 @@ jobs:
         run: |
           sudo apt-get install -y -q python3-segno python3-cairo
           /usr/bin/python3 tools/wifi-sign-test.py -v
+      - name: QR-Encoder des WLAN-Schilds im cfm-Editor (gjs erzeugt, libzbar dekodiert)
+        run: |
+          sudo apt-get install -y -q gjs
+          sudo apt-get install -y -q libzbar0t64 || sudo apt-get install -y -q libzbar0
+          /usr/bin/python3 tools/editor/cfm-qr-test.py -v
       - name: upload-seed.sh gegen einen nachgebauten SFTP-Server
         run: python3 tools/upload-seed-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site

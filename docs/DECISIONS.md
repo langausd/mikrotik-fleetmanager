@@ -1969,6 +1969,19 @@ Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie
 
 **Verworfen:** Passwort nur im Speicher der Seite (bis 2026-10-15, je Öffnen neu bestätigen); nur der Anmeldedialog des Browsers (eigener Passwort-Eintrag `http://<IP>`, nach einem Tippfehler keine neue Abfrage bis zum Löschen der Website-Daten; Hardware); die WebFig-Sitzung mitnutzen (Dateien über `/jsproxy`, Befehle über ein unsichtbares WebFig-Terminal – geht, aber undokumentierte Interna).
 
+##### <a id="dt3.1.2"></a>DT3.1.2 · Promote und Status im Editor, Rückfrage ohne Release-Notiz
+
+*2026-11-16 · Nutzer*
+
+**Entscheidung:** Der Editor ruft neben `$cfmRelease` auch `$cfmPromote` (Auswahl „nächster Ring“, Ring 1 oder 2,
+mit Rückfrage) und `$cfmStatus` per Knopf auf. Ist die Release-Notiz leer, warnt er zuerst und releast erst nach einer
+eigenen Bestätigung ohne Notiz.
+
+**Begründung:** Der Ablauf Release → Status → Promote ging bisher nur zur Hälfte im Browser, für den Rest musste man
+ins Terminal. Eine Version ohne Notiz ist im Archiv, im Git-Hook und im Log nur an der Nummer zu erkennen. Der Befehl
+selbst bleibt unverändert (im Terminal ist `msg=` weiter optional). Geprüft im Browser mit nachgebildeter REST-API
+(Firefox headless: Knöpfe, Reihenfolge der Rückfragen).
+
 #### <a id="dt3.2"></a>DT3.2 · Lade-Lesezeichen „cfm“
 
 *2026-10-22 · alt D91*
@@ -2016,6 +2029,32 @@ QR-Code mit segno (reines Python, Debian `python3-segno`), Seite mit pycairo (`p
 QR-Encoder. Typ `WPA` deckt WPA2 und gemischt WPA2/WPA3 ab; `SAE` nur bei reinem WPA3, weil ältere Geräte `SAE` im
 QR-Code nicht kennen. Tests: `tools/wifi-sign-test.py` (Lesen von `wifi.rsc`, Typ, Maskierung; PDF nur mit beiden
 Paketen, in der GitHub Action installiert).
+
+##### <a id="dt3.4.1"></a>DT3.4.1 · WLAN-Schild im cfm-Editor
+
+*2026-11-16 · Nutzer (TODO 82)*
+
+**Frage:** Das Schild aus DT3.4 auch ohne Python-Umgebung, direkt aus dem cfm-Editor: Woher kommt die Passphrase,
+und welche stehen zur Wahl?
+
+**Optionen (gewählt fett):** **aus dem Vault, dazu die PPSK-Einträge der SSID wählbar** · nur die Passphrase der SSID
+aus dem Vault · Eingabe von Hand
+
+**Entscheidung:** Knopf „WLAN-Schild“ im Editor (Nutzer). Die SSIDs kommen aus der neuesten Version (`$cfmLoadData`,
+das, was die Geräte ausstrahlen), die Passphrase per `/ppp/secret/get` aus dem Vault – `cfm:psk.<key>` bzw.
+`cfm:ppsk.<key>.<name>`; der Editor läuft ohnehin auf dem Manager mit einem User der Gruppe full. Vorschau als A4-Blatt
+(Aufbau wie `tools/wifi-sign.py`: de/en, QR rund 12 cm, SSID, Passphrase in Monospace, Hinweis unten), Druck über den
+Druckdialog des Browsers („Als PDF speichern“). Fehlt die Passphrase im Vault, nennt die Seite den `$cfmSecret`-Befehl
+und sperrt den Druck. PPSK-Einträge gelten als `WPA` (PPSK nur mit WPA2-PSK).
+
+**Verworfen:** QR-Bibliothek von einem CDN – der Editor lädt seinen Code vom Gerät, aus dem Netz nichts (DT3.2).
+
+**Umsetzung:** Eigener QR-Encoder `tools/editor/cfm-qr.js` (Byte-Modus UTF-8, Stufe M wie segno im Python-Werkzeug,
+Version 1–40, Maske nach den Strafpunkten der Norm), `build.py` setzt ihn an der Marke im Editor ein. Test
+`tools/editor/cfm-qr-test.py`: der Encoder läuft in gjs, libzbar dekodiert die Matrix (Versionsgrenzen 1–12,
+Version 40 voll, Umlaute, alle acht Masken); die WIFI-Zeichenkette gleicht der von `wifi-sign.py`. Dazu einmal von
+Hand im Browser (Firefox headless, REST nachgebildet): Vorschau, Druckansicht nur mit dem Blatt, QR-Code aus dem
+Screenshot mit zbar dekodiert.
 
 ## <a id="archiv"></a>Archiv
 
@@ -2384,3 +2423,13 @@ Dazu DT3.4 (WLAN-Schild als PDF, `tools/wifi-sign.py`).
 
 Anlass: Hosts mit der VIP als Gateway waren über das LAN-LAN-VPN der Fritz!Boxen nicht erreichbar. Der Nutzer will
 diesen Tunnel behalten, gegen die Standortkopplung messen (A/B) und danach entscheiden (Nutzer, 2026-11-12).
+
+### Kleinigkeiten aus den Rollouts (2026-11-16)
+
+Entscheidungen: DG2.4.1 (`$cfmCheck` gibt aus), DM1.4 (Manager-Module aus `work/`, Sperre nach einem Rollback),
+DM3.3 (Tick des Backups ohne geladene Daten), DT3.1.2 (Promote und Status im Editor, Rückfrage ohne Release-Notiz),
+DT3.4.1 (WLAN-Schild im Editor).
+
+Anlass: Befunde beim Rollout an beiden Standorten (2026-11-13) und offene Punkte (TODO 78, 82, 83). Der Nutzer
+entschied in einer Fragerunde (Laden aus `work/` mit Sperre nach einem Rollback; Passphrase aus dem Vault, PPSK
+wählbar) und gab zwei Wünsche zum Editor dazu; Umsetzung und Labortests unbeaufsichtigt.

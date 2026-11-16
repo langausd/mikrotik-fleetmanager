@@ -34,7 +34,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
 * **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
-  79–82.
+  79–81.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -357,7 +357,3 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
     unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
     Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.
-82. **WLAN-Schild im cfm-Editor** (DT3.4, Nutzer 2026-11-12): eine Seite „Schild drucken“ im cfm-Editor/-Monitor,
-    die SSID und Passphrase vom Gerät liest und das Schild über den Druckdialog als A4-PDF ausgibt (wie
-    `tools/wifi-sign.py`). Braucht einen eingebetteten QR-Encoder in JavaScript (kein CDN, der Editor lädt seinen Code
-    vom Gerät) und eine Antwort, wie die Seite an die Passphrase kommt (Vault nur auf dem Manager).

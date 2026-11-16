@@ -82,9 +82,13 @@ class UploadSeed(unittest.TestCase):
         with open(os.path.join(bin_, "sftp"), "w") as fh:
             fh.write(FAKE_SFTP)
         os.chmod(os.path.join(bin_, "sftp"), 0o755)
+        # Nachbau von ssh für die Frage nach dem Lader (TODO 86): Antwort aus FAKE_SSH_OUT, ohne = Fehler
+        with open(os.path.join(bin_, "ssh"), "w") as fh:
+            fh.write('#!/bin/sh\n[ -n "$FAKE_SSH_OUT" ] || exit 255\nprintf \'%s\\r\\n\' "$FAKE_SSH_OUT"\n')
+        os.chmod(os.path.join(bin_, "ssh"), 0o755)
         self.log = os.path.join(self.tmp, "sftp.log")
         self.env = dict(os.environ, PATH=bin_ + os.pathsep + os.environ["PATH"], FAKE_SFTP_ROOT=self.mgr,
-                        FAKE_SFTP_LOG=self.log)
+                        FAKE_SFTP_LOG=self.log, FAKE_SSH_OUT="")
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
@@ -166,6 +170,23 @@ class UploadSeed(unittest.TestCase):
         out = self.upload("--all-features")
         self.assertNotIn("nicht hochgeladen (die Site", out)
         self.assertEqual(self.lib(), MODULE)
+
+    def test_hinweis_je_lader(self):
+        # TODO 86: neuer Lader (DM1.4) -> cfm-mgr; alter -> Module importieren; ssh scheitert -> beide Fälle
+        self.env["FAKE_SSH_OUT"] = "true"
+        out = self.upload()
+        self.assertIn("Nächster Schritt am Manager: /system script run cfm-mgr", out)
+        self.assertNotIn("/import cfm/work/lib/", out)
+        self.env["FAKE_SSH_OUT"] = "false"
+        out = self.upload()
+        self.assertIn("Lader vor DM1.4", out)
+        self.assertIn("/import cfm/work/lib/<modul>.rsc", out)
+        self.assertNotIn("/system script run cfm-mgr", out)
+        self.env["FAKE_SSH_OUT"] = ""
+        out = self.upload()
+        self.assertIn("nicht ermittelt", out)
+        self.assertIn("/system script run cfm-mgr", out)
+        self.assertIn("/import cfm/work/lib/<modul>.rsc", out)
 
     def test_rsc_check_bricht_ab(self):
         # Kommentar in einem Array-Literal (Hostfile, 2026-11-06): Abbruch vor dem ersten put, --no-check lädt

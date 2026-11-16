@@ -1048,7 +1048,8 @@ Stand und `work/` wieder gleich. Ein eigener `/import cfm/work/lib/<modul>.rsc` 
   dem Manager durchläuft (oder die markierte per `$cfmPush host=<manager> force=yes`).
 * **Übergang:** Den neuen Lader legt erst das Release an, das DM1.4 mitbringt. Bis dahin lädt `cfm-mgr` nur die
   installierten Skripte; wer neuen Manager-Code schon in diesem Release braucht, importiert ihn wie früher direkt vor
-  `$cfmRelease` (`/import cfm/work/lib/<modul>.rsc verbose=no`, danach nicht mehr `cfm-mgr`).
+  `$cfmRelease` (`/import cfm/work/lib/<modul>.rsc verbose=no`, danach nicht mehr `cfm-mgr`). `tools/upload-seed.sh` sieht per
+  `ssh` nach, ob der installierte `cfm-mgr` schon `cfmMgrFromWork` aufruft, und nennt den passenden nächsten Schritt.
 
 ### 8.2 Release und Rollout
 

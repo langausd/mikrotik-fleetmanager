@@ -740,6 +740,11 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     Fehlern. Jetzt gibt es Warnungen, Fehler und „Prüfung: N Fehler, M Warnungen“ selbst aus und liefert das Ergebnis
     weiter zurück; `$cfmRelease`, `$cfmPlan` und der Editor („Prüfen“) übergeben `quiet=yes`. Die Prüfung heißt intern
     `$cfmCheckRun`. Labor: `e2e.sh` Schritt 7 (Ausgabe ohne `:put`, `quiet=yes` still).
+86. ~~**`upload-seed.sh`: Hinweis im Übergang auf DM1.4**~~ – *umgesetzt 2026-11-16:* Befund vom selben Tag: Das Skript
+    schlug nach dem Upload `/system script run cfm-mgr` vor; auf einem Manager ohne den neuen Lader lädt das die alten
+    Module. Jetzt fragt es per `ssh` (dieselben Optionen wie `sftp`, `BatchMode`), ob der installierte `cfm-mgr`
+    `cfmMgrFromWork` enthält: ja → `cfm-mgr`, nein → `/import cfm/work/lib/<modul>.rsc` je geändertem Modul (Admin-Guide
+    8.1, Übergang); scheitert `ssh`, nennt es beide Fälle. Test: `tools/upload-seed-test.py` (nachgebautes `ssh`).
 
 ## Frühere Fassungen
 

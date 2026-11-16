@@ -246,7 +246,20 @@ if [ -n "$bootstrap" ]; then
   echo "Bootstrap hochgeladen: $bn (Wurzelverzeichnis)"
   echo "Nächster Schritt auf dem Gerät: Kopf prüfen, dann /import $bn"
 else
-  # cfm-mgr lädt geänderte Manager-Module gleich aus work/lib/ (DM1.4) - ein eigener /import ist nicht mehr nötig
-  echo "Nächster Schritt am Manager: /system script run cfm-mgr (nimmt geänderte lib/mgr-*.rsc aus work/), dann \$cfmDiff und \$cfmRelease msg=\"…\""
+  # cfm-mgr lädt geänderte Manager-Module gleich aus work/lib/ (DM1.4) - aber nur der neue Lader, den erst das
+  # Release mit DM1.4 anlegt. Ein Manager davor lüde mit cfm-mgr die alten Module (Befund 2026-11-16, TODO 86):
+  # per ssh nachsehen, ob der installierte cfm-mgr $cfmMgrFromWork aufruft (dieselben Optionen wie sftp)
+  lader=$(ssh -p "$port" -o BatchMode=yes -o ConnectTimeout=10 ${SFTP_OPTS:-} "$dest" \
+    ':put ([:typeof [:find [/system/script/get cfm-mgr source] "cfmMgrFromWork"]] = "num")' 2>/dev/null </dev/null | tr -d '\r' | tail -1 || true)
+  neu_hint="/system script run cfm-mgr (nimmt geänderte lib/mgr-*.rsc aus work/), dann \$cfmDiff und \$cfmRelease msg=\"…\""
+  alt_hint="geänderte Manager-Module direkt vor dem Release importieren: /import cfm/work/lib/<modul>.rsc verbose=no je geändertem lib/mgr-*.rsc (nicht cfm-mgr - der lädt die alten), dann \$cfmDiff und \$cfmRelease msg=\"…\" (Admin-Guide 8.1, Übergang)"
+  case $lader in
+    true) echo "Nächster Schritt am Manager: $neu_hint" ;;
+    false) echo "Der Manager hat noch den Lader vor DM1.4 (cfm-mgr ohne cfmMgrFromWork)."
+           echo "Nächster Schritt am Manager: $alt_hint" ;;
+    *) echo "Lader des Managers nicht ermittelt (ssh) - nächster Schritt am Manager:"
+       echo "  mit cfmMgrFromWork in cfm-mgr (DM1.4): $neu_hint"
+       echo "  ohne (Lader vor DM1.4): $alt_hint" ;;
+  esac
   echo "(Ersteinrichtung: Bootstrap mit --bootstrap hochladen, dann /import bootstrap-manager.rsc)"
 fi

@@ -48,7 +48,9 @@
   :set nmod ($nmod + 1)
 }
 :if ($nmod = 0) do={ :error "Manager-Module lib/mgr-*.rsc fehlen im Manifest" }
-:local ld ":foreach s in=[/system/script/find where name~\"^cfm-mgr-\"] do={ /system/script/run \$s }"
+# Lader: erst die installierten Module, dann die abweichenden aus work/lib/ ($cfmMgrFromWork, DM1.4; fehlt die
+# Funktion, liefert der Aufruf still nichts)
+:local ld ":foreach s in=[/system/script/find where name~\"^cfm-mgr-\"] do={ /system/script/run \$s }; :global cfmMgrFromWork; :onerror e in={ \$cfmMgrFromWork } do={ :log warning (\"cfm: cfm-mgr: \" . \$e) }"
 $cfmEnsure m="/system/script" k="sys:mgr" n=({"name"="cfm-mgr"}) p=({"name"="cfm-mgr";"source"=$ld;"policy"=$pol})
 # Allgemeiner Tick (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup):
 # Intervall aus global.rsc "mgrTick" (Default 10m, falls nicht gesetzt). Das Onboarding braucht

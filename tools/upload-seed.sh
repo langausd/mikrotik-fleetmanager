@@ -246,6 +246,7 @@ if [ -n "$bootstrap" ]; then
   echo "Bootstrap hochgeladen: $bn (Wurzelverzeichnis)"
   echo "Nächster Schritt auf dem Gerät: Kopf prüfen, dann /import $bn"
 else
-  echo "Nächster Schritt am Manager: /system script run cfm-mgr, dann \$cfmDiff und \$cfmRelease msg=\"…\""
+  # cfm-mgr lädt geänderte Manager-Module gleich aus work/lib/ (DM1.4) - ein eigener /import ist nicht mehr nötig
+  echo "Nächster Schritt am Manager: /system script run cfm-mgr (nimmt geänderte lib/mgr-*.rsc aus work/), dann \$cfmDiff und \$cfmRelease msg=\"…\""
   echo "(Ersteinrichtung: Bootstrap mit --bootstrap hochladen, dann /import bootstrap-manager.rsc)"
 fi

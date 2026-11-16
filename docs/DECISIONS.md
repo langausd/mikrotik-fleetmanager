@@ -327,6 +327,40 @@ nächsten Fall eindeutig. Labor: `e2e.sh` (Module auf cm1/cm2), die Falle selbst
 
 **Umsetzung:** RouterOS-Script kennt kein `tolower` – `$cfmLower` ersetzt A–Z einzeln (leere Zeichenkette vorab abfangen: `:for … to=-1` läuft rückwärts). Ein Funktionsargument lässt sich nicht per `:set` ändern (Syntaxfehler), und in `:local host [… $host]` ist `$host` schon die neue, leere Variable; daher in jedem Befehl `:local hn [$cfmHostName $host]; :local host $hn`. `$cfmEnroll`/`$cfmRegister` nennen eine Umschreibung („hap-flur -> hAP-Flur“): ein Name in anderer Schreibweise ist dasselbe Gerät, sonst entstünden genau die Dubletten, die `$cfmCheck` ablehnt.
 
+#### <a id="dm1.4"></a>DM1.4 · Manager-Module aus `work/` laden, Sperre nach einem Rollback
+
+*2026-11-16 · Nutzer (TODO 78)*
+
+**Frage:** `cfm-mgr` lud nur die installierten Skripte `cfm-mgr-*`. Nach einem Framework-Update liefen `$cfmCheck`,
+`$cfmPlan` und das erste `$cfmRelease` deshalb mit dem alten Code; man musste jedes geänderte `lib/mgr-*.rsc` vorher
+von Hand importieren (Admin-Guide 8.1, mehrfach vergessen: v95, v110), und `tools/upload-seed.sh` schlug ausgerechnet
+`cfm-mgr` vor.
+
+**Optionen (gewählt fett):** **`cfm-mgr` lädt nach den installierten Skripten jedes abweichende oder neue Modul aus
+`work/lib/` – für alle Aufrufer, auch Tick und Editor** · nur ein Hinweis von `upload-seed.sh` mit den `/import`-Zeilen
+
+**Entscheidung:** `work/` gewinnt (Nutzer), mit einer Sperre: Ist der letzte Apply auf dem Manager selbst gescheitert
+oder hat der Watchdog zurückgerollt, gilt der Code des letzten angewendeten Release. Ein Release mit dieser Sperre
+warnt und läuft trotzdem durch; scheitert es auf dem Manager wieder, rollt er zurück und markiert die Version als
+`bad` wie bisher (Nutzer).
+
+**Umsetzung:** Der Lader (Rolle `manager`) ruft nach den Skripten `$cfmMgrFromWork` (`mgr-core`) auf: Inhalt von
+`work/lib/mgr-<m>.rsc` ungleich Quelltext von `cfm-mgr-<m>` oder kein solches Skript → `:parse`; scheitert das, gilt
+wieder das installierte Skript (Warnung im Log). Eine Zeile im Terminal nennt die Module, `cfmMgrWork` hält sie fest.
+Die Sperre (`$cfmMgrRollback`) kommt aus dem Zustand des eigenen Agents (`state.json`): `bad` größer als die
+angewendete Version `v`. Sie setzt sich damit genau beim Rollback (Apply-Fehler und Watchdog schreiben beide `bad`
+und lassen `v` stehen) und löst sich von selbst, sobald eine neuere Version durchläuft oder die markierte erzwungen
+wird (DG2.6). Mit Sperre lädt `$cfmRelease` auch den Prüfer nicht aus `work/` (DG4.1); die WLAN- und WireGuard-Teile
+der Prüfung kommen wie immer aus dem geprüften Stand.
+
+**Begründung:** Die Funktionen sind globale Variablen und gelten für alle Sitzungen. Getrennter Code für Tick und
+Admin geht nicht: Der Tick lädt `cfm-mgr` alle `mgrTick` neu und überschrieb schon bisher einen Import von Hand. Der
+Code in `work/` ist genau der, den das nächste Release installiert; ohne die Sperre lüde der Lader nach einem Rollback
+den Code, der ihn ausgelöst hat, sofort wieder. Ein Backup-Manager hat kein `work/` und lädt weiter nur installiert.
+
+**Folge:** Den neuen Lader legt erst das Release an, das DM1.4 mitbringt (Übergang wie bisher, Admin-Guide 8.1).
+Kosten je `cfm-mgr`: eine Dateisuche unter `work/lib/` und ein Vergleich je Modul (< 60 KB). Labor: `e2e.sh` Schritt 17.
+
 ### <a id="dm2"></a>DM2 · Nebenläufigkeit
 
 #### <a id="dm2.1"></a>DM2.1 · Überlappende Manager-Ticks: Job-Sperre

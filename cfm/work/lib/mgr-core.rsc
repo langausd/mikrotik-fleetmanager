@@ -249,6 +249,61 @@
   :return $v
 }
 
+# ---------- Manager-Module aus work/ (TODO 78, DM1.4) ----------
+# Rollback auf diesem Manager? Liefert die zurückgerollte Version oder "". Aus dem Zustand des eigenen Agents
+# (state.json): "bad" neuer als die angewendete Version "v" heißt, der letzte Apply scheiterte bzw. der
+# Watchdog rollte zurück. Das Flag löscht sich selbst - mit dem nächsten Apply, der durchläuft (v > bad), oder
+# einem erzwungenen der markierten Version (DG2.6).
+:global cfmMgrRollback do={
+  :global cfmMB
+  :local r ""
+  :onerror e in={
+    :local st [:deserialize from=json [/file/get ([$cfmMB] . "/state.json") contents]]
+    :if ([:len [:tostr ($st->"bad")]] > 0 and [:tonum ($st->"bad")] > [:tonum ($st->"v")]) do={ :set r [:tostr ($st->"bad")] }
+  } do={}
+  :return $r
+}
+# Ruft der Lader cfm-mgr nach den installierten Skripten cfm-mgr-* auf: Jedes Modul work/lib/mgr-<m>.rsc, das vom
+# installierten Skript abweicht oder neu ist, wird darübergeladen - nach einem Framework-Update (upload-seed.sh)
+# laufen $cfmCheck, $cfmPlan, $cfmRelease und der Tick also gleich mit dem neuen Code, nicht erst nach dem
+# ersten Release (Falle aus Admin-Guide 8.1). Die Funktionen sind global: getrennt für Tick und Admin geht es
+# nicht, der Tick lädt cfm-mgr alle mgrTick neu. Nach dem Release (die Rolle manager installiert die Module der
+# Version) sind beide gleich. Rollback auf diesem Manager ($cfmMgrRollback): nichts aus work/, es gilt der Code
+# des letzten angewendeten Release - sonst lüde der Lader den Code, der den Rollback ausgelöst hat, gleich wieder.
+# Merkt sich cfmMgrWork (geladene Module) und cfmMgrRb (Version des Rollbacks); Ausgabe nur, wenn etwas gilt.
+:global cfmMgrFromWork do={
+  :global cfmMB; :global cfmMgrRollback; :global cfmMgrWork; :global cfmMgrRb
+  :local b [$cfmMB]
+  :set cfmMgrWork ({})
+  :set cfmMgrRb [$cfmMgrRollback]
+  :if ([:len $cfmMgrRb] > 0) do={
+    :put ("cfm-mgr: Rollback von v" . $cfmMgrRb . " auf diesem Manager - es gilt der installierte Code, work/lib/ bleibt ungenutzt")
+    :return 0
+  }
+  :local ld ""
+  :foreach f in=[/file/find where name~("^" . $b . "/work/lib/mgr-[a-z0-9]+\\.rsc\$") and type!="directory"] do={
+    :local fn [/file/get $f name]
+    :local m [:pick $fn ([:len $b] + 10) ([:len $fn] - 4)]
+    :local c [/file/get $f contents]
+    :local inst ""
+    :onerror e in={ :set inst [/system/script/get ("cfm-" . $m) source] } do={}
+    :if ($c != $inst) do={
+      :onerror e in={
+        :local pc [:parse $c]
+        $pc
+        :set ($cfmMgrWork->[:len $cfmMgrWork]) $m
+        :set ld ($ld . ", " . $m)
+      } do={
+        :put ("cfm-mgr: work/lib/" . $m . ".rsc nicht geladen (" . $e . "), es gilt das installierte Skript")
+        :log warning ("cfm: work/lib/" . $m . ".rsc nicht geladen: " . $e)
+        :onerror e2 in={ /system/script/run ("cfm-" . $m) } do={}
+      }
+    }
+  }
+  :if ([:len $ld] > 0) do={ :put ("cfm-mgr: aus work/lib/ (weicht vom installierten Stand ab): " . [:pick $ld 2 [:len $ld]]) }
+  :return [:len $cfmMgrWork]
+}
+
 # ---------- SSH zu Geräten ----------
 :global cfmExec do={
   :local r ({"exit-code"=255;"output"=""})
@@ -449,7 +504,15 @@
   # Der Prüfer kommt aus work/ (TODO 21): Nach einem Framework-Update kennt der installierte die
   # neuen Kennzeichen noch nicht und hielte das erste Release auf. Lädt die neue Fassung nicht,
   # prüft die installierte. Den WLAN-Teil (lib/mgr-checkw.rsc) lädt $cfmCheck selbst aus work/.
-  :onerror e in={ [[:parse [/file/get ($b . "/work/lib/mgr-check.rsc") contents]]] } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
+  # Rollback auf diesem Manager (DM1.4): Warnung, aber kein Abbruch - der Code des letzten Release gilt, auch für den
+  # Prüfer; scheitert der Apply der neuen Version wieder, rollt er zurück und markiert sie als bad wie sonst auch
+  :global cfmMgrRollback
+  :local rb [$cfmMgrRollback]
+  :if ([:len $rb] > 0) do={
+    :put ("Warnung: v" . $rb . " wurde auf diesem Manager zurückgerollt (Apply-Fehler oder Watchdog). Die Manager-Befehle laufen mit dem installierten Code, nicht mit work/lib/ - das Release geht trotzdem raus; scheitert es auf dem Manager wieder, rollt er zurück und markiert die Version als bad.")
+  } else={
+    :onerror e in={ [[:parse [/file/get ($b . "/work/lib/mgr-check.rsc") contents]]] } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
+  }
   :global cfmCheck
   :local ck [$cfmCheck quiet=yes]
   :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }

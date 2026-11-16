@@ -709,6 +709,13 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     im Inventar auf; alle Befehle mit Hostnamen nutzen ihn, danach gilt nur der Inventarname (Pfade, Hostfile,
     Meldungen). `$cfmEnroll` und `$cfmRegister` nennen eine abweichende Schreibweise. `$cfmCheck` lehnt Namen ab, die
     sich nur in der Schreibweise unterscheiden. Labor: Plan/Show/Audit/Push mit `SW1`/`Sw1`, Kollision im Check.
+78. ~~**Manager-Bibliothek beim Release aus `work/` laden**~~ – *umgesetzt 2026-11-16 (DM1.4):* `cfm-mgr` lud nur
+    die installierten Skripte `cfm-mgr-*`; nach einem Framework-Update liefen Prüfung, Probelauf und das erste
+    Release mit dem alten Code (Admin-Guide 8.1, mehrfach vergessen: v95, v110), `tools/upload-seed.sh` schlug
+    ausgerechnet `cfm-mgr` vor. Jetzt lädt der Lader nach den installierten Skripten jedes abweichende oder neue Modul
+    aus `work/lib/` (`$cfmMgrFromWork`) und nennt es. Nach einem Rollback auf dem Manager (Apply-Fehler oder Watchdog:
+    `bad` neuer als `v` im Agent-Zustand) bleibt `work/lib/` ungenutzt, `$cfmRelease` warnt und läuft trotzdem
+    (Nutzer). Der Hinweis von `upload-seed.sh` stimmt damit wieder. Labor: `e2e.sh` Schritt 17.
 83. ~~**`$cfmCheck` im Terminal ohne Ausgabe**~~ – *umgesetzt 2026-11-16 (DG2.4.1):* Befund beim Rollout an beiden
     Standorten (2026-11-13): `$cfmCheck` gab nur `{"err"=…;"warn"=…}` zurück, im Terminal erschien nichts, auch bei
     Fehlern. Jetzt gibt es Warnungen, Fehler und „Prüfung: N Fehler, M Warnungen“ selbst aus und liefert das Ergebnis

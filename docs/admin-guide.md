@@ -1031,11 +1031,21 @@ Framework-Code (`lib/`, `roles/`) hoch; `--site` ersetzt die Site-Daten auf dem 
 vorher, welche Dateien dort anders sind. Vorher prüft es alles mit `tools/rsc-check.py` und bricht bei einem
 Fehler ab (`--no-check` überspringt das).
 
-**Geänderte Manager-Bibliothek (`lib/mgr-*.rsc`):** `/system script run cfm-mgr` lädt die Skripte `cfm-mgr-*`, die
-der Manager zuletzt selbst angewendet hat – nicht `work/`. Das erste Release nach einem Framework-Update läuft
-also noch mit dem alten Manager-Code; ein Fix darin (z.B. am Release selbst) wirkt erst ab dem nächsten. Soll er
-schon beim ersten wirken: direkt vor `$cfmRelease` in derselben Sitzung `/import cfm/work/lib/<modul>.rsc verbose=no` –
-und danach **nicht** mehr `/system script run cfm-mgr`, das lädt wieder die alten Skripte.
+**Geänderte Manager-Bibliothek (`lib/mgr-*.rsc`):** `/system script run cfm-mgr` lädt erst die Skripte `cfm-mgr-*`,
+die der Manager zuletzt selbst angewendet hat, dann jedes Modul aus `work/lib/`, das davon abweicht oder neu ist
+(DM1.4). Nach `tools/upload-seed.sh` laufen `$cfmCheck`, `$cfmPlan`, `$cfmRelease` – und der Tick – also gleich mit
+dem neuen Code; `cfm-mgr` nennt die Module in einer Zeile („aus work/lib/ …“). Nach dem Release sind installierter
+Stand und `work/` wieder gleich. Ein eigener `/import cfm/work/lib/<modul>.rsc` ist nicht mehr nötig.
+
+* **Rollback auf dem Manager:** Ist der letzte Apply auf dem Manager selbst gescheitert oder hat der Watchdog
+  zurückgerollt (im Agent-Zustand `bad` neuer als die angewendete Version), bleibt `work/lib/` ungenutzt – sonst lüde
+  `cfm-mgr` den Code, der den Rollback ausgelöst hat, gleich wieder. `cfm-mgr` meldet „Rollback von vN … es gilt der
+  installierte Code“, `$cfmRelease` warnt und läuft trotzdem; scheitert die neue Version auf dem Manager wieder, rollt
+  er zurück und markiert sie als `bad` wie jedes Gerät. Das Flag geht von selbst weg, sobald eine neuere Version auf
+  dem Manager durchläuft (oder die markierte per `$cfmPush host=<manager> force=yes`).
+* **Übergang:** Den neuen Lader legt erst das Release an, das DM1.4 mitbringt. Bis dahin lädt `cfm-mgr` nur die
+  installierten Skripte; wer neuen Manager-Code schon in diesem Release braucht, importiert ihn wie früher direkt vor
+  `$cfmRelease` (`/import cfm/work/lib/<modul>.rsc verbose=no`, danach nicht mehr `cfm-mgr`).
 
 ### 8.2 Release und Rollout
 

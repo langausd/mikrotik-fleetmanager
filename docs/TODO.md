@@ -34,7 +34,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
 * **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
-  78–82.
+  79–82.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -361,13 +361,3 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     die SSID und Passphrase vom Gerät liest und das Schild über den Druckdialog als A4-PDF ausgibt (wie
     `tools/wifi-sign.py`). Braucht einen eingebetteten QR-Encoder in JavaScript (kein CDN, der Editor lädt seinen Code
     vom Gerät) und eine Antwort, wie die Seite an die Passphrase kommt (Vault nur auf dem Manager).
-78. **Manager-Bibliothek beim Release aus `work/` laden** (geplant 2026-11-09, nach der Auswertung des WLAN-Tests an
-    einem Standort): `cfm-mgr` lädt die installierten Skripte `cfm-mgr-*`. Nach einem Framework-Update laufen
-    `$cfmCheck`, `$cfmPlan` und das erste `$cfmRelease` deshalb mit der alten Bibliothek – heute muss man jede neue
-    `lib/mgr-*.rsc` vorher von Hand importieren (Admin-Guide 8.1, mehrfach vergessen: v95, 6.11.). Wie der Prüfer
-    (DG4.1) sollen die Befehle die Module aus `work/lib/` laden, wenn sie neuer sind als die installierten.
-    *Nachtrag 2026-11-13:* `tools/upload-seed.sh` schlägt am Ende „`/system script run cfm-mgr`, dann `$cfmDiff`
-    und `$cfmRelease`“ vor – nach einem Framework-Update genau die Falle aus Admin-Guide 8.1 (lädt die alten
-    Skripte; beim Rollout v110 stattdessen die Module von Hand importiert). Bis 78 umgesetzt ist, soll der Hinweis bei geänderten
-    `lib/mgr-*.rsc` stattdessen die `/import cfm/work/lib/<modul>.rsc`-Zeilen ausgeben (sofern das Skript die geänderten
-    Dateien beim Upload erkennen kann); mit 78 entfällt der Sonderfall.

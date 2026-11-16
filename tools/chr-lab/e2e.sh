@@ -1307,4 +1307,20 @@ up=""; for _ in $(seq 1 20); do
 done
 [ -n "$up" ] && [ "$up" -lt 55 ] && ok "cm1: Manager-Funktionen ${up} s nach dem Start da (vor dem ersten Tick)" || bad "cm1: Manager-Funktionen nach dem Start: ${o:-keine Antwort}"
 
+step "17. Manager-Module aus work/ (DM1.4, TODO 78) und Sperre nach einem Rollback"
+r 1 ':global e2eMs [/file/get "cfm/work/lib/mgr-show.rsc" contents]; /file/set [/file/find name="cfm/work/lib/mgr-show.rsc"] contents=($e2eMs . "\n:global cfmE2eWork do={ :return \"neu\" }\n")' >/dev/null
+out=$(r 1 ':global cfmE2eWork; :set cfmE2eWork; /system script run cfm-mgr; :global cfmE2eWork; :put ("E=" . [$cfmE2eWork])')
+echo "$out" | grep -q "cfm-mgr: aus work/lib/ (weicht vom installierten Stand ab):.*mgr-show" && echo "$out" | grep -qx "E=neu" && ok "cm1: cfm-mgr lädt das geänderte Modul aus work/lib/ und nennt es" || { bad "cm1: geändertes Modul aus work/"; echo "$out" | tail -3; }
+# Rollback auf dem Manager nachstellen: bad = angewendete Version, v eine darunter (wie nach Watchdog oder Apply-Fehler)
+V=$(r 1 ':local f "cfm/state.json"; :local st [:deserialize from=json [/file/get $f contents]]; :local v [:tonum ($st->"v")]; :set ($st->"bad") $v; :set ($st->"v") ($v - 1); /file/set [/file/find name=$f] contents=[:serialize to=json $st]; :put ("V=" . $v)' | grep -o 'V=[0-9]*' | cut -d= -f2)
+out=$(r 1 ':global cfmE2eWork; :set cfmE2eWork; /system script run cfm-mgr; :global cfmE2eWork; :global cfmMgrRb; :put ("T=" . [:typeof $cfmE2eWork] . " RB=" . $cfmMgrRb)')
+echo "$out" | grep -q "cfm-mgr: Rollback von v$V auf diesem Manager" && echo "$out" | grep -qx "T=nothing RB=$V" && ok "cm1: nach einem Rollback (v$V) gilt der installierte Code, work/lib/ bleibt ungenutzt" || { bad "cm1: Sperre nach Rollback"; echo "$out" | tail -3; }
+r 1 ':global e2eMs; /file/set [/file/find name="cfm/work/lib/mgr-show.rsc"] contents=$e2eMs' >/dev/null
+out=$(mgr '$cfmRelease msg=" e2e Rollback-Flag" all=yes')
+N=$(echo "$out" | grep -o 'Release v[0-9]* erstellt' | grep -o '[0-9][0-9]*')
+echo "$out" | grep -q "Warnung: v$V wurde auf diesem Manager zurückgerollt" && [ -n "$N" ] && ok "Release mit Rollback-Flag: Warnung, läuft trotzdem (v$N)" || { bad "Release mit Rollback-Flag"; echo "$out" | tail -4; }
+[ -n "$N" ] && agentwait 1 "$N" cm1 && ok "cm1 hat v$N angewendet" || bad "cm1 Apply v${N:-?}"
+out=$(r 1 '/system script run cfm-mgr; :global cfmMgrWork; :global cfmMgrRb; :put ("W=" . [:len $cfmMgrWork] . " RB=[" . $cfmMgrRb . "]")')
+echo "$out" | grep -qx 'W=0 RB=\[\]' && ! echo "$out" | grep -q "Rollback von" && ok "cm1: nach dem Apply Flag aus, installierte Module gleich work/lib/ (nichts doppelt geladen)" || { bad "cm1: Lader nach dem Apply"; echo "$out" | tail -3; }
+
 echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]

@@ -272,6 +272,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **5-GHz-Pool mit DFS** (DW3.6, Vorlage seit 2026-11-16, an einem Standort seit v39): Begrenzt RouterOS 80 MHz auf
+  5660–5700 korrekt (der 80-MHz-Block 5660–5720 reicht über 5725 MHz – erwartet 40 bzw. 20 MHz, `monitor` →
+  `channel`)? CAC-Dauer nach einem Neustart des Radios, Verhalten bei Radar (Log `dfs`).
 * **Standortkopplung und DynDNS** (DR4.3, DR4.4, 2026-11-11; Labor grün 2026-11-12): Tunnel zwischen zwei Standorten hinter Fritz!Boxen
   (Portfreigaben, DynDNS-Update beim echten Anbieter, Endpoint-Auflösung nach einem Adresswechsel), VRRP-Wechsel mit
   stehendem Tunnel, Fritz!Box-Routen für Clients mit dem Internet-Router als Gateway, DNS-Namen der Gegenseite.

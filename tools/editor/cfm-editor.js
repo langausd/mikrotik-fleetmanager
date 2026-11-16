@@ -336,6 +336,7 @@ font-family:"DejaVu Sans",Arial,sans-serif;text-align:center;overflow:hidden}
       ':onerror x in={ /import file-name=([$cfmMB] . "/work/lib/mgr-check.rsc") verbose=no } do={}; :global cfmCheck; ' +
       ':local p [$cfmParseWork]; :if ([:len $p] > 0) do={ :put ("Größe/Syntax:" . $p) } else={ :put "Größe und Syntax: ok" }; ' +
       ':local ck [$cfmCheck quiet=yes]; :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }; :foreach x in=($ck->"err") do={ :put ("Fehler: " . $x) }; ' +
+      ':foreach x in=($ck->"note") do={ :put ("Hinweis: " . $x) }; ' +
       ':put ([:len ($ck->"err")] . " Fehler, " . [:len ($ck->"warn")] . " Warnungen")',
       ['cfmMB', 'cfmParseWork', 'cfmCheck']);
   }

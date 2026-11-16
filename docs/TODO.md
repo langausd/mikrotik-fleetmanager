@@ -391,8 +391,3 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Neuprovisionieren (z. B. nach einer Kanaländerung) neue Interfaces an; die alten bleiben deaktiviert liegen (nach
     drei Durchläufen fünf Stück an einem AP). Die Rolle `ap` könnte deaktivierte Slaves ohne CAPsMAN-Bezug entfernen –
     erst prüfen, ob RouterOS sie beim nächsten Verbinden wieder verwendet.
-87. **Kanal-Pool 5 GHz in der Vorlage** (Befund 2026-11-16): Die Vorlage `wifi.rsc` mischt 5180–5240 (23 dBm) und
-    5745–5825 (in DE 14 dBm); RouterOS wählte an einem Standort zweimal den oberen Bereich. Mit 5180–5240 und DFS
-    5500–5580/5660–5700 stieg die Sendeleistung einer CRS418 auf 27 dBm (Pegel am Nachbar-AP −70 → −51 dBm). Vorlage
-    und Admin-Guide (WLAN) anpassen? Offen: Folgen von DFS (CAC beim Start, Radar, Fallback – TODO 84); 80 MHz auf
-    5660–5720 reicht über 5725 MHz – prüfen, ob RouterOS das mit `country=Germany` korrekt begrenzt.

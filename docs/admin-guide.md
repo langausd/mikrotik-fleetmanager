@@ -289,6 +289,14 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   gilt auch für den lokalen Fallback der APs (DW1.6).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (in der Vorlage `03:00`; leer = nur beim Start);
   je Band `skipDfs` (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
+* **5-GHz-Pool bewusst wählen** (TODO 87): Mit `country=Germany` sendet ein Radio auf 5745–5825 MHz nur mit
+  14 dBm, auf 5180–5240 mit 23 dBm und im DFS-Bereich 5470–5725 bis 30 dBm EIRP (Pegelmessung 2026-11-16: −70 → −51 dBm
+  am Nachbar-AP nach dem Wechsel von 5745 auf DFS). Aus einem gemischten Pool nahm RouterOS zweimal den oberen Bereich.
+  Die Vorlage nimmt deshalb 5180–5240 und DFS 5500–5580/5660–5700 (`skipDfs="10min-cac"` spart das Wetterradar
+  aus). **DFS kostet:** Nach jedem Start eines Radios auf einem DFS-Kanal ist 5 GHz mindestens 60 s still (CAC), bei
+  Radar wechselt der Kanal – das gilt auch im lokalen Fallback eines AP. Die Variante ohne DFS steht auskommentiert in
+  der Vorlage (keine CAC, aber nur ein 80-MHz-Block, alle APs im selben Kanal). `$cfmCheck` weist auf DFS-Kanäle in
+  Pool oder Pins hin. 5745–5825 nur, wo die Reichweite reicht oder ein AP bewusst leise senden soll.
 * 6 GHz: Kanal-Eintrag `"6"` mit `band="6ghz-ax"` und der Security des Bands, z.B.
   `"sec"="wpa3-psk";"pmf"="required"` (6 GHz erlaubt kein WPA2, `$cfmCheck` meldet das). Solche
   Angaben im Kanal-Eintrag (`sec`, `ft`, `ftOverDs`, `pmf`) gelten für alle SSIDs auf dem Band und

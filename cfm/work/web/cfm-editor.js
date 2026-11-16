@@ -1,6 +1,6 @@
-// cfm-editor.js 8af4ba0e2dd6 - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-editor.js 36c63f3d3d4a - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = '8af4ba0e2dd6';
+const STAND = '36c63f3d3d4a';
 const alt = window.__cfmEd;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
@@ -511,6 +511,7 @@ run('Prüfen ($cfmParseWork, $cfmCheck)',
 ':onerror x in={ /import file-name=([$cfmMB] . "/work/lib/mgr-check.rsc") verbose=no } do={}; :global cfmCheck; ' +
 ':local p [$cfmParseWork]; :if ([:len $p] > 0) do={ :put ("Größe/Syntax:" . $p) } else={ :put "Größe und Syntax: ok" }; ' +
 ':local ck [$cfmCheck quiet=yes]; :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }; :foreach x in=($ck->"err") do={ :put ("Fehler: " . $x) }; ' +
+':foreach x in=($ck->"note") do={ :put ("Hinweis: " . $x) }; ' +
 ':put ([:len ($ck->"err")] . " Fehler, " . [:len ($ck->"warn")] . " Warnungen")',
 ['cfmMB', 'cfmParseWork', 'cfmCheck']);
 }

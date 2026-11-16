@@ -50,6 +50,11 @@
 #              "others"={"zha"={"type"="zigbee";"ch"=25;"near"="ap1"};"otbr"={"type"="thread";"ch"="auto"}}
 #            $cfmCheck warnt, wenn ein Pin in radios einen festen Zigbee-/Thread-Kanal überdeckt.
 # Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (DW1.7)
+# 5 GHz (TODO 87, Befund 2026-11-16): In DE gelten auf 5150-5350 und 5470-5725 bis 23 bzw. 30 dBm EIRP, auf
+#            5745-5825 nur 14 dBm (SRD-Band) - aus einem gemischten Pool wählte RouterOS den oberen Bereich, 9 dB
+#            weniger. Die Vorlage nimmt 5180-5240 und DFS 5500-5580/5660-5700 (Wetterradar 5600-5640 spart skipDfs
+#            aus). Preis von DFS: Nach jedem Start eines Radios auf einem DFS-Kanal ist 5 GHz mindestens 60 s still
+#            (CAC), bei Radar wechselt der Kanal - auch im lokalen Fallback der APs. Variante ohne DFS: unter dem Block.
 # ============================================================
 :global cfmWifi {
   "country"="Germany";
@@ -63,7 +68,7 @@
   };
   "channels"={
     "2"={"band"="2ghz-ax";"freq"="2412,2437,2462";"width"="20mhz"};
-    "5"={"band"="5ghz-ax";"freq"="5180,5200,5220,5240,5745,5765,5785,5805,5825";"width"="20/40/80mhz";"skipDfs"="10min-cac"}
+    "5"={"band"="5ghz-ax";"freq"="5180,5200,5220,5240,5500,5520,5540,5560,5580,5660,5680,5700";"width"="20/40/80mhz";"skipDfs"="10min-cac"}
   };
   "reselect"="03:00";
   "ppsk"={};
@@ -71,3 +76,5 @@
   "steer"={};
   "others"={}
 }
+# Variante ohne DFS (TODO 87): keine CAC, aber nur ein 80-MHz-Block - alle APs im selben Kanal. Zum Umschalten einkommentieren:
+# :set ($cfmWifi->"channels"->"5") {"band"="5ghz-ax";"freq"="5180,5200,5220,5240";"width"="20/40/80mhz"}

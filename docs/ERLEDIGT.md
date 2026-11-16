@@ -746,6 +746,13 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     `cfmMgrFromWork` enthält: ja → `cfm-mgr`, nein → `/import cfm/work/lib/<modul>.rsc` je geändertem Modul (Admin-Guide
     8.1, Übergang); scheitert `ssh`, nennt es beide Fälle. Test: `tools/upload-seed-test.py` (nachgebautes `ssh`).
 
+87. ~~**Kanal-Pool 5 GHz in der Vorlage**~~ – *umgesetzt 2026-11-16 (DW3.6, Nutzer):* Befund vom selben Tag: Die
+    Vorlage mischte 5180–5240 (23 dBm) und 5745–5825 (in DE 14 dBm), RouterOS wählte an einem Standort zweimal den
+    oberen Bereich. Jetzt 5180–5240 und DFS 5500–5580/5660–5700 mit Begründung im Kopf von `wifi.rsc`, die Variante
+    ohne DFS auskommentiert darunter; Admin-Guide (WLAN) ergänzt. `$cfmCheck` gibt bei DFS-Kanälen in Pool oder `radios`
+    einen Hinweis aus (neue Stufe, zählt nicht als Warnung; auch im Editor). Offen auf Hardware: 80 MHz auf 5660–5700
+    ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
+
 ## Frühere Fassungen
 
 ### 20 · IoT-Isolation ausbauen – Rest (Stand bis 2026-11-11)

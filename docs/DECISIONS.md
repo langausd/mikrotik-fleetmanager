@@ -1640,6 +1640,18 @@ Kanal-Pools zentral in `wifi.rsc`, optionales Pinning pro AP ebenfalls in `wifi.
 
 **Begründung:** Ein harter Ausschluss ließe unter 1/5/9/13 keinen Kanal übrig (das Raster deckt 2402–2482 MHz lückenlos ab); die Kosten wägen so ab, wie es bei einer Kanalwahl von Hand an einem Standort geschah: Zigbee 25 neben dem Koordinator schwer, an entfernten APs leicht. Gewichte: Zigbee/Thread 60 (wie ein WLAN mit −35 dBm), Milight 30 und BLE-Advertising 20 je Frequenz, Bluetooth classic 2 je 1-MHz-Kanal (fast gleich auf allen WLAN-Kanälen). Überlappung eines schmalen Senders: bis 9 MHz neben der Kanalmitte 4, bis 13 MHz 1 (Seitenband, z.B. Zigbee 25 über WLAN 11), sonst 0. Beim Kanalvorschlag kostet ein belegter 802.15.4-Kanal 100, ein Nachbar 2, Kanal 26 verliert jeden Gleichstand. `$cfmCheck` rechnet ohne die Helfer aus `mgr-net` (heute `mgr-scan`; beim ersten Release mit DW3.5 laufen noch die alten Manager-Module). Energie-Messungen der Koordinatoren (ZHA, OpenThread `commissioner energy`) fließen noch nicht ein. Labor: `e2e.sh` Schritt 14 (erfundene Messung, Zigbee bei einem AP, Thread `auto`, Prüfung)
 
+#### <a id="dw3.6"></a>DW3.6 · 5-GHz-Pool der Vorlage: 5180–5240 und DFS, ohne 5745–5825
+
+*2026-11-16 · Nutzer (TODO 87)*
+
+**Frage:** Welcher 5-GHz-Pool steht in der Vorlage `wifi.rsc`?
+
+**Entscheidung:** 5180–5240 und DFS 5500–5580/5660–5700 mit `skipDfs="10min-cac"` (wie ein Standort seit 2026-11-16), Begründung als Kommentar darüber; die Variante ohne DFS (nur 5180–5240) steht auskommentiert als `:set` darunter (ein Kommentar im Array-Literal wäre ein Fehler). `$cfmCheck` nennt DFS-Kanäle in Pool und `radios` als **Hinweis** – eine neue Stufe neben Fehler und Warnung, ausgegeben von `$cfmCheck` und vom Editor („Prüfen“), nicht gezählt und im Release nicht wiederholt (Nutzer: Hinweis, keine Dauerwarnung)
+
+**Verworfen:** nur 5180–5240 (ein 80-MHz-Block für alle APs) · gemischter Pool mit Kommentar · Pins eines anderen Standorts auf 5745 umstellen (dort aus Messung und Planung vor Ort; nach dem Abschalten der Fritz-WLANs neu planen, Nutzer)
+
+**Begründung:** Mit `country=Germany` sendet ein Radio auf 5745–5825 nur mit 14 dBm (SRD-Band), auf 5180–5240 mit 23 dBm, auf DFS-Kanälen bis 30 dBm; RouterOS wählte aus dem gemischten Pool zweimal den oberen Bereich. Der Wechsel auf 5180–5240 + DFS hob den Pegel einer CRS418 am Nachbar-AP von −70 auf −51 dBm (Pegelmessung 2026-11-16). Preis: nach jedem Start eines Radios auf einem DFS-Kanal mindestens 60 s CAC, bei Radar Kanalwechsel – auch im lokalen Fallback (ROUTEROS-EIGENHEITEN). Offen auf Hardware: ob RouterOS 80 MHz auf 5660–5700 korrekt begrenzt (der Block 5660–5720 reicht über 5725 MHz).
+
 ### <a id="dw4"></a>DW4 · SSID-Schalter und Provisioning
 
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten

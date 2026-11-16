@@ -1,14 +1,14 @@
 # ============================================================
 # cfm lib/mgr-checkw.rsc – Manager-Funktionen: WLAN-Teil der inhaltlichen Prüfung
 #   $cfmCheckWifi inv=<inventar>   prüft wifi.rsc (SSIDs, 6 GHz, PPSK, Pinning, andere Funknetze,
-#                                  Steering, Fallback) -> {"err"={..};"warn"={..}}
+#                                  Steering, Fallback, DFS) -> {"err"={..};"warn"={..};"note"={..}}
 #   Aufruf nur aus $cfmCheck (lib/mgr-check.rsc), nachdem der die Daten geladen hat. Eigene Datei,
 #   weil /file get nur ca. 60 KB liest (TODO 73, DM1.1); $cfmCheck lädt sie aus demselben Stand nach.
 # ============================================================
 
 :global cfmCheckWifi do={
   :global cfmWifi; :global cfmVlans; :global cfmProfiles; :global cfmVaultGet
-  :local err ({}); :local warn ({})
+  :local err ({}); :local warn ({}); :local note ({})
   # Liegt VLAN v in der Spezifikation ("*", Zonen, VIDs, "!x")? (wie in $cfmCheck)
   :local inSpec do={
     :global cfmVlans
@@ -188,5 +188,26 @@
   :foreach k,s in=($cfmWifi->"ssids") do={
     :if ([:tostr ($s->"fallback")] = "yes" and $k = [:tostr ($cfmWifi->"master")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: fallback an der Master-SSID " . $k . " ist überflüssig (DW1.6)") }
   }
-  :return ({"err"=$err;"warn"=$warn})
+  # DFS (TODO 87): Kanäle 5260-5720 MHz im Pool oder in radios - gewollt, aber mit Nebenwirkung -> Hinweis
+  :local dfs do={
+    :local r ""
+    :foreach f in=[:toarray [:tostr $1]] do={
+      :local n [:tonum $f]
+      :if ([:typeof $n] = "num" and $n > 5250 and $n < 5730) do={ :set r ($r . "," . $n) }
+    }
+    :if ([:len $r] > 0) do={ :set r [:pick $r 1 [:len $r]] }
+    :return $r
+  }
+  :local dc [$dfs ($cfmWifi->"channels"->"5"->"freq")]
+  :local da ""
+  :foreach apn,pins in=($cfmWifi->"radios") do={
+    :if ([:typeof $pins] = "array" and [:len [$dfs ($pins->"5")]] > 0) do={ :set da ($da . ", " . $apn . " " . [$dfs ($pins->"5")]) }
+  }
+  :if ([:len $dc] > 0 or [:len $da] > 0) do={
+    :local s "wifi.rsc: 5 GHz mit DFS-Kanälen ("
+    :if ([:len $dc] > 0) do={ :set s ($s . "Pool " . $dc) }
+    :if ([:len $da] > 0) do={ :if ([:len $dc] > 0) do={ :set s ($s . "; ") }; :set s ($s . "radios " . [:pick $da 2 [:len $da]]) }
+    :set ($note->[:len $note]) ($s . "): nach jedem Start eines Radios dort mindestens 60 s kein 5 GHz (CAC), bei Radar Kanalwechsel - auch im lokalen Fallback der APs")
+  }
+  :return ({"err"=$err;"warn"=$warn;"note"=$note})
 }

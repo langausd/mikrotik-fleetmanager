@@ -9,7 +9,8 @@
 # Fehler: VLANs/Zonen, die Profile, WLAN, policy, mgmtAccess oder Hostfiles nennen, aber nicht
 # existieren; unbekannte Port-Profile; doppelte MGMT-IPs; Rollen ohne Datei; unbekannte IP-Dienste
 # oder doppelte Ports in services; Gerätenamen, die sich nur in der Schreibweise unterscheiden.
-# Warnungen: Inventar-Eintrag ohne Hostfile.
+# Warnungen: Inventar-Eintrag ohne Hostfile. Hinweise ("note", z.B. DFS-Kanäle im 5-GHz-Pool, TODO 87): gewollte
+# Einstellungen mit Nebenwirkung - ausgegeben, aber nicht gezählt, im Release nicht wiederholt.
 # $cfmCheck [dir=<verz>] [quiet=yes] gibt Warnungen, Fehler und die Zusammenfassung selbst aus (TODO 83: im
 # Terminal erschien sonst nichts, auch bei Fehlern) und liefert das Ergebnis zurück; quiet=yes nur zurückgeben
 # (interne Aufrufer mit eigener Ausgabe: $cfmRelease, $cfmPlan, Editor „Prüfen“). Die Prüfung selbst steckt in
@@ -20,6 +21,7 @@
   :if ($quiet != "yes") do={
     :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
     :foreach x in=($ck->"err") do={ :put ("Fehler: " . $x) }
+    :foreach x in=($ck->"note") do={ :put ("Hinweis: " . $x) }
     :put ("Prüfung: " . [:len ($ck->"err")] . " Fehler, " . [:len ($ck->"warn")] . " Warnungen")
   }
   :return $ck
@@ -33,7 +35,7 @@
   # dir=<verzeichnis>: statt work/ prüfen ($cfmPlan from=)
   :local w ($b . "/work")
   :if ([:len [:tostr $dir]] > 0) do={ :set w ($b . "/" . $dir) }
-  :local err ({}); :local warn ({})
+  :local err ({}); :local warn ({}); :local note ({})
   :local le ""
   # Datei vorhanden? Über den Namen statt /file/find (TODO 21). Lokal statt $cfmFileEx, weil
   # $cfmRelease diesen Prüfer aus work/ lädt, während noch die alten Manager-Module laufen
@@ -590,6 +592,7 @@
     :local cw [$cfmCheckWifi inv=$inv]
     :foreach x in=($cw->"err") do={ :set ($err->[:len $err]) $x }
     :foreach x in=($cw->"warn") do={ :set ($warn->[:len $warn]) $x }
+    :foreach x in=($cw->"note") do={ :set ($note->[:len $note]) $x }
   }
   # WireGuard (lib/mgr-checkn.rsc: Admin-Peers, Standortkopplung, DynDNS), aus demselben Stand wie oben
   :if ([$fex ($w . "/lib/mgr-checkn.rsc")]) do={ :onerror e in={ [[:parse [/file/get ($w . "/lib/mgr-checkn.rsc") contents]]] } do={ :set ($err->[:len $err]) ("lib/mgr-checkn.rsc: " . $e) } }
@@ -630,7 +633,7 @@
 
   # Hostfiles setzen u.U. Overrides in cfmG -> Daten neu laden
   :onerror e in={ $cfmLoadData ver=0 dir=$dir } do={}
-  :return ({"err"=$err;"warn"=$warn})
+  :return ({"err"=$err;"warn"=$warn;"note"=$note})
 }
 
 # ---------- Probelauf (DG3.4) ----------

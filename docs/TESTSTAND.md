@@ -263,6 +263,13 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Antwort). Dabei: Steering 5 GHz mit `join`/`drop` braucht beim ersten Einschalten je Band eigene Datapaths – die
   CAP-Radios übernehmen sie erst nach `cfm-reprov` (Warnung im Plan), die Radios des CAPsMAN sofort.
 
+* **Kanal-Pool und Sendeleistung 5 GHz** (TODO 72/87) – 2026-11-16 an einem Standort (CRS418 als CAPsMAN, zwei hAP ax²,
+  7.25): Pegelmessung mit einem CAP als Empfänger (Scan vom CAPsMAN aus): `antenna-gain` ändert weder `tx-power` noch
+  Pegel, `tx-power=10` senkt den Pegel um ~9,5 dB. Pool ohne 5745–5825, dafür DFS 5500–5580/5660–5700 (v39): CRS418
+  27 dBm statt 14 (Pegel am CAP −70 → −51 dBm), hAP ax² 18 dBm (Maximum der Hardware) statt 14; 1 min CAC nach dem
+  Wechsel auf einen DFS-Kanal. Framework-Update mit DM1.4/DG2.4.1 im selben Release: Module vorab importiert,
+  `$cfmCheck` gibt selbst aus, alle Geräte `ok`.
+
 ## Offen auf Hardware
 
 * **Standortkopplung und DynDNS** (DR4.3, DR4.4, 2026-11-11; Labor grün 2026-11-12): Tunnel zwischen zwei Standorten hinter Fritz!Boxen
@@ -333,8 +340,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Rückkehr ohne Aussetzer). Die **Gast-Kopie sendet nicht**: Laptop mit fester BSSID der Gast-SSID → NetworkManager
   `ssid-not-found` nach 16 s; Scan im Fallback zeigt am AP nur die Master-SSID, obwohl `cfm-guest` an den
   Gast-Interfaces hängt und sie nach der Rückkehr `running` sind. cfm greift im Fallback nicht ein (erst der
-  Agent-Lauf meldet „WLAN im lokalen Fallback“). Offen: Zustand der Gast-Interfaces *während* des Fallbacks
-  (Diagnose-Durchgang mit Log aus dem Gerät, remote möglich). Clients ohne feste BSSID wechseln in 1–3 s zum Nachbarn.
+  Agent-Lauf meldet „WLAN im lokalen Fallback“). Diagnose (Log aus dem AP nach 60 s ohne CAPsMAN): nur die Master
+  aktiv, die vom CAPsMAN angelegten Slaves deaktiviert oder weg – Ursache gefunden, Lösung TODO 84. Dabei 5 GHz im
+  Fallback in DFS-CAC (lokale Kanalwahl). Clients ohne feste BSSID wechseln in 1–3 s zum Nachbarn.
 * **MLO mit FT** unter 7.25 („wifi - add fast transition support for MLD devices“, DW2.3, TODO 48).
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer

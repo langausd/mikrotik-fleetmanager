@@ -28,7 +28,7 @@ installierbar (prüfen: ein Paket je Architektur ist **nicht** nötig – offene
 | WebFig login page | `webfig/index2.html`, `webfig/cfm.js`, `webfig/cfm.css` | Login plus Knopf „cfm“ (Abschnitt 2.4) |
 | Skin | `skins/cfm-dns.json` | WebFig-Skin für die Gruppe `cfm-dns` (nur Logout und die REST-Anmeldung nötig) |
 | Logo, ASCII-Logo, Manual URL | `logo/` | `mikrotik_logo.png` → cfm-Logo, Konsolen-Banner, Link auf den Admin-Guide |
-| Optionen | – | „Hide Default configuration prompt“, „Hide default caps-mode-script“ (7.15+), „Do not run script on install“ **aus** (der Stub soll gleich laufen) |
+| Optionen | – | „Hide Default configuration prompt“, „Hide default caps-mode-script“ (7.15+), „Do not run script on install“ **aus** (der Stub soll gleich laufen) – *für Bestandsgeräte vermutlich falsch, siehe O8* |
 
 Nutzungsbedingungen des Branding Makers vor dem ersten Bau lesen (O2).
 
@@ -132,13 +132,14 @@ die Rolle `router`: `/user/group set cfm-dns skin=cfm-dns`, sobald `skins/cfm-dn
    `ssh-exec` mit Rückfall auf SFTP. Labor: `e2e-onboard.sh` mit einem Werksgerät, das den Schlüssel schon hat (den
    Stub von Hand importiert), ohne `pw=`.
 2. **Branding-Paket bauen** (Prototyp-Dateien, Logo), auf ein Ersatzgerät (hAP ax², `reset-configuration` → Stub läuft?,
-   Reset-Taster → Stub läuft?, CAP-Modus → Stub?), Login-Seite im Browser prüfen (Firefox/Chrome, Passwort-Manager).
+   Reset-Taster → Stub läuft?, CAP-Modus → Stub?; Installation auf das Gerät mit laufender cfm-Config, O8), Login-Seite
+   im Browser prüfen (Firefox/Chrome, Passwort-Manager).
    Befunde nach ROUTEROS-EIGENHEITEN.md.
 3. **Onboarding über den Stub** auf Hardware: Gerät mit Paket, Reset, `$cfmOnboard` – ohne Aufkleber-Passwort.
 4. **Netinstall-Container** auf dem Backup-Manager: device-mode, VETH in VLAN 88, Pakete aus dem Spiegel-Cache, `.dpk` dazu,
    Testinstallation des Ersatzgeräts per Reset-Taster/Etherboot; dann `$cfmNetinstall`/`$cfmReinstall`.
 5. **Rollout:** Paket auf die Bestandsgeräte (Upload + Neustart je Gerät, über `$cfmUpgrade`-ähnlichen Weg oder von
-   Hand, O6), Skin-Zuweisung in der Rolle, Doku (Admin-Guide 7.1, README Onboarding, DO1.8/DT3.3 auf „umgesetzt“).
+   Hand, O6; erst wenn O8 geklärt ist), Skin-Zuweisung in der Rolle, Doku (Admin-Guide 7.1, README Onboarding, DO1.8/DT3.3 auf „umgesetzt“).
 
 ## 4. Offene Fragen
 
@@ -151,3 +152,12 @@ die Rolle `router`: `/user/group set cfm-dns skin=cfm-dns`, sobald `skins/cfm-dn
   von `$cfmUpgrade` um `dpk=`).
 * **O7** Läuft die Login-Seite mit `cfm.js` in allen Browsern, die die Site nutzt (Passwort-Manager füllen das
   Formular, der Knopf liest es aus)?
+* **O8** Was macht „Do not run script on install“ genau (Frage des Nutzers 2026-11-16: das Paket nachträglich auf
+  Geräte im cfm-Betrieb bringen)? Führt die Installation des `.dpk` mit der Option **aus** die Default-Config aus, fiele
+  ein Bestandsgerät beim Rollout (Schritt 5) auf den Stub zurück – Identity `cfm-new`, alle Ports in einer Bridge,
+  DHCP – und wäre aus dem cfm-Betrieb; der Watchdog fängt das nicht ab (kein Apply). Vorschlag: Option **an**.
+  Netinstall mit `-r` und der Reset-Taster wenden die Default-Config ohnehin an, damit genügte ein Paket für neue und
+  Bestandsgeräte. Klären am Ersatzgerät (Schritt 2) mit einer laufenden cfm-Config, **bevor** ein `.dpk` auf ein
+  produktives Gerät geht: Installation mit Option an bzw. aus (Config danach unverändert?), danach Reset-Taster und
+  `reset-configuration` (Stub läuft?), Netinstall mit `-r` (Stub läuft?). Dabei auch: Bleibt das Paket bei einem
+  RouterOS-Update über `$cfmUpgrade` installiert?

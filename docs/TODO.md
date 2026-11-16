@@ -343,6 +343,8 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     CAPs-Mode-Skript, Skin, Logo), Onboarding-Schlüsselpaar im Manager (`$cfmSecret key=onboard.key`, Stufe 1 per
     `ssh-exec` statt Aufkleber-Passwort), Netinstall-Container (tikoci/netinstall) auf dem Backup-Manager eines
     Standorts mit VETH im Onboarding-VLAN, Paketquelle aus dem Spiegel-Cache; Test mit einem Ersatzgerät (hAP ax²).
+    Vor dem Rollout auf Bestandsgeräte klären, ob die Installation des Pakets die Default-Config ausführt
+    („Do not run script on install“, NETINSTALL.md O8).
 80. **DynDNS per Anbieter-API** (`wireguard.rsc` `self.ddns.type="api"`, DR4.4): Schalter und Prüfung sind da, der
     Anbieter (Cloudflare, deSEC, Hetzner …) ist noch offen – bis dahin `dyndns2` (die meisten Anbieter, auch deSEC)
     oder `cloud`. Dazu aus 15 offen: Hardware-Test der Standortkopplung an beiden Standorten (Admin-Guide 8.17),

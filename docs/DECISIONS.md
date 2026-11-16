@@ -126,6 +126,24 @@ stehen in [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md).
 
 **Umsetzung:** Nach jedem Release (und auf dem Backup-Spiegel) bleiben die letzten `archiveKeep` Versionen (10, seit DG4.1 Standard 5) plus alle, die ein Ring nutzt oder ein Gerät meldet (angewendet, ausstehend, als fehlerhaft markiert). `$cfmCheck` prüft `work/` inhaltlich: VLANs/Zonen aus Profilen, WLAN, `policy`, `mgmtAccess` und Hostfiles; unbekannte Port-Profile; doppelte MGMT-IPs; Rollen ohne Datei. Fehler stoppen das Release, `force=yes` übergeht sie (`$cfmRollback` setzt es selbst); fehlende Hostfiles sind Warnungen.
 
+##### <a id="dg2.4.1"></a>DG2.4.1 · `$cfmCheck` gibt das Ergebnis selbst aus
+
+*2026-11-16 · technisch, Vorschlag aus TODO 83 (Nutzer: umsetzen)*
+
+**Frage:** `$cfmCheck` lieferte nur `{"err"=…;"warn"=…}` zurück. Direkt im Terminal aufgerufen erschien nichts, auch bei
+Fehlern; Rollout-Pläne verlassen sich aber auf „`$cfmCheck` ohne Fehler“ (Befund beim Rollout an beiden Standorten,
+2026-11-13).
+
+**Entscheidung:** `$cfmCheck [dir=…] [quiet=yes]` gibt Warnungen, Fehler und eine Zeile „Prüfung: N Fehler, M
+Warnungen“ aus und liefert das Ergebnis weiter zurück. Interne Aufrufer mit eigener Ausgabe übergeben `quiet=yes`
+(`$cfmRelease`, `$cfmPlan`, Editor „Prüfen“). Die Prüfung selbst heißt jetzt `$cfmCheckRun`; der Rahmen gibt so auch
+beim vorzeitigen Ende („Daten in work/ nicht ladbar“) aus.
+
+**Verworfen:** eigener Befehl zum Anzeigen (`$cfmCheckShow`) – der dokumentierte Name bliebe die Falle.
+
+**Folge:** Das erste Release nach dem Framework-Update läuft noch mit dem installierten `$cfmRelease` ohne `quiet=yes`
+und lädt den Prüfer aus `work/` – Warnungen und Fehler erscheinen dann einmal doppelt. Labor: `e2e.sh` Schritt 7.
+
 #### <a id="dg2.5"></a>DG2.5 · Manifest-Bau mit den Regeln der jeweiligen Version
 
 *2026-10-11 · alt D70*

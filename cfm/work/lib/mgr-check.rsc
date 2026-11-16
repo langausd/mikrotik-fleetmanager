@@ -1,6 +1,6 @@
 # ============================================================
 # cfm lib/mgr-check.rsc – Manager-Funktionen: inhaltliche Prüfung und Probelauf
-#   $cfmCheck            prüft die Daten in work/ (läuft auch bei jedem $cfmRelease, DG2.4)
+#   $cfmCheck            prüft die Daten in work/ und gibt das Ergebnis aus (läuft auch bei jedem $cfmRelease, DG2.4)
 #   $cfmPlan host=<n>    Probelauf: das Gerät zeigt, was ein Release von work/ ändern würde
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # ============================================================
@@ -10,7 +10,21 @@
 # existieren; unbekannte Port-Profile; doppelte MGMT-IPs; Rollen ohne Datei; unbekannte IP-Dienste
 # oder doppelte Ports in services; Gerätenamen, die sich nur in der Schreibweise unterscheiden.
 # Warnungen: Inventar-Eintrag ohne Hostfile.
+# $cfmCheck [dir=<verz>] [quiet=yes] gibt Warnungen, Fehler und die Zusammenfassung selbst aus (TODO 83: im
+# Terminal erschien sonst nichts, auch bei Fehlern) und liefert das Ergebnis zurück; quiet=yes nur zurückgeben
+# (interne Aufrufer mit eigener Ausgabe: $cfmRelease, $cfmPlan, Editor „Prüfen“). Die Prüfung selbst steckt in
+# $cfmCheckRun - so greift die Ausgabe auch beim vorzeitigen Ende (Daten nicht ladbar).
 :global cfmCheck do={
+  :global cfmCheckRun
+  :local ck [$cfmCheckRun dir=$dir]
+  :if ($quiet != "yes") do={
+    :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
+    :foreach x in=($ck->"err") do={ :put ("Fehler: " . $x) }
+    :put ("Prüfung: " . [:len ($ck->"err")] . " Fehler, " . [:len ($ck->"warn")] . " Warnungen")
+  }
+  :return $ck
+}
+:global cfmCheckRun do={
   :global cfmMB; :global cfmLoadData; :global cfmG; :global cfmVlans; :global cfmProfiles
   :global cfmWifi; :global cfmInvLoad; :global cfmHost; :global cfmVaultGet; :global cfmWg
   :global cfmNet; :global cfmTarget; :global cfmLeases; :global cfmMacUp; :global cfmMgrData; :global cfmLimit
@@ -649,7 +663,7 @@
   }
   :local bad [$cfmParseWork dir=$src]
   :if ([:len $bad] > 0) do={ :error ("Probelauf abgebrochen:" . $bad) }
-  :local ck [$cfmCheck dir=$src]
+  :local ck [$cfmCheck dir=$src quiet=yes]
   :foreach e in=($ck->"err") do={ :put ("Fehler (ein Release würde abbrechen): " . $e) }
   :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
   # Schnappschuss work/ (bzw. from=) -> plan/

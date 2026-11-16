@@ -24,7 +24,8 @@
 #
 #   $cfmRelease [msg="..."] [force=yes]  work/ prüfen -> archive/v<N> -> Ring 0 -> Push
 #                                      (force=yes: trotz Fehlern der inhaltlichen Prüfung)
-#   $cfmCheck                          inhaltliche Prüfung von work/ (läuft auch beim Release)
+#   $cfmCheck [quiet=yes]              inhaltliche Prüfung von work/ (läuft auch beim Release), gibt
+#                                      Warnungen, Fehler und "N Fehler, M Warnungen" aus
 #   $cfmPlan host=<n>                  Probelauf: was würde ein Release von work/ ändern?
 #   $cfmPlan host=<n> from=<verz> role=<rollen>   dasselbe für einen anderen Stand (<mgrPath>/<verz>/)
 #                                      und/oder andere Rollen, z.B. das Zielbild eines Umbaus
@@ -444,7 +445,7 @@
   # prüft die installierte. Den WLAN-Teil (lib/mgr-checkw.rsc) lädt $cfmCheck selbst aus work/.
   :onerror e in={ [[:parse [/file/get ($b . "/work/lib/mgr-check.rsc") contents]]] } do={ :put ("Hinweis: Prüfer aus work/ nicht geladen (" . $e . "), es prüft der installierte") }
   :global cfmCheck
-  :local ck [$cfmCheck]
+  :local ck [$cfmCheck quiet=yes]
   :foreach w in=($ck->"warn") do={ :put ("Warnung: " . $w) }
   :if ([:len ($ck->"err")] > 0) do={
     :foreach e in=($ck->"err") do={ :put ("Fehler: " . $e) }

@@ -709,6 +709,11 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     im Inventar auf; alle Befehle mit Hostnamen nutzen ihn, danach gilt nur der Inventarname (Pfade, Hostfile,
     Meldungen). `$cfmEnroll` und `$cfmRegister` nennen eine abweichende Schreibweise. `$cfmCheck` lehnt Namen ab, die
     sich nur in der Schreibweise unterscheiden. Labor: Plan/Show/Audit/Push mit `SW1`/`Sw1`, Kollision im Check.
+83. ~~**`$cfmCheck` im Terminal ohne Ausgabe**~~ – *umgesetzt 2026-11-16 (DG2.4.1):* Befund beim Rollout an beiden
+    Standorten (2026-11-13): `$cfmCheck` gab nur `{"err"=…;"warn"=…}` zurück, im Terminal erschien nichts, auch bei
+    Fehlern. Jetzt gibt es Warnungen, Fehler und „Prüfung: N Fehler, M Warnungen“ selbst aus und liefert das Ergebnis
+    weiter zurück; `$cfmRelease`, `$cfmPlan` und der Editor („Prüfen“) übergeben `quiet=yes`. Die Prüfung heißt intern
+    `$cfmCheckRun`. Labor: `e2e.sh` Schritt 7 (Ausgabe ohne `:put`, `quiet=yes` still).
 
 ## Frühere Fassungen
 

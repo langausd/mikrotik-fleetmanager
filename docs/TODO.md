@@ -34,7 +34,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
 * **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 72–75,
-  78–83.
+  78–82.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
 
@@ -377,10 +377,3 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Skripte; beim Rollout v110 stattdessen die Module von Hand importiert). Bis 78 umgesetzt ist, soll der Hinweis bei geänderten
     `lib/mgr-*.rsc` stattdessen die `/import cfm/work/lib/<modul>.rsc`-Zeilen ausgeben (sofern das Skript die geänderten
     Dateien beim Upload erkennen kann); mit 78 entfällt der Sonderfall.
-83. **`$cfmCheck` im Terminal ohne Ausgabe** (Befund 2026-11-13 beim Rollout an beiden Standorten): `$cfmCheck` gibt
-    nur `{"err"=…;"warn"=…}` zurück und schreibt nichts. Direkt im Terminal aufgerufen erscheint deshalb nichts –
-    auch bei Fehlern; sichtbar wird das Ergebnis nur mit `:put [$cfmCheck]`, über `$cfmPlan` oder beim Release.
-    Die Befehlsreferenz (Admin-Guide 13) führt `$cfmCheck` wie einen Konsolenbefehl, Rollout-Pläne verlassen sich auf
-    „`$cfmCheck` ohne Fehler“. Vorschlag: `$cfmCheck` gibt Fehler und Warnungen selbst aus (wie `$cfmPlan`, mit
-    Zusammenfassung „N Fehler, M Warnungen“), interne Aufrufer (`$cfmPlan`, `$cfmRelease` in `mgr-core.rsc`, Editor
-    „Prüfen“ in `tools/editor/cfm-editor.js`) übergeben `quiet=yes`. Bis dahin Hinweis in Admin-Guide 13.

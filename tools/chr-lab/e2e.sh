@@ -314,6 +314,12 @@ step "10. Backup-Spiegel & Vault-Backup"
 for _ in $(seq 1 50); do r 3 ':put ([:len [/file/find where name="cfm/meta/rings.dat"]] + [:len [/file/find where name="cfm/archive/v4/index.dat"]])' | grep -qx 2 && break; sleep 8; done
 expect 3 '[:len [/file/find where name="cfm/archive/v4/lib/agent.rsc"]] = 1' "cm2: Archiv v4 gespiegelt"
 expect 3 '[:len [/file/find where name="cfm/meta/rings.dat"]] = 1' "cm2: Ringe gespiegelt"
+# Tick des Backups ohne geladene Daten (Bekannter Fehler 2026-11-08): neueste Version noch nicht gespiegelt ->
+# $cfmIsPrimary nimmt die Managerliste aus cfm-conf statt abzubrechen (der Tick fiel samt Spiegel aus)
+out=$(r 3 '/system script run cfm-mgr; :global cfmG; :set cfmG; :local f "cfm/meta/rings.dat"; :local c [/file/get $f contents]; /file/set $f contents="{\"latest\":99}"; :global cfmIsPrimary; :local p "x"; :onerror e in={ :set p [$cfmIsPrimary] } do={ :set p ("ERR " . $e) }; /file/set $f contents=$c; :put ("P=" . $p)')
+echo "$out" | grep -qx "P=false" && ok "cm2: \$cfmIsPrimary ohne ladbare Daten -> false (Managerliste aus cfm-conf)" || { bad "\$cfmIsPrimary auf cm2 ohne Daten"; echo "$out" | tail -2; }
+out=$(mgr ':global cfmG; :set cfmG; :global cfmIsPrimary; :put ("P=" . [$cfmIsPrimary] . " G=" . [:typeof $cfmG])')
+echo "$out" | grep -qx "P=true G=array" && ok "cm1: \$cfmIsPrimary lädt die Daten weiter selbst (Primary)" || { bad "\$cfmIsPrimary auf cm1"; echo "$out" | tail -2; }
 expect 1 '[:len [/file/find where name~"^cfm/vault/.*-vault.bak"]] = 1' "cm1: verschlüsseltes Vault-Backup (.bak)"
 
 step "11. Archiv aufräumen"

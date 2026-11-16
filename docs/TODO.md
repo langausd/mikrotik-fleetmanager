@@ -125,12 +125,6 @@ Test vor Ort (74) steht aus – bis dahin bleiben sie hier.*
   Log-Zeile mit Dateiname). Bleibt hier, bis ein Framework-Update an einem Backup auf Flash durchläuft; tritt es
   wieder auf, steht die Datei im Log.
 
-* **Tick des Backup-Managers bricht ab: `no such item (/file/get; line 237)`** (Labor 7.25.1, 2026-11-08, cm2): Im
-  Zweig für den Backup ruft `$cfmTick` `$cfmIsPrimary` auf; ist `cfmG` nicht geladen, liest `$cfmLoadData`
-  (`mgr-core.rsc`) `work/global.rsc` … ohne `:onerror` – der Backup spiegelt kein `work/`. Der Tick fällt dann aus
-  (kein Spiegel bis zum nächsten). Fix: `$cfmIsPrimary` ohne `$cfmLoadData` (Managerliste aus `cfm-conf` bzw.
-  `meta/`), oder `$cfmLoadData` tolerant gegen fehlende Dateien.
-
 * **Labor-Wackler MNDP mit Quelle 0.0.0.0** (`e2e.sh` Abschnitt 14, DR2.5): Die Prüfung „cm1: MNDP mit Quelle
   0.0.0.0 still verworfen“ wartet auf einen Treffer im Zähler der Drop-Regel. Fehlschläge 2026-10-31, 2026-11-06 und
   2026-11-08 (7.25.1) – auch nach dem Anstoßen (MNDP an cm2 aus und wieder an, danach bis zu 120 s): Zähler 0, cm2

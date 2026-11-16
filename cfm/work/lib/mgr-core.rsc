@@ -257,11 +257,17 @@
 }
 
 # ---------- Rolle / Primary ----------
+# Lädt die Daten, falls noch nicht geschehen (Aufrufer wie $cfmTick nutzen cfmG danach). Scheitert das - auf
+# einem Backup gibt es kein work/, und solange rings.dat oder die neueste Version noch nicht gespiegelt ist,
+# fehlen auch die Daten (Labor 2026-11-08: "no such item (/file/get)", der Tick und damit der Spiegel fielen
+# aus) -, kommt die Managerliste aus cfm-conf, das die Rolle base auf jedem Gerät anlegt.
 :global cfmIsPrimary do={
   :global cfmMB; :global cfmG; :global cfmLoadData; :global cfmFileEx
   :if ([$cfmFileEx ([$cfmMB] . "/meta/PROMOTED")]) do={ :return true }
-  :if ([:typeof $cfmG] != "array") do={ $cfmLoadData }
-  :local p [:pick ($cfmG->"managers") 0]
+  :if ([:typeof $cfmG] != "array") do={ :onerror e in={ $cfmLoadData } do={ :global cfmMgrData; :set cfmMgrData 0 } }
+  :local p [:tostr [:pick ($cfmG->"managers") 0]]
+  :if ([:len $p] = 0) do={ :onerror e in={ /system/script/run cfm-conf; :global cfmConf; :set p [:tostr [:pick ($cfmConf->"mgrs") 0]] } do={} }
+  :if ([:len $p] = 0) do={ :return false }
   :return ([:len [/ip/address/find where address~("^" . $p . "/")]] > 0)
 }
 

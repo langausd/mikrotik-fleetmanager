@@ -402,6 +402,27 @@ Auf dem Manager teilen sich der Agent und die Manager-Funktionen dieselben globa
 
 **Begründung:** Der Watchdog-Lauf rollte bisher zurück (mit Neustart), wenn er den Manager während eines Spiegel-Syncs nicht erreichte. Exponentielle Pausen fangen kurze Störungen schnell ab und überbrücken den ~1 min langen Sync, ohne den Manager mit Versuchen zu überhäufen.
 
+#### <a id="dm3.3"></a>DM3.3 · Tick des Backups ohne geladene Daten
+
+*2026-11-16 · technisch, nicht abgefragt (Vorschlag aus „Bekannte Fehler“)*
+
+**Frage:** Im Labor (7.25.1, 2026-11-08) brach der Tick des Backup-Managers mit `no such item (/file/get; line 237)` ab:
+`$cfmTick` fragt zuerst `$cfmIsPrimary`, und das lud bei fehlendem `cfmG` die Daten ohne `:onerror`. Ohne
+`rings.dat` (frischer Backup) liest `$cfmLoadData` `work/` – das der Backup nicht spiegelt –, sonst die neueste
+Version, solange ihr Spiegel noch unvollständig ist. Mit dem Tick fiel auch der Spiegel aus, der die fehlenden Dateien
+geholt hätte; `cfmG` gibt es meist nur, weil der Agent es beim Apply setzt.
+
+**Entscheidung:** `$cfmIsPrimary` lädt die Daten weiter selbst (Aufrufer nutzen `cfmG` danach), aber in `:onerror`;
+fehlt danach die Managerliste, kommt sie aus `cfm-conf` (`mgrs`, legt die Rolle `base` auf jedem Gerät an). Ohne
+beides gilt das Gerät nicht als Primary. `$cfmNotifyBackupTick` lädt ebenso tolerant und arbeitet mit den zuletzt
+geladenen Daten weiter.
+
+**Verworfen:** `$cfmIsPrimary` ganz ohne `$cfmLoadData` – `$cfmAutoPromote` im Tick des Primary liest `cfmG`, ohne
+selbst zu laden.
+
+**Begründung:** Labor: `e2e.sh` Schritt 10 (cm2 mit `rings.dat` auf eine nicht gespiegelte Version: `false` statt
+Abbruch; cm1 lädt die Daten weiter selbst).
+
 ## <a id="ds"></a>DS · Sicherheit
 
 ### <a id="ds1"></a>DS1 · Identität und Integrität

@@ -1037,6 +1037,11 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
 
 ## Behobene Fehler
 
+* ~~**Tick des Backup-Managers bricht ab: `no such item (/file/get; line 237)`**~~ – *behoben 2026-11-16 (DM3.3):*
+  `$cfmIsPrimary` lädt die Daten in `:onerror` und nimmt sonst die Managerliste aus `cfm-conf`; `$cfmNotifyBackupTick`
+  lädt ebenso tolerant. Labor: `e2e.sh` Schritt 10. (Befund im Labor 7.25.1, 2026-11-08, cm2: ohne geladenes `cfmG`
+  las `$cfmLoadData` `work/global.rsc`, das der Backup nicht spiegelt; der Tick fiel samt Spiegel aus.)
+
 * ~~**`cfm-drop` für DHCP-Discover beim Umschalten eines Ports**~~ – *behoben 2026-11-08 (DR2.5.1):* Der input-Block
   `fwb` verwirft `udp 68->67` mit Quelle `0.0.0.0` still. (Befund 2026-11-06 an einem Standort, hAP be³ Media 7.25:
   bei jedem Umschalten einmal `cfm-drop input: in:ether5 … 0.0.0.0:68->255.255.255.255:67`.)

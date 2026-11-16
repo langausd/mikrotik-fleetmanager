@@ -182,7 +182,9 @@
 :global cfmNotifyBackupTick do={
   :global cfmG; :global cfmLoadData; :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmNow
   :global cfmEnrolled; :global cfmWrite; :global cfmNotifySync; :global cfmMirLast
-  $cfmLoadData
+  # Spiegel noch unvollständig (neueste Version fehlt): mit den zuletzt geladenen Daten weiter, sonst ohne
+  :onerror e in={ $cfmLoadData } do={ :global cfmMgrData; :set cfmMgrData 0 }
+  :if ([:typeof $cfmG] != "array") do={ :return 0 }
   :local nc ($cfmG->"notify")
   :if ([:len [:tostr ($nc->"url")]] = 0) do={ :return 0 }
   :local stale 1800

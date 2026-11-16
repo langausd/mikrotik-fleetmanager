@@ -37,7 +37,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   (mit normaler Passphrase und `ppskOnly`), WLAN-Scan, CAPsMAN-Rolle und -Umzug, AP-Rolle mit `slaves-static`
   (zweiter Apply, Abgleich von `cfm-iso`), Mitschnitt per `$cfmSniff`, Bestandsgeräte, Admin-Keys je User, Benachrichtigungen, Gerätesuche,
   SNMPv3, Syslog-Inhalt, Feature-Module, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
-  Spiegel; seit 2026-11-11 Freigaben nach Domain und je Client (Schritt 14m, DR2.8/DR2.9).
+  Spiegel; seit 2026-11-11 Freigaben nach Domain und je Client (Schritt 14m, DR2.8/DR2.9); seit 2026-11-16 die Ausgabe
+  von `$cfmCheck` (Schritt 7), `$cfmIsPrimary` ohne Daten auf dem Backup (Schritt 10) und Manager-Module aus `work/`
+  samt Sperre nach einem Rollback (Schritt 17, DM1.4).
+* `tools/editor/cfm-qr-test.py`: QR-Encoder des WLAN-Schilds (gjs erzeugt, libzbar dekodiert), auch in der CI.
 * `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15) und hinter
   einem nicht verwalteten Switch (18).
 * `e2e-vrrp.sh`: drei VRRP-Router hinter einem Internet-Router im LAN (5 VMs) – VIPs und DHCP nur auf dem Master,

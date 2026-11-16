@@ -48,7 +48,7 @@ stoppen die VMs selbst, `lab.sh` brauchst du nur zum Nachsehen.
 
 | Aufruf | VMs | Dauer | Was geprüft wird |
 |---|---|---|---|
-| `./e2e.sh fresh` | 3 | ~80 min | Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager, Router, Leases, Bandbreitenlimit, Archiv, Schlüsselwechsel, RouterOS-Update (auch vom Spiegel), Netzplan, Gerätesuche, PPSK, WLAN-Daten, Bestandsgeräte, CAPsMAN-Umzug, Watchdog, Admin-Keys, Benachrichtigungen, SNMPv3 … |
+| `./e2e.sh fresh` | 3 | ~80 min | Gesamttest: Aufnahme, Firewall, Probelauf, Prüfung, Rollback, Backup-Manager, Router, Leases, Bandbreitenlimit, Archiv, Schlüsselwechsel, RouterOS-Update (auch vom Spiegel), Netzplan, Gerätesuche, PPSK, WLAN-Daten, Bestandsgeräte, CAPsMAN-Umzug, Watchdog, Admin-Keys, Benachrichtigungen, SNMPv3, Manager-Module aus `work/` … |
 | `./e2e-onboard.sh fresh` | 3 | ~10 min | automatisches Onboarding eines „Werksgeräts“ (192.168.88.1) |
 | `./e2e-onboard.sh fresh dhcp` | 3 | ~10 min | dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE) |
 | `./e2e-onboard.sh fresh manual` | 3 | ~10 min | Switch, den cfm nicht verwaltet (`$cfmOnboard manual=yes`) |
@@ -120,5 +120,5 @@ VMs erreichen deinen Rechner als `10.0.2.2`, also `notify.url` = `http://10.0.2.
 | `CHR-Image fehlt` | kein `chr-*.img` in `$LAB` und kein `CHR_IMG` gesetzt (Abschnitt 2) |
 | `Could not access KVM kernel module` / `Permission denied` auf `/dev/kvm` | KVM fehlt oder der User ist nicht in der Gruppe `kvm` |
 | VM startet nicht, Port belegt | ein anderes Labor läuft noch: `./lab.sh status`, `./lab.sh stop`, oder eigene `LABPORT`/`LABSOCK` |
-| Update-Schritt scheitert | kein Internet auf dem Rechner (die VMs laden über ihn) |
+| Update-Schritt scheitert | kein Internet auf dem Rechner (die VMs laden über ihn); einzelner Abbruch „Bad message“ in `/tool/fetch` mit Folgefehlern: Netzstörung, Lauf wiederholen (2026-11-16) |
 | Schritt mit dem Spiegel scheitert | `nc` fehlt (die VMs erreichen den Spiegel über eine Weiterleitung mit `nc`) |

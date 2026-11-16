@@ -14,7 +14,7 @@
 :local base ($cfmG->"mgrPath")
 
 # --- Manager-Funktionen: je Modul lib/mgr-*.rsc aus dem Manifest ein Skript cfm-mgr-<modul>,
-#     das Skript cfm-mgr lädt alle. Fehlen die Module, bricht der Apply ab (-> Rollback),
+#     das Skript cfm-mgr lädt alle (danach abweichende aus work/lib/, DM1.4). Fehlen die Module, bricht der Apply ab (-> Rollback),
 #     statt einen Manager ohne Funktionen zu hinterlassen ---
 :local pol "ftp,reboot,read,write,policy,test,password,sensitive"
 # Erst alle Modultexte lesen, dann die Skripte setzen; jede Datei bis zu fünf Versuche (DM1.1.1). Auf einem

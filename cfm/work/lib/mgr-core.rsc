@@ -1,7 +1,8 @@
 # ============================================================
 # cfm lib/mgr-core.rsc – Manager-Funktionen: Kern
 # Die Manager-Funktionen liegen in lib/mgr-*.rsc (je Datei < 60 KB, Grenze von /file get).
-# Jede Datei wird als Skript cfm-mgr-<modul> installiert; das Skript cfm-mgr lädt alle.
+# Jede Datei wird als Skript cfm-mgr-<modul> installiert; das Skript cfm-mgr lädt alle, danach jedes Modul aus
+# work/lib/, das davon abweicht oder neu ist ($cfmMgrFromWork, DM1.4; nicht nach einem Rollback auf dem Manager).
 #   mgr-core     Hilfsfunktionen, Daten, Release/Ringe, Archiv, Push, Status, Audit
 #   mgr-vault    Vault, Secrets und Secret-Push, Identitätsprüfung, Geräteschlüssel ($cfmRekey)
 #   mgr-check    inhaltliche Prüfung von work/ ($cfmCheck), Probelauf ($cfmPlan)

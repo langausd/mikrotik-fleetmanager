@@ -193,7 +193,7 @@
     /file/add name=($b . "/meta/keys/" . $myname . ".pem") contents=$pub
 
     # 3) Manager-Funktionen laden (je Modul lib/mgr-*.rsc ein Skript cfm-mgr-<modul>, das Skript
-    #    cfm-mgr lädt alle), erstes Release, sich selbst enrollen
+    #    cfm-mgr lädt alle, ab dem ersten Release auch abweichende aus work/lib/, DM1.4), erstes Release, sich selbst enrollen
     :foreach f in=[/file/find where name~("^" . $b . "/work/lib/mgr-.*[.]rsc\$")] do={
       :local fn [/file/get $f name]
       :local s ("cfm-mgr-" . [:pick $fn ([:find $fn "lib/mgr-"] + 8) ([:len $fn] - 4)])

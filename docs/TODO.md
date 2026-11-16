@@ -317,6 +317,11 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     Empfänger mit und ohne Wert. Wirkt die Formel „Sendeleistung + Gewinn ≤ Limit“ und rechnet RouterOS ohne Wert mit
     0 dBi, sendet ein Gerät mit externen Antennen über dem Limit → `antennaGain` je AP und Band dann für alle Geräte mit
     abnehmbaren/externen Antennen eintragen.
+    *Ergebnis 2026-11-16 (Pegelmessung vor Ort, ROUTEROS-EIGENHEITEN):* `antenna-gain` wirkt an der CRS418 nicht
+    (Pegel und `tx-power` unverändert), `tx-power` wirkt (−9,5 dB bei 10 statt 20). Folgerung: statt `antennaGain`
+    **`txPower` je AP und Band** (EIRP-Grenze bei externen Antennen von Hand einhalten); dazu ein **Kanal-Pool je AP**
+    (z. B. `radios` → `{"cm1"={"5"="5180,5200,5220,5240"}}`, falls das Pinning Listen schon trägt – prüfen). Nebenbefund:
+    5745–5825 MHz nur 14 dBm statt 23 dBm auf 5180–5240.
 73. **Feature-Module – Rest** (umgesetzt: DG4.6; Labor und Hardware an einem Standort:
     [TESTSTAND.md](TESTSTAND.md#bestanden)):
     * Hardware an einem Router mit `dns.rsc`: `/system/script/get cfm-dnsreq source` prüfen

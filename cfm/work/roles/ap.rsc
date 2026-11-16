@@ -119,6 +119,13 @@ $cfmPskMissing
   :local curC [:tostr [/interface/wifi/get $i configuration]]
   :local curD [:tostr [/interface/wifi/get $i datapath]]
   :local curX [/interface/wifi/get $i disabled]
+  # Band an diesem AP aus (radios "off", DW3.7): Radio abschalten - im CAPsMAN-Betrieb wie im Fallback
+  :if ($cfg = "off") do={
+    :if (!$curX) do={
+      :if ($cfmDry != true) do={ /interface/wifi/set $i disabled=yes }
+      $cfmLog ("Radio " . $rn . ": Band " . $b . " aus (wifi.rsc radios)")
+    }
+  } else={
   :if ([:len $cfg] > 0) do={
     :if ($curM != "capsman-or-local" or $curC != $cfg or $curD != $mdpn or $curX = true) do={
       :if ($cfmDry != true) do={ /interface/wifi/set $i configuration=$cfg configuration.manager=capsman-or-local datapath=$mdpn disabled=no }
@@ -130,6 +137,7 @@ $cfmPskMissing
       :if ($cfmDry != true) do={ /interface/wifi/set $i configuration.manager=capsman datapath=$dp }
       $cfmLog ("Radio " . $rn . " -> CAPsMAN, Datapath " . $dp)
     }
+  }
   }
 }
 

@@ -312,25 +312,6 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 69. **DNS-Selbstbedienung – Rest** (umgesetzt: DN3.2, Admin-Guide 8.14; Hardware bestanden 2026-10-31):
     `www-ssl` für die Anmeldung; befristete Freischaltung auch auf den anderen Routern (VRRP-Wechsel).
 <!-- -->
-72. **Band je AP abschalten, Antennengewinn je AP** (Idee eines Standorts, 2026-10-26; nur nötig, wenn dort eine
-    Außenantenne kommt) – Anlass: Ein AP soll eine seiner beiden Antennen (je Kette beide Bänder) nach außen führen.
-    In der EU ist 5150–5350 MHz nur in Innenräumen erlaubt; `wifi.rsc` kennt je AP heute nur das Pinning `radios`
-    (fester Kanal je Band) – weder ein Band je AP abschalten noch `antenna-gain` (EIRP) noch Sendeleistung. Idee:
-    `radios` → `{"<ap>"={"5"="off"}}` (keine Provisionierung dieses Bands, Radio aus) und `antennaGain` je AP und
-    Band (Parameter in der RouterOS-wifi-Doku prüfen; hält er beim Provisionieren durch den CAPsMAN?). Alternative
-    ohne Framework: eigener Außen-AP (dieselbe 5-GHz-Regel). Offen, Entscheidung des Nutzers.
-    *Neuer Anlass 2026-11-13 (Nutzer):* Die Antennen einer CRS418 im Stahlrack sollen per Pigtail und Magnetfuß-Antennen
-    aufs Rack (Kabel ≈ 1 m, ≈ 2–3 dB Dämpfung). Befund: Die Radios haben kein `min-antenna-gain`, `monitor` zeigt die
-    volle EU-EIRP als `tx-power` und blieb mit `antenna-gain=5` am Interface gleich (ROUTEROS-EIGENHEITEN). Vor der
-    Umsetzung klären, ob `antenna-gain` wirkt und wo (Interface oder Konfiguration) – Pegelmessung an einem festen
-    Empfänger mit und ohne Wert. Wirkt die Formel „Sendeleistung + Gewinn ≤ Limit“ und rechnet RouterOS ohne Wert mit
-    0 dBi, sendet ein Gerät mit externen Antennen über dem Limit → `antennaGain` je AP und Band dann für alle Geräte mit
-    abnehmbaren/externen Antennen eintragen.
-    *Ergebnis 2026-11-16 (Pegelmessung vor Ort, ROUTEROS-EIGENHEITEN):* `antenna-gain` wirkt an der CRS418 nicht
-    (Pegel und `tx-power` unverändert), `tx-power` wirkt (−9,5 dB bei 10 statt 20). Folgerung: statt `antennaGain`
-    **`txPower` je AP und Band** (EIRP-Grenze bei externen Antennen von Hand einhalten); dazu ein **Kanal-Pool je AP**
-    (z. B. `radios` → `{"cm1"={"5"="5180,5200,5220,5240"}}`, falls das Pinning Listen schon trägt – prüfen). Nebenbefund:
-    5745–5825 MHz nur 14 dBm statt 23 dBm auf 5180–5240.
 73. **Feature-Module – Rest** (umgesetzt: DG4.6; Labor und Hardware an einem Standort:
     [TESTSTAND.md](TESTSTAND.md#bestanden)):
     * Hardware an einem Router mit `dns.rsc`: `/system/script/get cfm-dnsreq source` prüfen

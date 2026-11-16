@@ -185,7 +185,9 @@
       :put ("  " . $t)
     }
     :local pin ($cfmWifi->"radios"->$host)
-    :if ([:typeof $pin] = "array") do={ :put ("  Pins: " . [:tostr $pin]) }
+    :if ([:typeof $pin] = "array") do={ :put ("  Kanäle (radios): " . [:tostr $pin]) }
+    :local tp ($cfmWifi->"txPower"->$host)
+    :if ([:typeof $tp] = "array") do={ :put ("  Sendeleistung (txPower, dBm): " . [:tostr $tp]) }
   }
   :if ([$cfmFileEx ($dir . "/hosts/" . $host . ".post.rsc")]) do={ :put ("hosts/" . $host . ".post.rsc: freie Befehle, hier nicht ausgewertet") }
   :global cfmMgrData; :set cfmMgrData 0

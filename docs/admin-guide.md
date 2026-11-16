@@ -284,9 +284,22 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   `ftOverDs`, `pmf`, `isolation` als Abweichung von `defaults`. Die Passphrase kommt **nur** aus dem Vault:
   `$cfmSecret key=psk.<schlüssel> value=…`.
 * `master`: die SSID, die das physische Radio trägt, alle anderen werden virtuelle APs.
-* `channels`: Kanal-Pools je Band; `radios`: optional feste Kanäle je AP (`{"ap1"={"5"="5180"}}`).
-  Ohne Pin wählt der CAPsMAN den Kanal bei jeder Neuverbindung eines APs aus dem Pool neu; der Pin
-  gilt auch für den lokalen Fallback der APs (DW1.6).
+* `channels`: Kanal-Pools je Band; `radios`: optional je AP und Band ein fester Kanal (`{"ap1"={"5"="5180"}}`),
+  ein eigener Pool nur für diesen AP (`{"cm1"={"5"="5180,5200,5220,5240"}}`, RouterOS wählt daraus) oder `"off"`
+  (`{"ap2"={"5"="off"}}`: das Band sendet an diesem AP nicht – am CAPsMAN eine Regel ohne Provisionierung
+  `action=none` vor der allgemeinen, am AP ist das Radio abgeschaltet, auch im Fallback; bei den eigenen Radios
+  des CAPsMAN-Geräts schaltet der Apply das Interface ab bzw. wieder an, DW3.7). Ohne Eintrag wählt der CAPsMAN
+  den Kanal bei jeder Neuverbindung eines APs aus dem Pool unter `channels` neu; der Eintrag gilt auch für den
+  lokalen Fallback der APs (DW1.6). `$cfmCheck` prüft Frequenzen gegen das Band und warnt, wenn an einem AP alle
+  Bänder `off` sind oder ein Pin/Pool einen festen Zigbee-/Thread-Kanal überdeckt.
+* `txPower`: optional Sendeleistung je AP und Band in dBm am Antennenanschluss (TODO 72, DW3.7), z.B.
+  `"txPower"={"cm1"={"2"=14;"5"=17}}` – ganze Zahlen 1–30, ohne Eintrag das Landeslimit. Wirkt beim CAPsMAN (eigene
+  Master-Konfiguration `cfm-m<Band>-<AP>`, gilt für alle SSIDs des Radios) und im lokalen Fallback. **`antenna-gain`
+  wirkt nicht** (CRS418, Pegelmessung 2026-11-16: Pegel und angezeigte `tx-power` unverändert), RouterOS rechnet mit
+  0 dBi – bei externen Antennen die EIRP-Grenze selbst einhalten: `txPower` ≤ Limit − Antennengewinn +
+  Kabeldämpfung (Limit in DE: 20 dBm auf 2,4 GHz, 23 dBm auf 5150–5350, 30 dBm auf 5470–5725, 14 dBm auf
+  5745–5825). Entfernen nimmt `tx-power` aus der Konfiguration wieder heraus (Log „tx-power entfernt“). Ein neuer
+  Wert startet das Radio neu (Clients kurz weg).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (in der Vorlage `03:00`; leer = nur beim Start);
   je Band `skipDfs` (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
 * **5-GHz-Pool bewusst wählen** (TODO 87): Mit `country=Germany` sendet ein Radio auf 5745–5825 MHz nur mit

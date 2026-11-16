@@ -23,8 +23,13 @@
 #            $cfmSecret key=ppsk.iot.kameras value=...
 #            Die normale Passphrase der SSID gilt weiter (VLAN der SSID, DW2.2.1); nur PPSK:
 #            "ppskOnly"="yes" an der SSID (nicht an der Master-SSID)
-#  radios    optionales Pinning pro AP-Identity: {"ap1"={"5"="5180";"2"="2412"}}
-#            (ohne Pin wählt der CAPsMAN bei jeder Neuverbindung neu; gilt auch für den Fallback)
+#  radios    optional je AP-Identity und Band (DW3.1, DW3.7): eine Frequenz (Pin), eine Liste (Pool nur für
+#            diesen AP, RouterOS wählt daraus) oder "off" (Band an diesem AP aus, auch im Fallback):
+#              {"ap1"={"5"="5180";"2"="2412"};"cm1"={"5"="5180,5200,5220,5240"};"ap2"={"5"="off"}}
+#            (ohne Eintrag wählt der CAPsMAN bei jeder Neuverbindung aus dem Pool unter channels; gilt auch für den Fallback)
+#  txPower   optional Sendeleistung je AP-Identity und Band in dBm am Anschluss (TODO 72, DW3.7), z.B. bei externen
+#            Antennen: {"cm1"={"2"=14;"5"=17}}. antenna-gain wirkt nicht (CRS418, 2026-11-16) - die EIRP-Grenze
+#            (Sendeleistung + Antennengewinn - Kabeldämpfung) selbst einhalten. Ohne Eintrag: Landeslimit.
 #  steer     Steering je Band (RouterOS >= 7.21, DW2.4): Liegt ein Client länger als "after" unter
 #            "threshold" (dBm), schlägt ihm der AP per 802.11v die Nachbar-APs vor; "kick" trennt ihn,
 #            wenn er danach noch bleibt (leer = nie trennen). Optional "count"/"period" der Vorschläge
@@ -73,6 +78,7 @@
   "reselect"="03:00";
   "ppsk"={};
   "radios"={};
+  "txPower"={};
   "steer"={};
   "others"={}
 }

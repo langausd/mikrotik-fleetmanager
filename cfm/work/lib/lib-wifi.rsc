@@ -245,9 +245,23 @@
     :set ($msec->$b) ("cfm-" . $mk)
     :if ([:typeof ($bov->$b)] != "nothing") do={ :set ($msec->$b) ("cfm-" . $mk . "-" . $b . "g") }
   }
+  # Sendeleistung je AP und Band (TODO 72, DW3.7): tx = dBm am Anschluss (configuration.tx-power), leer = RouterOS
+  # wählt (Landeslimit). antenna-gain wirkt nicht (CRS418, Pegelmessung 2026-11-16) - die EIRP-Grenze bei externen
+  # Antennen hält der Wert selbst ein. Entfällt er, nimmt die Konfiguration ihn wieder heraus
   :local mcfg do={
-    :global cfmEnsure
-    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=$dp;"steering"=$stg;"channel"=$ch})
+    :global cfmEnsure; :global cfmDry; :global cfmLog
+    :local p ({"name"=$name;"mode"="ap";"ssid"=($s->"ssid");"country"=$country;"security"=$sec;"datapath"=$dp;"steering"=$stg;"channel"=$ch})
+    :if ([:len [:tostr $tx]] > 0) do={ :set ($p->"tx-power") [:tonum $tx] }
+    $cfmEnsure m="/interface/wifi/configuration" k=("wcf:" . $key) n=({"name"=$name}) p=$p
+    :if ([:len [:tostr $tx]] = 0 and $cfmDry != true) do={
+      :onerror e in={
+        :local i [/interface/wifi/configuration/find where name=$name]
+        :if ([:len $i] > 0 and [:len [:tostr [/interface/wifi/configuration/get $i tx-power]]] > 0) do={
+          /interface/wifi/configuration/unset $i tx-power
+          $cfmLog ("Konfiguration " . $name . ": tx-power entfernt")
+        }
+      } do={}
+    }
   }
   :local pinch do={
     :global cfmEnsure
@@ -255,24 +269,42 @@
     $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $apn) n=({"name"=$chn}) p=({"name"=$chn;"band"=($c->"band");"frequency"=$f;"width"=($c->"width")})
     :return $chn
   }
+  # radios je AP und Band (DW3.1, DW3.7): eine Frequenz (Pin), eine Liste (Pool dieses AP, RouterOS wählt daraus)
+  # oder "off" (Band an diesem AP aus: keine Provisionierung, lokal Radio aus)
   :if ($loc) do={
+    # {Band=Konfiguration}, "off" = Radio abschalten (die Konfiguration bleibt, damit sie nicht verwaist, solange
+    # das Radio noch darauf zeigt)
     :local cf ({})
     :foreach b,c in=($w->"channels") do={
       :local chn ("cfm-" . $b . "g")
       :local f [:tostr ($w->"radios"->$ap->$b)]
-      :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
-      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b)
+      :if ([:len $f] > 0 and $f != "off") do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
+      $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b) tx=[:tostr ($w->"txPower"->$ap->$b)]
       :set ($cf->$b) ("cfm-l" . $b)
+      :if ($f = "off") do={ :set ($cf->$b) "off" }
     }
     :return $cf
   }
-  # CAPsMAN: gepinnte APs vor den generischen Regeln
+  # CAPsMAN: APs mit eigener Einstellung (radios, txPower) vor den generischen Regeln - je Band eine eigene
+  # Master-Konfiguration cfm-m<Band>-<AP>, bei "off" eine Regel ohne Provisionierung (action=none)
   :local rules ({})
-  :foreach apn,pins in=($w->"radios") do={
-    :foreach b,f in=$pins do={
-      :local chn [$pinch b=$b apn=$apn c=($w->"channels"->$b) f=$f]
-      $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b)
-      :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
+  :local own ({})
+  :foreach apn,x in=($w->"radios") do={ :set ($own->$apn) 1 }
+  :foreach apn,x in=($w->"txPower") do={ :set ($own->$apn) 1 }
+  :foreach apn,x in=$own do={
+    :foreach b,c in=($w->"channels") do={
+      :local f [:tostr ($w->"radios"->$apn->$b)]
+      :local tx [:tostr ($w->"txPower"->$apn->$b)]
+      :if ($f = "off") do={
+        :set ($rules->[:len $rules]) ({"b"=$b;"cfg"="";"re"=("^" . $apn . "\$");"off"=true})
+      } else={
+        :if ([:len $f] > 0 or [:len $tx] > 0) do={
+          :local chn ("cfm-" . $b . "g")
+          :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$apn c=$c f=$f] }
+          $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b) tx=$tx
+          :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
+        }
+      }
     }
   }
   :foreach b,c in=($w->"channels") do={
@@ -300,6 +332,10 @@
   }
   :foreach r in=$rules do={
     :local b ($r->"b")
+    :if (($r->"off") = true) do={
+      # Band an diesem AP aus (DW3.7): Die Regel greift vor der generischen und provisioniert nichts
+      :set ($pl->[:len $pl]) ({"action"="none";"supported-bands"=($w->"channels"->$b->"band");"identity-regexp"=($r->"re")})
+    } else={
     :local sl ({})
     # schaltbare SSIDs immer hinter den festen: so behalten die virtuellen Interfaces der übrigen ihre
     # Nummern (Home Assistant ordnet Clients nach Interfaces zu, Befund 2026-10-14)
@@ -320,6 +356,7 @@
     :if ($mlOk) do={ :set ($pr->"multi-link-mode") $mlm }
     :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
     :set ($pl->[:len $pl]) $pr
+    }
   }
   :return $pl
 }
@@ -460,10 +497,12 @@
         :local re [:tostr ($p->"identity-regexp")]
         :if ([:len $want] = 0 and ([:len $re] = 0 or $id ~ $re) and $bs ~ (($p->"supported-bands") . ":")) do={
           :set want (($p->"master-configuration") . ";" . [:tostr ($p->"slave-configurations")])
+          # Band an diesem AP aus (action=none, DW3.7): nichts zu vergleichen
+          :if ([:tostr ($p->"action")] = "none") do={ :set want "-" }
         }
       }
       :local mi [:tostr ($rd->"interface")]
-      :if ([:len $want] > 0 and [:len $mi] > 0) do={
+      :if ([:len $want] > 0 and $want != "-" and [:len $mi] > 0) do={
         :local dyn false
         :local sl ({})
         :foreach i in=[/interface/wifi/find where master-interface=$mi] do={
@@ -544,6 +583,32 @@
         }
       }
     }
+  }
+  # Band aus an den eigenen Radios (radios "off" mit der eigenen Identity, DW3.7): Die Regel mit action=none
+  # provisioniert nichts, das Interface bliebe im alten Zustand an - abschalten; ohne "off" (Band in channels)
+  # wieder einschalten
+  :if ($lr and $nr > 0) do={
+    :local me [/system/identity/get name]
+    :onerror e in={
+      :foreach r in=[/interface/wifi/radio/find where local] do={
+        :local bs [:tostr [/interface/wifi/radio/get $r bands]]
+        :local b ""
+        :if ($bs ~ "2ghz") do={ :set b "2" }
+        :if ($bs ~ "5ghz") do={ :set b "5" }
+        :if ($bs ~ "6ghz") do={ :set b "6" }
+        :local mi [:tostr [/interface/wifi/radio/get $r interface]]
+        :local i [/interface/wifi/find where name=$mi]
+        :if ([:len $b] > 0 and [:typeof ($cfmWifi->"channels"->$b)] = "array" and [:len $i] > 0) do={
+          :local off ([:tostr ($cfmWifi->"radios"->$me->$b)] = "off")
+          :if ([/interface/wifi/get $i disabled] != $off) do={
+            :local dis "no"
+            :if ($off) do={ :set dis "yes" }
+            :if ($cfmDry != true) do={ /interface/wifi/set $i disabled=$dis }
+            :if ($off) do={ $cfmLog ("eigenes Radio " . $mi . ": Band " . $b . " aus (wifi.rsc radios)") } else={ $cfmLog ("eigenes Radio " . $mi . ": Band " . $b . " wieder an") }
+          }
+        }
+      }
+    } do={ $cfmWarn ("eigene Radios: Band aus/an nicht gesetzt: " . $e) }
   }
   # Lese-Zugang per API (DU2.1): User, Gruppe und Freigabe legt die Rolle base an (auch für umschaltbare Ports)
   :return true

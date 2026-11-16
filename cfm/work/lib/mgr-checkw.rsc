@@ -1,6 +1,6 @@
 # ============================================================
 # cfm lib/mgr-checkw.rsc – Manager-Funktionen: WLAN-Teil der inhaltlichen Prüfung
-#   $cfmCheckWifi inv=<inventar>   prüft wifi.rsc (SSIDs, 6 GHz, PPSK, Pinning, andere Funknetze,
+#   $cfmCheckWifi inv=<inventar>   prüft wifi.rsc (SSIDs, 6 GHz, PPSK, Pinning/Pools/txPower, andere Funknetze,
 #                                  Steering, Fallback, DFS) -> {"err"={..};"warn"={..};"note"={..}}
 #   Aufruf nur aus $cfmCheck (lib/mgr-check.rsc), nachdem der die Daten geladen hat. Eigene Datei,
 #   weil /file get nur ca. 60 KB liest (TODO 73, DM1.1); $cfmCheck lädt sie aus demselben Stand nach.
@@ -95,8 +95,38 @@
     :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . ", nicht im Inventar") } else={
       :if (!(("," . [:tostr ($inv->$apn->"role")] . ",") ~ ",(ap|capsman),")) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . " ohne Rolle ap oder capsman (eigene Radios, capsmanRadios)") }
     }
+    # Wert je Band (DW3.7): Frequenz, Liste (Pool dieses AP) oder "off"; Frequenzen im Bereich des Bands
+    :local noff 0
     :foreach bb,ff in=$pins do={
-      :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . ": Band " . $bb . " fehlt in channels") }
+      :local fv [:tostr $ff]
+      :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . ": Band " . $bb . " fehlt in channels") } else={
+        :if ($fv = "off") do={ :set noff ($noff + 1) } else={
+          :if (!($fv ~ "^[0-9]+(,[0-9]+)*\$")) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " " . $bb . "=" . $fv . ": weder Frequenz (MHz), Liste noch off") } else={
+            :local lo 2400; :local hi 2500
+            :if ($bb = "5") do={ :set lo 5150; :set hi 5900 }
+            :if ($bb = "6") do={ :set lo 5925; :set hi 7125 }
+            :foreach f in=[:toarray $fv] do={
+              :local n [:tonum $f]
+              :if ($n < $lo or $n > $hi) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " " . $bb . ": " . $n . " MHz liegt nicht im Band (" . $lo . "-" . $hi . ")") }
+            }
+          }
+        }
+      }
+    }
+    :if ($noff > 0 and $noff >= [:len ($cfmWifi->"channels")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios " . $apn . ": alle Bänder off - der AP sendet nichts") }
+  }
+  # Sendeleistung je AP und Band (TODO 72, DW3.7): bekannte APs, Bänder aus channels, ganze dBm 1-30
+  :foreach apn,tp in=($cfmWifi->"txPower") do={
+    :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: txPower nennt " . $apn . ", nicht im Inventar") } else={
+      :if (!(("," . [:tostr ($inv->$apn->"role")] . ",") ~ ",(ap|capsman),")) do={ :set ($warn->[:len $warn]) ("wifi.rsc: txPower nennt " . $apn . " ohne Rolle ap oder capsman") }
+    }
+    :if ([:typeof $tp] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: txPower " . $apn . ": je Band angeben, z.B. {\"5\"=17}") } else={
+      :foreach bb,v in=$tp do={
+        :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: txPower " . $apn . ": Band " . $bb . " fehlt in channels") }
+        :local n [:tonum $v]
+        :if ([:typeof $n] != "num" or $n < 1 or $n > 30 or [:tostr $n] != [:tostr $v]) do={ :set ($err->[:len $err]) ("wifi.rsc: txPower " . $apn . " " . $bb . "=" . [:tostr $v] . ": ganze dBm 1-30") }
+        :if ([:tostr ($cfmWifi->"radios"->$apn->$bb)] = "off") do={ :set ($warn->[:len $warn]) ("wifi.rsc: txPower " . $apn . " " . $bb . " wirkt nicht, das Band ist dort off") }
+      }
     }
   }
   # Andere Funknetze im 2,4-GHz-Band (TODO 51): Typ, Kanal, near, Gewicht; ein Pin auf 2,4 GHz, der
@@ -139,11 +169,16 @@
     :local fz (2405 + (5 * ($c - 11)))
     :local nr [:tostr ($cfmWifi->"others"->$k->"near")]
     :foreach apn,pins in=($cfmWifi->"radios") do={
-      :local pf [:tonum ($pins->"2")]
-      :if ([:typeof $pf] = "num" and ([:len $nr] = 0 or [:typeof [:find ("," . $nr . ",") ("," . $apn . ",")]] != "nil")) do={
-        :local d ($pf - $fz)
-        :if ($d < 0) do={ :set d (0 - $d) }
-        :if ($d <= 9) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios " . $apn . " 2=" . $pf . " überdeckt " . $k . " (" . [:tostr ($cfmWifi->"others"->$k->"type")] . " Kanal " . $c . ", " . $fz . " MHz)") }
+      # Pin oder Pool dieses AP (DW3.7): jede Frequenz der Liste
+      :if ([:len $nr] = 0 or [:typeof [:find ("," . $nr . ",") ("," . $apn . ",")]] != "nil") do={
+        :foreach f in=[:toarray [:tostr ($pins->"2")]] do={
+          :local pf [:tonum $f]
+          :if ([:typeof $pf] = "num") do={
+            :local d ($pf - $fz)
+            :if ($d < 0) do={ :set d (0 - $d) }
+            :if ($d <= 9) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios " . $apn . " 2=" . $pf . " überdeckt " . $k . " (" . [:tostr ($cfmWifi->"others"->$k->"type")] . " Kanal " . $c . ", " . $fz . " MHz)") }
+          }
+        }
       }
     }
   }

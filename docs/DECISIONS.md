@@ -1652,6 +1652,32 @@ Kanal-Pools zentral in `wifi.rsc`, optionales Pinning pro AP ebenfalls in `wifi.
 
 **Begründung:** Mit `country=Germany` sendet ein Radio auf 5745–5825 nur mit 14 dBm (SRD-Band), auf 5180–5240 mit 23 dBm, auf DFS-Kanälen bis 30 dBm; RouterOS wählte aus dem gemischten Pool zweimal den oberen Bereich. Der Wechsel auf 5180–5240 + DFS hob den Pegel einer CRS418 am Nachbar-AP von −70 auf −51 dBm (Pegelmessung 2026-11-16). Preis: nach jedem Start eines Radios auf einem DFS-Kanal mindestens 60 s CAC, bei Radar Kanalwechsel – auch im lokalen Fallback (ROUTEROS-EIGENHEITEN). Offen auf Hardware: ob RouterOS 80 MHz auf 5660–5700 korrekt begrenzt (der Block 5660–5720 reicht über 5725 MHz).
 
+#### <a id="dw3.7"></a>DW3.7 · Je AP: Kanal-Pool, Sendeleistung, Band aus
+
+*2026-11-16 · Nutzer (TODO 72)*
+
+**Frage:** Wie stehen Sendeleistung, ein eigener Kanal-Pool und ein abgeschaltetes Band je AP in `wifi.rsc`?
+
+**Entscheidung:** `radios` nimmt je AP und Band eine Frequenz (Pin wie bisher), eine Liste (Pool nur dieses AP) oder
+`"off"`. Sendeleistung in einem eigenen Schlüssel `txPower` gleichen Aufbaus (`{"cm1"={"2"=14;"5"=17}}`, dBm am
+Anschluss, 1–30) – beides auch für die eigenen Radios des CAPsMAN-Geräts und im lokalen Fallback. Technisch: Je AP und
+Band mit Pin, Pool oder `txPower` eine Master-Konfiguration `cfm-m<Band>-<AP>` (Kanal = Pin/Pool des AP, sonst der
+allgemeine Pool) mit Regel vor der allgemeinen; `"off"` = Regel mit `action=none` vor der allgemeinen, der AP schaltet
+das Radio ab, ein CAPsMAN mit `capsmanRadios` sein eigenes Interface. `$cfmCheck`: Frequenzen im Band, `txPower` ganze
+dBm 1–30, Warnung bei „alle Bänder off“ und bei `txPower` an einem abgeschalteten Band, Zigbee/Thread-Überdeckung für
+jede Frequenz eines Pools (Nutzer)
+
+**Verworfen:** `antennaGain` je AP (wirkt an der CRS418 nicht, Pegelmessung 2026-11-16) · Sendeleistung als Unterarray
+in `radios` (`{"5"={"freq"=…;"tx"=17}}`, zwei Formen nebeneinander) · zusätzlich ein Standard je Band in `channels` ·
+Band aus erst bei Bedarf (Nutzer: gleich mit umsetzen)
+
+**Begründung:** Die Pins blieben unverändert (keine Änderung an bestehenden Sites, gleiche Objektnamen), `txPower`
+liest sich wie `radios`. `antenna-gain` würde RouterOS die EIRP-Rechnung überlassen, tut es aber nicht (ROUTEROS-EIGENHEITEN);
+also stellt der Admin die Leistung selbst ein. Eine Regel mit `action=none` vor der allgemeinen ist der einzige Weg,
+ein Band eines CAP am CAPsMAN auszunehmen, ohne die Regeln aller APs zu ändern. Labor: `e2e.sh` Schritt 14
+(Objekte, Reihenfolge der Regeln, zweiter Apply ohne Änderung, Entfernen, Prüfungen). Offen auf Hardware: Wirkung von
+`txPower` am CAP (Pegel), Radio aus im Fallback, `action=none` mit einem echten CAP.
+
 ### <a id="dw4"></a>DW4 · SSID-Schalter und Provisioning
 
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten

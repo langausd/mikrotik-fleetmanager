@@ -272,6 +272,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **Je AP: Pool, `txPower`, Band aus** (DW3.7, 2026-11-16, Labor grün): Senkt `txPower` am CAP den Pegel wie an der
+  CRS418 (Pegel an einem festen Empfänger, nicht nur `monitor`)? Übernimmt der CAP die Leistung aus der
+  Master-Konfiguration des CAPsMAN, auch für die virtuellen APs? `"off"`: Regel `action=none` mit einem echten CAP,
+  Radio aus im CAPsMAN-Betrieb und im Fallback, Zurücknehmen; eigene Radios des CAPsMAN-Geräts.
 * **5-GHz-Pool mit DFS** (DW3.6, Vorlage seit 2026-11-16, an einem Standort seit v39): Begrenzt RouterOS 80 MHz auf
   5660–5700 korrekt (der 80-MHz-Block 5660–5720 reicht über 5725 MHz – erwartet 40 bzw. 20 MHz, `monitor` →
   `channel`)? CAC-Dauer nach einem Neustart des Radios, Verhalten bei Radar (Log `dfs`).

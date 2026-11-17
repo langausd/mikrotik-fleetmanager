@@ -206,6 +206,22 @@
 }
 
 # ---------- WLAN-Kanäle ----------
+# Kanäle jetzt, vom CAPsMAN (TODO 91): {"<Gerät>-<Band>g"="5500/ax/Ceee/D"} für Radios, die der CAPsMAN (oder er selbst
+# mit capsmanRadios) betreibt; virtuelle APs (Name mit Nummer am Ende) nicht. Leer, wenn kein CAPsMAN antwortet
+:global cfmChLive do={
+  :global cfmCapsmen; :global cfmExec
+  :local r ({})
+  :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :local n [/interface/wifi/get \$i name]; :local t [:pick \$n ([:len \$n] - 3) [:len \$n]]; :if (\$t = \"-2g\" or \$t = \"-5g\" or \$t = \"-6g\") do={ :local c \"\"; :onerror e in={ :local m [/interface/wifi/monitor \$i once as-value]; :set c [:tostr (\$m->\"channel\")] } do={}; :set (\$o->\$n) \$c } }; :put [:serialize to=json \$o]"
+  :foreach c in=[$cfmCapsmen $inv] do={
+    :onerror e in={
+      :local x [$cfmExec ip=($c->"ip") cmd=$oc]
+      :local oj [:deserialize from=json ($x->"output")]
+      :if ([:typeof $oj] = "array") do={ :foreach k,v in=$oj do={ :if ([:len [:tostr $v]] > 0) do={ :set ($r->$k) [:tostr $v] } } }
+    } do={}
+  }
+  :return $r
+}
+
 :global cfmChannels do={
   :global cfmInvLoad; :global cfmJson; :global cfmMB; :global cfmPad
   :local b [$cfmMB]
@@ -217,15 +233,29 @@
   :global cfmCapsmen
   :local cmSet ({})
   :foreach c in=[$cfmCapsmen $inv] do={ :set ($cmSet->[:tostr ($c->"n")]) 1 }
+  # Live vom CAPsMAN (TODO 91): Interfaces <Gerät>-<Band>g mit monitor -> Kanal jetzt; der Status der APs ist bis zu
+  # einem Agent-Lauf alt, und der CAPsMAN wählte an einem Standort mehrfach am Abend neu (2026-11-17)
+  :global cfmChLive
+  :local live [$cfmChLive inv=$inv]
   :foreach name,d in=$inv do={
     :if ((("," . ($d->"role") . ",") ~ ",ap,") or [:typeof ($cmSet->$name)] != "nothing") do={
       :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
-      # Switch am Uplink = verwalteter Nachbar des APs
+      # Switch am Uplink = verwalteter Nachbar des APs, kein anderer AP; der CAPsMAN mit eigenen Radios hängt an sich selbst
       :local sw ""
-      :foreach e in=($s->"nb") do={ :if ([:typeof ($inv->[:tostr ($e->1)])] = "array") do={ :set sw [:tostr ($e->1)] } }
+      :foreach e in=($s->"nb") do={
+        :local nn [:tostr ($e->1)]
+        :if ([:typeof ($inv->$nn)] = "array" and !(("," . [:tostr ($inv->$nn->"role")] . ",") ~ ",ap,")) do={ :set sw $nn }
+      }
+      :if ([:typeof ($cmSet->$name)] != "nothing") do={ :set sw $name }
       :foreach r in=($s->"radios") do={
         :local ch [:pick [:tostr ($r->1)] 1 99]
+        # Name am CAPsMAN: <Gerät>-<Band>g (Band aus dem Status-Kanal: 2xxx/5xxx/6xxx)
+        :local bd [:pick $ch 0 1]
+        :if ($bd = "5" and [:tonum [:pick $ch 0 4]] >= 5925) do={ :set bd "6" }
+        :local lk ($name . "-" . $bd . "g")
+        :if ([:len [:tostr ($live->$lk)]] > 0) do={ :set ch ([:tostr ($live->$lk)] . " *") }
         :local fq [:pick $ch 0 [:find ($ch . "/") "/"]]
+        :if ([:typeof [:find $fq " "]] = "num") do={ :set fq [:pick $fq 0 [:find $fq " "]] }
         :set n ($n + 1)
         :set rows ($rows . [$cfmPad $name 10] . [$cfmPad [:tostr ($r->0)] 10] . [$cfmPad $ch 22] . $sw . "\n")
         :if ([:len $fq] > 0 and [:len $sw] > 0) do={
@@ -252,6 +282,7 @@
   }
   :put ([$cfmPad "AP" 10] . [$cfmPad "RADIO" 10] . [$cfmPad "KANAL" 22] . "SWITCH")
   :global cfmPutLines; $cfmPutLines $rows
+  :if ([:len $live] > 0) do={ :put "* = live vom CAPsMAN (monitor), sonst Stand des letzten Agent-Laufs" }
   :foreach x in=$warn do={ :put ("Warnung: " . $x) }
   :return $warn
 }

@@ -135,6 +135,10 @@
     } do={}
     :onerror e in={
       :foreach i in=$sel do={
+       # virtuelle APs (master-interface gesetzt) haben keinen eigenen Kanal (TODO 91: leere Zeilen in $cfmChannels)
+       :local mi ""
+       :onerror e3 in={ :set mi [:tostr [/interface/wifi/get $i master-interface]] } do={}
+       :if ([:len $mi] = 0) do={
         :local ch ""
         # Unter CAPsMAN liefert monitor kein Feld channel, nur about "… channel: 2472/ax"
         # (Hardware 2026-10-03) - dann daraus lesen
@@ -151,6 +155,7 @@
           }
         } do={}
         :set ($rd->[:len $rd]) ({[/interface/wifi/get $i name];("c" . $ch)})
+       }
       }
     } do={}
     :set ($s->"radios") $rd

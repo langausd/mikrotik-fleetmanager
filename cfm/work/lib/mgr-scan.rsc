@@ -234,6 +234,9 @@
   # aktueller Stand (Status-Feld radios: "c2412/ax/…")
   :local cur ({})
   :local curOk true
+  # Aktuell: live vom CAPsMAN (TODO 91), sonst aus dem Status des letzten Agent-Laufs
+  :global cfmChLive
+  :local live [$cfmChLive inv=$inv]
   :for i from=0 to=($na - 1) do={
     :local st [$cfmJson ($b . "/state/" . ($aps->$i) . "/status.dat")]
     :local cq ""
@@ -241,6 +244,11 @@
       :local ch [:pick [:tostr ($r->1)] 1 99]
       :local fq [:tonum [:pick $ch 0 [:find ($ch . "/") "/"]]]
       :if ([:typeof $fq] = "num" and $fq < 2500) do={ :set cq $fq }
+    }
+    :local lv [:tostr ($live->(($aps->$i) . "-2g"))]
+    :if ([:len $lv] > 0) do={
+      :local lq [:tonum [:pick $lv 0 [:find ($lv . "/") "/"]]]
+      :if ([:typeof $lq] = "num") do={ :set cq $lq }
     }
     :if ([:len [:tostr $cq]] = 0) do={ :set curOk false } else={ :set ($cur->$i) $cq }
   }

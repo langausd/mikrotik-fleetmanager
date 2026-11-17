@@ -1735,6 +1735,31 @@ ein Band eines CAP am CAPsMAN auszunehmen, ohne die Regeln aller APs zu ändern.
 
 ### <a id="dw4"></a>DW4 · SSID-Schalter und Provisioning
 
+
+#### <a id="dw3.8"></a>DW3.8 · Kanalbreite je AP und Band, Blöcke nicht über 5725 MHz
+
+*2026-11-17 · Nutzer (TODO 89, 90; Hardware-Befund an einem Standort)*
+
+**Frage:** Drei APs, die sich gegenseitig hören (−53 bis −71 dBm), brauchen drei getrennte 5-GHz-Blöcke. Mit 80 MHz
+gibt es in der EU ohne Wetterradar nur zwei (36–48, 100–112); der Pool der Vorlage (DW3.6) ließ RouterOS außerdem
+80 MHz auf 132–144 wählen (5650–5730, über dem Ende des Bands 5470–5725) – zwei APs saßen dort im selben Block.
+
+**Entscheidung:** `radios` nimmt an Pin oder Liste optional die höchste Breite: `"5"="5500/80"`, `"5660/40"`,
+`"5180,5200/40"` (20/40/80/160 → `width` `20mhz`, `20/40mhz`, `20/40/80mhz`, `20/40/80/160mhz` im Kanal-Objekt
+`cfm-<Band>g-<AP>`); ohne `/` gilt wie bisher `width` aus `channels`. `$cfmCheck`: Fehler, wenn ein **Pin** mit seiner
+Breite über 5725 MHz reicht, Warnung bei einer Liste bzw. beim Pool unter `channels` (RouterOS kann den Block wählen),
+2,4 GHz höchstens 40 MHz. **Vorlage (TODO 90):** Pool nur noch 5180–5240 und 5500–5560 (die zwei 80-MHz-Blöcke);
+5580 (Block 116–128 mit Wetterradar) und 5660–5700 je AP mit Breite (Nutzer).
+
+**Verworfen:** Unterstruktur `{"freq"=…;"width"=…}` (länger, die Kurzform reicht) · alle APs auf 40 MHz über `channels`
+(kostet cm1 die 80 MHz ohne Not) · Wetterradar-Kanäle erlauben (`skipDfs` je AP, 10 min CAC bei jedem Neuprovisionieren,
+nachrangig: TODO 92)
+
+**Begründung:** Unterschiedliche Breiten je AP stören das Roaming nicht (die Breite steht in den Beacons jedes Senders,
+FT hängt an SSID, Sicherheit und Mobility Domain); Clients, die den erwarteten Durchsatz mitbewerten, bleiben
+höchstens etwas länger am breiteren AP. Schmaler heißt zudem mehr Leistung je Hz (≈ 3 dB je Halbierung) – am Rand der
+Abdeckung ein Vorteil.
+
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten
 
 *2026-10-03 · alt D64*

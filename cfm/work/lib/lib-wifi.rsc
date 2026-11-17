@@ -265,14 +265,27 @@
       } do={}
     }
   }
+  # Kanal je AP: f = "5500", "5180,5200" oder mit Breite "5500/80" (DW3.8: 20/40/80/160 = höchstens so breit;
+  # ohne "/" gilt width aus channels)
   :local pinch do={
     :global cfmEnsure
     :local chn ("cfm-" . $b . "g-" . $apn)
-    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $apn) n=({"name"=$chn}) p=({"name"=$chn;"band"=($c->"band");"frequency"=$f;"width"=($c->"width")})
+    :local fq $f
+    :local wd ($c->"width")
+    :local sl [:find $f "/"]
+    :if ([:typeof $sl] = "num") do={
+      :set fq [:pick $f 0 $sl]
+      :local wn [:pick $f ($sl + 1) [:len $f]]
+      :if ($wn = "20") do={ :set wd "20mhz" }
+      :if ($wn = "40") do={ :set wd "20/40mhz" }
+      :if ($wn = "80") do={ :set wd "20/40/80mhz" }
+      :if ($wn = "160") do={ :set wd "20/40/80/160mhz" }
+    }
+    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $apn) n=({"name"=$chn}) p=({"name"=$chn;"band"=($c->"band");"frequency"=$fq;"width"=$wd})
     :return $chn
   }
-  # radios je AP und Band (DW3.1, DW3.7): eine Frequenz (Pin), eine Liste (Pool dieses AP, RouterOS wählt daraus)
-  # oder "off" (Band an diesem AP aus: keine Provisionierung, lokal Radio aus)
+  # radios je AP und Band (DW3.1, DW3.7, DW3.8): eine Frequenz (Pin), eine Liste (Pool dieses AP, RouterOS wählt
+  # daraus), je mit "/<Breite>" (DW3.8), oder "off" (Band an diesem AP aus: keine Provisionierung, lokal Radio aus)
   :if ($loc) do={
     # {Band=Konfiguration}, "off" = Radio abschalten (die Konfiguration bleibt, damit sie nicht verwaist, solange
     # das Radio noch darauf zeigt)

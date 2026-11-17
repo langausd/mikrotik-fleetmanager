@@ -22,19 +22,43 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
   * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
     Interface ohne eigenen (`cfm:wdp…`); der Plan wollte Radios und Slaves entfernen. Fix im Arbeitsstand
-    (`cfmIdxPat`, Reste-Aufräumen ignoriert `cfm:wdp…`), Labor offen (4 Fehler im Lauf 17.11. klären).
-  * **89 – Kanalbreite je AP und Band** (Option 2): `radios` `"5"="5500/80"` – ohne `/` gilt die Breite aus
+    (`cfmIdxPat`, Reste-Aufräumen ignoriert `cfm:wdp…`), Labor grün (17.11. abends, 503/504, der eine Fehler ein
+    Zeitproblem im DNS-Test); Hardware: Release DW1.12 am 18.11.
+  * **89 – Kanalbreite je AP und Band** (Option 2, *umgesetzt 17./18.11. DW3.8, Labor; Hardware offen*): `radios` `"5"="5500/80"` – ohne `/` gilt die Breite aus
     `channels`. `$cfmCheck`: Block darf nicht über 5725 MHz (EU) reichen. Anlass: ap1 und ap2 im selben 80-MHz-Block
     132–144, der bis 5730 reicht; nur zwei zulässige 80-MHz-Blöcke für drei APs, die sich hören.
-  * **90 – Vorlage DW3.6 korrigieren:** 5660–5700 im Pool nur bis 40 MHz (80 MHz → 5650–5730).
-  * **91 – `$cfmChannels`/`$cfmWifiScan`:** Status und live (`monitor`) wichen ab, die Kanäle wechselten am Abend
+  * **90 – Vorlage DW3.6 korrigieren** (*umgesetzt, DW3.8: Pool 5180–5240, 5500–5560*): 5660–5700 im Pool nur bis 40 MHz (80 MHz → 5650–5730).
+  * **91 – `$cfmChannels`/`$cfmWifiScan`** (*umgesetzt: live vom CAPsMAN mit `*`, ohne virtuelle APs, Switch-Spalte; Hardware offen*): Status und live (`monitor`) wichen ab, die Kanäle wechselten am Abend
     mehrfach (2,4 GHz: ap1 2437 → 2462, ap2 2412 → 2437 – löst der Scan selbst eine Neuwahl aus?); prüfen, woher
     der Status die Kanäle nimmt und wie alt sie sind. Virtuelle APs (wifi9–17) als leere Zeilen, Spalte SWITCH bei cm1
     „ap1“.
   * **93 – `$cfmWifiScan` mit Vorschlag für 5 GHz** (Nutzer): Kandidaten je AP = Primärkanal × Breite aus dem Pool,
     Nebenbedingungen (EU-Bandgrenzen, `skipDfs`, DFS/CAC im Fallback, Sendeleistung je Teilband), Überlappung der
     belegten Blöcke statt nur des Primärkanals, fremde Netze mit ihrer Breite aus dem Scan. Setzt 89 voraus. Erst
-    Konzept mit Fragen an den Nutzer, dann Umsetzung.
+    Konzept mit Fragen an den Nutzer, dann Umsetzung. **Konzept (Entwurf 2026-11-17):**
+    1. *Kandidaten* je AP: (Primärfrequenz, Breite) mit Primärkanal im Pool bzw. Pin-Liste des AP und vollständigem
+       Block in einem zulässigen Teilband (5150–5250, 5250–5350, 5470–5725; 5725–5850 nur, wenn im Pool), ohne
+       Wetterradar 5600–5650 (außer Erlaubnis je AP, 92). Breiten bis `width` aus `channels`. Drei APs ≈ 15 Kandidaten
+       je AP → ~3400 Pläne, vollständig; ab 5 APs reihum wie bei 2,4 GHz.
+    2. *Störung* = Überlappung der belegten Blöcke in MHz (statt Kanalabstand), gewichtet mit `w(Signal) = s + 95`;
+       fremde Netze mit dem Block aus dem Scan (`5700/ax/eeCe` → 80 MHz 5650–5730), eigene Nachbarn doppelt. Nur ein
+       Bruchteil der Überlappung zählt, wenn ein fremdes Netz nur seinen Nebenkanal bei uns hat? (Frage A)
+    3. *Nutzen der Breite*: Bonus je AP proportional zur Breite (40 = 1, 80 = 2, 160 = 3?) mal einem Gewicht `bw`
+       (Frage B: wie viel Störung ist eine Verdopplung der Breite wert?).
+    4. *Sendeleistung*: Bonus, wenn das Teilband mehr EIRP erlaubt und das Radio sie ausschöpft (Landeslimit aus
+       `monitor` → `tx-power` je Kanal ist bekannt, sobald der AP dort sendete; sonst Tabelle EU: 23/23/30 dBm)
+       (Frage C: Tabelle fest oder gemessen?).
+    5. *DFS*: Malus für DFS an APs mit Fallback (60 s CAC), höher bei Wetterradar (600 s); am CAPsMAN-Gerät selbst 0
+       (Frage D: fester Malus oder Schalter „AP darf DFS“ je AP?).
+    6. *Ausgabe*: zwei Pläne – „breit“ (bw hoch) und „robust“ (bw niedrig, keine Überlappung eigener APs) – je mit
+       Zeile `radios` (Pins mit `/<Breite>`, 2,4-GHz-Pins der letzten Messung übernommen) und den Kosten-Anteilen.
+    **Entscheidungen (Nutzer, 2026-11-17):** A – Überlappung mit unserem Primär-20-MHz voll, sonst ×0,5 × Anteil der MHz;
+    B – zwei Pläne „breit“ (Bonus je Verdopplung ≈ fremdes Netz −75 dBm voll überlappend, w = 20) und „robust“ (kein
+    Breitenbonus, eigene APs ohne Überlappung); C – Leistung gemessen (`tx-power` aus `monitor` je Radio und Teilband,
+    soweit bekannt), sonst EU-Tabelle begrenzt auf das bekannte Maximum des Radios, Bonus je dB; D – DFS-Malus nur an
+    APs mit Fallback (Rolle `ap`), Wetterradar höher, CAPsMAN-Gerät ohne Malus; E – **6 GHz gleich mit** (PSC-Raster,
+    kein DFS; Test an einem Standort mit zwei 6-GHz-Radios). Umsetzung in der Nacht 17./18.11., wenn der Laborlauf
+    mit 88–91 vor 2:00 grün ist, sonst entscheidet der Nutzer morgens.
   * **92 – nachrangig (Option 3):** Wetterradar-Kanäle (10 min CAC) je AP erlauben (`skipDfs` je AP) – CAC bei jedem
     Neuprovisionieren beachten.
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie

@@ -292,6 +292,11 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   den Kanal bei jeder Neuverbindung eines APs aus dem Pool unter `channels` neu; der Eintrag gilt auch für den
   lokalen Fallback der APs (DW1.6). `$cfmCheck` prüft Frequenzen gegen das Band und warnt, wenn an einem AP alle
   Bänder `off` sind oder ein Pin/Pool einen festen Zigbee-/Thread-Kanal überdeckt.
+  **Breite je AP** (DW3.8): Pin oder Liste mit `/20`, `/40`, `/80` oder `/160` – z.B.
+  `"radios"={"cm1"={"5"="5500/80"};"ap1"={"5"="5180/80"};"ap2"={"5"="5660/40"}}`; ohne Angabe gilt `width` aus
+  `channels`. Ein Pin, dessen Block über 5725 MHz reicht (80 MHz auf 5660–5700 = 5650–5730), ist ein Fehler, im Pool eine
+  Warnung. Drei APs, die sich hören, bekommen mit 80 MHz keine drei getrennten Blöcke (EU ohne Wetterradar: 36–48 und
+  100–112) – einer davon mit 40 MHz, z.B. 132+136 (`5660/40`). Unterschiedliche Breiten stören das Roaming nicht.
 * `txPower`: optional Sendeleistung je AP und Band in dBm am Antennenanschluss (TODO 72, DW3.7), z.B.
   `"txPower"={"cm1"={"2"=14;"5"=17}}` – ganze Zahlen 1–30, ohne Eintrag das Landeslimit. Wirkt beim CAPsMAN (eigene
   Master-Konfiguration `cfm-m<Band>-<AP>`, gilt für alle SSIDs des Radios) und im lokalen Fallback. **`antenna-gain`
@@ -1299,7 +1304,8 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   Editoren) und die Link-Tabelle; neue Links sind dick, fehlende gestrichelt gezeichnet. Die Datei
   wird nur bei Änderungen neu geschrieben und landet mit der Git-Sicherung im Repo.
 * Der Manager prüft alle 15 Minuten selbst und schreibt neue Abweichungen ins Log (`cfm: Netz:`).
-* `$cfmChannels` zeigt die Kanäle der APs (und die des CAPsMAN, wenn er mitfunkt – `capsmanRadios`)
+* `$cfmChannels` zeigt die Kanäle der APs (und die des CAPsMAN, wenn er mitfunkt – `capsmanRadios`), live vom
+  CAPsMAN abgefragt (`*`; sonst Stand des letzten Agent-Laufs, TODO 91)
   und warnt, wenn zwei APs am selben Switch denselben
   Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.

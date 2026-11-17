@@ -22,6 +22,42 @@
     :return $r
   }
 
+  # Kanalangabe je AP (DW3.8): "5500", "5180,5200" oder mit Breite "5500/80" -> Frequenzen ohne Breite
+  :local pinF do={
+    :local v [:tostr $1]
+    :local sl [:find $v "/"]
+    :if ([:typeof $sl] = "num") do={ :return [:pick $v 0 $sl] }
+    :return $v
+  }
+  # Breite in MHz: aus "/<Breite>", sonst die größte aus width in channels ("20/40/80mhz" -> 80)
+  :local pinW do={
+    :local v [:tostr $1]
+    :local sl [:find $v "/"]
+    :if ([:typeof $sl] = "num") do={ :return [:tonum [:pick $v ($sl + 1) [:len $v]]] }
+    :local w [:tostr $2]
+    :local m [:find $w "mhz"]
+    :if ([:typeof $m] = "num") do={ :set w [:pick $w 0 $m] }
+    :local r 20
+    :local p 0
+    :while ([:typeof [:find $w "/" $p]] = "num") do={ :set p ([:find $w "/" $p] + 1) }
+    :local n [:tonum [:pick $w $p [:len $w]]]
+    :if ([:typeof $n] = "num") do={ :set r $n }
+    :return $r
+  }
+  # belegter Block eines 5-GHz-Kanals (Primärfrequenz $1, Breite $2 in MHz) -> {unten;oben} in MHz; Raster der Blöcke
+  # ab Kanal 36 bzw. 149 (40 MHz: 36+40, 44+48 …; 80 MHz: 36-48, 52-64, 100-112, 116-128, 132-144, 149-161)
+  :local block5 do={
+    :local f [:tonum $1]; :local w [:tonum $2]
+    :if ($w <= 20) do={ :return ({($f - 10);($f + 10)}) }
+    :local ch (($f - 5000) / 5)
+    :local g ($w / 5)
+    :local base 36
+    :if ($ch >= 149) do={ :set base 149 }
+    :local st ($base + ((($ch - $base) / $g) * $g))
+    :local lo (5000 + (5 * $st) - 10)
+    :return ({$lo;($lo + $w)})
+  }
+
   # WLAN
   :foreach k,s in=($cfmWifi->"ssids") do={
     :local vv [:tostr ($s->"vlan")]
@@ -101,13 +137,25 @@
       :local fv [:tostr $ff]
       :if ([:typeof ($cfmWifi->"channels"->$bb)] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . ": Band " . $bb . " fehlt in channels") } else={
         :if ($fv = "off") do={ :set noff ($noff + 1) } else={
-          :if (!($fv ~ "^[0-9]+(,[0-9]+)*\$")) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " " . $bb . "=" . $fv . ": weder Frequenz (MHz), Liste noch off") } else={
+          :if (!($fv ~ "^[0-9]+(,[0-9]+)*(/(20|40|80|160))?\$")) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " " . $bb . "=" . $fv . ": weder Frequenz (MHz), Liste (je mit /20, /40, /80 oder /160) noch off") } else={
             :local lo 2400; :local hi 2500
             :if ($bb = "5") do={ :set lo 5150; :set hi 5900 }
             :if ($bb = "6") do={ :set lo 5925; :set hi 7125 }
-            :foreach f in=[:toarray $fv] do={
+            :local fl [$pinF $fv]
+            :local wn [$pinW $fv ($cfmWifi->"channels"->$bb->"width")]
+            :if ($bb = "2" and $wn > 40) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " 2=" . $fv . ": 2,4 GHz höchstens 40 MHz") }
+            :foreach f in=[:toarray $fl] do={
               :local n [:tonum $f]
-              :if ($n < $lo or $n > $hi) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " " . $bb . ": " . $n . " MHz liegt nicht im Band (" . $lo . "-" . $hi . ")") }
+              :if ($n < $lo or $n > $hi) do={ :set ($err->[:len $err]) ("wifi.rsc: radios " . $apn . " " . $bb . ": " . $n . " MHz liegt nicht im Band (" . $lo . "-" . $hi . ")") } else={
+                # EU (DW3.8): 5470-5725 MHz - ein Block darf nicht über 5725 reichen (80 MHz auf 132-144 = 5650-5730)
+                :if ($bb = "5") do={
+                  :local bl [$block5 $n $wn]
+                  :if (($bl->0) < 5725 and ($bl->1) > 5725) do={
+                    :local t ("wifi.rsc: radios " . $apn . " 5=" . $fv . ": " . $n . " MHz mit " . $wn . " MHz belegt " . ($bl->0) . "-" . ($bl->1) . " MHz, über dem Ende des Bands 5470-5725 (EU)")
+                    :if ([:typeof [:find $fl ","]] = "num") do={ :set ($warn->[:len $warn]) ($t . " - RouterOS kann diesen Block wählen; Breite angeben (z.B. /40)") } else={ :set ($err->[:len $err]) ($t . " - schmaler pinnen (z.B. /40)") }
+                  }
+                }
+              }
             }
           }
         }
@@ -171,7 +219,7 @@
     :foreach apn,pins in=($cfmWifi->"radios") do={
       # Pin oder Pool dieses AP (DW3.7): jede Frequenz der Liste
       :if ([:len $nr] = 0 or [:typeof [:find ("," . $nr . ",") ("," . $apn . ",")]] != "nil") do={
-        :foreach f in=[:toarray [:tostr ($pins->"2")]] do={
+        :foreach f in=[:toarray [$pinF ($pins->"2")]] do={
           :local pf [:tonum $f]
           :if ([:typeof $pf] = "num") do={
             :local d ($pf - $fz)
@@ -226,6 +274,21 @@
     # Der Schalter (DW4.1) lebt auf dem CAPsMAN - im Fallback weiß der AP nichts davon (DW1.12)
     :if ([:tostr ($s->"fallback")] = "yes" and [:len [:tostr ($s->"switch")]] > 0) do={ :set ($warn->[:len $warn]) ("wifi.rsc: SSID " . $k . ": fallback mit switch - im lokalen Fallback sendet sie unabhängig vom Schalter") }
   }
+  # Pool 5 GHz (DW3.8, TODO 90): RouterOS wählt die Breite bis zum Höchstwert aus width - ein Block über 5725 MHz
+  # (Ende des Bands 5470-5725, EU) ist dann möglich und wurde gewählt (80 MHz auf 132-144, Hardware 2026-11-17)
+  :local c5 ($cfmWifi->"channels"->"5")
+  :if ([:typeof $c5] = "array") do={
+    :local w5 [$pinW "" ($c5->"width")]
+    :local over ""
+    :foreach f in=[:toarray [:tostr ($c5->"freq")]] do={
+      :local n [:tonum $f]
+      :if ([:typeof $n] = "num") do={
+        :local bl [$block5 $n $w5]
+        :if (($bl->0) < 5725 and ($bl->1) > 5725) do={ :set over ($over . "," . $n) }
+      }
+    }
+    :if ([:len $over] > 0) do={ :set ($warn->[:len $warn]) ("wifi.rsc: channels 5: " . [:pick $over 1 [:len $over]] . " MHz mit bis zu " . $w5 . " MHz reicht über 5725 MHz (Ende des Bands 5470-5725, EU) - aus dem Pool nehmen oder width schmaler; je AP z.B. radios \"5\"=\"5660/40\" (DW3.8)") }
+  }
   # DFS (TODO 87): Kanäle 5260-5720 MHz im Pool oder in radios - gewollt, aber mit Nebenwirkung -> Hinweis
   :local dfs do={
     :local r ""
@@ -239,7 +302,7 @@
   :local dc [$dfs ($cfmWifi->"channels"->"5"->"freq")]
   :local da ""
   :foreach apn,pins in=($cfmWifi->"radios") do={
-    :if ([:typeof $pins] = "array" and [:len [$dfs ($pins->"5")]] > 0) do={ :set da ($da . ", " . $apn . " " . [$dfs ($pins->"5")]) }
+    :if ([:typeof $pins] = "array" and [:len [$dfs [$pinF ($pins->"5")]]] > 0) do={ :set da ($da . ", " . $apn . " " . [$dfs [$pinF ($pins->"5")]]) }
   }
   :if ([:len $dc] > 0 or [:len $da] > 0) do={
     :local s "wifi.rsc: 5 GHz mit DFS-Kanälen ("

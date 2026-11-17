@@ -24,8 +24,11 @@
 #            Die normale Passphrase der SSID gilt weiter (VLAN der SSID, DW2.2.1); nur PPSK:
 #            "ppskOnly"="yes" an der SSID (nicht an der Master-SSID)
 #  radios    optional je AP-Identity und Band (DW3.1, DW3.7): eine Frequenz (Pin), eine Liste (Pool nur für
-#            diesen AP, RouterOS wählt daraus) oder "off" (Band an diesem AP aus, auch im Fallback):
-#              {"ap1"={"5"="5180";"2"="2412"};"cm1"={"5"="5180,5200,5220,5240"};"ap2"={"5"="off"}}
+#            diesen AP, RouterOS wählt daraus) oder "off" (Band an diesem AP aus, auch im Fallback); Frequenz oder
+#            Liste optional mit höchster Kanalbreite "/20", "/40", "/80" oder "/160" (DW3.8, sonst width aus channels):
+#              {"ap1"={"5"="5180";"2"="2412"};"cm1"={"5"="5500/80"};"ap2"={"5"="5660/40"};"ap3"={"5"="off"}}
+#            Drei APs, die sich hören, brauchen drei getrennte Blöcke - mit 80 MHz gibt es in der EU ohne
+#            Wetterradar nur zwei (36-48, 100-112); $cfmCheck lehnt Pins ab, deren Block über 5725 MHz reicht.
 #            (ohne Eintrag wählt der CAPsMAN bei jeder Neuverbindung aus dem Pool unter channels; gilt auch für den Fallback)
 #  txPower   optional Sendeleistung je AP-Identity und Band in dBm am Anschluss (TODO 72, DW3.7), z.B. bei externen
 #            Antennen: {"cm1"={"2"=14;"5"=17}}. antenna-gain wirkt nicht (CRS418, 2026-11-16) - die EIRP-Grenze
@@ -58,8 +61,10 @@
 # Eigene Radios des CAPsMAN-Geräts: Hostfile capsmanRadios="yes" (DW1.7)
 # 5 GHz (TODO 87, Befund 2026-11-16): In DE gelten auf 5150-5350 und 5470-5725 bis 23 bzw. 30 dBm EIRP, auf
 #            5745-5825 nur 14 dBm (SRD-Band) - aus einem gemischten Pool wählte RouterOS den oberen Bereich, 9 dB
-#            weniger. Die Vorlage nimmt 5180-5240 und DFS 5500-5580/5660-5700 (Wetterradar 5600-5640 spart skipDfs
-#            aus). Preis von DFS: Nach jedem Start eines Radios auf einem DFS-Kanal ist 5 GHz mindestens 60 s still
+#            weniger. Die Vorlage nimmt die zwei 80-MHz-Blöcke 5180-5240 (36-48) und DFS 5500-5560 (100-112). Nicht im
+#            Pool (DW3.8, 2026-11-17): 5580 (Block 116-128 enthält Wetterradar, 10 min CAC) und 5660-5700 (80 MHz auf
+#            132-144 = 5650-5730, über dem Ende des Bands 5470-5725) - je AP mit Breite nutzbar, z.B. "5660/40".
+#            Preis von DFS: Nach jedem Start eines Radios auf einem DFS-Kanal ist 5 GHz mindestens 60 s still
 #            (CAC), bei Radar wechselt der Kanal - auch im lokalen Fallback der APs. Variante ohne DFS: unter dem Block.
 # ============================================================
 :global cfmWifi {
@@ -74,7 +79,7 @@
   };
   "channels"={
     "2"={"band"="2ghz-ax";"freq"="2412,2437,2462";"width"="20mhz"};
-    "5"={"band"="5ghz-ax";"freq"="5180,5200,5220,5240,5500,5520,5540,5560,5580,5660,5680,5700";"width"="20/40/80mhz";"skipDfs"="10min-cac"}
+    "5"={"band"="5ghz-ax";"freq"="5180,5200,5220,5240,5500,5520,5540,5560";"width"="20/40/80mhz";"skipDfs"="10min-cac"}
   };
   "reselect"="03:00";
   "ppsk"={};

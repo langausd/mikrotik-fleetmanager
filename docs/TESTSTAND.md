@@ -118,6 +118,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Schritt 13, ein einmaliger Abbruch des Paket-Downloads auf cm1 (`/tool/fetch`: „Bad message“, 7 Folgefehler; derselbe
   Download gelang im selben Schritt kurz darauf und danach dreimal von Hand), Wiederholung **485 von 485**. Der
   QR-Encoder des Editors hat einen eigenen Test (`tools/editor/cfm-qr-test.py`, gjs + libzbar).
+  2026-11-16/17 (Nachtschicht, DW3.6, DW3.7, DW1.12, `upload-seed.sh` mit `ssh`): `e2e.sh` erster Lauf (Stand mit 72)
+  495 von 497 – beide rot im neuen Block zu 72: `tx-power` blieb nach dem Entfernen von `txPower` stehen (`$name` in
+  `find where`, ROUTEROS-EIGENHEITEN) und eine falsch formulierte Prüfung; zweiter Lauf (alles) 493 von 501 – rot nur
+  Schritt 13, wieder ein Abbruch des Paket-Downloads („Bad message“, 8 Folgefehler; vom Rechner aus gleich danach
+  HTTP 200), alle neuen WLAN-Prüfungen grün; Wiederholung **501 von 501**. Dazu `upload-seed-test.py` 8,
+  `feature-module-test.py` 12.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

@@ -10,6 +10,15 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-16/17 (unbeaufsichtigt nach einer Fragerunde):** **TODO 84/85** Weitere SSIDs im lokalen Fallback über
+  eigene lokale virtuelle APs `fb-<key>-<Radio>`, geschaltet vom Skript `cfm-fallback` (Feature-Modul `ap.fbwatch`,
+  alle 10 s, ~20 s nach dem Verlust des CAPsMAN an, beim Wiederverbinden aus, danach `cfm-iso` nachtragen);
+  `slaves-static` schaltet cfm ab und räumt dessen Reste ab (DW1.12, ersetzt DW1.8/DW1.8.1/DW1.9, Nutzer). **TODO 72**
+  `txPower` je AP und Band, Pool je AP und `"off"` je Band in `radios` (DW3.7, Nutzer). **TODO 87** 5-GHz-Pool der
+  Vorlage 5180–5240 + DFS, `$cfmCheck` mit einer neuen Stufe „Hinweis“ (DW3.6, Nutzer). **TODO 86** `upload-seed.sh`
+  fragt per `ssh` nach dem Lader des Managers. Labor 7.25.1: `e2e.sh` **501 von 501** (nach einem Lauf mit
+  Download-Abbruch in Schritt 13, [TESTSTAND.md](TESTSTAND.md)). Hardware-Tests offen (74, Testplan in TESTSTAND).
+
 * **Am 2026-11-16 (unbeaufsichtigt nach einer Fragerunde):** **TODO 83** `$cfmCheck` gibt Warnungen, Fehler und
   „Prüfung: N Fehler, M Warnungen“ selbst aus, `quiet=yes` für interne Aufrufer (DG2.4.1). Bekannter Fehler behoben:
   Der Tick des Backup-Managers bricht ohne geladene Daten nicht mehr ab, `$cfmIsPrimary` nimmt dann die Managerliste

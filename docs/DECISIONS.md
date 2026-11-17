@@ -1546,6 +1546,19 @@ Hardware:** ob RouterOS den lokalen virtuellen AP am vom CAPsMAN betriebenen Rad
 
 ### <a id="dw2"></a>DW2 · Sicherheit und Clients
 
+
+##### <a id="dw1.12.1"></a>DW1.12.1 · Eigene Objekte unter `/interface/wifi` nur mit `cfm:wfb:`
+
+*2026-11-17 · technisch, nicht abgefragt (Hardware-Befund vor dem ersten Rollout)*
+
+RouterOS zeigt unter `/interface/wifi` an jedem Interface ohne eigenen Kommentar den des Datapaths (`cfm:wdp…`). Der
+Index des Menüs (für das Abräumen der `fb-…`) hätte Radios und Slaves als cfm-Objekte gesehen: Doppelte Schlüssel
+entfernt er sofort (wifi2, Slaves), den Rest hätte der Abgleich entfernen wollen (Probelauf an einem Standort:
+`entfernt: /interface/wifi wdp-cap`, `wdp:guest`, `wdp:main`). Und das Aufräumen der Reste aus `slaves-static` hätte
+nichts gefunden. **Entscheidung:** `cfmIdxPat` (lib.rsc) – im Menü `/interface/wifi` zählen nur Kommentare
+`^cfm:wfb:`; das Aufräumen der Reste behandelt `cfm:wdp…` wie „kein Kommentar“. Im Labor nicht nachstellbar (CHR ohne
+WLAN-Interfaces); Prüfung auf Hardware: Plan `add=4;rem=0;set=2` statt `rem=3`.
+
 #### <a id="dw2.1"></a>DW2.1 · WPA2/WPA3 mit FT und 802.11k/v
 
 *2026-09-11 · alt D19*

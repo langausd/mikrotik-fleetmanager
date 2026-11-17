@@ -189,13 +189,15 @@ $cfmIndex "/interface/wifi"
 # Neuprovisionieren neue, die alten deaktiviert). Entfernen - nicht im Apply, der slaves-static gerade abschaltet (dort
 # sind sie noch in Gebrauch), nicht auf dem CAPsMAN-Gerät (dessen eigene Radios haben statische virtuelle APs aus der
 # Provisionierung). Eigene von Hand: Kommentar mit "cfm" beginnen lassen (z.B. cfm-override), dann bleiben sie.
+# Achtung: Ohne eigenen Kommentar zeigt RouterOS am Interface den des Datapaths ("cfm:wdp…") - der zählt nicht.
 :global cfmIsCapsman
 :if (!$sstOn and ![$cfmIsCapsman]) do={
   :foreach i in=[/interface/wifi/find where !dynamic] do={
     :local mi ""
     :onerror e in={ :set mi [:tostr [/interface/wifi/get $i master-interface]] } do={}
     :local cm [:tostr [/interface/wifi/get $i comment]]
-    :if ([:len $mi] > 0 and !($cm ~ "^cfm")) do={
+    # "cfm:wdp…" ist der Kommentar des Datapaths, den RouterOS am Interface ohne eigenen Kommentar zeigt (2026-11-17)
+    :if ([:len $mi] > 0 and (!($cm ~ "^cfm") or ($cm ~ "^cfm:wdp"))) do={
       :local vn [/interface/wifi/get $i name]
       :if ($cfmDry = true) do={ $cfmLog ("statischer virtueller AP " . $vn . " (an " . $mi . ", ohne cfm-Kommentar) wuerde entfernt") } else={
         /interface/wifi/remove $i

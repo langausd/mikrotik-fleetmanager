@@ -4,7 +4,7 @@
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 88). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 94). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -19,6 +19,24 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   je AP und Band aus (72 → DW3.7); 5-GHz-Pool der Vorlage mit DFS (87 → DW3.6); Hinweis in `upload-seed.sh` (86).
   **Nächster Schritt:** Framework-Upload und Release an einem Standort, dann Test vor Ort (74, Testplan in
   [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
+* **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
+  * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
+    Interface ohne eigenen (`cfm:wdp…`); der Plan wollte Radios und Slaves entfernen. Fix im Arbeitsstand
+    (`cfmIdxPat`, Reste-Aufräumen ignoriert `cfm:wdp…`), Labor offen (4 Fehler im Lauf 17.11. klären).
+  * **89 – Kanalbreite je AP und Band** (Option 2): `radios` `"5"="5500/80"` – ohne `/` gilt die Breite aus
+    `channels`. `$cfmCheck`: Block darf nicht über 5725 MHz (EU) reichen. Anlass: ap1 und ap2 im selben 80-MHz-Block
+    132–144, der bis 5730 reicht; nur zwei zulässige 80-MHz-Blöcke für drei APs, die sich hören.
+  * **90 – Vorlage DW3.6 korrigieren:** 5660–5700 im Pool nur bis 40 MHz (80 MHz → 5650–5730).
+  * **91 – `$cfmChannels`/`$cfmWifiScan`:** Status und live (`monitor`) wichen ab, die Kanäle wechselten am Abend
+    mehrfach (2,4 GHz: ap1 2437 → 2462, ap2 2412 → 2437 – löst der Scan selbst eine Neuwahl aus?); prüfen, woher
+    der Status die Kanäle nimmt und wie alt sie sind. Virtuelle APs (wifi9–17) als leere Zeilen, Spalte SWITCH bei cm1
+    „ap1“.
+  * **93 – `$cfmWifiScan` mit Vorschlag für 5 GHz** (Nutzer): Kandidaten je AP = Primärkanal × Breite aus dem Pool,
+    Nebenbedingungen (EU-Bandgrenzen, `skipDfs`, DFS/CAC im Fallback, Sendeleistung je Teilband), Überlappung der
+    belegten Blöcke statt nur des Primärkanals, fremde Netze mit ihrer Breite aus dem Scan. Setzt 89 voraus. Erst
+    Konzept mit Fragen an den Nutzer, dann Umsetzung.
+  * **92 – nachrangig (Option 3):** Wetterradar-Kanäle (10 min CAC) je AP erlauben (`skipDfs` je AP) – CAC bei jedem
+    Neuprovisionieren beachten.
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.

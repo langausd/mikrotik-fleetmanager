@@ -60,6 +60,10 @@
 }
 # Menüs ohne "comment" (DR2.7): Schlüssel ist der Name, cfm gehören die Objekte mit Namen "cfm-…"
 :global cfmByName {"/queue/type"=1}
+# Menüs, in denen cfm nur Kommentare mit diesem Muster als eigene zählt: Unter /interface/wifi zeigt RouterOS den
+# Kommentar des Datapaths als Kommentar jedes Interfaces ohne eigenen (Radios, Slaves des CAPsMAN: "cfm:wdp:…",
+# Hardware 2026-11-17) - ohne das Muster hätte der Index sie als doppelte cfm-Objekte entfernt
+:global cfmIdxPat {"/interface/wifi"="^cfm:wfb:"}
 
 # Probelauf: cfmDry=true (setzt der Agent), Meldungen landen dann in cfmPlanOut statt im Log
 :global cfmDry
@@ -201,10 +205,12 @@
 
 # Index "key -> id" aller cfm-getaggten Objekte eines Menüs (einmal pro Lauf)
 :global cfmIndex do={
-  :global cfmIdx; :global cfmSeen; :global cfmMenus; :global cfmDry; :global cfmByName
+  :global cfmIdx; :global cfmSeen; :global cfmMenus; :global cfmDry; :global cfmByName; :global cfmIdxPat
   :if ([:typeof ($cfmIdx->$1)] = "array") do={ :return true }
+  :local pat "^cfm:"
+  :if ([:len ($cfmIdxPat->$1)] > 0) do={ :set pat ($cfmIdxPat->$1) }
   # doppelt getaggte Objekte entfernen (im Probelauf nur überspringen: D=true)
-  :local code (":local r ({}); :foreach i in=[" . $1 . "/find where comment~\"^cfm:\"] do={ :local c [:tostr [" . $1 . "/get \$i comment]]; :local s [:find \$c \" \"]; :if ([:typeof \$s] = \"nil\") do={ :set s [:len \$c] }; :local k [:pick \$c 4 \$s]; :if ([:typeof (\$r->\$k)] = \"nothing\") do={ :set (\$r->\$k) \$i } else={ :if (!\$D) do={ " . $1 . "/remove \$i } } }; :return \$r")
+  :local code (":local r ({}); :foreach i in=[" . $1 . "/find where comment~\"" . $pat . "\"] do={ :local c [:tostr [" . $1 . "/get \$i comment]]; :local s [:find \$c \" \"]; :if ([:typeof \$s] = \"nil\") do={ :set s [:len \$c] }; :local k [:pick \$c 4 \$s]; :if ([:typeof (\$r->\$k)] = \"nothing\") do={ :set (\$r->\$k) \$i } else={ :if (!\$D) do={ " . $1 . "/remove \$i } } }; :return \$r")
   :if (($cfmByName->$1) = 1) do={ :set code (":local r ({}); :foreach i in=[" . $1 . "/find where name~\"^cfm-\"] do={ :set (\$r->[" . $1 . "/get \$i name]) \$i }; :return \$r") }
   :local f
   :onerror e in={ :set f [:parse $code] } do={ :error ($e . " IN(index): " . $code) }

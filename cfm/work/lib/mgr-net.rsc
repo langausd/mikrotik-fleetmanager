@@ -211,7 +211,7 @@
 :global cfmChLive do={
   :global cfmCapsmen; :global cfmExec
   :local r ({})
-  :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :local n [/interface/wifi/get \$i name]; :local t [:pick \$n ([:len \$n] - 3) [:len \$n]]; :if (\$t = \"-2g\" or \$t = \"-5g\" or \$t = \"-6g\") do={ :local c \"\"; :onerror e in={ :local m [/interface/wifi/monitor \$i once as-value]; :set c [:tostr (\$m->\"channel\")] } do={}; :set (\$o->\$n) \$c } }; :put [:serialize to=json \$o]"
+  :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :local n [/interface/wifi/get \$i name]; :local t [:pick \$n ([:len \$n] - 3) [:len \$n]]; :if (\$t = \"-2g\" or \$t = \"-5g\" or \$t = \"-6g\") do={ :local c \"\"; :onerror e in={ :local m [/interface/wifi/monitor \$i once as-value]; :set c [:tostr (\$m->\"channel\")]; :set (\$o->(\$n . \"|tx\")) [:tostr (\$m->\"tx-power\")] } do={}; :set (\$o->\$n) \$c } }; :put [:serialize to=json \$o]"
   :foreach c in=[$cfmCapsmen $inv] do={
     :onerror e in={
       :local x [$cfmExec ip=($c->"ip") cmd=$oc]

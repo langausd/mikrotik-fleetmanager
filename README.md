@@ -168,7 +168,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Gerät finden (MAC, IP, Name, Port, AP/SSID) | `$cfmFind <text>`, Filter `host=` `port=` `ap=` `ssid=` `vlan=` `signal=-75`; im Browser: cfm-Monitor in WebFig des Managers, Reiter Suche (Admin-Guide 8.11) |
 | Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (`tools/editor/install.html`, Admin-Guide 8.10) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
-| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, DW3.5); `host=<ap>` misst nur einen AP neu |
+| Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7, für 5/6 GHz Kanal und Breite je AP als Plan „breit“ und „robust“, DW3.9; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, DW3.5); `host=<ap>` misst nur einen AP neu |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
 

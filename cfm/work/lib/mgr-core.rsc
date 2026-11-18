@@ -12,7 +12,7 @@
 #   mgr-onboard  Onboarding per Push in die Werks-Config
 #   mgr-ros      RouterOS-Pakete und -Updates ($cfmUpgrade)
 #   mgr-net      Verkabelung per LLDP ($cfmLinks, Netzplan), WLAN-Kanäle ($cfmChannels), Gerätesuche
-#   mgr-scan     Kanal-Scan der APs mit Pin-Vorschlag ($cfmWifiScan)
+#   mgr-scan     Kanal-Scan der APs mit Pin-Vorschlag ($cfmWifiScan; 5/6 GHz mit Breite)
 #   mgr-sniff    Mitschnitt einzelner Geräte auf einem Router, Abholung im Tick ($cfmSniff, DU2.3)
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
 #   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (DU4.1)
@@ -53,7 +53,7 @@
 #   $cfmChannels                       Kanäle der APs, Warnung bei gleichem Kanal an einem Switch
 #   $cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]
 #                                      Gerät suchen (MAC, IP, Name, Port, AP/SSID/Signal), live
-#   $cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]
+#   $cfmWifiScan [host=<ap>] [band=2|5|6] [duration=10s] [data=yes] [all=yes]
 #                                      Kanal-Scan aller APs nacheinander, Pin-Vorschlag für 2,4 GHz
 #   $cfmSniff host=<router> mac=<MAC,..>|lease=<Name,..> [dauer=2h] [max=20] [iface=..] [mirror=<Port>]
 #                                      Mitschnitt nur dieser Geräte, der Tick holt ihn nach sniff/ (DU2.3)

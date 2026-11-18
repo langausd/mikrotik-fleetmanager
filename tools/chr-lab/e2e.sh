@@ -519,6 +519,39 @@ out=$(mgr ':global cfmCheck; /file/set [/file/find name="cfm/work/wifi.rsc"] con
 echo "$out" | grep -q "W wifi.rsc: radios cm1 2=2437 überdeckt zb (zigbee Kanal 18, 2440 MHz)" && ok "\$cfmCheck: Pin überdeckt Zigbee-Kanal" || { bad "Warnung Pin/Zigbee fehlt"; echo "$out" | grep -i others; }
 echo "$out" | grep -q "ERR wifi.rsc: others x: type wlan unbekannt" && echo "$out" | grep -q "ERR wifi.rsc: others y: ch 27 liegt nicht in 11-26" && ok "\$cfmCheck: others mit falschem Typ und Kanal" || { bad "Prüfung others"; echo "$out" | grep -i others; }
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
+# Vorschlag 5/6 GHz (TODO 93, DW3.9): Kanal und Breite je AP. apA, apB, apC hören sich mit -50 dBm, bei apC ein fremdes
+# 80-MHz-Netz auf 36-48; apA/apB messen 20 dBm (unter 23: Grenze des Radios, kein Leistungsbonus), apC ohne Messung
+# (30 dBm auf 100-112 möglich). Breit: zwei 80-MHz-Blöcke für drei APs -> apC 100-112 mit 80 (DFS 20), apA/apB je 40
+# auf 36-48 (Breite 2 x 20) = 60; aktuell alle mit 80, apA/apB im selben Block (2 x 90) + DFS 20 = 200
+mgr ':global cfmScanBlk; :put ("BL=" . [:tostr [$cfmScanBlk "5700/ax/eeCe"]] . "|" . [:tostr [$cfmScanBlk "2412/ax/"]] . "|" . [:tostr [$cfmScanBlk "5200/ax/eCee"]])' | grep -q "BL=5650;5730|2402;2422|5170;5250" && ok "Block eines Kanals aus dem Scan (5700/ax/eeCe -> 5650-5730)" || bad "cfmScanBlk"
+mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"5\",\"t\":\"e2e\",\"own\":{\"m00:00:00:00:0A:01\":\"apA\",\"m00:00:00:00:0B:01\":\"apB\",\"m00:00:00:00:0C:01\":\"apC\"},\"pw\":{\"apA\":{\"ch\":\"5180/ax/Ceee\",\"f\":5180,\"tx\":20},\"apB\":{\"ch\":\"5200/ax/eCee\",\"f\":5200,\"tx\":20},\"apC\":{\"ch\":\"5500/ax/Ceee\",\"f\":5500}},\"aps\":{\"apA\":[[\"m00:00:00:00:0B:01\",\"E\",5200,-50],[\"m00:00:00:00:0C:01\",\"E\",5500,-50]],\"apB\":[[\"m00:00:00:00:0A:01\",\"E\",5180,-50],[\"m00:00:00:00:0C:01\",\"E\",5500,-50]],\"apC\":[[\"m00:00:00:00:0A:01\",\"E\",5180,-50],[\"m00:00:00:00:0B:01\",\"E\",5200,-50],[\"m00:00:00:00:00:99\",\"Nachbar\",5180,-60,5170,5250]]}}")' | grep -i "error"
+out=$(mgr '$cfmWifiScan data=yes')
+l=$(echo "$out" | grep "^Vorschlag breit")
+echo "$out" | grep -q "^Aktuell: *Kosten 200 apA=5180/80 apB=5200/80 apC=5500/80" && ok "WLAN-Scan 5 GHz: aktueller Stand mit Breite und Kosten" || { bad "WLAN-Scan 5 GHz Aktuell"; echo "$out" | tail -9; }
+echo "$l" | grep -q "Kosten 60 " && echo "$l" | grep -q "apC=55[0-6]0/80" && echo "$l" | grep -Eq "apA=5[12][0-9]0/40" && echo "$l" | grep -Eq "apB=5[12][0-9]0/40" && ok "WLAN-Scan 5 GHz breit: apC 80 MHz auf 100-112, apA/apB je 40 MHz auf 36-48" || { bad "WLAN-Scan 5 GHz breit"; echo "$out" | tail -9; }
+ba=$(echo "$l" | grep -o "apA=5[0-9]*" | cut -d= -f2); bb=$(echo "$l" | grep -o "apB=5[0-9]*" | cut -d= -f2)
+[ -n "$ba" ] && [ -n "$bb" ] && [ $(( (ba - 5180) / 40 )) != $(( (bb - 5180) / 40 )) ] && ok "WLAN-Scan 5 GHz breit: apA und apB in getrennten 40-MHz-Blöcken" || bad "apA/apB überlappen ($ba/$bb)"
+echo "$out" | grep -q "^Vorschlag robust Kosten 20 " && echo "$out" | grep -A2 "^Vorschlag breit" | grep -q 'wifi.rsc: "radios"={"apA"={"5"="5[12][0-9]0/40"};"apB"' && ok "WLAN-Scan 5 GHz: Plan robust und Zeile radios mit Breite" || { bad "WLAN-Scan 5 GHz robust/radios"; echo "$out" | tail -9; }
+# Liste je AP ersetzt den Pool (5640 Wetterradar fällt bei skipDfs 10min-cac weg, 5660/80 reicht über 5725),
+# Band aus, Pins anderer Bänder bleiben in der Zeile; all=yes nimmt alle EU-Kanäle dazu
+mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"radios\") {\"apB\"={\"5\"=\"5640,5660,5680\";\"2\"=\"2437\"};\"apX\"={\"5\"=\"off\"}}\n")' >/dev/null
+out=$(mgr '$cfmWifiScan data=yes')
+echo "$out" | grep -q "^Kandidaten (Kanal/Breite) je AP: apA 24 apB 4 apC 24 " && echo "$out" | grep -q "^Vorschlag breit  Kosten 60  apA=5[12][0-9]0/80 apB=56[68]0/40 apC=55[0-6]0/80" && ok "WLAN-Scan 5 GHz: Liste je AP, kein Block über 5725 MHz, kein Wetterradar" || { bad "WLAN-Scan 5 GHz Liste je AP"; echo "$out" | tail -9; }
+echo "$out" | grep -q "^Aktuell: apA=5180/80 apB=5200/80 (kein Kandidat) apC=5500/80" && echo "$out" | grep -A2 "^Vorschlag breit" | grep -q '"apB"={"2"="2437";"5"="56[68]0/40"};"apC"={"5"="55[0-6]0/80"};"apX"={"5"="off"}}' && ok "WLAN-Scan 5 GHz: aktueller Kanal außerhalb der Liste, Zeile radios behält 2,4-GHz-Pin und Band aus" || { bad "Aktuell/Zeile radios"; echo "$out" | grep "wifi.rsc\|Aktuell"; }
+mgr '$cfmWifiScan data=yes all=yes' | grep -q "^Kandidaten (Kanal/Breite) je AP: apA 42 apB 4 apC 42 " && ok "WLAN-Scan 5 GHz all=yes: alle EU-Kanäle" || bad "WLAN-Scan all=yes"
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
+# schwach gehörte eigene APs (-88 dBm): breit nimmt die Überlappung für 80 MHz in Kauf, robust nicht
+mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"5\",\"t\":\"e2e\",\"own\":{\"m00:00:00:00:0A:01\":\"apA\",\"m00:00:00:00:0B:01\":\"apB\",\"m00:00:00:00:0C:01\":\"apC\"},\"pw\":{\"apA\":{\"f\":5180,\"tx\":20},\"apB\":{\"f\":5180,\"tx\":20},\"apC\":{\"f\":5180,\"tx\":20}},\"aps\":{\"apA\":[[\"m00:00:00:00:0B:01\",\"E\",5200,-88],[\"m00:00:00:00:0C:01\",\"E\",5500,-88]],\"apB\":[[\"m00:00:00:00:0A:01\",\"E\",5180,-88],[\"m00:00:00:00:0C:01\",\"E\",5500,-88]],\"apC\":[[\"m00:00:00:00:0A:01\",\"E\",5180,-88],[\"m00:00:00:00:0B:01\",\"E\",5200,-88]]}}")' | grep -i "error"
+out=$(mgr '$cfmWifiScan data=yes')
+echo "$out" | grep -q "^Vorschlag breit  Kosten 48 " && echo "$out" | grep -q "Anteile: fremde Netze 0, eigene APs 28, DFS 20" && echo "$out" | grep -q "^Vorschlag robust Kosten 0 " && ok "WLAN-Scan 5 GHz: breit mit, robust ohne Überlappung eigener APs" || { bad "breit/robust"; echo "$out" | tail -7; }
+# 6 GHz (PSC, kein DFS): ohne channels 6 kein Vorschlag; mit Pool 5975,6055,6135 zwei 160-MHz-Blöcke für zwei APs,
+# apB meidet das fremde Netz auf 6135
+mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"6\",\"t\":\"e2e\",\"own\":{\"m00:00:00:00:0A:02\":\"apA\",\"m00:00:00:00:0B:02\":\"apB\"},\"aps\":{\"apA\":[[\"m00:00:00:00:0B:02\",\"E\",6135,-55]],\"apB\":[[\"m00:00:00:00:0A:02\",\"E\",5975,-55],[\"m00:00:00:00:00:98\",\"N\",6135,-70,6105,6185]]}}")' | grep -i "error"
+mgr '$cfmWifiScan data=yes' | grep -q 'kein Vorschlag: channels "6" fehlt' && ok "WLAN-Scan 6 GHz ohne channels 6: kein Vorschlag" || bad "WLAN-Scan 6 GHz ohne channels"
+mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"channels\"->\"6\") {\"band\"=\"6ghz-ax\";\"freq\"=\"5975,6055,6135\";\"width\"=\"20/40/80/160mhz\";\"sec\"=\"wpa3-psk\";\"pmf\"=\"required\"}\n")' >/dev/null
+out=$(mgr '$cfmWifiScan data=yes')
+echo "$out" | grep -q "^Vorschlag breit  Kosten 0  apA=6135/160 apB=\(5975\|6055\)/160" && ok "WLAN-Scan 6 GHz: zwei 160-MHz-Blöcke, apB meidet das fremde Netz" || { bad "WLAN-Scan 6 GHz"; echo "$out" | tail -6; }
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"2\",\"t\":\"e2e\",\"own\":{},\"aps\":{\"apA\":[],\"apB\":[]}}")' | grep -i "error" 
 mgr '$cfmWifiScan data=yes' | grep -q "keine Messung mit Netzen" && ok "WLAN-Scan data=yes ohne Netze: kein Vorschlag" || bad "WLAN-Scan data=yes ohne Netze"
 r 1 '/file/remove [find where name="cfm/state/wifiscan.json"]' >/dev/null

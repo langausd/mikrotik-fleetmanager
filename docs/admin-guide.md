@@ -1194,6 +1194,7 @@ Datendateien (`global`, `vlans`, `profiles`, `wifi`, `wireguard`, `leases`, `mla
 | Clients je AP und Roaming verfolgen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (8.10) |
 | Gerät finden: wo hängt MAC, IP oder Name? | `$cfmFind <text>` bzw. cfm-Monitor, Reiter Suche; was hängt an einem Port: `$cfmFind host=<gerät> port=<port>`; schwache WLAN-Clients: `$cfmFind signal=-75` (8.11) |
 | Kanalplan für 2,4 GHz neu bestimmen | `$cfmWifiScan` (Clients wechseln kurz), Vorschlag prüfen, Zeile `radios` in `wifi.rsc` übernehmen → Release (8.7) |
+| Kanal und Breite für 5/6 GHz neu bestimmen | `$cfmWifiScan band=5` (bzw. `6`), Plan „breit“ oder „robust“ wählen, Zeile `radios` übernehmen → Release (8.7, DW3.9) |
 
 ### 8.5 Überblick
 
@@ -1309,7 +1310,7 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   und warnt, wenn zwei APs am selben Switch denselben
   Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.
-* `$cfmWifiScan [host=<ap>] [band=2] [duration=10s]` lässt alle APs nacheinander auf ihren Radios
+* `$cfmWifiScan [host=<ap>] [band=2|5|6] [duration=10s] [data=yes] [all=yes]` lässt alle APs nacheinander auf ihren Radios
   des Bands scannen (DW3.2). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am AP ab; cfm scannt
   deshalb auf dem CAPsMAN am Interface `<AP>-<Band>g` (DW3.3), Radios ohne CAPsMAN direkt am AP.
   Funkt der CAPsMAN selbst mit (`capsmanRadios`), scannt er über sein Interface `<Name>-<Band>g`
@@ -1320,6 +1321,9 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   Frequenz (Anzahl/stärkstes Signal), welche eigenen APs sich hören (BSSIDs vom CAPsMAN), die Kosten
   des aktuellen Stands und je ein Vorschlag für 1/6/11, 1/5/9/13 und 1/5/9 samt fertiger Zeile für
   `radios` in `wifi.rsc` (dort von Hand übernehmen, bestehende 5/6-GHz-Pins ergänzen, Release).
+  Bei `band=5`/`6` schlägt er Kanal **und Breite** je AP vor, als Plan „breit“ und „robust“
+  (DW3.9, [Kostenmodell 5/6 GHz](#kostenmodell-5-und-6-ghz-dw39)); die Zeile `radios` enthält dann
+  alle Pins aus `wifi.rsc` mit den neuen 5/6-GHz-Pins.
   Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan, `host=<AP>`
   scannt nur diesen AP und ersetzt ihn in der letzten Messung desselben Bands (die übrigen behalten
   ihre Werte und müssen nicht erneut vom Kanal). Liegt dort eine Messung eines anderen Bands,
@@ -1327,7 +1331,7 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
 
 #### Kostenmodell des Kanal-Vorschlags (DW3.2)
 
-Der Vorschlag gilt nur für 2,4 GHz (bei `band=5`/`6` zeigt der Befehl nur die Messung). Er bewertet
+Dieser Abschnitt gilt für 2,4 GHz (5 und 6 GHz: [eigener Abschnitt](#kostenmodell-5-und-6-ghz-dw39)). Der Vorschlag bewertet
 jeden möglichen Plan – eine Frequenz je AP – mit einer Kostenzahl und nennt den billigsten. Die
 Zahl hat keine Einheit; vergleichen lassen sich nur Pläne aus **derselben Messung**.
 
@@ -1366,6 +1370,52 @@ bilden die Auslastung der fremden Netze nicht ab, nur ihre Stärke. Den Vorschla
 Anhaltspunkt nehmen und im Betrieb vergleichen (Paketverlust und Abbrüche auf 2,4 GHz). Die Formel
 wertet einen fremden AP auf demselben Kanal als die stärkste Störung; in der Praxis teilen sich
 Netze auf demselben Kanal die Sendezeit geordnet, halb überlappende stören sich eher.
+
+#### Kostenmodell 5 und 6 GHz (DW3.9)
+
+Bei `band=5` und `band=6` wählt der Vorschlag je AP eine Primärfrequenz und eine Breite. Einheit der Kosten: ein
+fremdes Netz mit Gewicht 1 (Gewicht wie bei 2,4 GHz: `w(s) = s + 95`), die Ausgabe rundet auf ganze Zahlen ab.
+
+1. **Kandidaten je AP:** Primärfrequenzen aus dem Pool in `channels`; eine Liste in `radios` ersetzt ihn für diesen AP
+   (`"5640,5660,5680/40"`: auch die Breite höchstens 40), ein einzelner Pin kommt dazu. `all=yes` nimmt alle EU-Kanäle
+   dazu (5 GHz 36–64 und 100–140, 6 GHz die PSC-Kanäle 5975, 6055 … 6375). Breiten 20/40/80/160 bis zur höchsten aus
+   `width`. Zulässig sind nur ganze Blöcke in 5150–5350, 5470–5725 und (nur Pool-Kanäle) 5725–5850 MHz, 6 GHz
+   5945–6425; `skipDfs` `10min-cac` lässt Blöcke mit Wetterradar (5600–5650) weg, `all` alle DFS-Blöcke.
+   `radios` `"off"` nimmt den AP heraus.
+2. **Blöcke im Raster:** 40/80/160 MHz ab Kanal 36 bzw. 149 (5 GHz) und Kanal 1 (6 GHz), wie RouterOS sie belegt –
+   z.B. 5500/80 → 5490–5570, 5660/40 → 5650–5690, 6135/160 → 6105–6265. Fremde Netze bringen ihren Block aus dem
+   Scan mit: `5700/ax/eeCe` (vier Buchstaben = 80 MHz, `C` an dritter Stelle = Primärkanal) → 5650–5730.
+3. **Störung** eines Blocks `B` (fremd oder eigener Nachbar) an unserem Kanal: überdeckt `B` unseren Primärkanal
+   (±10 MHz), zählt er voll, sonst halb mal Anteil der überlappten MHz an unserer Breite. Fremd: `w(s) ×` Anteil;
+   eigener AP, den wir hören: `2 × w(s) ×` Anteil, jede Richtung für sich.
+4. **DFS:** an APs mit lokalem Fallback (Rolle `ap`; ein AP, den das Inventar nicht kennt, zählt als AP) 20 je
+   DFS-Block (5250–5725), 60 mit Wetterradar – im Fallback stünde der AP nach jedem Start 60 s bzw. 10 min still. Der
+   CAPsMAN mit eigenen Radios hat keinen Fallback: kein Malus.
+5. **Leistung:** 3 je dB unter der besten Möglichkeit des AP. Grenze je Teilband (EU): 5150–5350 23 dBm, 5470–5725
+   30, 5725–5850 14, 6 GHz 23. Begrenzt durch `txPower` des AP oder durch die beim Scan gemessene Leistung
+   (`monitor`, gespeichert unter `pw` in `state/wifiscan.json`), wenn sie mehr als 1 dB unter der Grenze ihres
+   Teilbands lag – dann ist das die Grenze des Radios, und 100–140 bringt diesem AP nichts.
+6. **Pläne:** „breit“ zählt dazu 20 je fehlender Verdopplung bis zur höchsten Breite (80 statt 40: ≈ ein fremdes
+   Netz mit −75 dBm voll überlappend). „robust“ lässt eigene APs, die sich hören, nicht überlappen und zählt die
+   Breite nur bei Gleichstand; geht das nicht, steht „(ohne Überlappung eigener APs nicht möglich)“ dahinter.
+7. **Suche:** alle Kombinationen der je AP besten K Kandidaten (höchstens ~2000 Pläne, bei drei APs K = 12), danach
+   zweimal reihum je AP alle Kandidaten bei festen übrigen.
+8. **„Aktuell“** mit Kanal und Breite live vom CAPsMAN (sonst aus der Messung); liegt ein Kanal außerhalb der
+   Kandidaten (z.B. 5660/80, über 5725), steht „(kein Kandidat)“ dahinter, und die Kosten fehlen.
+
+Ausgabe (gekürzt, drei APs, die sich mit −50 dBm hören, zwei 80-MHz-Blöcke):
+
+```
+Kandidaten (Kanal/Breite) je AP: ap1 24 ap2 24 cm1 24 - bis 80 MHz, Pool 5180,…,5560, skipDfs 10min-cac
+Aktuell:          Kosten 200 ap1=5180/80 ap2=5200/80 cm1=5500/80
+Vorschlag breit  Kosten 40  ap1=5220/40 ap2=5180/40 cm1=5500/80
+  Anteile: fremde Netze 0, eigene APs 0, DFS 0, Leistung 0, Breite 40
+  wifi.rsc: "radios"={"ap1"={"2"="2462";"5"="5220/40"};"ap2"={"2"="2437";"5"="5180/40"};"cm1"={"2"="2412";"5"="5500/80"}}
+Vorschlag robust Kosten 0   …
+```
+
+Grenzen wie bei 2,4 GHz: gemessen am AP, Auslastung der fremden Netze unbekannt. Zusätzlich: der Scan sieht fremde
+Netze nur auf Kanälen, die das Radio abhört, und die gemessene Leistung gilt für den Kanal zur Zeit des Scans.
 
 #### Andere Funknetze im 2,4-GHz-Band (DW3.5)
 
@@ -2196,7 +2246,7 @@ Inventarname.
 | `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
 | `$cfmSniff host=<router> mac=<MAC,…>\|lease=<Name,…> [dauer=2h] [max=20] [iface=…] [mirror=<Port>]` | Mitschnitt nur dieser Geräte auf einem Gerät mit Rolle `router`/`manager` (DU2.3); nach `dauer` holt der Manager-Tick die Datei nach `sniff/` (abholen per scp, auswerten mit `tools/pcap-ziele.py`); `stop=yes` beendet vorzeitig, ohne Argumente Übersicht. Sieht nur Verkehr über die CPU (geroutet oder eigene Radios); vom Switch-Chip gebrückten Verkehr holt `mirror=<Port>` dazu (Port zur CPU spiegeln, DU2.3.1, auf Hardware ungetestet; Last auf der CPU, am Ende zurückgebaut) |
-| `$cfmWifiScan [host=<ap>] [band=2] [duration=10s] [data=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze); `host=` ersetzt nur diesen AP in der letzten Messung |
+| `$cfmWifiScan [host=<ap>] [band=2\|5\|6] [duration=10s] [data=yes] [all=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze), für 5/6 GHz Kanal und Breite je AP als Plan „breit“ und „robust“ (DW3.9; `all=yes`: alle EU-Kanäle statt des Pools); `host=` ersetzt nur diesen AP in der letzten Messung |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (DO1.7) |

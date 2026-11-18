@@ -32,7 +32,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     mehrfach (2,4 GHz: ap1 2437 → 2462, ap2 2412 → 2437 – löst der Scan selbst eine Neuwahl aus?); prüfen, woher
     der Status die Kanäle nimmt und wie alt sie sind. Virtuelle APs (wifi9–17) als leere Zeilen, Spalte SWITCH bei cm1
     „ap1“.
-  * **93 – `$cfmWifiScan` mit Vorschlag für 5 GHz** (Nutzer): Kandidaten je AP = Primärkanal × Breite aus dem Pool,
+  * **93 – `$cfmWifiScan` mit Vorschlag für 5 GHz** (Nutzer; *umgesetzt in der Nacht 17./18.11., DW3.9, mit 6 GHz,
+    Labor; Hardware offen – erster Einsatz bei der Kanalplanung am 18.11.*): Kandidaten je AP = Primärkanal × Breite aus dem Pool,
     Nebenbedingungen (EU-Bandgrenzen, `skipDfs`, DFS/CAC im Fallback, Sendeleistung je Teilband), Überlappung der
     belegten Blöcke statt nur des Primärkanals, fremde Netze mit ihrer Breite aus dem Scan. Setzt 89 voraus. Erst
     Konzept mit Fragen an den Nutzer, dann Umsetzung. **Konzept (Entwurf 2026-11-17):**
@@ -57,8 +58,9 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     Breitenbonus, eigene APs ohne Überlappung); C – Leistung gemessen (`tx-power` aus `monitor` je Radio und Teilband,
     soweit bekannt), sonst EU-Tabelle begrenzt auf das bekannte Maximum des Radios, Bonus je dB; D – DFS-Malus nur an
     APs mit Fallback (Rolle `ap`), Wetterradar höher, CAPsMAN-Gerät ohne Malus; E – **6 GHz gleich mit** (PSC-Raster,
-    kein DFS; Test an einem Standort mit zwei 6-GHz-Radios). Umsetzung in der Nacht 17./18.11., wenn der Laborlauf
-    mit 88–91 vor 2:00 grün ist, sonst entscheidet der Nutzer morgens.
+    kein DFS; Test an einem Standort mit zwei 6-GHz-Radios). **Umgesetzt** wie entschieden; abweichend vom Entwurf
+    oben: Kandidaten aus dem Pool, `all=yes` für alle EU-Kanäle (der Pool aus TODO 90 enthält 5660 nicht mehr);
+    Suche über die je AP besten K Kandidaten statt aller ~3400 Pläne, danach zwei Runden reihum.
   * **92 – nachrangig (Option 3):** Wetterradar-Kanäle (10 min CAC) je AP erlauben (`skipDfs` je AP) – CAC bei jedem
     Neuprovisionieren beachten.
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie

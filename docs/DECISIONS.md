@@ -1760,6 +1760,39 @@ FT hängt an SSID, Sicherheit und Mobility Domain); Clients, die den erwarteten 
 höchstens etwas länger am breiteren AP. Schmaler heißt zudem mehr Leistung je Hz (≈ 3 dB je Halbierung) – am Rand der
 Abdeckung ein Vorteil.
 
+#### <a id="dw3.9"></a>DW3.9 · Kanalvorschlag für 5 und 6 GHz mit Breite
+
+*2026-11-17/18 · Nutzer (TODO 93; Anlass: Kanalplanung an einem Standort mit drei APs, die sich hören)*
+
+**Frage:** `$cfmWifiScan` schlug nur für 2,4 GHz vor. Bei 5/6 GHz entscheiden Primärkanal **und** Breite, ob sich
+Blöcke überlappen; dazu kommen DFS (CAC im lokalen Fallback), unterschiedliche EIRP-Grenzen je Teilband und fremde
+Netze mit eigener Breite.
+
+**Entscheidung:** Kandidaten je AP = (Primärfrequenz, Breite) aus dem Pool (`channels`), eine Liste in `radios` ersetzt
+ihn für diesen AP, ein einzelner Pin kommt dazu, `all=yes` nimmt alle EU-Kanäle (5 GHz 36–64, 100–140; 6 GHz PSC); nur
+ganze Blöcke in 5150–5350, 5470–5725 (DW3.8), 5725–5850 nur aus dem Pool, 6 GHz 5945–6425; `skipDfs` wirkt wie am
+CAPsMAN. Kosten (Einheit: fremdes Netz mit Gewicht 1): **A** Ein fremder oder eigener Block, der unseren Primärkanal
+überdeckt, zählt voll, sonst halb mal Anteil der überlappten MHz; fremde Netze mit dem Block aus dem Scan
+(`5700/ax/eeCe` → 5650–5730), eigene APs doppelt. **B** Zwei Pläne: „breit“ (20 je fehlender Verdopplung bis zur
+höchsten Breite, ≈ ein fremdes Netz mit −75 dBm voll überlappend) und „robust“ (keine Überlappung eigener APs, Breite
+nur bei Gleichstand). **C** Leistung: 3 je dB unter der besten Möglichkeit des AP; EU-Grenze je Teilband (23/30/14 dBm,
+6 GHz 23), begrenzt durch `txPower` oder die gemessene Leistung (`monitor` beim Scan), wenn sie unter der Grenze ihres
+Teilbands lag. **D** DFS-Malus nur an APs mit lokalem Fallback (Rolle `ap`): 20, Wetterradar 60; der CAPsMAN funkt
+ohne Fallback, ohne Malus. **E** 6 GHz gleich mit (PSC, kein DFS). Suche: alle Kombinationen der je AP besten K
+Kandidaten (≤ 2000 Pläne, drei APs: K = 12), danach zwei Runden je AP alle Kandidaten bei festen übrigen. Ausgabe je
+Plan: Kosten, Anteile (fremde Netze, eigene APs, DFS, Leistung, Breite) und die fertige Zeile `radios` mit
+`/<Breite>` (Pins anderer Bänder und APs aus `wifi.rsc` übernommen).
+
+**Verworfen:** nur ein Plan mit einstellbarem Breitengewicht (zwei feste Pläne zeigen den Zielkonflikt direkt) ·
+Leistung nur aus der Tabelle (der hAP ax² schöpft 30 dBm nicht aus, der Bonus wäre falsch) · DFS-Malus auch am
+CAPsMAN (er hat keinen Fallback, CAC nur beim Start) · alle Pläne vollständig (drei APs mit je 24–42 Kandidaten: bis
+74 000 Pläne, zu langsam für RouterOS-Skript).
+
+**Begründung:** Breite ist bei drei sich hörenden APs ein Tausch gegen Überlappung; welcher Plan besser ist, hängt von
+der Nutzung ab – deshalb beide nebeneinander. Die Kandidaten kommen aus dem Pool, weil der Admin ihn bewusst
+eingeschränkt hat; Kanäle wie 5660/40, die im Pool nur wegen der Breite fehlen (DW3.8), über `all=yes` oder als Pin.
+Die Zahlen sind Anhaltspunkte, wie bei 2,4 GHz (DW3.2): verglichen werden nur Pläne derselben Messung.
+
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten
 
 *2026-10-03 · alt D64*

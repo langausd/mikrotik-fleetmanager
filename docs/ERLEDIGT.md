@@ -10,6 +10,16 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-17/18 (unbeaufsichtigt nach einer Fragerunde, aus dem Termin vor Ort am 17.11.):** **TODO 88** Index
+  unter `/interface/wifi` nur noch `cfm:wfb:` – RouterOS zeigt den Kommentar des Datapaths an jedem Interface
+  (DW1.12.1). **TODO 89/90** Kanalbreite je AP und Band in `radios` (`"5500/80"`), `$cfmCheck` prüft die
+  EU-Blockgrenze 5725 MHz und 2,4 GHz bis 40 MHz, Vorlage-Pool 5180–5240 und 5500–5560 (DW3.8). **TODO 91**
+  `$cfmChannels` zeigt die Kanäle live vom CAPsMAN (mit `*`), ohne virtuelle APs. **TODO 93** `$cfmWifiScan band=5|6`
+  schlägt Kanal und Breite je AP vor (Kostenmodell mit DFS und Wetterradar, Leistung und Breite; Vorschlag „breit“
+  und „robust“ mit fertiger `radios`-Zeile; Kandidaten aus dem Pool, `all=yes` für alle EU-Kanäle; DW3.9, Nutzer).
+  Labor 7.25.1: `e2e.sh` **515 von 515** (nach einem Lauf mit Download-Abbruch in Schritt 13,
+  [TESTSTAND.md](TESTSTAND.md)).
+
 * **Am 2026-11-16/17 (unbeaufsichtigt nach einer Fragerunde):** **TODO 84/85** Weitere SSIDs im lokalen Fallback über
   eigene lokale virtuelle APs `fb-<key>-<Radio>`, geschaltet vom Skript `cfm-fallback` (Feature-Modul `ap.fbwatch`,
   alle 10 s, ~20 s nach dem Verlust des CAPsMAN an, beim Wiederverbinden aus, danach `cfm-iso` nachtragen);

@@ -124,6 +124,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Schritt 13, wieder ein Abbruch des Paket-Downloads („Bad message“, 8 Folgefehler; vom Rechner aus gleich danach
   HTTP 200), alle neuen WLAN-Prüfungen grün; Wiederholung **501 von 501**. Dazu `upload-seed-test.py` 8,
   `feature-module-test.py` 12.
+  2026-11-17/18 (Nachtschicht, DW1.12.1, DW3.8, DW3.9, `$cfmChannels` live): `e2e.sh` erster Lauf (Stand 88–91)
+  503 von 504 – rot nur die DNS-Prüfung in Schritt 6 (Zeitpunkt, jetzt mit Wiederholung 5 × 4 s); zweiter Lauf (mit
+  TODO 93) 507 von 515 – rot nur Schritt 13, wieder ein Abbruch des Paket-Downloads („Bad message“, 8 Folgefehler;
+  vom Rechner aus gleich danach HTTP 200), alle 11 neuen Prüfungen zum Kanalvorschlag 5/6 GHz grün; Wiederholung
+  **515 von 515**.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

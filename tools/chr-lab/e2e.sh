@@ -844,13 +844,6 @@ if [ "${conn:-0}" != 0 ]; then
   # cfm-apfollow entfernt sich, wartet 20 s und loggt erst dann - auf die Logzeile warten, nicht nur auf den Scheduler
   for _ in $(seq 1 60); do r 3 ':put (([:len [/system/scheduler/find where name="cfm-apfollow"]] + [:len [/system/script/job/find where script="cfm-agent"]]) . "/" . [:len [/log/find where message~"zweiter Apply nach slaves-static"]])' | tail -1 | grep -qx '0/[1-9][0-9]*' && break; sleep 4; done
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow"]] = 0 and [:len [/log/find where message~"zweiter Apply nach slaves-static"]] >= 1' "cm2: CAP verbunden -> zweiter Apply von selbst, Scheduler weg"
-  # cfm-fallback nach dem Wiederverbinden: Verweis auf ein verschwundenes Interface zwei Takte später entfernt
-  for _ in $(seq 1 30); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
-  r 3 '/system/scheduler/disable [find name="cfm-fallback"]; /interface/bridge/add name=isotmp; /interface/list/member/add list=cfm-iso interface=isotmp comment="cfm:ilm:ISO:isotmp"; /interface/bridge/remove [find name=isotmp]; :global cfmFbC false; :global cfmFbIso; /system/script/run cfm-fallback' >/dev/null
-  expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 1' "cm2: cfm-fallback wartet nach dem Verbinden zwei Takte"
-  r 3 '/system/script/run cfm-fallback; /system/script/run cfm-fallback' >/dev/null
-  expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 0 and [:len [/log/find where message~"cfm-iso: Verweis auf isotmp entfernt"]] >= 1' "cm2: cfm-fallback räumt cfm-iso nach dem Verbinden auf (DW1.12)"
-  r 3 '/system/scheduler/enable [find name="cfm-fallback"]' >/dev/null
 else
   expect 3 '[:len [/system/scheduler/find where name="cfm-apfollow" and interval=30s]] = 1' "cm2: Scheduler cfm-apfollow wartet auf die CAPsMAN-Verbindung"
   r 3 ':global cfmApN 20; :local f [:parse [/system/scheduler/get [find name="cfm-apfollow"] on-event]]; $f' >/dev/null
@@ -858,6 +851,12 @@ else
   r 3 ':global cfmFbN 0; /system/script/run cfm-fallback; /system/script/run cfm-fallback' >/dev/null
   r 3 ':global cfmFbN; :put ($cfmFbN >= 2)' | grep -q true && ok "cm2: cfm-fallback zählt die Takte ohne CAPsMAN" || bad "cm2: cfm-fallback zählt nicht"
 fi
+# cfm-fallback gleicht cfm-iso bei jedem Takt ab, verbunden wie im Fallback (DW1.12.2; Hardware 2026-11-18: der
+# 5-GHz-Gast-Slave entstand erst nach der CAC und blieb bis zum Agent-Lauf offen): ein Takt genügt
+for _ in $(seq 1 30); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done
+r 3 '/system/scheduler/disable [find name="cfm-fallback"]; /interface/bridge/add name=isotmp; /interface/list/member/add list=cfm-iso interface=isotmp comment="cfm:ilm:ISO:isotmp"; /interface/bridge/remove [find name=isotmp]; /system/script/run cfm-fallback' >/dev/null
+expect 3 '[:len [/interface/list/member/find where comment="cfm:ilm:ISO:isotmp"]] = 0 and [:len [/log/find where message~"cfm-iso: Verweis auf isotmp entfernt"]] >= 1' "cm2: cfm-fallback räumt cfm-iso schon im ersten Takt auf (DW1.12.2)"
+r 3 '/system/scheduler/enable [find name="cfm-fallback"]' >/dev/null
 # Agent-Abgleich (DP3.1.1) bleibt: erst den zweiten Apply abwarten - sonst räumt dessen GC den Testeintrag ab
 sleep 30
 for _ in $(seq 1 60); do r 3 ':put [:len [/system/script/job/find where script="cfm-agent"]]' | tail -1 | grep -qx 0 && break; sleep 3; done

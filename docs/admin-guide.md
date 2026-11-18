@@ -370,8 +370,10 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   Lösung über `slaves-static` (DW1.8) trug nicht: RouterOS nimmt die virtuellen APs des CAPsMAN im Fallback außer
   Betrieb. cfm schaltet `slaves-static` deshalb ab (einmal, trennt jeden AP kurz) und räumt danach die statischen
   virtuellen APs ab, die davon übrig sind (Log „statischer virtueller AP … entfernt“; eigene von Hand bleiben, wenn
-  ihr Kommentar mit `cfm` beginnt, z.B. `cfm-override`). Auf Hardware noch nicht geprüft – nach dem Release an einem
-  AP den CAPsMAN kurz sperren (Fehlersuche, Abschnitt 15) und nachsehen.
+  ihr Kommentar mit `cfm` beginnt, z.B. `cfm-override`). Auf Hardware bestanden
+  2026-11-18 (TESTSTAND); Fallback-Test: Fehlersuche, Abschnitt 15. Isolierte VLANs (DP3.1): `cfm-fallback` trägt in jedem Takt die WLAN-Interfaces isolierter VLANs in
+  `cfm-iso` nach – die `fb-…` im Fallback und die Slaves, die der CAP nach dem Wiederverbinden neu anlegt (am
+  DFS-Radio erst nach der CAC), Log „… in cfm-iso nachgetragen (cfm-fallback)“ (DW1.12.2).
 * `switch="off"|"on"` an einer weiteren SSID: schaltbar per Skript, der Wert ist der Grundzustand
   (DW4.1, siehe 6.8); dazu optional `autoOff` (z.B. `"50h"`): so lange nach dem Einschalten schaltet
   der CAPsMAN sie selbst wieder ab. Schlüssel der SSID nur aus Kleinbuchstaben und Ziffern.
@@ -633,7 +635,7 @@ Im Hostfile darfst du auch zentrale Daten gezielt überschreiben, etwa
 |---|---|
 | `base` (immer) | Identity; Bridge mit VLAN-Filtering; Ports nach Profil; Bridge-VLAN-Tabelle; MGMT-VLAN, -IP, Route, DNS, NTP; IP-Dienste nur aus MGMT, `mgmtExtra` und dem WireGuard-Subnetz; SSH-Härtung; Zeitzone, Syslog (`syslogFormat`), SNMPv3 nur lesend für LibreNMS (`snmp`, DU4.3), RAM-Log ohne `system,info` (`logMemory`, DU3.2); Admin-Benutzer (bis zum Secret-Push deaktiviert); Werks-User `admin` abschalten; minimale Firewall (Nicht-Router) und IPv6-input-Firewall (alle Geräte); Nachbarsuche (LLDP) auf allen Bridge-Ports; Firmware-Auto-Upgrade (passt die RouterBOARD-Firmware nicht zur RouterOS-Version, flasht der Agent sie und startet einmal neu); persönliche Admin-SSH-Keys aus `authorized_keys.<user>` (optional); Bonds aus dem Hostfile (DP2.1), MLAG aus `mlag.rsc` (DP2.2); Filter isolierter VLANs an den Client-Ports (DP3.1); Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks, Bonds und MLAG-Peer = trusted; bewusst schlank, Ports erledigt `base`) |
-| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, DW1.5); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, DW1.6); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (DP3.1); weitere SSIDs mit `fallback="yes"` auch im Fallback (eigene lokale virtuelle APs `fb-<schlüssel>-<Radio>`, geschaltet vom Skript `cfm-fallback` alle 10 s, das nach dem Wiederverbinden auch `cfm-iso` nachträgt, DW1.12); schaltet `slaves-static` ab und räumt dessen Reste ab (TODO 85); Band je AP aus (`radios` `"off"`, DW3.7); Warnung bei `wifi-qcom-ac` |
+| `ap` | CAP des CAPsMAN (Adresse und Name aus dem Manifest, DW1.5); erneuert die CAPsMAN-Zertifikate nach einem Umzug oder bei einem fremden CAPsMAN; lokaler Fallback: jedes Radio trägt eine Kopie der `master`-SSID (`capsman-or-local`, PSK per Secret-Push, DW1.6); lokale Datapaths `cfm-cap` (virtuelle APs), `cfm-<master>` (Radios) und `cfm-mld` (MLO bei Wi-Fi 7); WLAN-Interfaces isolierter VLANs in der Liste `cfm-iso` (DP3.1); weitere SSIDs mit `fallback="yes"` auch im Fallback (eigene lokale virtuelle APs `fb-<schlüssel>-<Radio>`, geschaltet vom Skript `cfm-fallback` alle 10 s, das auch `cfm-iso` in jedem Takt abgleicht, DW1.12/DW1.12.2); schaltet `slaves-static` ab und räumt dessen Reste ab (TODO 85); Band je AP aus (`radios` `"off"`, DW3.7); Warnung bei `wifi-qcom-ac` |
 | `capsman` | komplette CAPsMAN-Konfiguration aus `wifi.rsc` inkl. PPSK, Kanal-Pools, Pinning und Kanal-Neuwahl; Dienst im MGMT-VLAN – eingeschaltet erst, wenn die PSK der `master`-SSID gesetzt ist (DW1.5). Genau ein Gerät; ohne übernimmt der Primary-Manager; mit Hostfile `capsmanRadios="yes"` auch die eigenen Radios (DW1.7); Provisioning mit festen Interfaces (DW4.2); Schalt-Skripte für SSIDs mit `switch` (DW4.1, 6.8) |
 | `router` | VLAN-Interfaces und Adressen; VRRP (optional) mit DHCP nur auf dem Master, die VRRP-Interfaces in den Zonen-Listen; Zonen-Listen; Firewall als geordneter Block mit den Chains `local-input`/`local-forward` für eigene Regeln (DNS, DHCP und NTP der Router aus allen Zonen, bei einem WAN in einem cfm-VLAN auch aus dessen Netz, DR3.1); DNS (Upstream, Adlisten, Ausnahmen, Weiterleitungen und Abfrage-Log aus `dns.rsc`, DN3.1; Selbstbedienung mit User, Skript `cfm-dnsreq` und WebFig-Zugang aus `self.zones`, DN3.2); NTP-Server für alle Zonen (die eigene Zeit aus `wan`: `ntp`, sonst `dns`, sonst pool.ntp.org, DN2.1); NAT nur für gekennzeichnete Policy-Ziele; `notrack` für Verkehr ins Internet bei `asymRouting` (DR3.2); Freigabelisten (`allow`); feste DHCP-Leases aus `leases.rsc` und DNS-Namen `<name>.<domain>` für Leases und aufgenommene Geräte (DN1.1); DNS-Umleitung für Zonen ohne Internet; Update-Server-Adressliste; auf Switches mit L3-Hardware-Offloading (CRS3xx/5xx) schaltet sie das Routing im Switch-Chip ab (sonst umgeht es die Firewall, und VRRP funktioniert nicht); WireGuard-Fernzugang für Admins aus `wireguard.rsc` (optional, 8.8) |
 | `manager` | Manager-Funktionen; SFTP-Gruppe der Geräte; Adresse und DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Scheduler `cfm-mgr-tick` (alle `mgrTick`) und `cfm-mgr-onb-tick` (Onboarding, jede Minute), die nicht gleichzeitig arbeiten (DM2.2) |
@@ -1416,6 +1418,14 @@ Vorschlag robust Kosten 0   …
 
 Grenzen wie bei 2,4 GHz: gemessen am AP, Auslastung der fremden Netze unbekannt. Zusätzlich: der Scan sieht fremde
 Netze nur auf Kanälen, die das Radio abhört, und die gemessene Leistung gilt für den Kanal zur Zeit des Scans.
+
+**Vorschlag übernehmen** (Ablauf an einem Standort 2026-11-18): die Zeile `"radios"=…` in `wifi.rsc` einsetzen,
+`$cfmCheck`, `$cfmRelease`, Ringe durch (`$cfmPromote`; an den APs ändert sich nur der Fallback-Kanal, die Pins setzt
+der CAPsMAN um). Der Apply am CAPsMAN provisioniert nur dessen eigene Radios neu und meldet die übrigen als
+„CAP-Radio … veraltet“ – erst **`/system/script/run cfm-reprov`** am CAPsMAN bringt die APs auf die neuen Kanäle
+(je ~3 s ohne WLAN, DW4.3). Danach `$cfmChannels` (alle mit `*`, keine Warnung „mehrfach“); DFS-Kanäle senden erst
+nach der CAC (≥ 60 s). Mit isolierten VLANs vor DW1.12.2 danach `$cfmPush host=<AP>` je AP, damit die neu angelegten
+virtuellen APs gleich in `cfm-iso` stehen.
 
 #### Andere Funknetze im 2,4-GHz-Band (DW3.5)
 

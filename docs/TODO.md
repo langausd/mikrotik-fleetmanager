@@ -4,7 +4,7 @@
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 94). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 95). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -19,6 +19,11 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   je AP und Band aus (72 → DW3.7); 5-GHz-Pool der Vorlage mit DFS (87 → DW3.6); Hinweis in `upload-seed.sh` (86).
   **Nächster Schritt:** Framework-Upload und Release an einem Standort, dann Test vor Ort (74, Testplan in
   [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
+* **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
+  * **94 – Gast-Isolation nach dem Wiederverbinden und im Fallback** (*umgesetzt 18.11. abends, DW1.12.2, Labor;
+    Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
+    Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf (bis 15 min) offen, die `fb-…`
+    im Fallback ebenso. Jetzt Abgleich in jedem Takt.
 * **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
   * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
     Interface ohne eigenen (`cfm:wdp…`); der Plan wollte Radios und Slaves entfernen. Fix im Arbeitsstand

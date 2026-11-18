@@ -1559,6 +1559,19 @@ nichts gefunden. **Entscheidung:** `cfmIdxPat` (lib.rsc) – im Menü `/interfac
 `^cfm:wfb:`; das Aufräumen der Reste behandelt `cfm:wdp…` wie „kein Kommentar“. Im Labor nicht nachstellbar (CHR ohne
 WLAN-Interfaces); Prüfung auf Hardware: Plan `add=4;rem=0;set=2` statt `rem=3`.
 
+##### <a id="dw1.12.2"></a>DW1.12.2 · `cfm-fallback` gleicht `cfm-iso` in jedem Takt ab
+
+*2026-11-18 · technisch, nicht abgefragt (Hardware-Befund beim ersten Rollout)*
+
+`cfm-fallback` trug isolierte WLAN-Interfaces nur einmal nach, zwei Takte nach dem Wiederverbinden. Den virtuellen AP
+am DFS-Radio legt der CAP aber erst nach der CAC an (≥ 60 s); er stand bis zum nächsten Agent-Lauf (bis 15 min) ohne
+`cfm-iso`, Gäste daran waren untereinander nicht isoliert (Hardware 2026-11-18, zweimal). Ebenso die lokalen `fb-…`:
+Sie bekommen ihren Bridge-Port erst beim Einschalten im Fallback, wo `cfm-fallback` gar nicht abglich.
+**Entscheidung:** Abgleich in jedem Takt (10 s), verbunden wie im Fallback: dynamische Bridge-Ports isolierter VLANs
+nachtragen, Verweise auf verschwundene Interfaces entfernen. Zwei kurze Listen je Takt; Log nur bei einer Änderung,
+ein Fehler einmal. **Verworfen:** mehrere Takte nach dem Verbinden (Dauer der CAC hängt vom Kanal ab, Radar
+verlängert sie); `interface-list` im Datapath (der CAPsMAN gibt sie nicht an die CAPs weiter, DP3.1.1).
+
 #### <a id="dw2.1"></a>DW2.1 · WPA2/WPA3 mit FT und 802.11k/v
 
 *2026-09-11 · alt D19*

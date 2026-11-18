@@ -283,6 +283,17 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Wechsel auf einen DFS-Kanal. Framework-Update mit DM1.4/DG2.4.1 im selben Release: Module vorab importiert,
   `$cfmCheck` gibt selbst aus, alle Geräte `ok`.
 
+* **Fallback weiterer SSIDs (DW1.12)** – 2026-11-18 an einem Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25, v40):
+  Probelauf je AP `add=4;rem=0;set=2` (DW1.12.1: kein `entfernt: … wdp…`). Erster Apply schaltet `slaves-static` ab
+  (CAP trennt ~4 s), `cfm-apfollow` startet den zweiten Apply ~50 s später von selbst, er entfernt je AP **10** alte
+  statische virtuelle APs; danach je AP 4 dynamische Slaves und `fb-guest-wifi1/2` (aus). Gast über den CAPsMAN
+  unverändert. Trennung per Bridge-Filter (3 min): „lokale Fallback-SSIDs an“ nach 11–18 s, 2,4 GHz im Scan ~33 s
+  nach dem Abriss, 5 GHz (DFS) ~83 s; Laptop mit fester BSSID an beiden `fb-guest-…`, Lease im Gast-VLAN, Internet.
+  Rückkehr: „aus“ 0–6 s nach dem Verbinden. **Befund:** den Gast-Slave am 5-GHz-Radio legt der CAP erst nach der
+  CAC an – `cfm-fallback` trug nur zwei Takte nach dem Verbinden nach, der Slave stand bis zum nächsten Agent-Lauf
+  (bis 15 min) ohne `cfm-iso` (zweimal reproduziert); die `fb-…` im Fallback ebenso. Fix DW1.12.2 (Abgleich in jedem
+  Takt), Hardware offen.
+
 ## Offen auf Hardware
 
 * **Je AP: Pool, `txPower`, Band aus** (DW3.7, 2026-11-16, Labor grün): Senkt `txPower` am CAP den Pegel wie an der
@@ -350,6 +361,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Standort vorher von Hand gelöscht.)
 * **Schaltbare SSID** (DW4.1/DW4.2, TODO 58): Aufräumen der festen Interfaces eines abgebauten AP; bleiben beim
   Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen?
+* **Isolation im Fallback und nach dem Wiederverbinden (DW1.12.2, TODO 94):** nach dem Release mit dem Fix an einem AP
+  trennen wie unten (3): im Fallback `fb-guest-…` in `cfm-iso` (Log „nachgetragen (cfm-fallback)“), zwei Gäste am
+  selben AP ohne Ping untereinander; nach der Rückkehr alle Gast-Slaves (auch 5 GHz nach der CAC) binnen 10 s in
+  `cfm-iso` (`/interface/bridge/port/print where dynamic` gegen `/interface/list/member/print where list=cfm-iso`).
+  Der Rest des Testplans ist am 2026-11-18 bestanden (siehe [Bestanden](#bestanden)).
 * **Fallback weiterer SSIDs (DW1.12, Testplan für den nächsten Termin, TODO 74 a):** Nach Framework-Upload und Release
   (Release-Notiz: „DW1.12“) an jedem AP mit `fallback`: (1) Log `slaves-static` abgeschaltet und `cfm-apfollow`, nach
   dem Wiederverbinden zweiter Apply mit „statischer virtueller AP … entfernt“ (an einem AP lagen fünf alte); danach

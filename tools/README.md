@@ -145,7 +145,9 @@ git config core.hooksPath tools/git-hooks    # einmal je Klon
 git commit --no-verify                       # im Ausnahmefall ohne Prüfung
 ```
 
-Auf GitHub prüft zusätzlich die Action `rsc-check` (`.github/workflows/rsc-check.yml`) jeden Push.
+Auf GitHub prüft zusätzlich die Action `rsc-check` (`.github/workflows/rsc-check.yml`) jeden Push – neben
+`rsc-check.py` auch die Tests der übrigen Werkzeuge (`wifi-sign.py`, QR-Encoder, `upload-seed.sh`, `new-site.py`).
+Ein Fehler bricht die Schritte danach ab; im Log der Action den ersten roten Schritt ansehen.
 
 ## `editor/`
 

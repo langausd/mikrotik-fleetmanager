@@ -302,6 +302,15 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   (bis 15 min) ohne `cfm-iso` (zweimal reproduziert); die `fb-…` im Fallback ebenso. Fix DW1.12.2 (Abgleich in jedem
   Takt), Hardware offen.
 
+* **Kanalbreite in `radios`, Kanäle live, Vorschlag 5 GHz (DW3.8, TODO 91, DW3.9)** – 2026-11-18 am selben Standort:
+  `$cfmCheck` warnt bei 5660–5700 mit 80 MHz vor der Blockgrenze 5725 (5580 nicht). `$cfmWifiScan band=5` lieferte
+  „breit“ und „robust“ mit fertiger Zeile `radios`; „breit“ übernommen (zwei Radios vorher Gleichkanal 5500/80,
+  −52 dBm untereinander; danach `/80`, `/80`, `/40` in getrennten Blöcken). Die CAPs übernehmen die Pins erst nach
+  `cfm-reprov` am CAPsMAN (Admin-Guide 8.7), danach `$cfmChannels` live mit `*` wie geplant. Pegel an sechs Orten
+  vorher/nachher (2026-11-19): im Mittel gleich, Randlage leicht besser; ein Radio nach dem Wechsel auf 5180 bei
+  gleicher Leistung (18 dBm) 4–10 dB schwächer, Ursache offen. Fehler im Vorschlag (Breite `/20` wegen Zusatz `/D`,
+  CAPsMAN-Radio `?` in der CAC, Fehlalarm Rolle) → DW3.9.1, Hardware offen (unten).
+
 ## Offen auf Hardware
 
 * **Je AP: Pool, `txPower`, Band aus** (DW3.7, 2026-11-16, Labor grün): Senkt `txPower` am CAP den Pegel wie an der
@@ -377,7 +386,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Kanalvorschlag nach DW3.9.1 (TODO 95):** nach dem Framework-Upload `$cfmWifiScan band=5` am CAPsMAN: „Aktuell“
   mit den echten Breiten (z.B. `ap2=5180/80`, nicht `/20`), kein `cm1=?`, Anteil „Leistung“ für die hAP ax² 0;
   `$cfmCheck` ohne „radios nennt cm1 ohne Rolle“.
-* **Fallback weiterer SSIDs (DW1.12, Testplan für den nächsten Termin, TODO 74 a):** Nach Framework-Upload und Release
+* **Fallback weiterer SSIDs (DW1.12, TODO 74 a)** – *bestanden 2026-11-18 bis auf die Isolation (DW1.12.2, oben);
+  Text bleibt als Testablauf:* Nach Framework-Upload und Release
   (Release-Notiz: „DW1.12“) an jedem AP mit `fallback`: (1) Log `slaves-static` abgeschaltet und `cfm-apfollow`, nach
   dem Wiederverbinden zweiter Apply mit „statischer virtueller AP … entfernt“ (an einem AP lagen fünf alte); danach
   `/interface/wifi/print where !dynamic and master-interface!=""` nur noch `fb-…`. (2) `fb-guest-wifi1`/`-wifi2` da,

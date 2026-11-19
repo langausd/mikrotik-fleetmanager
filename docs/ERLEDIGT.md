@@ -16,7 +16,8 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
   Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf offen (DW1.12.2). **TODO 95**
   Kanalvorschlag nach dem ersten Einsatz korrigiert: Kanal mit Zusatz `/D`/`/I`, Kanal und Leistung vor dem Scan,
   keine Rollen-Warnung für den Manager als CAPsMAN (DW3.9.1); Admin-Guide „Breit oder robust?“. Labor:
-  513 von 517, rot nur der neue Test selbst (korrigiert, einzeln grün) und zwei Zeitfehler (TESTSTAND).
+  513 von 517, rot nur der neue Test selbst (korrigiert, einzeln grün) und zwei Zeitfehler (TESTSTAND). **CI:**
+  seit 2026-11-12 rot im Schritt `wifi-sign.py` (siehe Behobene Fehler).
 
 * **Am 2026-11-17/18 (unbeaufsichtigt nach einer Fragerunde, aus dem Termin vor Ort am 17.11.):** **TODO 88** Index
   unter `/interface/wifi` nur noch `cfm:wfb:` – RouterOS zeigt den Kommentar des Datapaths an jedem Interface
@@ -1167,6 +1168,11 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* **CI rot seit 2026-11-12 (`wifi-sign-test.py`)** – *behoben 2026-11-19:* `ubuntu-latest` zieht auf Ubuntu 26 um;
+  dessen cairo schreibt PDF 1.7 mit komprimierten Objekt-Streams, die MediaBox `595.27` steht nicht mehr im Klartext.
+  Der Test sucht jetzt auch in den entpackten Streams. Die Schritte danach (QR-Encoder, `upload-seed.sh`,
+  `new-site.py`) liefen in der Zeit nicht, lokal geprüft grün.
 
 * ~~**Zweiter Apply nach `slaves-static` stellt noch einmal um**~~ und ~~**`fallback="yes"` hängt keine lokale Kopie an**~~ –
   *gegenstandslos 2026-11-16 (DW1.12):* cfm setzt `slaves-static` nicht mehr (nur noch einmal ab) und hängt keine

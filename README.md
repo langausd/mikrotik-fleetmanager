@@ -164,7 +164,7 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Archiv verkleinern | automatisch nach jedem Release (`archiveKeep`), von Hand `$cfmArchivePrune keep=5` |
 | Verkabelung prüfen, Netzplan | `$cfmLinks` (Soll einfrieren: `accept=yes`; Graphviz/CSV: `export=yes`) → `cfm/state/netzplan.md` |
 | Zweite Passphrase mit eigenem VLAN (PPSK) | `wifi.rsc` → `ppsk`, Release, dann `$cfmSecret key=ppsk.<ssid>.<name> value=…` |
-| WLAN-Kanäle der APs | `$cfmChannels` (auch die eigenen Radios des CAPsMAN; Warnung bei gleichem Kanal an einem Switch) |
+| WLAN-Kanäle der APs | `$cfmChannels` (live vom CAPsMAN, mit `*` markiert; auch die eigenen Radios des CAPsMAN; Warnung bei gleichem Kanal an einem Switch) |
 | Gerät finden (MAC, IP, Name, Port, AP/SSID) | `$cfmFind <text>`, Filter `host=` `port=` `ap=` `ssid=` `vlan=` `signal=-75`; im Browser: cfm-Monitor in WebFig des Managers, Reiter Suche (Admin-Guide 8.11) |
 | Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (`tools/editor/install.html`, Admin-Guide 8.10) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |

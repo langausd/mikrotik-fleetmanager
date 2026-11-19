@@ -9,6 +9,12 @@
 :global cfmCheckWifi do={
   :global cfmWifi; :global cfmVlans; :global cfmProfiles; :global cfmVaultGet
   :local err ({}); :local warn ({}); :local note ({})
+  # Geräte mit Radios im WLAN: Rolle ap oder capsman, dazu die CAPsMAN-Geräte nach $cfmCapsmen (ohne Gerät mit
+  # Rolle capsman der Manager, der mit capsmanRadios mitfunkt; TODO 95)
+  :global cfmCapsmen
+  :local radio ({})
+  :foreach n,d in=$inv do={ :if (("," . [:tostr ($d->"role")] . ",") ~ ",(ap|capsman),") do={ :set ($radio->$n) 1 } }
+  :foreach c in=[$cfmCapsmen $inv] do={ :set ($radio->[:tostr ($c->"n")]) 1 }
   # Liegt VLAN v in der Spezifikation ("*", Zonen, VIDs, "!x")? (wie in $cfmCheck)
   :local inSpec do={
     :global cfmVlans
@@ -129,7 +135,7 @@
   # Kanal-Pinning (radios): bekannte APs, bekannte Bänder
   :foreach apn,pins in=($cfmWifi->"radios") do={
     :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . ", nicht im Inventar") } else={
-      :if (!(("," . [:tostr ($inv->$apn->"role")] . ",") ~ ",(ap|capsman),")) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . " ohne Rolle ap oder capsman (eigene Radios, capsmanRadios)") }
+      :if ([:typeof ($radio->$apn)] = "nothing") do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios nennt " . $apn . " ohne Rolle ap oder capsman und ist nicht der CAPsMAN (eigene Radios, capsmanRadios)") }
     }
     # Wert je Band (DW3.7): Frequenz, Liste (Pool dieses AP) oder "off"; Frequenzen im Bereich des Bands
     :local noff 0
@@ -166,7 +172,7 @@
   # Sendeleistung je AP und Band (TODO 72, DW3.7): bekannte APs, Bänder aus channels, ganze dBm 1-30
   :foreach apn,tp in=($cfmWifi->"txPower") do={
     :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: txPower nennt " . $apn . ", nicht im Inventar") } else={
-      :if (!(("," . [:tostr ($inv->$apn->"role")] . ",") ~ ",(ap|capsman),")) do={ :set ($warn->[:len $warn]) ("wifi.rsc: txPower nennt " . $apn . " ohne Rolle ap oder capsman") }
+      :if ([:typeof ($radio->$apn)] = "nothing") do={ :set ($warn->[:len $warn]) ("wifi.rsc: txPower nennt " . $apn . " ohne Rolle ap oder capsman und ist nicht der CAPsMAN") }
     }
     :if ([:typeof $tp] != "array") do={ :set ($err->[:len $err]) ("wifi.rsc: txPower " . $apn . ": je Band angeben, z.B. {\"5\"=17}") } else={
       :foreach bb,v in=$tp do={
@@ -208,7 +214,7 @@
       }
       :foreach apn in=[:toarray [:tostr ($e->"near")]] do={
         :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . ": near nennt " . $apn . ", nicht im Inventar") } else={
-          :if (!(("," . [:tostr ($inv->$apn->"role")] . ",") ~ ",(ap|capsman),")) do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . ": near nennt " . $apn . " ohne Rolle ap oder capsman") }
+          :if ([:typeof ($radio->$apn)] = "nothing") do={ :set ($warn->[:len $warn]) ("wifi.rsc: others " . $k . ": near nennt " . $apn . " ohne Rolle ap oder capsman und ist nicht der CAPsMAN") }
         }
       }
     }

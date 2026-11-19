@@ -1394,16 +1394,19 @@ fremdes Netz mit Gewicht 1 (Gewicht wie bei 2,4 GHz: `w(s) = s + 95`), die Ausga
    DFS-Block (5250–5725), 60 mit Wetterradar – im Fallback stünde der AP nach jedem Start 60 s bzw. 10 min still. Der
    CAPsMAN mit eigenen Radios hat keinen Fallback: kein Malus.
 5. **Leistung:** 3 je dB unter der besten Möglichkeit des AP. Grenze je Teilband (EU): 5150–5350 23 dBm, 5470–5725
-   30, 5725–5850 14, 6 GHz 23. Begrenzt durch `txPower` des AP oder durch die beim Scan gemessene Leistung
-   (`monitor`, gespeichert unter `pw` in `state/wifiscan.json`), wenn sie mehr als 1 dB unter der Grenze ihres
-   Teilbands lag – dann ist das die Grenze des Radios, und 100–140 bringt diesem AP nichts.
+   30, 5725–5850 14, 6 GHz 23. Begrenzt durch `txPower` des AP oder durch die gemessene Leistung (`monitor` am
+   CAPsMAN **vor** dem Scan, gespeichert unter `pw` in `state/wifiscan.json`), wenn sie mehr als 1 dB unter der Grenze
+   ihres Teilbands lag – dann ist das die Grenze des Radios, und 100–140 bringt diesem AP nichts (hAP ax²: 18 dBm
+   auf allen 5-GHz-Kanälen, also kein Leistungsanteil).
 6. **Pläne:** „breit“ zählt dazu 20 je fehlender Verdopplung bis zur höchsten Breite (80 statt 40: ≈ ein fremdes
    Netz mit −75 dBm voll überlappend). „robust“ lässt eigene APs, die sich hören, nicht überlappen und zählt die
    Breite nur bei Gleichstand; geht das nicht, steht „(ohne Überlappung eigener APs nicht möglich)“ dahinter.
 7. **Suche:** alle Kombinationen der je AP besten K Kandidaten (höchstens ~2000 Pläne, bei drei APs K = 12), danach
    zweimal reihum je AP alle Kandidaten bei festen übrigen.
-8. **„Aktuell“** mit Kanal und Breite live vom CAPsMAN (sonst aus der Messung); liegt ein Kanal außerhalb der
-   Kandidaten (z.B. 5660/80, über 5725), steht „(kein Kandidat)“ dahinter, und die Kosten fehlen.
+8. **„Aktuell“** mit Kanal und Breite vom CAPsMAN, gelesen **vor** dem Scan (während des Scans meldet das Radio die
+   Scan-Kanäle; mit `data=yes` live, sonst aus der Messung); Zusätze wie `/D` (DFS) in `5500/ax/Ceee/D` zählen nicht
+   zur Breite (DW3.9.1). Liegt ein Kanal außerhalb der Kandidaten (z.B. 5660/80, über 5725), steht „(kein
+   Kandidat)“ dahinter, und die Kosten fehlen.
 
 Ausgabe (gekürzt, drei APs, die sich mit −50 dBm hören, zwei 80-MHz-Blöcke):
 
@@ -1419,6 +1422,50 @@ Vorschlag robust Kosten 0   …
 Grenzen wie bei 2,4 GHz: gemessen am AP, Auslastung der fremden Netze unbekannt. Zusätzlich: der Scan sieht fremde
 Netze nur auf Kanälen, die das Radio abhört, und die gemessene Leistung gilt für den Kanal zur Zeit des Scans.
 
+##### Breit oder robust?
+
+Beide Pläne rechnen dieselben Anteile – fremde Netze, eigene APs, DFS, Leistung –, sie unterscheiden sich nur in der
+Breite:
+
+| | „breit“ | „robust“ |
+|---|---|---|
+| Ziel | Durchsatz je AP | keine gegenseitige Störung der eigenen APs |
+| Breite | 20 je fehlender Verdopplung bis zur höchsten Breite | nur bei sonst gleichen Kosten |
+| eigene APs, die sich hören | dürfen überlappen, wenn die Breite das aufwiegt | überlappen nie (geht das nicht, steht es dabei) |
+| typisches Ergebnis | 80 MHz, wo Platz ist; Überlappung bei schwach gehörten APs | schmaler, öfter DFS, weil mehr Blöcke gebraucht werden |
+
+**Die Kosten der beiden Pläne sind nicht direkt vergleichbar**: „breit“ enthält den Anteil „Breite“, „robust“ nicht.
+Vergleichen lassen sich die Anteile ohne „Breite“ – und die Kanäle selbst.
+
+Woran man die Wahl festmacht:
+
+* **„eigene APs“ im Plan „breit“ über 0** – breit lässt eigene APs überlappen. Hören sie sich stark (über etwa
+  −70 dBm), teilen sie sich dort die Sendezeit, und Clients am Rand sehen beide; dann „robust“. Bei −85 dBm und
+  schwächer kostet die Überlappung kaum etwas, und die Breite lohnt sich.
+* **Viele Clients, Roaming, Telefonie und Video** (gleichmäßige Latenz wichtiger als Spitzenrate): „robust“.
+  **Wenige Clients mit großen Übertragungen** (Backups, Streaming in hoher Auflösung): „breit“.
+* **DFS:** „robust“ braucht mehr getrennte Blöcke und landet deshalb öfter auf DFS-Kanälen. An APs mit lokalem
+  Fallback heißt das: nach jedem Start 60 s (Wetterradar 10 min) kein 5 GHz, bei Radar ein Kanalwechsel. Steht im
+  Anteil „DFS“ von „robust“ deutlich mehr als bei „breit“, ist das der Preis.
+* **Sind beide Pläne gleich**, gibt es keinen Zielkonflikt: Es ist genug Platz für die volle Breite ohne Überlappung.
+* Die Rechnung kennt die Auslastung nicht. Im Zweifel „robust“ nehmen und nach ein paar Tagen mit `$cfmChannels` und
+  dem Erleben der Nutzer vergleichen – ein Wechsel ist nur ein Release.
+
+Beispiel (ein Standort, 18.11., drei APs; ap1 hört ap2 mit −74 dBm, ap1/cm1 −57, ap2/cm1 −52):
+
+```
+Vorschlag breit  Kosten 61  ap1=5660/40 ap2=5180/80 cm1=5500/80
+  Anteile: fremde Netze 0, eigene APs 0, DFS 20, Leistung 21, Breite 20
+Vorschlag robust Kosten 40  ap1=5700/20 ap2=5660/40 cm1=5500/80
+  Anteile: fremde Netze 0, eigene APs 0, DFS 40, Leistung 0, Breite 0
+```
+
+Ohne den Anteil „Breite“ liegen beide gleich (41 zu 40), keiner lässt eigene APs überlappen. „breit“ gibt ap2 80 statt
+40 MHz und ap1 40 statt 20 MHz und braucht dafür nur einen DFS-Kanal (ap1) statt zwei – gewählt wurde „breit“
+(Release v41). Der Anteil „Leistung 21“ (ap2 auf 5180: 7 dB unter 30 dBm) war ein Fehler: Die Leistung wurde nach dem
+Scan gelesen und war dort unzuverlässig; das Radio schafft ohnehin nur 18 dBm (`monitor` 19.11.). Seit DW3.9.1 liest der Befehl sie vor dem Scan, der
+Anteil fällt dort weg.
+
 **Vorschlag übernehmen** (Ablauf an einem Standort 2026-11-18): die Zeile `"radios"=…` in `wifi.rsc` einsetzen,
 `$cfmCheck`, `$cfmRelease`, Ringe durch (`$cfmPromote`; an den APs ändert sich nur der Fallback-Kanal, die Pins setzt
 der CAPsMAN um). Der Apply am CAPsMAN provisioniert nur dessen eigene Radios neu und meldet die übrigen als
@@ -1426,6 +1473,8 @@ der CAPsMAN um). Der Apply am CAPsMAN provisioniert nur dessen eigene Radios neu
 (je ~3 s ohne WLAN, DW4.3). Danach `$cfmChannels` (alle mit `*`, keine Warnung „mehrfach“); DFS-Kanäle senden erst
 nach der CAC (≥ 60 s). Mit isolierten VLANs vor DW1.12.2 danach `$cfmPush host=<AP>` je AP, damit die neu angelegten
 virtuellen APs gleich in `cfm-iso` stehen.
+`radios`/`txPower` für einen Manager, der ohne Gerät mit Rolle `capsman` selbst CAPsMAN ist und mit `capsmanRadios`
+mitfunkt, sind zulässig – `$cfmCheck` warnt dort nicht (DW3.9.1).
 
 #### Andere Funknetze im 2,4-GHz-Band (DW3.5)
 

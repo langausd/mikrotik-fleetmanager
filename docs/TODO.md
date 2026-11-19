@@ -4,7 +4,7 @@
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 95). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 96). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -24,6 +24,10 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
     Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf (bis 15 min) offen, die `fb-…`
     im Fallback ebenso. Jetzt Abgleich in jedem Takt.
+  * **95 – Kanalvorschlag 5 GHz auf Hardware korrigiert** (*umgesetzt 19.11. nachts, DW3.9.1, Labor; nur
+    Framework-Upload, kein Release*): `cfmScanBlk` versteht `5500/ax/Ceee/D` und `/I`; Kanal und Sendeleistung
+    werden vor dem Scan gelesen; `$cfmCheck` warnt nicht mehr bei `radios`/`txPower` für den Manager als CAPsMAN
+    (cm1). Hardware: nächster `$cfmWifiScan band=5` am Standort („Aktuell“ mit 80 MHz, keine Rollen-Warnung zu cm1).
 * **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
   * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
     Interface ohne eigenen (`cfm:wdp…`); der Plan wollte Radios und Slaves entfernen. Fix im Arbeitsstand

@@ -10,6 +10,14 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-18/19 (vor Ort an einem Standort und nachts):** Hardware: Release v40 mit **DW1.12** auf allen drei Geräten,
+  Fallback des Gasts auf 2,4 und 5 GHz bestanden ([TESTSTAND.md](TESTSTAND.md)); Kanalplan v41 nach dem ersten
+  `$cfmWifiScan band=5` (Plan „breit“). **TODO 94** `cfm-fallback` gleicht `cfm-iso` in jedem Takt ab – der
+  Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf offen (DW1.12.2). **TODO 95**
+  Kanalvorschlag nach dem ersten Einsatz korrigiert: Kanal mit Zusatz `/D`/`/I`, Kanal und Leistung vor dem Scan,
+  keine Rollen-Warnung für den Manager als CAPsMAN (DW3.9.1); Admin-Guide „Breit oder robust?“. Labor:
+  513 von 517, rot nur der neue Test selbst (korrigiert, einzeln grün) und zwei Zeitfehler (TESTSTAND).
+
 * **Am 2026-11-17/18 (unbeaufsichtigt nach einer Fragerunde, aus dem Termin vor Ort am 17.11.):** **TODO 88** Index
   unter `/interface/wifi` nur noch `cfm:wfb:` – RouterOS zeigt den Kommentar des Datapaths an jedem Interface
   (DW1.12.1). **TODO 89/90** Kanalbreite je AP und Band in `radios` (`"5500/80"`), `$cfmCheck` prüft die

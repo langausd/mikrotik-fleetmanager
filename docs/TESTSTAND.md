@@ -129,6 +129,14 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   TODO 93) 507 von 515 – rot nur Schritt 13, wieder ein Abbruch des Paket-Downloads („Bad message“, 8 Folgefehler;
   vom Rechner aus gleich danach HTTP 200), alle 11 neuen Prüfungen zum Kanalvorschlag 5/6 GHz grün; Wiederholung
   **515 von 515**.
+  2026-11-18/19 (DW1.12.2, DW3.9.1): `e2e.sh` mit TODO 94 500 von 514 – rot nur Schritt 13 (Abbruch des
+  Paket-Downloads „Bad message“, 14 Folgefehler; von der VM gleich danach HTTP 200), die neue Prüfung „cfm-fallback
+  räumt cfm-iso schon im ersten Takt auf“ grün. Erster Lauf mit TODO 95 hing in Schritt 14 (`cfmScanBlk`: `:find` mit
+  Startposition sucht erst nach ihr, Endlosschleife bei `2412/ax/`; ROUTEROS-EIGENHEITEN); Funktion zeichenweise neu,
+  sieben Fälle einzeln auf einer CHR geprüft; voller Lauf **513 von 517**: rot
+  zwei Fehler im neuen Test selbst (Array-Argumente ohne `({…})`, `$out` überschrieben – korrigiert, beide Prüfungen
+  einzeln am Manager-Stand nach dem Lauf grün) und zwei Zeitfehler ohne Bezug zu TODO 95 („ppskOnly im Probelauf“:
+  Agent noch beschäftigt; „cm2 Apply v21“: `agentwait`-Timeout, Prüfung danach grün).
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -366,6 +374,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   selben AP ohne Ping untereinander; nach der Rückkehr alle Gast-Slaves (auch 5 GHz nach der CAC) binnen 10 s in
   `cfm-iso` (`/interface/bridge/port/print where dynamic` gegen `/interface/list/member/print where list=cfm-iso`).
   Der Rest des Testplans ist am 2026-11-18 bestanden (siehe [Bestanden](#bestanden)).
+* **Kanalvorschlag nach DW3.9.1 (TODO 95):** nach dem Framework-Upload `$cfmWifiScan band=5` am CAPsMAN: „Aktuell“
+  mit den echten Breiten (z.B. `ap2=5180/80`, nicht `/20`), kein `cm1=?`, Anteil „Leistung“ für die hAP ax² 0;
+  `$cfmCheck` ohne „radios nennt cm1 ohne Rolle“.
 * **Fallback weiterer SSIDs (DW1.12, Testplan für den nächsten Termin, TODO 74 a):** Nach Framework-Upload und Release
   (Release-Notiz: „DW1.12“) an jedem AP mit `fallback`: (1) Log `slaves-static` abgeschaltet und `cfm-apfollow`, nach
   dem Wiederverbinden zweiter Apply mit „statischer virtueller AP … entfernt“ (an einem AP lagen fünf alte); danach

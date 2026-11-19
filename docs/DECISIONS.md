@@ -1806,6 +1806,27 @@ der Nutzung ab – deshalb beide nebeneinander. Die Kandidaten kommen aus dem Po
 eingeschränkt hat; Kanäle wie 5660/40, die im Pool nur wegen der Breite fehlen (DW3.8), über `all=yes` oder als Pin.
 Die Zahlen sind Anhaltspunkte, wie bei 2,4 GHz (DW3.2): verglichen werden nur Pläne derselben Messung.
 
+##### <a id="dw3.9.1"></a>DW3.9.1 · Kanalvorschlag: Kanal vor dem Scan lesen, Zusätze im Kanal, CAPsMAN ohne Rolle
+
+*2026-11-19 · Hardware an einem Standort am 18.11. (TODO 95)*
+
+**Frage:** Beim ersten Einsatz von `$cfmWifiScan band=5` vor Ort stimmten drei Dinge nicht: (1) `monitor` meldet den
+Kanal mit Zusätzen hinter den Buchstaben (`5500/ax/Ceee/D` bei DFS, `/I`); `cfmScanBlk` nahm das letzte Segment und
+sah 20 MHz. (2) Kanal und Sendeleistung wurden **nach** dem Scan gelesen – während und kurz nach dem Scan meldet das
+Radio die Scan-Kanäle oder nichts, „Aktuell“ und die Leistungsgrenze waren unzuverlässig. (3) `$cfmCheck` warnte bei
+`radios`/`txPower`/`others near` für cm1 (`router,manager` mit `capsmanRadios`, Übergang ohne Rolle `capsman`).
+
+**Entscheidung:** (1) Maßgeblich ist das Segment, das nur aus `C`/`e` besteht (mit genau einem Primärkanal `C`);
+andere Segmente zählen nicht, ohne ein solches gilt 20 MHz um die Frequenz. Zeichenweise gelesen: `:find` mit Startposition
+sucht erst **nach** ihr (`[:find "a//c" "/" 2]` = nichts) – eine Schleife darüber hing im Labor bei `2412/ax/`. (2) `$cfmWifiScan` liest `$cfmChLive`
+**vor** dem ersten Scan, legt Kanal und Leistung daraus unter `pw` ab und reicht die Lesung als `pre=` an
+`$cfmScanPlan`; nur `data=yes` (kein Scan) liest live. (3) Als Gerät mit Radios gilt neben Rolle `ap`/`capsman` jedes
+Gerät aus `$cfmCapsmen` – ohne Gerät mit Rolle `capsman` also der Manager, wie beim CAPsMAN selbst.
+
+**Verworfen:** nach dem Scan warten, bis `monitor` wieder einen Kanal meldet (Dauer je Radio unbekannt, CAC bis
+10 min) · in `$cfmCheck` `capsmanRadios` des Hostfiles prüfen (die WLAN-Prüfung lädt keine Hostfiles; eine
+`radios`-Zeile für den CAPsMAN ohne eigene Radios ist harmlos, `mgr-check` warnt dort schon über `capsmanRadios`).
+
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten
 
 *2026-10-03 · alt D64*

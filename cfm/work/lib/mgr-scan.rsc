@@ -87,25 +87,29 @@
 }
 # ---------- Vorschlag 5/6 GHz (TODO 93, DW3.9) ----------
 # Block eines Kanals aus Scan oder monitor ("5700/ax/eeCe": je 20 MHz ein Buchstabe, C = Primärkanal) -> {unten;oben}
-# in MHz; ohne Buchstaben 20 MHz um die Frequenz
+# in MHz; maßgeblich ist das Segment nur aus C/e - Zusätze wie "/D" (DFS) oder "/I" dahinter zählen nicht (TODO 95);
+# ohne solches Segment 20 MHz um die Frequenz
 :global cfmScanBlk do={
+  # Zeichenweise statt :find mit Startposition (leere Segmente wie in "2412/ax/" liefen sonst endlos, Labor 19.11.)
   :local ch [:tostr $1]
+  :local n [:len $ch]
   :local fq [:tonum [:pick $ch 0 [:find ($ch . "/") "/"]]]
-  :local p 0
-  :while ([:typeof [:find $ch "/" $p]] = "num") do={ :set p ([:find $ch "/" $p] + 1) }
   :local s ""
-  :if ($p > 0) do={ :set s [:pick $ch $p [:len $ch]] }
-  :local n [:len $s]
-  :local ci -1
-  :if ($n > 0) do={
-    :for i from=0 to=($n - 1) do={
-      :local c [:pick $s $i ($i + 1)]
-      :if ($c = "C") do={ :set ci $i } else={ :if ($c != "e") do={ :set n 0 } }
-    }
+  :local g ""
+  :local sn false
+  :for i from=0 to=$n do={
+    :local c "/"
+    :if ($i < $n) do={ :set c [:pick $ch $i ($i + 1)] }
+    :if ($c = "/") do={
+      :if ($sn and $s = "" and [:len $g] > 0 and [:typeof [:find $g "C"]] = "num" and !($g ~ "[^Ce]")) do={ :set s $g }
+      :set sn true
+      :set g ""
+    } else={ :set g ($g . $c) }
   }
-  :if ($ci < 0 or $n = 0) do={ :return ({($fq - 10);($fq + 10)}) }
+  :if ([:len $s] = 0) do={ :return ({($fq - 10);($fq + 10)}) }
+  :local ci [:find $s "C"]
   :local lo ($fq - 10 - (20 * $ci))
-  :return ({$lo;($lo + (20 * $n))})
+  :return ({$lo;($lo + (20 * [:len $s]))})
 }
 # Block zu Primärfrequenz $1 und Breite $2 (MHz) im Raster des Bands: 5 GHz ab Kanal 36 bzw. 149 (wie $cfmCheck),
 # 6 GHz ab Kanal 1 (80 MHz: 1-13, 17-29 …; 160 MHz: 1-29, 33-61, 65-93)
@@ -138,7 +142,7 @@
   :if ($z <= $a) do={ :return 0 }
   :return ((50 * ($z - $a)) / ($h1 - $l1))
 }
-# $cfmScanPlan sc= nb= aps= bd= inv= [all=yes] - aufgerufen von $cfmWifiScan für Band 5 und 6.
+# $cfmScanPlan sc= nb= aps= bd= inv= [all=yes] [pre=<cfmChLive vor dem Scan>] - aufgerufen von $cfmWifiScan für Band 5 und 6.
 # Kandidaten je AP: (Primärfrequenz, Breite) - Primärfrequenzen aus dem Pool (channels), eine Liste in radios ersetzt
 # ihn für diesen AP (ihr "/<Breite>" begrenzt die Breite), ein einzelner Pin kommt dazu; all=yes nimmt alle
 # EU-Kanäle (5 GHz 36-64 und 100-140, 6 GHz die PSC-Kanäle) dazu. Breiten bis zur höchsten aus width. Zulässig nur
@@ -370,8 +374,9 @@
   :local ns ""
   :for i from=0 to=($na - 1) do={ :set ns ($ns . " " . ($apl->$i) . " " . [:len ($cand->$i)]) }
   :put ("Kandidaten (Kanal/Breite) je AP:" . $ns . " - bis " . $mw . " MHz, Pool " . [:tostr ($chs->"freq")] . ", skipDfs " . $sk)
-  # aktueller Stand: live vom CAPsMAN, sonst monitor-Werte der Messung
-  :local live [$cfmChLive inv=$inv]
+  # aktueller Stand: vom CAPsMAN vor dem Scan (pre=, TODO 95) bzw. live (data=yes), sonst monitor-Werte der Messung
+  :local live $pre
+  :if ([:typeof $live] != "array" or [:len $live] = 0) do={ :set live [$cfmChLive inv=$inv] }
   :local cur ({})
   :local cs ""
   :local cok true
@@ -446,6 +451,9 @@
   :local dur [:tostr $duration]
   :if ([:len $dur] = 0) do={ :set dur "10s" }
   :local sc ({})
+  # Kanal und Sendeleistung vor dem Scan (TODO 95): während und kurz nach dem Scan meldet monitor die Scan-Kanäle
+  # oder nichts
+  :local lv0 ({})
   :if ($data = "yes") do={
     :set sc [$cfmJson $f]
     :local tn 0
@@ -482,6 +490,7 @@
     :local bre ($bd . "ghz")
     :if ([:totime $dur] < 10s) do={ :put ("duration " . $dur . " -> 10s (über den CAPsMAN liefern kürzere Scans nichts)"); :set dur "10s" }
     :local cml [$cfmCapsmen $inv]
+    :if ($bd != "2") do={ :global cfmChLive; :set lv0 [$cfmChLive inv=$inv] }
     # der CAPsMAN selbst, wenn er mitfunkt (capsmanRadios, TODO 46): seine Radios heißen wie die der
     # CAPs <Name>-<Band>g und lassen sich dort scannen; ohne dieses Interface sendet er nicht
     :local cmSet ({})
@@ -536,10 +545,10 @@
     :local tn 0
     :foreach ap,nets in=($sc->"aps") do={ :set tn ($tn + [:len $nets]) }
     :if ($tn = 0) do={ :put "keine Netze gemessen - kein Vorschlag, state/wifiscan.json bleibt unverändert"; :return false }
-    # Kanal und Sendeleistung jetzt (monitor am CAPsMAN) für Band 5/6: aktueller Stand und Leistungsgrenze (TODO 93)
+    # Kanal und Sendeleistung (monitor am CAPsMAN, vor dem Scan gelesen) für Band 5/6: aktueller Stand und
+    # Leistungsgrenze (TODO 93, 95); APs aus einer älteren Messung (host=) behalten ihre Werte
     :if ($bd != "2") do={
-      :global cfmChLive
-      :local lv [$cfmChLive inv=$inv]
+      :local lv $lv0
       :foreach ap,x in=($sc->"aps") do={
         :local c [:tostr ($lv->($ap . "-" . $bd . "g"))]
         :if ([:len $c] > 0) do={
@@ -579,7 +588,7 @@
   }
   :foreach k,sg in=$nb do={ :put ("eigener Nachbar " . $k . " " . $sg . " dBm") }
   # 5 und 6 GHz: Kanal und Breite je AP (TODO 93, DW3.9)
-  :if ($bd != "2") do={ :global cfmScanPlan; :return [$cfmScanPlan sc=$sc nb=$nb aps=$aps bd=$bd inv=$inv all=$all] }
+  :if ($bd != "2") do={ :global cfmScanPlan; :return [$cfmScanPlan sc=$sc nb=$nb aps=$aps bd=$bd inv=$inv all=$all pre=$lv0] }
   :local na [:len $aps]
   :if ($na = 0) do={ :put "keine Scan-Daten"; :return false }
   # andere Funknetze (TODO 51) aus dem Arbeitsstand

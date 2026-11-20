@@ -28,6 +28,7 @@
   const clean = (t) => t.replace(/\r/g, '').split('\n').filter((l) => !/^Script file loaded and executed successfully$/.test(l.trim())).join('\n');
   // QR-Encoder fürs WLAN-Schild (cfm-qr.js, setzt build.py hier ein)
   /*@@cfm-qr.js@@*/
+  /*@@cfm-radios.js@@*/
 
   const css = `
 #cfmed{position:fixed;inset:0;z-index:2147483000;background:#f4f5f4;color:#1d2321;font:13px system-ui,sans-serif;display:flex;flex-direction:column}
@@ -134,10 +135,14 @@ font-family:"DejaVu Sans",Arial,sans-serif;text-align:center;overflow:hidden}
       if (!fertig) out.textContent += '\n(keine Rückmeldung nach 15 min - Log des Managers ansehen)';
       const f = await fileByName(fn).catch(() => null);
       if (f) await rest('DELETE', '/file/' + f['.id']).catch(() => {});
+      busy(false);
+      // Ausgabe für Folgeschritte (WLAN-Scan: Vorschlag übernehmen)
+      return clean(txt).replace(ENDE, '');
     } catch (e) {
       out.textContent += '\nFEHLER: ' + e.message;
     }
     busy(false);
+    return '';
   }
 
   // ---------- Anmeldung ----------
@@ -202,6 +207,8 @@ font-family:"DejaVu Sans",Arial,sans-serif;text-align:center;overflow:hidden}
       ring, el('button', { onclick: () => promote(ring.value), 'data-cmd': 1, title: 'Version des vorigen Rings freigeben ($cfmPromote)' }, 'Promote'),
       el('button', { onclick: fleetStatus, 'data-cmd': 1, title: 'Flottenübersicht ($cfmStatus)' }, 'Status'),
       el('button', { onclick: sign, 'data-cmd': 1, title: 'WLAN-Schild als A4-PDF (QR-Code, SSID, Passphrase aus dem Vault)' }, 'WLAN-Schild'),
+      el('button', { onclick: channels, 'data-cmd': 1, title: 'Kanal und Sendeleistung je AP, live vom CAPsMAN ($cfmChannels)' }, 'Kanäle'),
+      el('button', { onclick: () => scanBar(hosts), 'data-cmd': 1, title: 'Kanal-Scan der APs mit Vorschlag ($cfmWifiScan), Vorschlag in wifi.rsc übernehmen' }, 'WLAN-Scan'),
       el('span', { class: 'sp' }),
       el('button', { onclick: hide }, 'Schließen')));
     const ta = el('textarea', { spellcheck: 'false', readonly: '' });
@@ -360,6 +367,57 @@ font-family:"DejaVu Sans",Arial,sans-serif;text-align:center;overflow:hidden}
     run('Promote ($cfmPromote' + (r ? ' ring=' + r : '') + ')', '$cfmPromote' + (r ? ' ring=' + r : ''), ['cfmPromote']);
   }
   function fleetStatus() { run('Flottenübersicht ($cfmStatus)', '$cfmStatus', ['cfmStatus']); }
+
+  // ---------- Kanalplanung (DT3.5, TODO 96) ----------
+  function channels() { run('Kanäle der APs ($cfmChannels)', '$cfmChannels', ['cfmChannels']); }
+  // Leiste über der Ausgabe: Band, alle EU-Kanäle, letzte Messung, ein AP; nach dem Lauf je Vorschlag ein Knopf
+  function scanBar(hosts) {
+    const alt = $('.scanbar');
+    if (alt) { alt.remove(); return; }
+    const band = el('select', { title: 'Band' }, el('option', { value: '5' }, '5 GHz'), el('option', { value: '6' }, '6 GHz'), el('option', { value: '2' }, '2,4 GHz'));
+    const all = el('input', { type: 'checkbox', title: 'alle EU-Kanäle statt des Pools aus wifi.rsc (all=yes, 5/6 GHz)' });
+    const dat = el('input', { type: 'checkbox', title: 'mit der letzten Messung rechnen, ohne neuen Scan (data=yes)' });
+    const ap = el('select', { title: 'nur dieser AP neu (host=), die übrigen aus der letzten Messung' }, el('option', { value: '' }, 'alle APs'));
+    Array.from(hosts.options).forEach((o) => ap.append(el('option', { value: o.value }, o.value)));
+    const vor = el('span', { class: 'vor' });
+    const go = el('button', { class: 'prim', 'data-cmd': 1 }, 'Scan starten');
+    go.addEventListener('click', async () => {
+      if (unsaved()) return;
+      const b = band.value;
+      let cmd = '$cfmWifiScan band=' + b;
+      if (all.checked && b !== '2') cmd += ' all=yes';
+      if (dat.checked) cmd += ' data=yes';
+      else if (ap.value && /^[A-Za-z0-9._-]+$/.test(ap.value)) cmd += ' host="' + esc(ap.value) + '"';
+      if (!dat.checked && !confirm('Die APs scannen nacheinander (je Radio ~10 s, verbundene Clients wechseln kurz zum Nachbarn).\nJetzt scannen?')) return;
+      vor.textContent = '';
+      const out = await run('WLAN-Scan (' + cmd + ')', cmd, ['cfmWifiScan']);
+      const ps = cfmRadios.proposals(out);
+      if (!ps.length) { vor.textContent = 'kein Vorschlag'; return; }
+      ps.forEach((p) => vor.append(el('button', { onclick: () => takeOver(p, b), title: p.line }, '„' + p.name + '“ übernehmen (Kosten ' + p.kosten + ')')));
+    });
+    const bar = el('div', { class: 'bar scanbar' }, el('b', {}, 'WLAN-Scan'), band,
+      el('label', {}, all, ' alle EU-Kanäle'), el('label', {}, dat, ' letzte Messung'), ap, go, vor,
+      el('button', { onclick: () => bar.remove() }, 'Schließen'));
+    $('pre').before(bar);
+  }
+  // Vorschlag in wifi.rsc im Editor eintragen (nur das gescannte Band je AP), Rückweg als Kommentar; nicht speichern
+  async function takeOver(p, band) {
+    const f = S.files.find((x) => x.rel === 'wifi.rsc');
+    if (!f) { $('pre').textContent += '\nwifi.rsc nicht gefunden'; return; }
+    if (!S.cur || S.cur.name !== f.name) await open(f);
+    if (!S.cur || S.cur.name !== f.name) return;
+    const ta = $('textarea');
+    const tag = new Date().toISOString().slice(0, 10);
+    let r;
+    try { r = cfmRadios.apply(ta.value, p.line, band, tag + ' Kanalvorschlag „' + p.name + '“ ' + band + ' GHz übernommen (cfm-Editor)'); } catch (e) { $('pre').textContent += '\nFEHLER beim Übernehmen: ' + e.message; return; }
+    if (!r.changes.length) { $('pre').textContent += '\n\nVorschlag „' + p.name + '“ = laufender Plan in wifi.rsc – nichts zu ändern.'; return; }
+    ta.value = r.text;
+    lines(); status();
+    $('pre').textContent += '\n\nIn wifi.rsc übernommen (noch NICHT gespeichert), Rückweg als Kommentar unter dem Array:\n  ' +
+      r.changes.join('\n  ') + '\nWeiter: Speichern (Strg+S), „Prüfen“, „Probelauf“ für den CAPsMAN, „Release (Ring 0)“; meldet der CAPsMAN ' +
+      '„CAP-Radio … veraltet“, dort cfm-reprov. DFS-Kanäle senden erst nach der CAC (≥ 60 s).';
+    $('pre').scrollTop = $('pre').scrollHeight;
+  }
 
   // ---------- WLAN-Schild (DT3.4.1) ----------
   // SSIDs aus der neuesten Version (das, was die Geräte ausstrahlen), Passphrase aus dem Vault per REST

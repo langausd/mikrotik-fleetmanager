@@ -636,9 +636,9 @@
   :local all ($sel = "all")
   :local out ""; :local n 0
   :local skipNames {"read"=1;"write"=1;"full"=1}
-  # von base verwaltet, aber ohne cfm-Tag: Syslog-Einträge (hAP lehnt dort "comment" ab) und der
-  # Werks-User admin (abgeschaltet oder bewusst behalten, DS3.1) - keine Fehlalarme
-  :local skipLog "cfmremote"
+  # von base/router verwaltet, aber ohne cfm-Tag: Log-Regeln zu den Aktionen cfmremote, cfmdns, cfmwdebug (hAP
+  # lehnt dort "comment" ab) und der Werks-User admin (abgeschaltet oder bewusst behalten, DS3.1) - keine Fehlalarme
+  :local skipLog "^cfm(remote|dns|wdebug)\$"
   :foreach m in=$cfmMenus do={
     :onerror e in={
       :local ff [:parse (":return [" . $m . "/find]")]
@@ -650,7 +650,7 @@
         :local g [$cfmRun ($m . "/get") I=$id]
         :local c [:tostr ($g->"comment")]
         :if (($cfmByName->$m) = 1 and [:tostr ($g->"name")] ~ "^cfm-") do={ :set c "cfm" }
-        :if ([$fx I=$id] > 0 and !($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1) and !($m = "/system/logging" and [:tostr ($g->"action")] = $skipLog) and !($m = "/user" and ($g->"name") = "admin")) do={
+        :if ([$fx I=$id] > 0 and !($c ~ "^cfm") and ($g->"dynamic") != true and ($g->"default") != true and ($g->"builtin") != true and !($m = "/user/group" and ($skipNames->($g->"name")) = 1) and !($m = "/system/logging" and [:tostr ($g->"action")] ~ $skipLog) and !($m = "/user" and ($g->"name") = "admin")) do={
           :set n ($n + 1)
           :local ref ("A" . $n)
           :local sum ""

@@ -155,7 +155,8 @@ Drei Werkzeuge für WebFig, die über die REST-API derselben Adresse arbeiten. G
 festes Lesezeichen „cfm“ (DT3.2), das ihren Code vom Gerät lädt. Aus dem Netz wird nichts geladen.
 
 * **cfm-Editor** (DT3.1): Site-Daten auf dem Manager bearbeiten, prüfen, Diff zum Release, Probelauf,
-  Release an Ring 0 (ohne Notiz nur nach Rückfrage), Promote, Status, WLAN-Schild drucken (DT3.4.1, Passphrase aus dem Vault). Anmelden mit einem User der Gruppe `full`.
+  Release an Ring 0 (ohne Notiz nur nach Rückfrage), Promote, Status, WLAN-Schild drucken (DT3.4.1, Passphrase aus dem Vault),
+  Kanäle und Sendeleistung der APs, WLAN-Scan mit „Vorschlag übernehmen“ in `wifi.rsc` (DT3.5). Anmelden mit einem User der Gruppe `full`.
 * **cfm-Monitor** (DU2.2, DU1.4; früher cfm-WLAN): Reiter WLAN mit den Clients je AP live und Roaming als
   Zeitleiste (in WebFig des CAPsMAN, Leserecht genügt); Reiter Suche findet Geräte nach MAC, IP, Name,
   Port, AP oder SSID (`$cfmFind`, in WebFig des Managers, Gruppe `full`).
@@ -175,6 +176,7 @@ So richtest du sie ein:
 
 Den Code legt `tools/editor/build.py` nach `cfm/work/web/` (und baut `install.html`). Nach einer Änderung an
 `cfm-editor.js`, `cfm-qr.js` (QR-Encoder des WLAN-Schilds, Test: `tools/editor/cfm-qr-test.py` mit gjs und libzbar),
+`cfm-radios.js` (Kanalvorschlag in `wifi.rsc` übernehmen, Test: `tools/editor/cfm-radios-test.py` mit node),
 `cfm-monitor.js` oder `cfm-dns.js`: `build.py`, mit `upload-seed.sh` hochladen, releasen – das
 Lesezeichen bleibt. Für Geräte mit einem Framework-Stand ohne `web/` stehen in `install.html` weiter die
 vollständigen Lesezeichen (Code im Lesezeichen, nach jeder Fassung neu ziehen). Alte Lesezeichen

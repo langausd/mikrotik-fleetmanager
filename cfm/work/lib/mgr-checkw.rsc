@@ -106,6 +106,38 @@
   }
   :local mlo [:tostr ($cfmWifi->"mlo")]
   :if ([:len $mlo] > 0 and $mlo != "disabled" and $mlo != "auto" and $mlo != "all" and $mlo != "master") do={ :set ($err->[:len $err]) ("wifi.rsc: mlo=" . $mlo . " unbekannt (disabled|auto|all|master)") }
+  # MLO je SSID (DW2.3.1): wie $cfmMloOf in lib/lib-wifi.rsc, hier selbst gerechnet (der Prüfer läuft auch vor dem
+  # ersten Apply einer neuen lib-wifi). RouterOS nimmt je Provisioning-Regel nur die Master-SSID oder alle SSIDs ins
+  # MLD, und es gibt nur ein mld-datapath je CAP (VLAN der Master-SSID)
+  :local mmk [:tostr ($cfmWifi->"master")]
+  :local mlx ({})
+  :foreach k,s in=($cfmWifi->"ssids") do={
+    :local v [:tostr ($s->"mlo")]
+    :if ([:len $v] > 0 and $v != "enabled" and $v != "disabled") do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": mlo = enabled oder disabled") }
+    :if ([:len $v] > 0) do={ :set ($mlx->$k) ($v = "enabled") } else={
+      :if ($k = $mmk) do={ :set ($mlx->$k) ($mlo = "master" or $mlo = "all" or $mlo = "auto") } else={ :set ($mlx->$k) ($mlo = "all" or $mlo = "auto") }
+    }
+  }
+  :local mlv [:tostr ($cfmWifi->"ssids"->$mmk->"vlan")]
+  :foreach k,on in=$mlx do={
+    :if ($k != $mmk and $on = true) do={
+      :if (($mlx->$mmk) != true) do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": MLO nur zusammen mit der Master-SSID " . $mmk . " (RouterOS: multi-link-mode master oder all)") }
+      :if ([:tostr ($cfmWifi->"ssids"->$k->"vlan")] != $mlv) do={ :set ($err->[:len $err]) ("wifi.rsc: SSID " . $k . ": MLO nur im VLAN der Master-SSID (" . $mlv . ") - es gibt ein mld-datapath je CAP, der Verkehr landete dort") }
+    }
+  }
+  :if (($mlx->$mmk) = true) do={
+    :foreach b,c in=($cfmWifi->"channels") do={
+      :local on ""
+      :local off ""
+      :foreach k,s in=($cfmWifi->"ssids") do={
+        :if ($k != $mmk and (("," . ($s->"bands") . ",") ~ ("," . $b . ","))) do={
+          :if (($mlx->$k) = true) do={ :set on ($on . " " . $k) } else={ :set off ($off . " " . $k) }
+        }
+      }
+      :if ([:len $on] > 0 and [:len $off] > 0) do={ :set ($err->[:len $err]) ("wifi.rsc: MLO auf Band " . $b . " nur an" . $on . ", nicht an" . $off . " - RouterOS nimmt je Regel nur die Master-SSID oder alle (DW2.3.1)") }
+    }
+    :set ($note->[:len $note]) ("wifi.rsc: MLO an der Master-SSID " . $mmk . " - FT am MLD erst ab RouterOS 7.25 (vorher mieden FT-Clients die Wi-Fi-7-APs); nach dem Umschalten am CAPsMAN cfm-reprov")
+  }
   # PPSK (Multi-Passphrase, DW2.2): nur WPA2-PSK, VLAN vorhanden und auf den AP-Uplinks (trunk-ap)
   :local apTag [:tostr ($cfmProfiles->"trunk-ap"->"tag")]
   :foreach k,ents in=($cfmWifi->"ppsk") do={
@@ -272,6 +304,23 @@
   :if ([:len [:tostr ($cfmWifi->"minSignal")]] > 0) do={
     :local ms [:tonum ($cfmWifi->"minSignal")]
     :if ([:typeof $ms] != "num" or $ms > -40 or $ms < -100) do={ :set ($err->[:len $err]) ("wifi.rsc: minSignal " . [:tostr ($cfmWifi->"minSignal")] . " ist kein Pegel in dBm (-100..-40)") }
+    # Die Regeln der Trennschwelle (wcut) stehen vor wacl:min und decken jedes Signal ab: Auf Bändern mit drop gilt
+    # bei der Anmeldung join, minSignal erreicht dort nur isolierte SSIDs (DP3.1) - Hardware 2026-11-19 (TODO 96)
+    :local jl ""
+    :local fb ""
+    :foreach bb,c in=($cfmWifi->"channels") do={
+      :local st ($cfmWifi->"steer"->$bb)
+      :if ([:typeof $st] = "array" and [:len [:tostr ($st->"drop")]] > 0) do={
+        :local jn [:tostr ($st->"join")]
+        :if ([:len $jn] = 0) do={ :set jn [:tostr ($st->"drop")] }
+        :set jl ($jl . ", " . $bb . " join " . $jn)
+      } else={ :set fb ($fb . "," . $bb) }
+    }
+    :if ([:typeof $ms] = "num" and [:len $jl] > 0) do={
+      :local wo "keinem Band"
+      :if ([:len $fb] > 0) do={ :set wo ("Band " . [:pick $fb 1 [:len $fb]]) }
+      :set ($note->[:len $note]) ("wifi.rsc: minSignal " . $ms . " gilt bei der Anmeldung nur auf " . $wo . " (und für isolierte SSIDs); mit Trennschwelle gilt join: " . [:pick $jl 2 [:len $jl]] . " (DW2.5)")
+    }
   }
   # Fallback weiterer SSIDs (TODO 40a): die Master-SSID hat ihn immer
   :foreach k,s in=($cfmWifi->"ssids") do={

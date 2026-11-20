@@ -213,6 +213,7 @@ irgendetwas ausgerollt wird.
 | `syslogFormat` | Format an den Syslog-Server: `syslog` = RFC-Kopf mit Facility `daemon` und Schwere aus dem Topic (LibreNMS sortiert danach), `default` = RouterOS-eigenes Format (TODO 54). Zeit ohne Zeitzone (`bsd-syslog`), das Topic selbst steht nicht in der Meldung. Ältere RouterOS-Versionen ohne `remote-log-format` bleiben beim eigenen | `syslog` |
 | `snmp` | SNMPv3 nur lesend für LibreNMS (8.12): `{"from"={"192.168.10.31"};"user"="librenms";"auth"="SHA256";"contact"=…;"location"=…}`. Ohne `from` bleibt `/snmp` unangetastet | `{}` |
 | `logMemory` | Topics der Log-Regel `info` → RAM-Puffer (beginnt mit `info`). Der Standard lässt `system,info` weg: Konfig-Änderungen (bei Skripten samt Quelltext) und Anmeldungen verdrängten sonst nach jedem Framework-Update die Hälfte des Puffers (DU3.2). `"info"` = RouterOS-Standard, z.B. sobald ein Syslog-Server mitschreibt; Syslog (`syslog`) bekommt immer alles | `info,!system` |
+| `wifiDebug` | WLAN-Debug-Log für Messungen (DU3.5): `{"<Gerät>"=<Zeilen>}`, z.B. `{"cm1"=50000}` am CAPsMAN – RAM-Puffer `cfmwdebug` (1000–100000 Zeilen) mit `wireless,debug`: Anmeldungen, Abweisungen der access-list, Abbrüche, 802.11v. Lesen: `/log/print where buffer=cfmwdebug`. Ersetzt den Handeintrag früherer Messungen (ein Release lässt ihn stehen). Leeren und releasen schaltet ihn ab, die Rolle entfernt Regel und Puffer. `$cfmCheck`: Name wie im Inventar, Hinweis, solange er an ist | `{}` (aus) |
 | `interval` / `reapply` / `watchdog` | Agent-Takt / täglicher Voll-Apply / Rollback-Timeout | `15m` / `1d` / `5m` |
 | `mgrTick` | Intervall des allgemeinen Manager-Ticks (Status, Ring-Aufstieg, Secret-Sync, Updates, Netzplan, Hook, Vault-Backup). Onboarding hat einen eigenen, festen 1m-Tick, unabhängig davon; die beiden sperren sich gegenseitig (DM2.2) | `10m` |
 | `ringSoak` | Wartezeit Ring 0→1 und 1→2; `"manual"` = nur per `$cfmPromote` | `{"30m";"2h"}` |
@@ -300,9 +301,11 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
 * `txPower`: optional Sendeleistung je AP und Band in dBm am Antennenanschluss (TODO 72, DW3.7), z.B.
   `"txPower"={"cm1"={"2"=14;"5"=17}}` – ganze Zahlen 1–30, ohne Eintrag das Landeslimit. Wirkt beim CAPsMAN (eigene
   Master-Konfiguration `cfm-m<Band>-<AP>`, gilt für alle SSIDs des Radios) und im lokalen Fallback. **`antenna-gain`
-  wirkt nicht** (CRS418, Pegelmessung 2026-11-16: Pegel und angezeigte `tx-power` unverändert), RouterOS rechnet mit
-  0 dBi – bei externen Antennen die EIRP-Grenze selbst einhalten: `txPower` ≤ Limit − Antennengewinn +
-  Kabeldämpfung (Limit in DE: 20 dBm auf 2,4 GHz, 23 dBm auf 5150–5350, 30 dBm auf 5470–5725, 14 dBm auf
+  der Konfiguration wirkt nicht** (CRS418, Pegelmessung 2026-11-16: Pegel und angezeigte `tx-power` unverändert).
+  Ohne `txPower` hält RouterOS selbst `tx-power` + eingebauter Antennengewinn (`min-antenna-gain` des Radios, hAP ax³
+  6 dB, hAP be³ 8 dB auf 5 GHz) unter dem Limit – `monitor` zeigt also die Leistung am Anschluss, nicht die EIRP
+  (Hardware 2026-11-19: hAP ax³ 8 dBm auf 5745 = 14 EIRP, 24 dBm auf 5500 = 30 EIRP). Bei externen Antennen die
+  EIRP-Grenze selbst einhalten: `txPower` ≤ Limit − Antennengewinn + Kabeldämpfung (Limit in DE: 20 dBm auf 2,4 GHz, 23 dBm auf 5150–5350, 30 dBm auf 5470–5725, 14 dBm auf
   5745–5825). Entfernen nimmt `tx-power` aus der Konfiguration wieder heraus (Log „tx-power entfernt“). Ein neuer
   Wert startet das Radio neu (Clients kurz weg).
 * `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (in der Vorlage `03:00`; leer = nur beim Start);
@@ -320,10 +323,16 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   Angaben im Kanal-Eintrag (`sec`, `ft`, `ftOverDs`, `pmf`) gelten für alle SSIDs auf dem Band und
   ergeben ein eigenes Profil `cfm-<schlüssel>-6g` mit derselben Passphrase (DW2.3). Die `master`-SSID
   sendet auf allen Bändern aus `channels`, weitere SSIDs nur laut `bands` (z.B. `"2,5,6"`).
-* `mlo`: Wi-Fi 7 Multi-Link, Standard `"disabled"` (DW2.3). Ein MLD bietet kein FT an, Clients im
-  FT-Verbund meiden den AP dann. Außerdem gibt es nur ein `mld-datapath` je CAP (`cfm-mld`, VLAN der
-  `master`-SSID, DW1.4), weitere SSIDs landeten per MLO dort. Nach dem Umschalten die Radios der
-  Wi-Fi-7-CAPs neu provisionieren (siehe unten).
+* `mlo`: Wi-Fi 7 Multi-Link, Standard `"disabled"` (DW2.3). Bis RouterOS 7.24 bot ein MLD kein FT an, Clients im
+  FT-Verbund mieden den AP dann (7.25: „add fast transition support for MLD devices“, auf Hardware noch zu prüfen,
+  TODO 48). Außerdem gibt es nur ein `mld-datapath` je CAP (`cfm-mld`, VLAN der `master`-SSID, DW1.4) – SSIDs in
+  anderen VLANs dürfen nie ins MLD. **Je SSID** (DW2.3.1): `"mlo"="enabled"` bzw. `"disabled"` im Eintrag unter
+  `ssids`, z.B. `"main"={"ssid"="Demo";"vlan"=20;"bands"="2,5,6";"mlo"="enabled"}`; ohne Angabe gilt das globale
+  `mlo` (`master` = nur die Master-SSID, `all`/`auto` = alle). RouterOS kann je Provisioning-Regel nur die
+  Master-SSID (`multi-link-mode=master`) oder alle SSIDs der Regel (`all`) ins MLD nehmen; `$cfmCheck` meldet einen
+  Fehler, wenn eine weitere SSID MLO ohne die Master-SSID hat, in einem anderen VLAN liegt oder auf einem Band nur
+  einige SSIDs MLO haben, und einen Hinweis, sobald MLO an ist. Nach dem Umschalten am CAPsMAN `cfm-reprov` (die
+  Radios der Wi-Fi-7-CAPs neu provisionieren, siehe unten). Für einen Test: erst nur die Master-SSID.
 * Interface-Namen am CAPsMAN: `<Identity>-2g` bzw. `<Identity>-5g` (Provisioning `name-format`, DU2.1)
   statt `cap-wifiN`; neu vergeben erst beim nächsten Provisionieren eines Radios
   (`cfm-reprov`, siehe 6.8, oder `/interface/wifi/radio/provision [find where !local]` am CAPsMAN, alle
@@ -351,8 +360,11 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   Neu-Provisionieren. SSIDs in einem isolierten VLAN (DP3.1) sind ausgenommen. **Jede Änderung an
   `join`/`drop`/`hold` trennt beim Apply alle Clients des Bands einmal** (RouterOS prüft bei jeder Änderung
   der access-list alle Verbindungen neu, ein Handy war danach bis zu 31 s weg) – Werte gebündelt ändern.
-* `minSignal`: Mindestsignal bei der Anmeldung (dBm, ein Wert für alle Bänder), z.B. `-82`.
-  Schwächere Clients weist der AP ab (access-list). Vorsicht in Randbereichen ohne zweiten AP. Eine
+* `minSignal`: Mindestsignal bei der Anmeldung (dBm), z.B. `-82`. Schwächere Clients weist der AP ab (access-list).
+  **Gilt nur auf Bändern ohne Trennschwelle**: Die Regeln von `drop`/`join` stehen davor und decken jedes Signal ab –
+  dort entscheidet `join` (Hardware 2026-11-19: 2,4 GHz mit `join` −88 nahm Anmeldungen bis −88 an, `minSignal` −80
+  wirkte nur auf 5 GHz). SSIDs in isolierten VLANs (ohne Trennschwelle) prüft `minSignal` auf allen Bändern.
+  `$cfmCheck` nennt das als Hinweis. Vorsicht in Randbereichen ohne zweiten AP. Eine
   laufende Verbindung trennt sie nie, auch wenn das Signal danach sinkt (die access-list prüft laufend nur
   Verbindungen, die eine Regel angenommen hat – dafür die Trennschwelle oben). Am 2026-10-18 wechselte ein
   Client per FT mit -83 dBm trotz Schwelle -80; die Abweisung der Trennschwelle griff am 2026-10-23 dagegen
@@ -1051,7 +1063,10 @@ führt der Manager (DT2.2). Du bearbeitest sie auf einem dieser Wege:
   (`$cfmDiff`), „Probelauf“ (`$cfmPlan host=`), „Release (Ring 0)“ (`$cfmRelease`, Notiz mit Umlauten
   geht; ohne Notiz fragt er eigens nach), „Promote“ (`$cfmPromote`, Ring wählbar, mit Rückfrage), „Status“
   (`$cfmStatus`), „WLAN-Schild“ (A4-Schild mit QR-Code, SSID und Passphrase aus dem Vault – auch für einen PPSK-Eintrag;
-  „Drucken / als PDF speichern“ öffnet den Druckdialog, dort A4, Ränder keine, 100 %; DT3.4.1). `lib/`, `roles/`
+  „Drucken / als PDF speichern“ öffnet den Druckdialog, dort A4, Ränder keine, 100 %; DT3.4.1), „Kanäle“
+  (`$cfmChannels`: Kanal und Leistung je AP) und „WLAN-Scan“ (DT3.5: Band, alle EU-Kanäle, letzte Messung oder ein
+  AP; nach dem Lauf je Vorschlag ein Knopf ‚„breit“ übernehmen‘, der in `wifi.rsc` im Editor nur das gescannte Band je
+  AP ersetzt und den alten Eintrag als Rückweg-Kommentar hinterlässt – gespeichert wird erst mit Strg+S, 8.19). `lib/`, `roles/`
   und `web/` zeigt er nur an. Voraussetzung: Dienst `www` bzw. `www-ssl` in `services`;
   das Lesezeichen lädt nichts aus dem Netz, sondern den Code vom Manager (`cfm/dl/web/`, kommt mit dem
   Framework-Update). Nach einer neuen Version von `cfm-editor.js`: `tools/editor/build.py`, hochladen,
@@ -1308,9 +1323,9 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   wird nur bei Änderungen neu geschrieben und landet mit der Git-Sicherung im Repo.
 * Der Manager prüft alle 15 Minuten selbst und schreibt neue Abweichungen ins Log (`cfm: Netz:`).
 * `$cfmChannels` zeigt die Kanäle der APs (und die des CAPsMAN, wenn er mitfunkt – `capsmanRadios`), live vom
-  CAPsMAN abgefragt (`*`; sonst Stand des letzten Agent-Laufs, TODO 91)
-  und warnt, wenn zwei APs am selben Switch denselben
-  Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
+  CAPsMAN abgefragt (`*`; sonst Stand des letzten Agent-Laufs, TODO 91), dazu in der Spalte `DBM` die Sendeleistung
+  als `am Anschluss+Antennengewinn=EIRP` (TODO 96, z.B. `8+6=14` auf 5745, `24+6=30` auf 5500), und warnt, wenn zwei
+  APs am selben Switch denselben Kanal nutzen. Die Kanäle wählt der CAPsMAN aus den Pools in `wifi.rsc` (Neuwahl `reselect`),
   feste Kanäle je AP über `radios`.
 * `$cfmWifiScan [host=<ap>] [band=2|5|6] [duration=10s] [data=yes] [all=yes]` lässt alle APs nacheinander auf ihren Radios
   des Bands scannen (DW3.2). Ein Radio unter CAPsMAN-Kontrolle lehnt den Scan am AP ab; cfm scannt
@@ -1326,6 +1341,10 @@ $cfmLinks export=yes       # zusätzlich netzplan.dot (Graphviz) und netzplan.cs
   Bei `band=5`/`6` schlägt er Kanal **und Breite** je AP vor, als Plan „breit“ und „robust“
   (DW3.9, [Kostenmodell 5/6 GHz](#kostenmodell-5-und-6-ghz-dw39)); die Zeile `radios` enthält dann
   alle Pins aus `wifi.rsc` mit den neuen 5/6-GHz-Pins.
+  APs ohne Radio im Band (z.B. 6 GHz an einem Wi-Fi-6-AP) überspringt der Scan („kein Radio im Band“). Hören die APs
+  auf 5/6 GHz gar nichts – auch einander nicht –, gibt es trotzdem einen Vorschlag (freies Spektrum: volle Breite);
+  auf 2,4 GHz und ganz ohne Messung keinen (TODO 96).
+  Leitfaden mit Ablauf und Abwägungen: [8.19](#819-wlan-kanäle-planen-dw392).
   Die Messung liegt in `state/wifiscan.json`; `data=yes` rechnet ohne neuen Scan, `host=<AP>`
   scannt nur diesen AP und ersetzt ihn in der letzten Messung desselben Bands (die übrigen behalten
   ihre Werte und müssen nicht erneut vom Kanal). Liegt dort eine Messung eines anderen Bands,
@@ -1393,16 +1412,31 @@ fremdes Netz mit Gewicht 1 (Gewicht wie bei 2,4 GHz: `w(s) = s + 95`), die Ausga
 4. **DFS:** an APs mit lokalem Fallback (Rolle `ap`; ein AP, den das Inventar nicht kennt, zählt als AP) 20 je
    DFS-Block (5250–5725), 60 mit Wetterradar – im Fallback stünde der AP nach jedem Start 60 s bzw. 10 min still. Der
    CAPsMAN mit eigenen Radios hat keinen Fallback: kein Malus.
-5. **Leistung:** 3 je dB unter der besten Möglichkeit des AP. Grenze je Teilband (EU): 5150–5350 23 dBm, 5470–5725
-   30, 5725–5850 14, 6 GHz 23. Begrenzt durch `txPower` des AP oder durch die gemessene Leistung (`monitor` am
-   CAPsMAN **vor** dem Scan, gespeichert unter `pw` in `state/wifiscan.json`), wenn sie mehr als 1 dB unter der Grenze
-   ihres Teilbands lag – dann ist das die Grenze des Radios, und 100–140 bringt diesem AP nichts (hAP ax²: 18 dBm
-   auf allen 5-GHz-Kanälen, also kein Leistungsanteil).
+5. **Leistung** (EIRP, TODO 96): 3 je dB unter der besten Möglichkeit des AP, soweit die Messung sie belegt; nur
+   angenommene Reserve über der gemessenen Leistung zählt 1 je dB. Grenze je Teilband (EU): 5150–5350
+   23 dBm, 5470–5725 30, 5725–5850 14, 6 GHz 23. Gelesen wird **vor** dem Scan am CAPsMAN: `tx-power` aus `monitor`
+   (am Anschluss) und der Antennengewinn (`antenna-gain` der Konfiguration, sonst `min-antenna-gain` des Radios),
+   gespeichert unter `pw` in `state/wifiscan.json` (`tx`, `g`); EIRP = `tx + g`. Liegt sie mehr als 1 dB unter der
+   Grenze ihres Teilbands, ist das die Grenze des Radios (100–140 bringt dann nichts); `txPower` (+ `g`) begrenzt
+   immer. Liegt sie an der Grenze, verrät RouterOS nicht, ob das Radio auf 5470–5725 mehr kann (es meldet keine
+   Höchstleistung) – angenommen ja, aber nur mit 1 je dB („Reserve bis 30 angenommen, zählt 1 je dB“): 7 dB Reserve
+   wiegen den DFS-Malus (20) nicht auf, ein an 5180 gemessener AP bleibt ohne weiteren Grund auf 36–48. Mit voller
+   Gewichtung (7 × 3 = 21) schob das Labor alle fünf APs eines Plans auf DFS. Ein AP ohne Messung zählt voll (wie
+   bisher). Ein schwächeres Radio (hAP ax²:
+   18 dBm am Anschluss auf allen 5-GHz-Kanälen) dann mit `txPower` auf seinen Höchstwert begrenzen. Ohne `g` (ältere
+   Messung, 6-GHz-Radios melden keinen) gilt `tx` allein – das unterschätzt Radios mit Antennengewinn. Bis DW3.9.2
+   rechnete der Vorschlag `tx` als EIRP: 5745–5825 kostete dadurch fast nichts (Hardware 2026-11-19: „robust“ schlug
+   5825/20 statt 5180/80 vor, 9 dB weniger Leistung). Die Zeile „Leistung vor dem Scan“ der Ausgabe zeigt die Werte
+   je AP.
 6. **Pläne:** „breit“ zählt dazu 20 je fehlender Verdopplung bis zur höchsten Breite (80 statt 40: ≈ ein fremdes
    Netz mit −75 dBm voll überlappend). „robust“ lässt eigene APs, die sich hören, nicht überlappen und zählt die
    Breite nur bei Gleichstand; geht das nicht, steht „(ohne Überlappung eigener APs nicht möglich)“ dahinter.
-7. **Suche:** alle Kombinationen der je AP besten K Kandidaten (höchstens ~2000 Pläne, bei drei APs K = 12), danach
-   zweimal reihum je AP alle Kandidaten bei festen übrigen.
+7. **Suche** (DW3.9.2): Startpunkt ist der laufende Plan („Aktuell“) – kein Vorschlag ist schlechter als er. Dann alle
+   Kombinationen der je AP besten K Kandidaten aus **verschiedenen Blöcken** (höchstens ~2000 Pläne, bei drei APs
+   K = 12, bei fünf K = 4), danach zweimal reihum je AP alle Kandidaten bei festen übrigen, je zwei APs zugleich ihre
+   sechs besten Blöcke und noch eine Runde je AP. Vorher waren die besten K oft derselbe Block mit anderem
+   Primärkanal; bei fünf APs blieb die Suche so in einem lokalen Minimum (Hardware 2026-11-19: „breit“ Kosten 52,
+   der laufende Plan 27).
 8. **„Aktuell“** mit Kanal und Breite vom CAPsMAN, gelesen **vor** dem Scan (während des Scans meldet das Radio die
    Scan-Kanäle; mit `data=yes` live, sonst aus der Messung); Zusätze wie `/D` (DFS) in `5500/ax/Ceee/D` zählen nicht
    zur Breite (DW3.9.1). Liegt ein Kanal außerhalb der Kandidaten (z.B. 5660/80, über 5725), steht „(kein
@@ -1464,9 +1498,11 @@ Ohne den Anteil „Breite“ liegen beide gleich (41 zu 40), keiner lässt eigen
 40 MHz und ap1 40 statt 20 MHz und braucht dafür nur einen DFS-Kanal (ap1) statt zwei – gewählt wurde „breit“
 (Release v41). Der Anteil „Leistung 21“ (ap2 auf 5180: 7 dB unter 30 dBm) war ein Fehler: Die Leistung wurde nach dem
 Scan gelesen und war dort unzuverlässig; das Radio schafft ohnehin nur 18 dBm (`monitor` 19.11.). Seit DW3.9.1 liest der Befehl sie vor dem Scan, der
-Anteil fällt dort weg.
+Anteil fällt dort weg. Seit DW3.9.2 (Leistung als EIRP mit Antennengewinn) kann er als „Reserve bis 30 angenommen“
+wiederkommen – ob ein Radio mehr kann, verrät RouterOS nicht; für solche hAP ax² `txPower` `"5"=18` setzen.
 
-**Vorschlag übernehmen** (Ablauf an einem Standort 2026-11-18): die Zeile `"radios"=…` in `wifi.rsc` einsetzen,
+**Vorschlag übernehmen** (Ablauf an einem Standort 2026-11-18): die Zeile `"radios"=…` in `wifi.rsc` einsetzen – im
+cfm-Editor nach einem WLAN-Scan per Knopf, z.B. ‚„breit“ übernehmen‘ (8.19) –,
 `$cfmCheck`, `$cfmRelease`, Ringe durch (`$cfmPromote`; an den APs ändert sich nur der Fallback-Kanal, die Pins setzt
 der CAPsMAN um). Der Apply am CAPsMAN provisioniert nur dessen eigene Radios neu und meldet die übrigen als
 „CAP-Radio … veraltet“ – erst **`/system/script/run cfm-reprov`** am CAPsMAN bringt die APs auf die neuen Kanäle
@@ -1927,17 +1963,16 @@ Darum je Band `join`/`drop` setzen (5/6 GHz) bzw. `minSignal`. `kick` wirkt bei 
 −90…−92, `hold` 2–3 min. Unter etwa −80 dBm war auf 2,4 GHz kaum noch Verkehr möglich. Lockerer zu setzen bringt
 dann keine Verbindung, nur längeres Kleben am fernen AP.
 
-**Prüfen, ob die Vorschläge hinausgehen:** `wireless,debug` in einen RAM-Puffer loggen (am CAPsMAN):
+**Prüfen, ob die Vorschläge hinausgehen:** `wireless,debug` in einen RAM-Puffer loggen (am CAPsMAN) – seit DU3.5 per
+`global.rsc` `"wifiDebug"={"<CAPsMAN>"=50000}` und Release (vorher ein Handeintrag), dann:
 ```
-/system/logging/action/add name=wdebug target=memory memory-lines=50000
-/system/logging/add topics=wireless,debug action=wdebug
-/log/print where buffer=wdebug and message~"transition"
+/log/print where buffer=cfmwdebug and message~"transition"
 ```
 `all 3 transition requests sent` heißt: drei Vorschläge gesendet, der Client blieb. **Mit `count=unlimited`
 steht dort nur `0 transition requests sent`**, auch wenn Vorschläge hinausgehen – für Tests `count` als Zahl
 setzen (z.B. 15). Ob der Client sie bekommt und warum er ablehnt, zeigt nur ein Log am Client (z.B.
 wpa_supplicant im Debug-Modus); in der Luft sind die Vorschläge mit PMF verschlüsselt, mit WPA3 (SAE) lässt
-sich das aus der Passphrase nicht entschlüsseln. Danach Regel und Aktion wieder löschen (Handänderung).
+sich das aus der Passphrase nicht entschlüsseln. Danach `wifiDebug` wieder leeren und releasen.
 
 **Reichweite am Rand:** Die Radios mit wifi-qcom können kein 802.11b. Ihre Beacons gehen mit mindestens
 6 Mbit/s hinaus, ein alter AP mit 802.11b (1 Mbit/s) ist am Rand daher noch einige dB länger sichtbar. Einstellen
@@ -2023,6 +2058,95 @@ eine eigene Liste an seiner Lease:
 Hinweise: Ein `*.domain`-Eintrag gilt für alle Listen-Nutzer derselben Domain; die DNS-Antworten gehen an den
 Adlisten vorbei (die Domain ist erlaubt). `address-list-extra-time` steht auf 30 min, weil Geräte Adressen länger als
 die TTL behalten. Wechselt das Gerät später die Zone oder die Adresse, zieht die Regel mit der Lease um.
+
+### 8.19 WLAN-Kanäle planen (DW3.9.2)
+
+Ein guter Kanalplan wägt vier Dinge ab: **Leistung** (wie weit ein AP reicht), **Breite** (Durchsatz je AP),
+**Störungen** (fremde Netze und die eigenen APs, die sich hören) und **DFS** (Wartezeit und Kanalwechsel bei Radar).
+Werkzeuge: `$cfmChannels` (Kanal und Leistung je AP, live), `$cfmWifiScan` (Messung und Vorschlag), im cfm-Editor die
+Knöpfe „Kanäle“ und „WLAN-Scan“ (Vorschlag in `wifi.rsc` übernehmen) und für Messungen am Rand `wifiDebug`
+(`global.rsc`, Kapitel 4).
+
+#### Die 5-GHz-Teilbänder (EU, `country=Germany`)
+
+| Bereich (MHz) | Kanäle | höchstens (EIRP) | DFS | Hinweis |
+|---|---|---|---|---|
+| 5150–5250 | 36–48 | 23 dBm | nein | nur innen; der einzige 80-MHz-Block ohne DFS mit voller Leistung |
+| 5250–5350 | 52–64 | 23 dBm | ja, CAC 60 s | nur innen |
+| 5470–5725 | 100–140 | 30 dBm | ja, CAC 60 s; 5600–5650 (120–128, Wetterradar) 10 min | 80 MHz: 100–112, (116–128 Wetterradar); 132–136 nur bis 40 MHz, 140 nur 20 MHz |
+| 5725–5850 | 149–165 | 14 dBm | nein | 9 dB weniger als 36–48, 16 dB weniger als 100–140 |
+| 5945–6425 (6 GHz) | 1–93 | 23 dBm | nein | nur WPA3 mit PMF; reicht kaum durch Wände |
+
+Die Grenzen setzt RouterOS selbst (`country`). `$cfmCheck` lehnt Blöcke über 5725 MHz ab (DW3.8).
+
+#### Leistung: am Anschluss, Antennengewinn, EIRP
+
+* `monitor` zeigt `tx-power` **am Antennenanschluss**. RouterOS hält `tx-power` + eingebauten Antennengewinn
+  (`min-antenna-gain` des Radios: hAP ax³ 6 dB, hAP be³ 8 dB auf 5 GHz) unter der Grenze des Teilbands. Ein hAP ax³
+  auf 5745 zeigt deshalb 8 dBm (= 14 EIRP), auf 5500 24 dBm (= 30 EIRP). `$cfmChannels` rechnet das in der Spalte
+  `DBM` vor (`8+6=14`), `$cfmWifiScan` in der Zeile „Leistung vor dem Scan“.
+* **Mehr Leistung am AP hilft vor allem in eine Richtung.** Das Handy sendet unverändert leise; das Signal, das der AP
+  vom Client meldet (Registration-Tabelle, `$cfmFind`), ändert sich kaum. Besser werden Empfang und Rate am Client:
+  An einem Standort (19.11.) hörte der AP ein Handy an der Haustür nach dem Wechsel von 14 auf 30 dBm EIRP weiter mit
+  −77 bis −82 dBm, sendete ihm aber mit 69–103 Mbit/s statt es auf 2,4 GHz fallen zu lassen; die Verbindung riss erst
+  bei −87 dBm ab. Den Erfolg daher an der Rate AP → Client (`tx-rate`) oder an einer Messung am Client ablesen.
+* **Faustregel:** Ein AP am Rand der Abdeckung (Einfahrt, Garten, Garage) gehört in einen Block mit viel Leistung –
+  100–112 (DFS, 30 dBm) oder 36–48 (23 dBm) –, nicht auf 149–165. Dort nur APs, die bewusst leise senden sollen,
+  oder wenn die anderen Blöcke schon von eigenen APs belegt sind, die sich hören.
+* Ein Radio, das weniger kann als die Grenze (hAP ax²: 18 dBm am Anschluss auf allen 5-GHz-Kanälen), sieht der
+  Vorschlag nur, wenn es dabei schon unter einer Grenze gemessen wurde; sonst nimmt er Reserve an, wertet sie aber
+  nur mit 1 je dB („Reserve bis 30 angenommen, zählt 1 je dB“). Belegt ist sie erst mit einer Messung auf dem
+  Teilband (z.B. 24 + 6 = 30 auf 5500). Für Radios, die weniger können, `txPower` auf den Höchstwert setzen.
+
+#### DFS: Wartezeit und Radar
+
+* **CAC** (Channel Availability Check): Nach jedem Start des Radios auf einem DFS-Kanal – Neustart, `cfm-reprov`,
+  neuer Kanal, im lokalen Fallback – lauscht es mindestens 60 s (Wetterradar 10 min), bevor es sendet. In der Zeit
+  ist 5 GHz an diesem AP still, die Clients weichen auf 2,4 GHz oder andere APs aus. `monitor` zeigt dabei `/D`.
+* **Radar:** Erkennt das Radio Radar, verlässt es den Kanal und meidet ihn danach 30 min. Erkennbar daran, dass
+  `$cfmChannels` einen anderen Kanal als den Pin zeigt (oder eine neue Warnung „mehrfach“); im Syslog (Graylog) nach
+  `radar` suchen. Flughafen-Rundsichtradare senden meist im S-Band (2,7–2,9 GHz), nicht bei 5 GHz; auf 5 GHz
+  schützt DFS vor allem Wetterradar (5600–5650, `skipDfs` `10min-cac` lässt es aus) und einzelne andere Radare.
+  Fehlalarme gibt es. Springt ein AP öfter, ihn auf 36–48 legen.
+* **Wann DFS lohnt:** wenn ein AP weit reichen muss (Rand, außen) oder mehr getrennte 80-MHz-Blöcke nötig sind, als
+  36–48 hergibt. Nicht für jeden AP: Ein CAC oder Radar trifft dann viele zugleich. Gut verteilt: höchstens ein
+  DFS-AP je Bereich, seine Nachbarn ohne DFS fangen die Clients während der CAC auf.
+* Der Vorschlag rechnet DFS an APs mit lokalem Fallback mit 20 (Wetterradar 60) – ungefähr so viel wie 7 dB
+  gemessene Leistung (3 je dB), aber viel mehr als 7 dB nur angenommene Reserve (1 je dB). Die Zeile „Anteile“ zeigt,
+  was den Ausschlag gab.
+
+#### Ablauf
+
+1. **Vorher:** fremde WLANs, die bleiben sollen, laufen; abgeschaltete alte Netze sind aus. Nach dem letzten
+   Release mit WLAN-Änderung ~5 min warten (direkt nach dem Verbinden meldet `monitor` unzuverlässig).
+2. **`$cfmChannels`** (Editor: „Kanäle“): Steht jeder AP live (`*`) auf seinem Pin? Ist die Leistung plausibel
+   (z.B. nicht 14 dBm EIRP an einem Rand-AP)?
+3. **`$cfmWifiScan band=5`** (Editor: „WLAN-Scan“, Band 5 GHz). Je AP ~10 s ohne 5 GHz – nicht zur Hauptzeit. Lesen:
+   fremde Netze je Frequenz, eigene Nachbarn, „Leistung vor dem Scan“, „Aktuell“, die Pläne „breit“ und „robust“ mit
+   ihren Anteilen. Zum Vergleich ohne neuen Scan: `data=yes all=yes` (alle EU-Kanäle, auch DFS außerhalb des Pools).
+   Danach `band=6`; 2,4 GHz erst, wenn keine Altgeräte mehr ein eigenes Netz brauchen.
+4. **Entscheiden:** „breit“ oder „robust“ (8.7), DFS ja oder nein (oben), Rand-APs mit voller Leistung. Ein Pin
+   außerhalb des Pools (aus `all=yes`): den Kanal in `channels` → `"5"` → `freq` ergänzen.
+5. **Übernehmen:** im Editor der Knopf ‚„breit“ übernehmen‘ bzw. ‚„robust“ übernehmen‘: ersetzt in `wifi.rsc` nur das gescannte Band je AP,
+   die übrigen Pins bleiben, der alte Eintrag steht als Rückweg-Kommentar unter dem Array. Speichern, „Prüfen“,
+   „Probelauf“ für den CAPsMAN, „Release (Ring 0)“, Ringe weiter. Meldet der CAPsMAN „CAP-Radio … veraltet“, dort
+   `/system/script/run cfm-reprov`. Ohne Editor: die Zeile `"radios"=…` von Hand einsetzen.
+6. **Prüfen:** `$cfmChannels` (alle auf dem neuen Plan, keine „mehrfach“-Warnung), DFS-Kanäle nach der CAC; ein Gang
+   mit dem Handy durch die Randbereiche. Für Abweisungen und Abbrüche am Rand: `wifiDebug` am CAPsMAN einschalten.
+7. **Beobachten:** einige Tage `$cfmChannels` (Radar), Rückmeldungen der Nutzer. Zurück: Rückweg-Zeile einsetzen,
+   Release, `cfm-reprov`.
+
+#### Messen am Rand der Abdeckung
+
+* Anmelden am Rand: Bänder mit Trennschwelle nehmen Clients bis `join` an, `minSignal` gilt dort nicht (4,
+  `wifi.rsc`). Abweisungen loggt RouterOS nur unter `wireless,debug` – also `wifiDebug` einschalten, dann
+  `/log/print where buffer=cfmwdebug`.
+* Beide Richtungen messen: AP-Seite aus der Registration-Tabelle (Signal = Uplink, `tx-rate` = Downlink-Rate), die
+  Client-Seite mit einer App oder einem Skript auf dem Gerät (Empfangsstärke, Link-Rate). Erst beide zusammen zeigen,
+  ob ein Abriss am AP (Uplink) oder am Client liegt.
+* An mehreren Tagen messen, bevor `join`/`minSignal` gelockert werden: Die Luftfeuchte selbst dämpft auf wenigen
+  Dutzend Metern kaum, nasses Laub, beschlagene oder nasse Scheiben und Personen im Weg aber schon, und Clients
+  verhalten sich je nach Akku- und Energiesparzustand anders.
 
 ## 9. Sicherheitsnetze und Notfälle
 
@@ -2303,9 +2427,9 @@ Inventarname.
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
 | `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
-| `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN), Warnung bei gleichem Kanal an einem Switch |
+| `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN) live vom CAPsMAN, Sendeleistung am Anschluss + Antennengewinn = EIRP (Spalte `DBM`), Warnung bei gleichem Kanal an einem Switch |
 | `$cfmSniff host=<router> mac=<MAC,…>\|lease=<Name,…> [dauer=2h] [max=20] [iface=…] [mirror=<Port>]` | Mitschnitt nur dieser Geräte auf einem Gerät mit Rolle `router`/`manager` (DU2.3); nach `dauer` holt der Manager-Tick die Datei nach `sniff/` (abholen per scp, auswerten mit `tools/pcap-ziele.py`); `stop=yes` beendet vorzeitig, ohne Argumente Übersicht. Sieht nur Verkehr über die CPU (geroutet oder eigene Radios); vom Switch-Chip gebrückten Verkehr holt `mirror=<Port>` dazu (Port zur CPU spiegeln, DU2.3.1, auf Hardware ungetestet; Last auf der CPU, am Ende zurückgebaut) |
-| `$cfmWifiScan [host=<ap>] [band=2\|5\|6] [duration=10s] [data=yes] [all=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze), für 5/6 GHz Kanal und Breite je AP als Plan „breit“ und „robust“ (DW3.9; `all=yes`: alle EU-Kanäle statt des Pools); `host=` ersetzt nur diesen AP in der letzten Messung |
+| `$cfmWifiScan [host=<ap>] [band=2\|5\|6] [duration=10s] [data=yes] [all=yes]` | Kanal-Scan aller APs (und des mitfunkenden CAPsMAN) nacheinander über den CAPsMAN (Clients wechseln kurz), Pin-Vorschlag für 2,4 GHz (Kostenmodell 8.7, mit den anderen Funknetzen aus `others` und einem Kanalvorschlag für neue Zigbee-/Thread-Netze), für 5/6 GHz Kanal und Breite je AP als Plan „breit“ und „robust“ (DW3.9, DW3.9.2: Leistung als EIRP, Start beim laufenden Plan, Vorschlag auch bei freiem Spektrum, APs ohne Radio im Band übersprungen; `all=yes`: alle EU-Kanäle statt des Pools); `host=` ersetzt nur diesen AP in der letzten Messung; Leitfaden 8.19 |
 | `$cfmRegister name= serial= ip= [role=] [ring=] [pw=]` | Gerät für das Onboarding registrieren |
 | `$cfmOnboard sw= port= [name=]` · `$cfmOnboardStatus` · `$cfmOnboardAbort` | automatisches Onboarding |
 | `$cfmOnboard manual=yes [name=] [sw= port=]` | Onboarding hinter einem nicht verwalteten Switch, Port schaltet der Admin (DO1.7) |

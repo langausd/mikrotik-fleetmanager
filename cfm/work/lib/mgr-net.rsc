@@ -207,11 +207,15 @@
 
 # ---------- WLAN-Kanäle ----------
 # Kanäle jetzt, vom CAPsMAN (TODO 91): {"<Gerät>-<Band>g"="5500/ax/Ceee/D"} für Radios, die der CAPsMAN (oder er selbst
-# mit capsmanRadios) betreibt; virtuelle APs (Name mit Nummer am Ende) nicht. Leer, wenn kein CAPsMAN antwortet
+# mit capsmanRadios) betreibt; virtuelle APs (Name mit Nummer am Ende) nicht. Leer, wenn kein CAPsMAN antwortet.
+# Dazu je Radio (TODO 96): "|tx" Sendeleistung am Anschluss (monitor tx-power), "|g" Antennengewinn (antenna-gain der
+# Konfiguration, sonst min-antenna-gain des Radios - damit rechnet RouterOS die EIRP-Grenze: tx + g = Grenze).
+# Hardware 2026-11-19: hAP ax³ 8+6=14 auf 5745, 24+6=30 auf 5500; hAP be³ 15+8=23 auf 5180; 6-GHz-Radios ohne
+# min-antenna-gain. current-max-reg-power taugt nicht (30 auch auf 5180: höchste Grenze des Bands im Land)
 :global cfmChLive do={
   :global cfmCapsmen; :global cfmExec
   :local r ({})
-  :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :local n [/interface/wifi/get \$i name]; :local t [:pick \$n ([:len \$n] - 3) [:len \$n]]; :if (\$t = \"-2g\" or \$t = \"-5g\" or \$t = \"-6g\") do={ :local c \"\"; :onerror e in={ :local m [/interface/wifi/monitor \$i once as-value]; :set c [:tostr (\$m->\"channel\")]; :set (\$o->(\$n . \"|tx\")) [:tostr (\$m->\"tx-power\")] } do={}; :set (\$o->\$n) \$c } }; :put [:serialize to=json \$o]"
+  :local oc ":local o ({}); :foreach i in=[/interface/wifi/find] do={ :local n [/interface/wifi/get \$i name]; :local t [:pick \$n ([:len \$n] - 3) [:len \$n]]; :if (\$t = \"-2g\" or \$t = \"-5g\" or \$t = \"-6g\") do={ :local c \"\"; :onerror e in={ :local m [/interface/wifi/monitor \$i once as-value]; :set c [:tostr (\$m->\"channel\")]; :set (\$o->(\$n . \"|tx\")) [:tostr (\$m->\"tx-power\")] } do={}; :onerror e in={ :local g [:tostr ([/interface/wifi/get \$i]->\"configuration.antenna-gain\")]; :local rd [/interface/wifi/radio/find where interface=\$n]; :if ([:len \$rd] > 0) do={ :if ([:len \$g] = 0) do={ :set g [:tostr ([/interface/wifi/radio/get [:pick \$rd 0]]->\"min-antenna-gain\")] } }; :set (\$o->(\$n . \"|g\")) \$g } do={}; :set (\$o->\$n) \$c } }; :put [:serialize to=json \$o]"
   :foreach c in=[$cfmCapsmen $inv] do={
     :onerror e in={
       :local x [$cfmExec ip=($c->"ip") cmd=$oc]
@@ -253,11 +257,20 @@
         :local bd [:pick $ch 0 1]
         :if ($bd = "5" and [:tonum [:pick $ch 0 4]] >= 5925) do={ :set bd "6" }
         :local lk ($name . "-" . $bd . "g")
-        :if ([:len [:tostr ($live->$lk)]] > 0) do={ :set ch ([:tostr ($live->$lk)] . " *") }
+        :local pw ""
+        :if ([:len [:tostr ($live->$lk)]] > 0) do={
+          :set ch ([:tostr ($live->$lk)] . " *")
+          # Leistung (TODO 96): am Anschluss + Antennengewinn = EIRP
+          :local tx [:tostr ($live->($lk . "|tx"))]
+          :local ag [:tostr ($live->($lk . "|g"))]
+          :if ([:len $tx] > 0) do={ :set tx [:pick $tx 0 [:find ($tx . ".") "."]] }
+          :if ([:len $ag] > 0) do={ :set ag [:pick $ag 0 [:find ($ag . ".") "."]] }
+          :if ([:len $tx] > 0 and [:len $ag] > 0) do={ :set pw ($tx . "+" . $ag . "=" . ([:tonum $tx] + [:tonum $ag])) } else={ :set pw $tx }
+        }
         :local fq [:pick $ch 0 [:find ($ch . "/") "/"]]
         :if ([:typeof [:find $fq " "]] = "num") do={ :set fq [:pick $fq 0 [:find $fq " "]] }
         :set n ($n + 1)
-        :set rows ($rows . [$cfmPad $name 10] . [$cfmPad [:tostr ($r->0)] 10] . [$cfmPad $ch 22] . $sw . "\n")
+        :set rows ($rows . [$cfmPad $name 10] . [$cfmPad [:tostr ($r->0)] 10] . [$cfmPad $ch 22] . [$cfmPad $pw 10] . $sw . "\n")
         :if ([:len $fq] > 0 and [:len $sw] > 0) do={
           :local k ($sw . "|" . $fq)
           :if ([:typeof ($by->$k)] != "array") do={ :set ($by->$k) ({}) }
@@ -280,9 +293,9 @@
     :put "keine Funkdaten: APs melden ihre Kanäle mit jedem Agent-Lauf (Status-Feld radios)"
     :return $warn
   }
-  :put ([$cfmPad "AP" 10] . [$cfmPad "RADIO" 10] . [$cfmPad "KANAL" 22] . "SWITCH")
+  :put ([$cfmPad "AP" 10] . [$cfmPad "RADIO" 10] . [$cfmPad "KANAL" 22] . [$cfmPad "DBM" 10] . "SWITCH")
   :global cfmPutLines; $cfmPutLines $rows
-  :if ([:len $live] > 0) do={ :put "* = live vom CAPsMAN (monitor), sonst Stand des letzten Agent-Laufs" }
+  :if ([:len $live] > 0) do={ :put "* = live vom CAPsMAN (monitor), sonst Stand des letzten Agent-Laufs; DBM = am Anschluss + Antennengewinn = EIRP" }
   :foreach x in=$warn do={ :put ("Warnung: " . $x) }
   :return $warn
 }

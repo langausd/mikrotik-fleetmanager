@@ -14,6 +14,7 @@
   "syslogFormat"="syslog";
   "snmp"={};
   "logMemory"="info,!system";
+  "wifiDebug"={};
   "interval"="15m";
   "reapply"="1d";
   "watchdog"="5m";
@@ -93,6 +94,10 @@
 #             Passwörter NUR im Vault, ein Satz für alle Geräte (mindestens 8 Zeichen):
 #             $cfmSecret key=snmp.auth value=... und key=snmp.priv (Secret-Push). Die Standard-Community
 #             public (v1/v2c) wird abgeschaltet.
+#  wifiDebug  WLAN-Debug-Log für Messungen (DU3.5), z.B. {"cm1"=50000}: Gerät (Name wie im Inventar) -> Zeilen
+#             im RAM-Puffer cfmwdebug (1000-100000) mit topics wireless,debug - Anmeldungen, Abweisungen der
+#             access-list, Abbrüche, 802.11v. Lesen: /log/print where buffer=cfmwdebug. {} = aus (Eintrag
+#             entfernen: die Rolle räumt Regel und Puffer weg). Nur für Messungen, nicht dauerhaft.
 #  capsmanApi Lese-Zugang per RouterOS-API auf dem CAPsMAN (DU2.1), z.B. für Home Assistant (welcher
 #             Client an welchem AP), und auf Geräten mit portSwitch (Port aus HA schalten, DP1.4.1).
 #             {"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}

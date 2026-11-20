@@ -26,6 +26,8 @@ jobs:
           sudo apt-get install -y -q gjs
           sudo apt-get install -y -q libzbar0t64 || sudo apt-get install -y -q libzbar0
           /usr/bin/python3 tools/editor/cfm-qr-test.py -v
+      - name: Kanalvorschlag übernehmen im cfm-Editor (cfm-radios.js in node)
+        run: python3 tools/editor/cfm-radios-test.py -v
       - name: upload-seed.sh gegen einen nachgebauten SFTP-Server
         run: python3 tools/upload-seed-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site

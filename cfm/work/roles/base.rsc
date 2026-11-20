@@ -481,6 +481,19 @@ $cfmSet m="/system/clock" p=({"time-zone-autodetect"="no";"time-zone-name"=($cfm
     /system/logging/remove [find where action="cfmremote"]
   }
 }
+# WLAN-Debug-Log für Messungen (DU3.5, TODO 96): global.rsc "wifiDebug"={"<Gerät>"=<RAM-Zeilen>} - Aktion cfmwdebug
+# (RAM) und Regel wireless,debug -> cfmwdebug, z.B. am CAPsMAN: Anmeldungen, Abweisungen (access-list), Abbrüche,
+# 802.11v. Ersetzt den Handeintrag der Dauermessung. Entfällt der Eintrag, entfernt die Rolle die Regel, solange es
+# die Aktion noch gibt (wie bei cfmremote), und die GC die Aktion; die Zeilen im RAM sind dann weg
+:local wdl [:tostr ($cfmG->"wifiDebug"->[:tostr ($cfmMf->"name")])]
+:if ([:len $wdl] > 0) do={
+  $cfmEnsure m="/system/logging/action" k="log:wdebug" n=({"name"="cfmwdebug"}) p=({"name"="cfmwdebug";"target"="memory";"memory-lines"=[:tonum $wdl]})
+  :if ([:len [/system/logging/find where action="cfmwdebug"]] = 0 and $cfmDry != true) do={ /system/logging/add action="cfmwdebug" topics="wireless,debug" }
+} else={
+  :if ([:len [/system/logging/action/find where name="cfmwdebug"]] > 0 and $cfmDry != true) do={
+    /system/logging/remove [find where action="cfmwdebug"]
+  }
+}
 # --- SNMPv3 nur lesend für LibreNMS (TODO 54, DU4.3): Feature-Modul lib/base.snmp.rsc (DG4.6), nur mit snmp.from.
 #     Ohne snmp räumt die GC die Community weg, /snmp selbst bleibt unangetastet ---
 :local snmp ($cfmG->"snmp")

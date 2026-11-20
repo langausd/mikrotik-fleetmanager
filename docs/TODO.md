@@ -1,10 +1,10 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-19)
+## Übersicht offener Punkte (Stand 2026-11-20)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 96). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 97). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -28,7 +28,23 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     Framework-Upload, kein Release*): `cfmScanBlk` versteht `5500/ax/Ceee/D` und `/I`; Kanal und Sendeleistung
     werden vor dem Scan gelesen; `$cfmCheck` warnt nicht mehr bei `radios`/`txPower` für den Manager als CAPsMAN
     (cm1). Hardware: nächster `$cfmWifiScan band=5` am Standort („Aktuell“ mit 80 MHz, keine Rollen-Warnung zu cm1);
-    6 GHz erstmals an einem Standort mit 6-GHz-Radios.
+    6 GHz erstmals an einem Standort mit 6-GHz-Radios. *Hardware 19.11. (5 CAPs, hAP be³ als CAPsMAN, 7.25.1):
+    „Aktuell“ mit Breite und `/D`/`/I` richtig, keine Rollen-Warnung; Leistung nicht bestanden → 96.*
+* **Neu 2026-11-19 (Hardware, zweiter Standort), in der Nacht umgesetzt (unbeaufsichtigt, Labor):**
+  * **96 – `$cfmWifiScan`: Leistung, Suche, 6 GHz** (*umgesetzt 20.11., DW3.9.2, Labor; Hardware offen*):
+    1. *Leistung als EIRP:* `monitor` meldet `tx-power` am Anschluss, RouterOS zieht `min-antenna-gain` ab (hAP ax³ 8 dBm
+       auf 5745 = 14 EIRP). Der Scan liest den Gewinn mit (`g`), rechnet EIRP und sagt in „Leistung vor dem Scan“, was
+       er annimmt; an der Grenze gemessen = „Reserve bis 30 angenommen“, zählt nur 1 je dB (schwächere Radios per `txPower`).
+       `$cfmChannels` mit Spalte `DBM`.
+    2. *Suche:* Start beim laufenden Plan, beste K je AP aus verschiedenen Blöcken, Paar-Tausch.
+    3. *6 GHz/freies Spektrum:* Vorschlag auch ohne gemessene Netze, APs ohne Radio im Band übersprungen.
+    4. *Radar beobachten:* erster DFS-Pin auf Hardware (5500/80, CAC ohne Logzeile) – beim ersten Treffer Meldung und
+       Verhalten in ROUTEROS-EIGENHEITEN festhalten.
+    5. *`minSignal`:* wirkt nur auf Bändern ohne `drop` – Admin-Guide, Vorlage und `$cfmCheck`-Hinweis.
+    Dazu (Nutzer): **MLO je SSID** (DW2.3.1, Hardware-Test ohne/mit MLO → 48), **`wifiDebug`** statt Handeintrag
+    (DU3.5), **Editor** „Kanäle“/„WLAN-Scan“ mit Übernehmen (DT3.5), Admin-Guide **8.19 WLAN-Kanäle planen**.
+    Hardware: `$cfmWifiScan band=5` am Standort (Leistungszeile plausibel, „breit“ ≤ Aktuell), `band=6` mit Vorschlag,
+    Editor-Knöpfe im Browser, `wifiDebug` am CAPsMAN, MLO-Test (48).
 * **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
   * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
     Interface ohne eigenen (`cfm:wdp…`); der Plan wollte Radios und Slaves entfernen. Fix im Arbeitsstand
@@ -268,7 +284,9 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 48. **RouterOS 7.25 – Rest** (Befunde und Changelog-Durchsicht: [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen),
     Läufe: [TESTSTAND.md](TESTSTAND.md)): **FT für MLD-Geräte** („wifi - add fast transition support for MLD
     devices“): DW2.3 hat MLO abgeschaltet, weil der hAP be³ als MLD kein FT anbot. Mit einem Client prüfen, ob
-    MLO mit FT jetzt geht (`wifi.rsc` `mlo`); danach ggf. MLO für weitere SSIDs oder lokal (32).
+    MLO mit FT jetzt geht – seit DW2.3.1 je SSID (`"mlo"="enabled"` nur an der Master-SSID); geplant: direkt
+    hintereinander ohne und mit MLO, im Haus und an den Messpunkten am Rand (Dauermessung). Danach ggf. MLO für
+    weitere SSIDs oder lokal (32).
 49. **RouterOS 7.26beta1 (Kanal development, 2026-10-01)** – `e2e.sh` im Labor grün ([TESTSTAND.md](TESTSTAND.md)).
     Punkte aus dem Changelog, die cfm berühren können:
     * „l3hw - add VRRP hardware offloading support“: DR1.2 schaltet für VRRP das Routing im Switch-Chip

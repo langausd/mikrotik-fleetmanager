@@ -586,6 +586,17 @@
   } else={ :if ([:typeof $snmp] != "nothing") do={ :set ($err->[:len $err]) "global.rsc: snmp muss ein Array sein ({\"from\"=…})" } }
   :local slf [:tostr ($cfmG->"syslogFormat")]
   :if ([:len $slf] > 0 and $slf != "syslog" and $slf != "default") do={ :set ($err->[:len $err]) ("global.rsc: syslogFormat=" . $slf . " unbekannt (syslog|default)") }
+  # WLAN-Debug-Log (DU3.5): {"<Gerät>"=<RAM-Zeilen>}; der Name muss genau so im Inventar stehen (die Rolle vergleicht
+  # mit dem eigenen Namen)
+  :local wdg ($cfmG->"wifiDebug")
+  :if ([:typeof $wdg] = "array") do={
+    :foreach dn,ln in=$wdg do={
+      :if ([:typeof ($inv->$dn)] != "array") do={ :set ($warn->[:len $warn]) ("global.rsc: wifiDebug nennt " . $dn . ", nicht im Inventar (Groß/Klein wie dort)") }
+      :local n [:tonum $ln]
+      :if ([:typeof $n] != "num" or $n < 1000 or $n > 100000) do={ :set ($err->[:len $err]) ("global.rsc: wifiDebug " . $dn . "=" . [:tostr $ln] . ": RAM-Zeilen 1000-100000") }
+    }
+    :if ([:len $wdg] > 0) do={ :set ($note->[:len $note]) ("global.rsc: wifiDebug an (" . [:len $wdg] . " Gerät(e)) - Puffer cfmwdebug wieder abschalten, wenn die Messung vorbei ist") }
+  } else={ :if ([:typeof $wdg] != "nothing" and [:len [:tostr $wdg]] > 0) do={ :set ($err->[:len $err]) "global.rsc: wifiDebug muss ein Array sein ({\"<Gerät>\"=50000})" } }
   # WLAN (lib/mgr-checkw.rsc, TODO 73): aus demselben Stand wie die Daten laden - $cfmRelease importiert
   # nur diese Datei aus work/, die installierte WLAN-Prüfung wäre nach einem Framework-Update veraltet.
   # Fehlt die Datei im Stand (Probelauf aus einem alten Verzeichnis), prüft die installierte.

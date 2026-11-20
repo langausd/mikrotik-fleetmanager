@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-16).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-20).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -12,7 +12,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-16 der Gesamttest (485 Prüfungen), am 2026-11-12 abends der Gesamttest (477) und drei VRRP-Router mit
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-20 der Gesamttest (532 Prüfungen), VRRP (184), MLAG (72) und das Onboarding (14/15/18), am 2026-11-16 der Gesamttest (485), am 2026-11-12 abends der Gesamttest (477) und drei VRRP-Router mit
   Standortkopplung (184, dazu `asymRouting` mit Netzen DR3.2.1 und Standort ohne `pubkey` DR4.3.1), am Vormittag
   desselben Tages der Gesamttest (477, zwei veraltete Erwartungen korrigiert) und VRRP (164); am 2026-11-08 der Gesamttest (469), VRRP (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
@@ -43,6 +43,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   von `$cfmCheck` (Schritt 7), `$cfmIsPrimary` ohne Daten auf dem Backup (Schritt 10) und Manager-Module aus `work/`
   samt Sperre nach einem Rollback (Schritt 17, DM1.4).
 * `tools/editor/cfm-qr-test.py`: QR-Encoder des WLAN-Schilds (gjs erzeugt, libzbar dekodiert), auch in der CI.
+* `tools/editor/cfm-radios-test.py`: Kanalvorschlag in `wifi.rsc` übernehmen (node; nur das gescannte Band, Rückweg-Kommentar), auch in der CI.
 * `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15) und hinter
   einem nicht verwalteten Switch (18).
 * `e2e-vrrp.sh`: drei VRRP-Router hinter einem Internet-Router im LAN (5 VMs) – VIPs und DHCP nur auf dem Master,
@@ -137,6 +138,14 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   zwei Fehler im neuen Test selbst (Array-Argumente ohne `({…})`, `$out` überschrieben – korrigiert, beide Prüfungen
   einzeln am Manager-Stand nach dem Lauf grün) und zwei Zeitfehler ohne Bezug zu TODO 95 („ppskOnly im Probelauf“:
   Agent noch beschäftigt; „cm2 Apply v21“: `agentwait`-Timeout, Prüfung danach grün).
+  2026-11-19/20 (Nachtschicht, TODO 96: DW3.9.2, DW2.3.1, DU3.5, DT3.5): `e2e.sh` erster Lauf 527 von 531 – rot
+  drei Scan-Prüfungen (Startpunkt der Suche aus einem lückenhaften `radios`, angenommene Leistungsreserve zu hoch
+  gewichtet – alle APs auf DFS; Code korrigiert) und die neue Prüfung „MLO wieder aus, Puffer cfmwdebug und Regel
+  entfernt“ (die Prüfung selbst: `find where action="cfmwdebug"` trifft ohne die Aktion die Regeln von `memory`,
+  ROUTEROS-EIGENHEITEN); zweiter Lauf 518 von 532 – rot nur Schritt 13 (Abbruch des Paket-Downloads „Bad message“,
+  14 Folgefehler; vom Rechner aus gleich danach geladen); Wiederholung **532 von 532**. Mit dem Stand davor (Änderungen
+  danach nur in `mgr-scan`, `$cfmAudit` und Kommentaren): `e2e-vrrp.sh` **184**, `e2e-mlag.sh` **72**,
+  `e2e-onboard.sh` **14/15/18**. Dazu `cfm-radios-test.py` 6.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

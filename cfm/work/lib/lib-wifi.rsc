@@ -6,6 +6,34 @@
 # deren Syntaxfallen gelten hier ebenso.
 # ============================================================
 
+# MLO je SSID (DW2.3.1): {"<SSID-Schlüssel>"=true|false} aus "mlo" im ssids-Eintrag ("enabled"/"disabled"), sonst aus
+# dem globalen "mlo" (Standard disabled): Master an bei master/all/auto, weitere SSIDs nur bei all/auto. RouterOS kann je
+# Provisioning-Regel nur die Master-SSID (multi-link-mode=master) oder alle (all) ins MLD nehmen - welche Kombination
+# erlaubt ist, prüft $cfmCheck; $cfmMloMode liefert den Wert für eine Regel mit diesen Slave-Schlüsseln.
+:global cfmMloOf do={
+  :local g [:tostr ($w->"mlo")]
+  :local mk [:tostr ($w->"master")]
+  :local r ({})
+  :foreach k,s in=($w->"ssids") do={
+    :local v [:tostr ($s->"mlo")]
+    :if ([:len $v] > 0) do={ :set ($r->$k) ($v = "enabled") } else={
+      :if ($k = $mk) do={ :set ($r->$k) ($g = "master" or $g = "all" or $g = "auto") } else={ :set ($r->$k) ($g = "all" or $g = "auto") }
+    }
+  }
+  :return $r
+}
+:global cfmMloMode do={
+  :local mk [:tostr ($w->"master")]
+  :if (($ml->$mk) != true) do={ :return "disabled" }
+  :local en 0
+  :foreach k in=$sk do={ :if (($ml->$k) = true) do={ :set en ($en + 1) } }
+  :if ($en = 0) do={ :return "master" }
+  # gemischt: nur die Master-SSID ($cfmCheck meldet den Fehler); alle: auto, wenn global so gewünscht
+  :if ($en < [:len $sk]) do={ :return "master" }
+  :if ([:tostr ($w->"mlo")] = "auto") do={ :return "auto" }
+  :return "all"
+}
+
 # WLAN-Profile aus wifi.rsc (DW1.5/DW1.6), gemeinsam für den CAPsMAN und den lokalen Fallback der APs:
 # Steering, Kanal-Pools, je SSID Security (Passphrase nur per Secret-Push), Datapath (Bridge + VLAN)
 # und Konfiguration, PPSK-Einträge, dazu je Band die Master-Konfiguration mit dem Kanal.
@@ -326,15 +354,17 @@
     $mcfg key=("m" . $b) name=("cfm-m" . $b) s=$ms mk=$mk country=($w->"country") ch=("cfm-" . $b . "g") sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b)
     :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b);"re"=""})
   }
-  # MLO (Wi-Fi 7): Standard aus - ein MLD bietet kein FT an ("MLO does not support Fast Transition"),
+  # MLO (Wi-Fi 7): Standard aus - ein MLD bot bis 7.24 kein FT an ("MLO does not support Fast Transition"),
   # Clients im FT-Verbund mieden deshalb die Wi-Fi-7-APs; außerdem gibt es nur ein mld-datapath je CAP
-  # (VLAN der Master-SSID), weitere SSIDs landeten per MLO dort. multi-link-mode kennt nicht jede
-  # RouterOS-Version: Probe gegen eine Regel, die es nicht gibt ("no such item" = Parameter bekannt).
-  :local mlm [:tostr ($w->"mlo")]
-  :if ([:len $mlm] = 0) do={ :set mlm "disabled" }
+  # (VLAN der Master-SSID), weitere SSIDs landeten per MLO dort. Je SSID (DW2.3.1): $cfmMloOf/$cfmMloMode
+  # -> multi-link-mode je Regel (disabled, master = nur die Master-SSID, all/auto = alle SSIDs der Regel).
+  # multi-link-mode kennt nicht jede RouterOS-Version: Probe gegen eine Regel, die es nicht gibt
+  # ("no such item" = Parameter bekannt).
+  :global cfmMloOf; :global cfmMloMode
+  :local mlx [$cfmMloOf w=$w]
   :local mlOk true
   :onerror e in={
-    :local f [:parse ("/interface/wifi/provisioning/set *FFFFFF multi-link-mode=" . $mlm)]
+    :local f [:parse "/interface/wifi/provisioning/set *FFFFFF multi-link-mode=disabled"]
     $f
   } do={ :if ($e ~ "bad parameter") do={ :set mlOk false } }
   :local pl ({})
@@ -352,6 +382,7 @@
       :set ($pl->[:len $pl]) ({"action"="none";"supported-bands"=($w->"channels"->$b->"band");"identity-regexp"=($r->"re")})
     } else={
     :local sl ({})
+    :local slk ({})
     # schaltbare SSIDs immer hinter den festen: so behalten die virtuellen Interfaces der übrigen ihre
     # Nummern (Home Assistant ordnet Clients nach Interfaces zu, Befund 2026-10-14)
     :foreach sw in={false;true} do={
@@ -360,6 +391,7 @@
           :local cn ("cfm-" . $k)
           :if ([:typeof ($bcf->$b)] != "nothing") do={ :set cn ("cfm-" . $k . "-" . $b . "g") }
           :set ($sl->[:len $sl]) $cn
+          :set ($slk->[:len $slk]) $k
         }
       }
     }
@@ -368,7 +400,7 @@
     # Identity und Band (z.B. ap1-2g) statt cap-wifiN - so ist in Registration-Tabelle und Monitoring der
     # AP erkennbar (DU2.1)
     :local pr ({"action"="create-enabled";"supported-bands"=($w->"channels"->$b->"band");"master-configuration"=($r->"cfg");"slave-configurations"=$sl;"name-format"=("%I-" . $b . "g")})
-    :if ($mlOk) do={ :set ($pr->"multi-link-mode") $mlm }
+    :if ($mlOk) do={ :set ($pr->"multi-link-mode") [$cfmMloMode w=$w ml=$mlx sk=$slk] }
     :if ([:len ($r->"re")] > 0) do={ :set ($pr->"identity-regexp") ($r->"re") }
     :set ($pl->[:len $pl]) $pr
     }
@@ -575,7 +607,8 @@
         :if ($lr) do={
           # Wi-Fi 7 (hAP be³): ab Werk hängen die Radios am statischen, abgeschalteten MLD - ohne MLO
           # blieben sie aus ("mld-interface not enabled"), wie bei den APs (DW1.6) lösen
-          :if ([:len [:tostr ($cfmWifi->"mlo")]] = 0 or [:tostr ($cfmWifi->"mlo")] = "disabled") do={
+          :global cfmMloOf
+          :if (([$cfmMloOf w=$cfmWifi]->[:tostr ($cfmWifi->"master")]) != true) do={
             :local smld false
             :foreach x in=[/interface/wifi/find where !dynamic] do={ :if ([:len [:tostr ([/interface/wifi/get $x]->"mld-name")]] > 0) do={ :set smld true } }
             :if ($smld) do={ :foreach i in=[/interface/wifi/find where default-name~"^wifi" and !dynamic] do={ :onerror e in={ /interface/wifi/unset $i value-name=mld-interface } do={} } }

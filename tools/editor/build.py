@@ -23,7 +23,9 @@ TEILE = [
 <li>Lesezeichen „cfm-Editor“ anklicken, mit einem RouterOS-User der Gruppe full anmelden (REST-API).
 Der Browser merkt sich die Anmeldung bis zum Schließen, auch für cfm-Monitor.</li>
 <li>Site-Datei links wählen, ändern, Strg+S. Dann „Prüfen“, „Diff zum Release“, „Probelauf“,
-„Release (Ring 0)“, „Promote“ (nächster Ring bzw. Ring 1/2) und „Status“; „WLAN-Schild“ druckt ein A4-Schild.</li>
+„Release (Ring 0)“, „Promote“ (nächster Ring bzw. Ring 1/2) und „Status“; „WLAN-Schild“ druckt ein A4-Schild.
+„Kanäle“ zeigt Kanal und Sendeleistung je AP, „WLAN-Scan“ misst je Band und übernimmt einen Vorschlag in wifi.rsc
+(nur in den Editor – speichern, prüfen und releasen wie sonst).</li>
 </ol>"""),
     ("cfm-monitor.js", "cfm-Monitor", """
 <p>Zwei Reiter (DU2.2, DU1.4; früher „cfm-WLAN“): <b>WLAN</b> zeigt die Clients aller APs live und als
@@ -77,6 +79,8 @@ def main():
         src = (HIER / datei).read_text(encoding="utf-8")
         # QR-Encoder fürs WLAN-Schild (DT3.4.1): eigene Datei, damit cfm-qr-test.py sie allein prüfen kann
         src = src.replace("/*@@cfm-qr.js@@*/", (HIER / "cfm-qr.js").read_text(encoding="utf-8"))
+        # Kanalvorschlag übernehmen (DT3.5): eigene Datei, damit cfm-radios-test.py sie allein prüfen kann
+        src = src.replace("/*@@cfm-radios.js@@*/", (HIER / "cfm-radios.js").read_text(encoding="utf-8"))
         stand = hashlib.sha256(src.encode()).hexdigest()[:12]
         # Stand ins Lesezeichen: eine neue Fassung ersetzt die alte in der WebFig-Seite
         src = src.replace("'@@STAND@@'", "'" + stand + "'")

@@ -10,6 +10,15 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-19/20 (vor Ort an einem Standort, danach Nachtschicht):** Hardware: Altnetz (2,4 GHz) auf die
+  MikroTiks gezogen, Fremd-WLAN abgeschaltet, zweiter Einsatz von `$cfmWifiScan` (Befunde → TODO 96). **TODO 96**
+  umgesetzt (Hardware offen, bleibt in TODO.md): Leistung vor dem Scan als EIRP mit Antennengewinn, Suche mit dem
+  laufenden Plan als Start und Paar-Zügen („breit“ nie schlechter als Aktuell), freies Spektrum und APs ohne Band bei
+  5/6 GHz (DW3.9.2); `$cfmChannels` zeigt `tx+g=EIRP`. Dazu **MLO je SSID** (`"mlo"` im ssids-Eintrag, DW2.3.1),
+  **`wifiDebug`** in `global.rsc` statt Handeintrag (DU3.5), `$cfmCheck`-Hinweis zu `minSignal` neben einer
+  Trennschwelle, Editor-Knöpfe „Kanäle“/„WLAN-Scan“ mit Übernahme des Vorschlags in `wifi.rsc` (DT3.5), Admin-Guide
+  8.19 „WLAN-Kanäle planen“. Labor: `e2e.sh` **532 von 532**, VRRP, MLAG, Onboarding grün ([TESTSTAND.md](TESTSTAND.md)).
+
 * **Am 2026-11-18/19 (vor Ort an einem Standort und nachts):** Hardware: Release v40 mit **DW1.12** auf allen drei Geräten,
   Fallback des Gasts auf 2,4 und 5 GHz bestanden ([TESTSTAND.md](TESTSTAND.md)); Kanalplan v41 nach dem ersten
   `$cfmWifiScan band=5` (Plan „breit“). **TODO 94** `cfm-fallback` gleicht `cfm-iso` in jedem Takt ab – der

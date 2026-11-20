@@ -157,8 +157,8 @@
 #                 (dann ist das die Grenze des Radios)
 #   Breite        Plan "breit": 20 je fehlender Verdopplung bis zur höchsten Breite (≈ ein fremdes Netz mit -75 dBm
 #                 voll überlappend); Plan "robust": keine eigenen APs überlappend, Breite nur bei Gleichstand
-# Suche: alle Kombinationen der je AP besten K Kandidaten (höchstens ~2000 Pläne), dann zwei Runden je AP alle
-# Kandidaten bei festen übrigen.
+# Suche (TODO 96): Start beim laufenden Plan, dann alle Kombinationen der je AP besten K Kandidaten aus verschiedenen
+# Blöcken (höchstens ~2000 Pläne), dann Runden je AP über alle Kandidaten und je zwei APs über ihre 6 besten Blöcke.
 :global cfmScanPlan do={
   :global cfmLoadData; :global cfmWifi; :global cfmScanW; :global cfmScanBlk; :global cfmScanGrid; :global cfmScanOv5
   :global cfmPad; :global cfmChLive
@@ -188,6 +188,7 @@
   }
   # Kandidaten je AP: {f;w;unten;oben;fremd;dBm;dfs(0/1/2);DFS-Malus;Leistungs-Malus;Kosten breit;Kosten robust}
   :local apl ({})
+  :local pwl ""
   :local cand ({})
   :foreach ap in=$aps do={
     :local rv [:tostr ($cfmWifi->"radios"->$ap->$bd)]
@@ -212,14 +213,37 @@
       :local isFb true
       :local d ($inv->$ap)
       :if ([:typeof $d] = "array") do={ :set isFb (("," . [:tostr ($d->"role")] . ",") ~ ",ap,") }
-      # Leistungsgrenze: txPower, sonst die gemessene, wenn sie unter der EU-Grenze ihres Teilbands lag
+      # Leistungsgrenze des Radios als EIRP (TODO 96): monitor meldet tx-power am Anschluss, RouterOS hält
+      # tx + Antennengewinn (g) unter der Grenze des Teilbands - auf 5745 z.B. 8 + 6 = 14. Grenze des Radios ist
+      # tx + g nur, wenn das unter der EU-Grenze seines Teilbands lag; txPower (am Anschluss) + g begrenzt immer.
+      # Ohne g (ältere Messung, 6 GHz) wie bisher tx allein - das unterschätzt Radios mit Antennengewinn
       :local cap 999
+      :local mg [:tonum ($sc->"pw"->$ap->"g")]
+      :if ([:typeof $mg] != "num") do={ :set mg 0 }
       :local tp [:tostr ($cfmWifi->"txPower"->$ap->$bd)]
-      :if ([:len $tp] > 0) do={ :set cap [:tonum $tp] } else={
-        :local mt [:tonum ($sc->"pw"->$ap->"tx")]
-        :local mf [:tonum ($sc->"pw"->$ap->"f")]
-        :if ([:typeof $mt] = "num" and [:typeof $mf] = "num") do={ :if ($mt < ([$tab $mf] - 1)) do={ :set cap $mt } }
+      :local mt [:tonum ($sc->"pw"->$ap->"tx")]
+      :local mf [:tonum ($sc->"pw"->$ap->"f")]
+      :if ([:len $tp] > 0) do={ :set cap ([:tonum $tp] + $mg) } else={
+        :if ([:typeof $mt] = "num" and [:typeof $mf] = "num") do={ :if (($mt + $mg) < ([$tab $mf] - 1)) do={ :set cap ($mt + $mg) } }
       }
+      :local pl0 ""
+      :if ([:typeof $mt] = "num" and [:typeof $mf] = "num") do={
+        :set pl0 ($mf . ": " . $mt)
+        :if ([:typeof [:tonum ($sc->"pw"->$ap->"g")]] = "num") do={ :set pl0 ($pl0 . "+" . $mg . "=" . ($mt + $mg) . " dBm") } else={ :set pl0 ($pl0 . " dBm ohne Antennengewinn") }
+        :set pl0 ($pl0 . " (Grenze " . [$tab $mf] . ")")
+      }
+      :if ([:len $tp] > 0) do={ :set pl0 ($pl0 . ", txPower " . $tp) }
+      :if ($cap < 999) do={ :set pl0 ($pl0 . " -> Radio höchstens " . $cap) }
+      # an der Grenze gemessen: ob das Radio auf 5470-5725 (30 dBm) mehr kann, verrät RouterOS nicht (keine
+      # Höchstleistung des Geräts) - angenommen ja; ein schwächeres Radio (hAP ax²: 18 dBm überall) per txPower begrenzen
+      :if ($cap = 999 and $bd = "5" and [:typeof $mf] = "num") do={ :if ([$tab $mf] < 30) do={ :set pl0 ($pl0 . " - Reserve bis 30 angenommen, zählt 1 je dB (sonst txPower)") } }
+      # gemessene (bewiesene) Leistung: Verlust darunter 3 je dB, nur angenommene Reserve darüber 1 je dB - sonst
+      # schöbe jede Messung an der 23-dBm-Grenze alle APs auf DFS (7 dB x 3 = 21 > DFS 20, Labor 2026-11-20).
+      # Ohne Messung zählt alles voll (wie bisher)
+      :local pv 999
+      :if ([:typeof $mt] = "num" and [:typeof $mf] = "num") do={ :set pv ($mt + $mg) }
+      :if ($cap < 999) do={ :set pv $cap }
+      :if ([:len $pl0] > 0) do={ :set pwl ($pwl . "\n  " . $ap . " " . $pl0) }
       :local cl ({})
       :local pmax 0
       :foreach f in=$pr do={
@@ -263,7 +287,15 @@
           :local dm 0
           :if ($isFb and ($c->6) = 1) do={ :set dm 2000 }
           :if ($isFb and ($c->6) = 2) do={ :set dm 6000 }
-          :local pwc (300 * ($pmax - ($c->5)))
+          :local lp ($pmax - ($c->5))
+          :local la 0
+          :if ($pv < $pmax) do={
+            :local hi $pv
+            :if (($c->5) > $pv) do={ :set hi ($c->5) }
+            :set la ($pmax - $hi)
+            :set lp ($lp - $la)
+          }
+          :local pwc ((300 * $lp) + (100 * $la))
           :local dl ($dmx - [$dbl ($c->1)])
           :set ($c2->[:len $c2]) ({($c->0);($c->1);($c->2);($c->3);$fo;($c->5);($c->6);$dm;$pwc;($fo + $dm + $pwc + (2000 * $dl));($fo + $dm + $pwc + $dl)})
         }
@@ -312,6 +344,30 @@
     :local na [:len $cand]
     :local m [:tonum $mi]
     :local rbb ([:tostr $rb] = "true")
+    # je AP die k besten Kandidaten aus verschiedenen Blöcken (TODO 96: die besten waren oft derselbe Block mit
+    # anderem Primärkanal - die Kombinationen sahen dann je AP nur einen Block und blieben im lokalen Minimum)
+    :local topk do={
+      :local m [:tonum $mi]
+      :local us ({})
+      :local ub ({})
+      :local tl ({})
+      :for t from=1 to=[:tonum $k] do={
+        :local bi -1
+        :local bv 0
+        :foreach x,c in=$cl do={
+          :if ([:typeof ($us->("k" . $x))] = "nothing" and [:typeof ($ub->("b" . ($c->2) . "-" . ($c->3)))] = "nothing") do={
+            :if ($bi < 0 or ($c->$m) < $bv) do={ :set bi $x; :set bv ($c->$m) }
+          }
+        }
+        :if ($bi >= 0) do={
+          :local cb ($cl->$bi)
+          :set ($us->("k" . $bi)) 1
+          :set ($ub->("b" . ($cb->2) . "-" . ($cb->3))) 1
+          :set ($tl->[:len $tl]) $bi
+        }
+      }
+      :return $tl
+    }
     :local K 1
     :local go true
     :while ($go) do={
@@ -320,26 +376,28 @@
       :if ($p <= 2000 and $K < 99) do={ :set K ($K + 1) } else={ :set go false }
     }
     :local tops ({})
-    :for i from=0 to=($na - 1) do={
-      :local cl ($cand->$i)
-      :local us ({})
-      :local tl ({})
-      :for t from=1 to=$K do={
-        :local bi -1
-        :local bv 0
-        :foreach k,c in=$cl do={
-          :if ([:typeof ($us->("k" . $k))] = "nothing") do={ :if ($bi < 0 or ($c->$m) < $bv) do={ :set bi $k; :set bv ($c->$m) } }
-        }
-        :if ($bi >= 0) do={ :set ($us->("k" . $bi)) 1; :set ($tl->[:len $tl]) $bi }
-      }
-      :set ($tops->$i) $tl
-    }
+    :for i from=0 to=($na - 1) do={ :set ($tops->$i) [$topk cl=($cand->$i) mi=$mi k=$K] }
     :local tot 1
     :for i from=0 to=($na - 1) do={ :set tot ($tot * [:len ($tops->$i)]) }
     :local best ({})
     :local bt 0
     :local bo true
     :local have false
+    # Startpunkt: der laufende Plan (st, Kandidaten-Index je AP) - der Vorschlag ist nie schlechter als er
+    # (nur vollständig: ein AP ohne Kandidat fiele sonst als Lücke mit "nothing" hinein, Labor 2026-11-20)
+    :if ([:typeof $st] = "array" and [:len $st] = $na) do={
+      :local pl ({})
+      :local ok true
+      :for i from=0 to=($na - 1) do={
+        :local v [:tonum ($st->$i)]
+        :if ([:typeof $v] != "num") do={ :set ok false } else={ :if ([:typeof (($cand->$i)->$v)] != "array") do={ :set ok false } }
+        :set ($pl->$i) $v
+      }
+      :if ($ok) do={
+        :local r [$pc cand=$cand pl=$pl prs=$prs mi=$mi]
+        :set have true; :set best $pl; :set bt ($r->0); :set bo ($r->1)
+      }
+    }
     :for x from=0 to=($tot - 1) do={
       :local pl ({})
       :local y $x
@@ -356,16 +414,40 @@
       }
       :if ($bet) do={ :set have true; :set best $pl; :set bt ($r->0); :set bo ($r->1) }
     }
-    :for rd from=1 to=2 do={
-      :for i from=0 to=($na - 1) do={
-        :foreach k,c in=($cand->$i) do={
-          :local pl ({})
-          :foreach q,v in=$best do={ :set ($pl->$q) $v }
-          :set ($pl->$i) $k
-          :local r [$pc cand=$cand pl=$pl prs=$prs mi=$mi]
-          :local bet false
-          :if ($rbb and (($r->1) != $bo)) do={ :set bet (!($r->1)) } else={ :set bet (($r->0) < $bt) }
-          :if ($bet) do={ :set best $pl; :set bt ($r->0); :set bo ($r->1) }
+    # dann je AP alle Kandidaten bei festen übrigen (d), dazwischen je zwei APs zugleich ihre 6 besten Blöcke (p) -
+    # ein Paar, das nur gemeinsam den Block tauscht, findet die Runde je AP nicht
+    :local tp2 ({})
+    :for i from=0 to=($na - 1) do={ :set ($tp2->$i) [$topk cl=($cand->$i) mi=$mi k=6] }
+    :foreach ph in={"d";"d";"p";"d"} do={
+      :if ($ph = "d") do={
+        :for i from=0 to=($na - 1) do={
+          :foreach k,c in=($cand->$i) do={
+            :local pl ({})
+            :foreach q,v in=$best do={ :set ($pl->$q) $v }
+            :set ($pl->$i) $k
+            :local r [$pc cand=$cand pl=$pl prs=$prs mi=$mi]
+            :local bet false
+            :if ($rbb and (($r->1) != $bo)) do={ :set bet (!($r->1)) } else={ :set bet (($r->0) < $bt) }
+            :if ($bet) do={ :set best $pl; :set bt ($r->0); :set bo ($r->1) }
+          }
+        }
+      }
+      :if ($ph = "p" and $na > 1) do={
+        :for i from=0 to=($na - 2) do={
+          :for j from=($i + 1) to=($na - 1) do={
+            :foreach a in=($tp2->$i) do={
+              :foreach b in=($tp2->$j) do={
+                :local pl ({})
+                :foreach q,v in=$best do={ :set ($pl->$q) $v }
+                :set ($pl->$i) $a
+                :set ($pl->$j) $b
+                :local r [$pc cand=$cand pl=$pl prs=$prs mi=$mi]
+                :local bet false
+                :if ($rbb and (($r->1) != $bo)) do={ :set bet (!($r->1)) } else={ :set bet (($r->0) < $bt) }
+                :if ($bet) do={ :set best $pl; :set bt ($r->0); :set bo ($r->1) }
+              }
+            }
+          }
         }
       }
     }
@@ -374,6 +456,7 @@
   :local ns ""
   :for i from=0 to=($na - 1) do={ :set ns ($ns . " " . ($apl->$i) . " " . [:len ($cand->$i)]) }
   :put ("Kandidaten (Kanal/Breite) je AP:" . $ns . " - bis " . $mw . " MHz, Pool " . [:tostr ($chs->"freq")] . ", skipDfs " . $sk)
+  :if ([:len $pwl] > 0) do={ :put ("Leistung vor dem Scan (am Anschluss + Antennengewinn = EIRP, dBm):" . $pwl) }
   # aktueller Stand: vom CAPsMAN vor dem Scan (pre=, TODO 95) bzw. live (data=yes), sonst monitor-Werte der Messung
   :local live $pre
   :if ([:typeof $live] != "array" or [:len $live] = 0) do={ :set live [$cfmChLive inv=$inv] }
@@ -400,7 +483,9 @@
   } else={ :put ("Aktuell:" . $cs) }
   :foreach md in={{"breit";9;0};{"robust";10;1}} do={
     :local rb (($md->2) = 1)
-    :local r [$srch cand=$cand prs=$prs mi=($md->1) rb=$rb pc=$pcost]
+    :local st ({})
+    :if ($cok) do={ :set st $cur }
+    :local r [$srch cand=$cand prs=$prs mi=($md->1) rb=$rb pc=$pcost st=$st]
     :local pl ($r->0)
     :local s ""
     :local fo 0
@@ -458,8 +543,8 @@
     :set sc [$cfmJson $f]
     :local tn 0
     :foreach ap,nets in=($sc->"aps") do={ :set tn ($tn + [:len $nets]) }
-    :if ($tn = 0) do={ :put "keine Messung mit Netzen in state/wifiscan.json - erst ohne data=yes scannen"; :return false }
     :set bd [:tostr ($sc->"band")]
+    :if ($tn = 0 and ($bd = "2" or [:len ($sc->"aps")] = 0)) do={ :put "keine Messung mit Netzen in state/wifiscan.json - erst ohne data=yes scannen"; :return false }
   } else={
     # rsc-check: erlaubt json-typ (t nur für Menschen, cfm liest es nicht zurück)
     :set sc ({"band"=$bd;"t"=([/system/clock/get date] . " " . [/system/clock/get time]);"own"=({});"aps"=({});"pw"=({})})
@@ -516,9 +601,12 @@
         }
         # Radios ohne CAPsMAN: direkt am AP (nicht am CAPsMAN: ohne eigenes Interface sendet er nicht)
         :if ($via = "" and $isAp) do={
-          :local cmd (":local r ({}); :foreach i in=[/interface/wifi/find where default-name~\"^wifi\"] do={ :local n [/interface/wifi/get \$i name]; :local bs \"\"; :onerror e in={ :set bs [:tostr [/interface/wifi/radio/get [find where interface=\$n] bands]] } do={}; :if (\$bs ~ \"" . $bre . "\") do={ :onerror e in={ " . $sel . " } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) } } }; :put [:serialize to=json \$r]")
+          :local cmd (":local r ({}); :local hit 0; :foreach i in=[/interface/wifi/find where default-name~\"^wifi\"] do={ :local n [/interface/wifi/get \$i name]; :local bs \"\"; :onerror e in={ :set bs [:tostr [/interface/wifi/radio/get [find where interface=\$n] bands]] } do={}; :if (\$bs ~ \"" . $bre . "\") do={ :set hit 1; :onerror e in={ " . $sel . " } do={ :set (\$r->[:len \$r]) ({\"err\"=\$e}) } } }; :if (\$hit = 0) do={ :put \"none\" } else={ :put [:serialize to=json \$r] }")
           :local r [$cfmExec ip=($d->"ip") cmd=$cmd]
-          :onerror e in={ :set lst [:deserialize from=json ($r->"output")]; :set via "AP" } do={ :put ("  " . $name . ": keine Daten (" . [:pick ($r->"output") 0 120] . ")") }
+          # kein Radio im Band (z.B. 6 GHz an einem ax-AP): nicht in die Messung, sonst bekäme er einen Vorschlag
+          :if ([:pick [:tostr ($r->"output")] 0 4] = "none") do={ :set via "-" } else={
+            :onerror e in={ :set lst [:deserialize from=json ($r->"output")]; :set via "AP" } do={ :put ("  " . $name . ": keine Daten (" . [:pick ($r->"output") 0 120] . ")") }
+          }
         }
         :local nets ({})
         :foreach x in=$lst do={
@@ -534,9 +622,12 @@
             :if ([:typeof $fq] = "num" and [:len $sg] > 0) do={ :set ($nets->[:len $nets]) ({("m" . $bss);[:tostr ($x->"ssid")];$fq;[:tonum $sg];($bl->0);($bl->1)}) }
           }
         }
+        :if ($via = "-") do={ :put ("  " . $name . ": kein Radio im Band " . $bd . " GHz - übersprungen") }
         :if ($via = "" and !$isAp) do={
           :put ("  " . $name . ": eigene Radios senden nicht (capsmanRadios aus) - nicht im Vorschlag")
-        } else={
+        }
+        # ohne Daten (Scan-Fehler) nicht in die Messung: ein leerer Eintrag hieße "freies Spektrum"
+        :if ($via != "-" and $via != "") do={
           :set ($sc->"aps"->$name) $nets
           :put ("  " . [:len $nets] . " Netze (über " . $via . ")")
         }
@@ -544,7 +635,10 @@
     }
     :local tn 0
     :foreach ap,nets in=($sc->"aps") do={ :set tn ($tn + [:len $nets]) }
-    :if ($tn = 0) do={ :put "keine Netze gemessen - kein Vorschlag, state/wifiscan.json bleibt unverändert"; :return false }
+    # 5/6 GHz (TODO 96): gemessen, aber nichts gehört = freies Spektrum - der Vorschlag gilt trotzdem (volle Breite);
+    # 2,4 GHz und ganz ohne Messung wie bisher kein Vorschlag
+    :if ($tn = 0 and ($bd = "2" or [:len ($sc->"aps")] = 0)) do={ :put "keine Netze gemessen - kein Vorschlag, state/wifiscan.json bleibt unverändert"; :return false }
+    :if ($tn = 0) do={ :put "keine Netze gemessen (auch keine eigenen) - Vorschlag für ein freies Spektrum" }
     # Kanal und Sendeleistung (monitor am CAPsMAN, vor dem Scan gelesen) für Band 5/6: aktueller Stand und
     # Leistungsgrenze (TODO 93, 95); APs aus einer älteren Messung (host=) behalten ihre Werte
     :if ($bd != "2") do={
@@ -553,8 +647,12 @@
         :local c [:tostr ($lv->($ap . "-" . $bd . "g"))]
         :if ([:len $c] > 0) do={
           :local e ({"ch"=$c;"f"=[:tonum [:pick $c 0 [:find ($c . "/") "/"]]]})
-          :local tx [:tonum ($lv->($ap . "-" . $bd . "g|tx"))]
-          :if ([:typeof $tx] = "num") do={ :set ($e->"tx") $tx }
+          # Zahlen kommen aus JSON u.U. als "24.000000" - nur den ganzzahligen Teil
+          :foreach fk,lk in={"tx"="|tx";"g"="|g"} do={
+            :local v [:tostr ($lv->($ap . "-" . $bd . "g" . $lk))]
+            :local n [:tonum [:pick $v 0 [:find ($v . ".") "."]]]
+            :if ([:len $v] > 0 and [:typeof $n] = "num") do={ :set ($e->$fk) $n }
+          }
           :set ($sc->"pw"->$ap) $e
         }
       }

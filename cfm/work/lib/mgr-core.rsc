@@ -50,7 +50,7 @@
 #   $cfmUpgrade ver=<x.y.z> host=..|ring=..|all=yes check=yes   Probe: Pakete, fehlende Dateien, Platz
 #   $cfmUpgrade cancel=yes host=..|ring=..|all=yes   Auftrag zurückziehen; ohne ver: Übersicht
 #   $cfmLinks [accept=yes] [export=yes]   Verkabelung (LLDP) prüfen, Netzplan state/netzplan.md
-#   $cfmChannels                       Kanäle der APs, Warnung bei gleichem Kanal an einem Switch
+#   $cfmChannels                       Kanäle und Sendeleistung (EIRP) der APs, Warnung bei gleichem Kanal an einem Switch
 #   $cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]
 #                                      Gerät suchen (MAC, IP, Name, Port, AP/SSID/Signal), live
 #   $cfmWifiScan [host=<ap>] [band=2|5|6] [duration=10s] [data=yes] [all=yes]

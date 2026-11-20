@@ -1,6 +1,6 @@
-// cfm-editor.js 36c63f3d3d4a - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-editor.js 933cbac42eab - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = '36c63f3d3d4a';
+const STAND = '933cbac42eab';
 const alt = window.__cfmEd;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
@@ -231,6 +231,142 @@ const wifiEsc = (s) => String(s).replace(/([\\;,:"])/g, '\\$1');
 const wifi = (ssid, pass, typ) => 'WIFI:T:' + typ + ';S:' + wifiEsc(ssid) + ';' + (typ !== 'nopass' ? 'P:' + wifiEsc(pass) + ';' : '') + ';';
 return { encode, svg, authType, wifi };
 })();
+const cfmRadios = (() => {
+function find(txt) {
+let i = 0;
+let lineStart = true;
+while (i < txt.length) {
+const c = txt[i];
+if (lineStart && /^[ \t]*#/.test(txt.slice(i, i + 200))) { const n = txt.indexOf('\n', i); i = n < 0 ? txt.length : n + 1; continue; }
+lineStart = c === '\n';
+if (c === '"') {
+if (txt.startsWith('"radios"=', i)) {
+const o = i + '"radios"='.length;
+if (txt[o] !== '{') throw new Error('"radios" ist kein Array');
+const e = close(txt, o);
+return { start: i, end: e };
+}
+i = skipStr(txt, i);
+continue;
+}
+i++;
+}
+return null;
+}
+function skipStr(txt, i) {
+let j = i + 1;
+while (j < txt.length && txt[j] !== '"') { if (txt[j] === '\\') j++; j++; }
+return j + 1;
+}
+function close(txt, o) {
+let d = 0;
+let i = o;
+while (i < txt.length) {
+const c = txt[i];
+if (c === '"') { i = skipStr(txt, i); continue; }
+if (c === '{') d++;
+if (c === '}') { d--; if (d === 0) return i + 1; }
+i++;
+}
+throw new Error('Klammer zu "radios" nicht geschlossen');
+}
+function parse(s) {
+let i = 0;
+const ws = () => { while (i < s.length && /\s/.test(s[i])) i++; };
+const str = () => {
+ws();
+if (s[i] !== '"') throw new Error('Zeichenkette erwartet bei ' + JSON.stringify(s.slice(i, i + 20)));
+const e = skipStr(s, i);
+const v = s.slice(i + 1, e - 1);
+i = e;
+return v;
+};
+const arr = (inner) => {
+ws();
+if (s[i] !== '{') throw new Error('{ erwartet bei ' + JSON.stringify(s.slice(i, i + 20)));
+i++;
+const out = [];
+ws();
+if (s[i] === '}') { i++; return out; }
+for (;;) {
+const k = str();
+ws();
+if (s[i] !== '=') throw new Error('= erwartet hinter "' + k + '"');
+i++;
+ws();
+let v;
+if (inner) {
+if (s[i] === '"') { const st = i; str(); v = s.slice(st, i); }
+else { const m = /^[-0-9]+/.exec(s.slice(i)); if (!m) throw new Error('Wert erwartet für "' + k + '"'); v = m[0]; i += m[0].length; }
+} else v = arr(true);
+out.push([k, v]);
+ws();
+if (s[i] === ';') { i++; continue; }
+if (s[i] === '}') { i++; return out; }
+throw new Error('; oder } erwartet bei ' + JSON.stringify(s.slice(i, i + 20)));
+}
+};
+const r = arr(false);
+ws();
+if (i !== s.length) throw new Error('Rest hinter dem Array: ' + JSON.stringify(s.slice(i, i + 20)));
+return r;
+}
+const q = (v) => '"' + v + '"';
+const unq = (v) => (v && v[0] === '"' ? v.slice(1, -1) : v);
+const apStr = (ap, bands) => q(ap) + '={' + bands.map(([b, v]) => q(b) + '=' + v).join(';') + '}';
+function lineValue(line) {
+const p = line.indexOf('"radios"=');
+if (p < 0) throw new Error('keine Zeile "radios"');
+return line.slice(p + '"radios"='.length).trim();
+}
+function apply(txt, line, band, note) {
+const r = find(txt);
+if (!r) throw new Error('wifi.rsc hat keinen Eintrag "radios" - erst "radios"={}; in :global cfmWifi anlegen');
+const oldTxt = txt.slice(r.start + '"radios"='.length, r.end);
+const cur = parse(oldTxt);
+const prop = parse(lineValue(line));
+const changes = [];
+prop.forEach(([ap, bands]) => {
+const nv = (bands.find(([b]) => b === band) || [])[1];
+if (nv === undefined) return;
+let e = cur.find(([a]) => a === ap);
+if (!e) { e = [ap, []]; cur.push(e); }
+const bb = e[1].find(([b]) => b === band);
+const ov = bb ? bb[1] : '';
+if (unq(ov) === unq(nv)) return;
+if (bb) bb[1] = nv; else e[1].push([band, nv]);
+changes.push(ap + ' ' + band + ': ' + (unq(ov) || '(ohne Pin)') + ' -> ' + unq(nv));
+});
+const ls = txt.lastIndexOf('\n', r.start) + 1;
+const ind = /^[ \t]*/.exec(txt.slice(ls))[0];
+const pretty = '"radios"={' + (cur.length ? '\n' + cur.map(([a, b]) => ind + '  ' + apStr(a, b)).join(';\n') + '\n' + ind : '') + '}';
+let out = txt.slice(0, r.start) + pretty + txt.slice(r.end);
+if (changes.length) {
+const old1 = '"radios"={' + parse(oldTxt).map(([a, b]) => apStr(a, b)).join(';') + '}';
+const com = '# ' + note + ' (' + changes.join(', ') + '). Rückweg: ' + old1;
+const m = /\n\}[ \t]*(\r?\n|$)/.exec(out.slice(r.start));
+if (m) {
+const at = r.start + m.index + m[0].length;
+out = out.slice(0, at) + (m[1] ? '' : '\n') + com + '\n' + out.slice(at);
+} else out = out.replace(/\n?$/, '\n') + com + '\n';
+}
+return { text: out, changes, pretty };
+}
+function proposals(out) {
+const res = [];
+const ls = String(out).split('\n');
+ls.forEach((l, i) => {
+const m = /^Vorschlag\s+(\S+)\s+Kosten\s+(\S+)/.exec(l);
+if (!m) return;
+for (let j = i + 1; j < Math.min(ls.length, i + 4); j++) {
+if (/^\s*wifi\.rsc: "radios"=/.test(ls[j])) { res.push({ name: m[1], kosten: m[2], line: ls[j].trim() }); break; }
+if (/^Vorschlag/.test(ls[j])) break;
+}
+});
+return res;
+}
+return { find, parse, apply, proposals };
+})();
 const css = `
 #cfmed{position:fixed;inset:0;z-index:2147483000;background:#f4f5f4;color:#1d2321;font:13px system-ui,sans-serif;display:flex;flex-direction:column}
 #cfmed *{box-sizing:border-box}
@@ -329,10 +465,13 @@ out.scrollTop = out.scrollHeight;
 if (!fertig) out.textContent += '\n(keine Rückmeldung nach 15 min - Log des Managers ansehen)';
 const f = await fileByName(fn).catch(() => null);
 if (f) await rest('DELETE', '/file/' + f['.id']).catch(() => {});
+busy(false);
+return clean(txt).replace(ENDE, '');
 } catch (e) {
 out.textContent += '\nFEHLER: ' + e.message;
 }
 busy(false);
+return '';
 }
 const xhrLogin = (u, p) => new Promise((res) => {
 const x = new XMLHttpRequest();
@@ -386,6 +525,8 @@ msg, el('button', { onclick: () => release(msg.value), 'data-cmd': 1 }, 'Release
 ring, el('button', { onclick: () => promote(ring.value), 'data-cmd': 1, title: 'Version des vorigen Rings freigeben ($cfmPromote)' }, 'Promote'),
 el('button', { onclick: fleetStatus, 'data-cmd': 1, title: 'Flottenübersicht ($cfmStatus)' }, 'Status'),
 el('button', { onclick: sign, 'data-cmd': 1, title: 'WLAN-Schild als A4-PDF (QR-Code, SSID, Passphrase aus dem Vault)' }, 'WLAN-Schild'),
+el('button', { onclick: channels, 'data-cmd': 1, title: 'Kanal und Sendeleistung je AP, live vom CAPsMAN ($cfmChannels)' }, 'Kanäle'),
+el('button', { onclick: () => scanBar(hosts), 'data-cmd': 1, title: 'Kanal-Scan der APs mit Vorschlag ($cfmWifiScan), Vorschlag in wifi.rsc übernehmen' }, 'WLAN-Scan'),
 el('span', { class: 'sp' }),
 el('button', { onclick: hide }, 'Schließen')));
 const ta = el('textarea', { spellcheck: 'false', readonly: '' });
@@ -534,6 +675,53 @@ if (!confirm((r ? 'Ring ' + r : 'Den nächsten Ring') + ' auf die Version des vo
 run('Promote ($cfmPromote' + (r ? ' ring=' + r : '') + ')', '$cfmPromote' + (r ? ' ring=' + r : ''), ['cfmPromote']);
 }
 function fleetStatus() { run('Flottenübersicht ($cfmStatus)', '$cfmStatus', ['cfmStatus']); }
+function channels() { run('Kanäle der APs ($cfmChannels)', '$cfmChannels', ['cfmChannels']); }
+function scanBar(hosts) {
+const alt = $('.scanbar');
+if (alt) { alt.remove(); return; }
+const band = el('select', { title: 'Band' }, el('option', { value: '5' }, '5 GHz'), el('option', { value: '6' }, '6 GHz'), el('option', { value: '2' }, '2,4 GHz'));
+const all = el('input', { type: 'checkbox', title: 'alle EU-Kanäle statt des Pools aus wifi.rsc (all=yes, 5/6 GHz)' });
+const dat = el('input', { type: 'checkbox', title: 'mit der letzten Messung rechnen, ohne neuen Scan (data=yes)' });
+const ap = el('select', { title: 'nur dieser AP neu (host=), die übrigen aus der letzten Messung' }, el('option', { value: '' }, 'alle APs'));
+Array.from(hosts.options).forEach((o) => ap.append(el('option', { value: o.value }, o.value)));
+const vor = el('span', { class: 'vor' });
+const go = el('button', { class: 'prim', 'data-cmd': 1 }, 'Scan starten');
+go.addEventListener('click', async () => {
+if (unsaved()) return;
+const b = band.value;
+let cmd = '$cfmWifiScan band=' + b;
+if (all.checked && b !== '2') cmd += ' all=yes';
+if (dat.checked) cmd += ' data=yes';
+else if (ap.value && /^[A-Za-z0-9._-]+$/.test(ap.value)) cmd += ' host="' + esc(ap.value) + '"';
+if (!dat.checked && !confirm('Die APs scannen nacheinander (je Radio ~10 s, verbundene Clients wechseln kurz zum Nachbarn).\nJetzt scannen?')) return;
+vor.textContent = '';
+const out = await run('WLAN-Scan (' + cmd + ')', cmd, ['cfmWifiScan']);
+const ps = cfmRadios.proposals(out);
+if (!ps.length) { vor.textContent = 'kein Vorschlag'; return; }
+ps.forEach((p) => vor.append(el('button', { onclick: () => takeOver(p, b), title: p.line }, '„' + p.name + '“ übernehmen (Kosten ' + p.kosten + ')')));
+});
+const bar = el('div', { class: 'bar scanbar' }, el('b', {}, 'WLAN-Scan'), band,
+el('label', {}, all, ' alle EU-Kanäle'), el('label', {}, dat, ' letzte Messung'), ap, go, vor,
+el('button', { onclick: () => bar.remove() }, 'Schließen'));
+$('pre').before(bar);
+}
+async function takeOver(p, band) {
+const f = S.files.find((x) => x.rel === 'wifi.rsc');
+if (!f) { $('pre').textContent += '\nwifi.rsc nicht gefunden'; return; }
+if (!S.cur || S.cur.name !== f.name) await open(f);
+if (!S.cur || S.cur.name !== f.name) return;
+const ta = $('textarea');
+const tag = new Date().toISOString().slice(0, 10);
+let r;
+try { r = cfmRadios.apply(ta.value, p.line, band, tag + ' Kanalvorschlag „' + p.name + '“ ' + band + ' GHz übernommen (cfm-Editor)'); } catch (e) { $('pre').textContent += '\nFEHLER beim Übernehmen: ' + e.message; return; }
+if (!r.changes.length) { $('pre').textContent += '\n\nVorschlag „' + p.name + '“ = laufender Plan in wifi.rsc – nichts zu ändern.'; return; }
+ta.value = r.text;
+lines(); status();
+$('pre').textContent += '\n\nIn wifi.rsc übernommen (noch NICHT gespeichert), Rückweg als Kommentar unter dem Array:\n  ' +
+r.changes.join('\n  ') + '\nWeiter: Speichern (Strg+S), „Prüfen“, „Probelauf“ für den CAPsMAN, „Release (Ring 0)“; meldet der CAPsMAN ' +
+'„CAP-Radio … veraltet“, dort cfm-reprov. DFS-Kanäle senden erst nach der CAC (≥ 60 s).';
+$('pre').scrollTop = $('pre').scrollHeight;
+}
 async function sign() {
 if (S.busy || $('.sign')) return;
 busy(true);

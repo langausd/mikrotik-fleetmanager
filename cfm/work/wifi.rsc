@@ -1,7 +1,7 @@
 # ============================================================
 # cfm – WLAN (gerendert vom CAPsMAN – Rolle capsman, DW1.5 – und als lokaler Fallback auf den APs, DW1.6)
 #  ssids     Key = interner Name. vlan = Datapath-VLAN, bands = "2,5",
-#            sec/ft/ftOverDs/pmf/isolation überschreiben die defaults.
+#            sec/ft/ftOverDs/pmf/isolation überschreiben die defaults, mlo = "enabled"|"disabled" (siehe mlo).
 #            Passphrase NUR im Vault: cfm:psk.<key> - <key> ist der SSID-Schlüssel unten in
 #            "ssids" (in dieser Vorlage z.B. "main", "guest" …), NICHT der SSID-Name selbst:
 #            $cfmSecret key=psk.main value=...   (bei eigenen Sites den eigenen Schlüssel nehmen!)
@@ -13,8 +13,9 @@
 #              "6"={"band"="6ghz-ax";"freq"="5955,5975,...";"width"="20/40/80/160mhz";"sec"="wpa3-psk";"pmf"="required"}
 #            Die Master-SSID sendet auf allen Bändern aus channels, weitere SSIDs laut "bands".
 #  mlo       Wi-Fi 7 Multi-Link (multi-link-mode der Provisioning-Regeln): "disabled" (Standard) |
-#            "auto" | "all" | "master". Ein MLD bietet kein FT an, und es gibt nur ein mld-datapath
-#            je CAP (VLAN der Master-SSID) – MLO deshalb nur ohne weitere SSIDs einschalten.
+#            "auto" | "all" | "master" (nur die Master-SSID). Je SSID (DW2.3.1) besser im ssids-Eintrag:
+#            "main"={...;"mlo"="enabled"} - nur die Master-SSID oder alle SSIDs einer Regel, nur im VLAN der
+#            Master-SSID (ein mld-datapath je CAP), $cfmCheck prüft das. FT am MLD erst ab RouterOS 7.25.
 #  reselect  Uhrzeit der nächtlichen Kanal-Neuwahl (reselect-time), leer = nur beim Start
 #  ppsk      mehrere Passphrasen mit eigenem VLAN je SSID (RouterOS ≥ 7.17, nur WPA2-PSK,
 #            VLAN nur mit wifi-qcom). Beispiel für die IoT-SSID:
@@ -43,8 +44,9 @@
 #            pendelt ein Client am Rand) und "hold" (so lange darf er unter drop liegen, Standard 0s):
 #              "6"={"threshold"=-72;"after"="5s";"drop"=-74;"join"=-68;"hold"="30s"}
 #            Nicht für SSIDs in isolierten VLANs (DP3.1).
-#  minSignal Mindestsignal bei der Anmeldung (dBm, alle Bänder): schwächere Clients weist der AP ab;
-#            eine laufende Verbindung trennt er deshalb nicht (dafür drop in steer)
+#  minSignal Mindestsignal bei der Anmeldung (dBm): schwächere Clients weist der AP ab; eine laufende
+#            Verbindung trennt er deshalb nicht (dafür drop in steer). Gilt nur auf Bändern ohne drop -
+#            mit Trennschwelle entscheidet dort join (TODO 96)
 #  fallback  an einer weiteren SSID: "fallback"="yes" -> sendet auch im lokalen Fallback der APs über einen eigenen
 #            lokalen virtuellen AP je Radio, den das Skript cfm-fallback ~20 s nach dem Verlust des CAPsMAN einschaltet
 #            (DW1.12; die Master-SSID sendet im Fallback immer, DW1.6). Nicht zusammen mit switch (im Fallback ohne Schalter)

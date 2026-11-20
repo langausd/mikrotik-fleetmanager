@@ -1619,11 +1619,38 @@ am 2026-11-04 bestätigte den Eintrag ohne VLAN. Rückbau: Eintrag und Schlüsse
 
 *2026-09-27 · alt D48*
 
+**Status:** ergänzt durch DW2.3.1 (2026-11-20): MLO je SSID (`multi-link-mode` je Regel `disabled`/`master`/`all`); das
+globale `mlo` bleibt der Standard.
+
 **Entscheidung:** MLO standardmäßig aus (`mlo` in `wifi.rsc` → `multi-link-mode` jeder Provisioning-Regel, nur gesetzt, wenn RouterOS den Parameter kennt); 6 GHz mit derselben SSID, Security je Band im Kanal-Eintrag (`sec`/`ft`/`ftOverDs`/`pmf`, eigenes Profil `cfm-<SSID>-<Band>g`, gleiche Passphrase per Secret-Push); `$cfmCheck` verlangt auf 6 GHz WPA3 mit PMF `required`
 
 **Verworfen:** MLO an und FT aus · MLO nur in einer eigenen Wi-Fi-7-SSID · eigene SSID für 6 GHz · 6 GHz aus
 
 **Begründung:** Hardware-Befund (hAP be³, RouterOS 7.24.4/7.25beta5): Als MLD bietet der AP kein FT an (RouterOS: „MLO does not support Fast Transition“). Ein Handy im FT-Verbund der übrigen APs meldete sich einen Tag lang nie am be³ an, auch direkt daneben; ein zweites Gerät flog nach 9 s wieder raus. Dazu gibt es nur ein `mld-datapath` je CAP (VLAN der `master`-SSID): Weitere SSIDs wie Gast/IoT landeten per MLO dort, also im falschen VLAN. Ohne MLO verhält sich der be³ wie die ax-APs. 6 GHz erlaubt keinen WPA2-Übergang; dieselbe SSID mit WPA3 auf 6 GHz hält die Clients in einem Netz (übliche Praxis bei Heimroutern), ältere Geräte bleiben auf 2,4/5 GHz. Die Master-SSID sendet auf allen Bändern aus `channels`, weitere SSIDs laut `bands`.
+
+##### <a id="dw2.3.1"></a>DW2.3.1 · MLO je SSID
+
+*2026-11-20 · Nutzer (TODO 48, 96)*
+
+**Frage:** RouterOS 7.25 bringt FT für MLD-Geräte. MLO soll sich testen lassen, ohne dass Gast/IoT ins VLAN der
+Master-SSID rutschen (ein `mld-datapath` je CAP).
+
+**Optionen (gewählt fett):** **je SSID `"mlo"="enabled"|"disabled"` im `ssids`-Eintrag, das globale `mlo` als
+Standard** · das globale `mlo` gilt nur noch für die Master-SSID
+
+**Entscheidung:** `$cfmMloOf` ermittelt je SSID, ob MLO an ist (eigener Wert, sonst global: Master bei
+`master`/`all`/`auto`, weitere SSIDs bei `all`/`auto`); `$cfmMloMode` setzt je Provisioning-Regel `multi-link-mode`:
+`disabled`, `master` (nur die Master-SSID ins MLD – RouterOS-Wert, Doku: „only the master interface is added as an
+affiliated MLD link“) oder `all`/`auto` (alle SSIDs der Regel). `$cfmCheck`: Fehler bei MLO an einer weiteren SSID ohne
+die Master-SSID, in einem anderen VLAN als die Master-SSID, oder wenn auf einem Band nur einige weitere SSIDs MLO haben
+(RouterOS kann je Regel nur Master oder alle); Hinweis, sobald MLO an ist. Der CAPsMAN löst die statischen MLDs seiner
+eigenen Radios nur, wenn die Master-SSID kein MLO hat.
+
+**Verworfen:** MLO je SSID und Band (RouterOS kennt es nicht je Slave) · ein `mld-datapath` je SSID (gibt es nicht).
+
+**Begründung:** Der Test braucht nur MLO an der Master-SSID; RouterOS bietet dafür `master`. Das alte globale `mlo`
+bleibt gültig, eine Site ohne Änderung verhält sich wie vorher. Hardware-Test (Handy mit Wi-Fi 7, im Haus und am
+Rand, ohne und mit MLO hintereinander) steht aus.
 
 #### <a id="dw2.4"></a>DW2.4 · Steering für Clients an schwachen APs
 
@@ -1644,6 +1671,10 @@ am 2026-11-04 bestätigte den Eintrag ohne VLAN. Rückbau: Eintrag und Schlüsse
 #### <a id="dw2.5"></a>DW2.5 · Trennschwelle je Band, auch für Clients mit FT
 
 *2026-10-23 · alt D92*
+
+**Nachtrag 2026-11-20** (*Hardware 19.11., TODO 96*): Die beiden Regeln je Band decken jedes Signal ab – `minSignal`
+(`wacl:min`, dahinter) wirkt auf Bändern mit `drop` nicht, dort gilt `join`. `$cfmCheck` nennt das als Hinweis, der
+Admin-Guide beschreibt es bei `minSignal`.
 
 **Entscheidung:** Im `steer`-Eintrag des Bands `drop` (dBm), optional `join` (Standard = drop) und `hold` (Standard 0 s). Je Band zwei access-list-Regeln (Regelblock `wcut`, Reihenfolge fest): Anmeldung unter `join` abweisen, sonst annehmen bis `drop` mit `allow-signal-out-of-range=hold`. Die Regeln zeigen auf die Interface-Liste `cfm-wifi-<Band>g`; in sie trägt RouterOS die Interfaces über einen eigenen datapath je Band und SSID (`cfm-<SSID>-<Band>g`, sonst wie `cfm-<SSID>`, dazu `interface-list`) selbst ein. SSIDs in isolierten VLANs (DP3.1) sind ausgenommen, `$cfmCheck` weist darauf hin (Nutzer, 2026-10-23)
 
@@ -1777,6 +1808,9 @@ Abdeckung ein Vorteil.
 
 *2026-11-17/18 · Nutzer (TODO 93; Anlass: Kanalplanung an einem Standort mit drei APs, die sich hören)*
 
+**Status:** korrigiert durch DW3.9.1 (Kanal vor dem Scan) und DW3.9.2 (Leistung als EIRP, Suche ab dem laufenden Plan,
+freies Spektrum).
+
 **Frage:** `$cfmWifiScan` schlug nur für 2,4 GHz vor. Bei 5/6 GHz entscheiden Primärkanal **und** Breite, ob sich
 Blöcke überlappen; dazu kommen DFS (CAC im lokalen Fallback), unterschiedliche EIRP-Grenzen je Teilband und fremde
 Netze mit eigener Breite.
@@ -1826,6 +1860,39 @@ Gerät aus `$cfmCapsmen` – ohne Gerät mit Rolle `capsman` also der Manager, w
 **Verworfen:** nach dem Scan warten, bis `monitor` wieder einen Kanal meldet (Dauer je Radio unbekannt, CAC bis
 10 min) · in `$cfmCheck` `capsmanRadios` des Hostfiles prüfen (die WLAN-Prüfung lädt keine Hostfiles; eine
 `radios`-Zeile für den CAPsMAN ohne eigene Radios ist harmlos, `mgr-check` warnt dort schon über `capsmanRadios`).
+
+##### <a id="dw3.9.2"></a>DW3.9.2 · Kanalvorschlag: Leistung als EIRP, Suche ab dem laufenden Plan, freies Spektrum
+
+*2026-11-20 · Hardware an einem zweiten Standort am 19.11. (TODO 96), Nutzer*
+
+**Frage:** Der zweite Einsatz von `$cfmWifiScan band=5` (fünf APs, hAP ax³ und hAP be³, Fritz-WLAN abgeschaltet) lieferte
+zwei unbrauchbare Pläne: „robust“ legte einen AP auf 5825/20 (14 dBm statt 23 dBm EIRP, 20 statt 80 MHz) und rechnete
+dafür nur 3 an Leistung; „breit“ kam auf Kosten 52, der laufende Plan nach derselben Spalte auf 27. Auf 6 GHz hörten
+die beiden APs nichts – „kein Vorschlag“, und der Scan lief auch über die drei APs ohne 6-GHz-Radio.
+
+**Entscheidung:** (1) **Leistung als EIRP:** `monitor` meldet `tx-power` am Anschluss; RouterOS hält `tx-power` +
+`min-antenna-gain` des Radios unter der Grenze (hAP ax³ 8 + 6 = 14 auf 5745, 24 + 6 = 30 auf 5500; hAP be³ 15 + 8 = 23
+auf 5180). `$cfmChLive` liest den Gewinn mit (`antenna-gain` der Konfiguration, sonst `min-antenna-gain`), die Messung
+speichert ihn als `g`. Grenze des Radios ist `tx + g` nur, wenn das mehr als 1 dB unter der Grenze des Teilbands lag;
+`txPower` + `g` begrenzt immer; ohne `g` wie bisher `tx` allein. Liegt die Messung an der Grenze, nimmt der Vorschlag
+Reserve an und sagt es („Reserve bis 30 angenommen, zählt 1 je dB“): Verlust unter der gemessenen Leistung zählt 3 je
+dB, angenommene Reserve darüber 1 je dB – mit 3 je dB schob das Labor alle fünf APs auf DFS (7 × 3 = 21 > DFS-Malus
+20); ein AP ohne Messung zählt wie bisher voll. (2) **Suche:** Start beim laufenden Plan (nur wenn jeder AP darin einen Kandidaten hat), je AP
+die besten K Kandidaten aus verschiedenen Blöcken, nach den Runden je AP auch Paare über ihre sechs besten Blöcke. (3)
+**5/6 GHz ohne gemessene Netze:** Vorschlag für ein freies Spektrum (volle Breite), APs ohne Radio im Band überspringt
+der Scan; 2,4 GHz und ganz ohne Messung wie bisher kein Vorschlag. (4) `$cfmChannels` zeigt die Leistung je Radio
+(`am Anschluss+Gewinn=EIRP`). Dazu der Leitfaden Admin-Guide 8.19.
+
+**Verworfen:** `current-max-reg-power` als Grenze des Kanals (meldet 30 auch auf 5180: höchste Grenze des Bands im
+Land) · Höchstleistung des Radios aus früheren Messungen merken (eigener Zustand; ein Radio, das weniger kann, lässt
+sich mit `txPower` ebenso genau beschreiben) · alle Kombinationen (bei fünf APs mit 25 Kandidaten ~10⁷ Pläne).
+
+**Begründung:** Ohne Antennengewinn sah jede Messung wie eine Grenze des Radios aus – 5725–5850 kostete dadurch fast
+nichts, obwohl dort 9 dB fehlen. Die Suche wählte die besten K je AP nach Einzelkosten, das waren derselbe Block mit
+anderem Primärkanal; die Kombinationen sahen je AP nur einen Block, die Runden je AP finden keinen Tausch zweier APs.
+Mit dem laufenden Plan als Start ist kein Vorschlag schlechter als er. Am Standort gewählt (Nutzer): ein Rand-AP von
+5745 (14 dBm EIRP) auf 5500/80 DFS (30 dBm) – beim Rundgang hielt 5 GHz bis an die Grundstücksgrenze, die übrigen
+Pins blieben.
 
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten
 
@@ -2032,6 +2099,27 @@ Beide Standorte schickten den Syslog an ihren Manager – RouterOS nimmt aber ke
 **Optionen (gewählt fett):** Dateiinhalte: **im Code vermeiden** (Nutzer) · zusätzlicher Topic-Filter `syslogTopics` · nur im Syslog-Server verwerfen; Umlaute: **Log-Meldungen nur in ASCII** (Nutzer) · zur Laufzeit in `$cfmLog` umschreiben · lassen
 
 **Begründung:** RouterOS protokolliert `/file/add|set contents=` mit vollständigem Inhalt (`system,info`, im RAM-Log seit DU3.2 ausgeblendet, an den Syslog geht alles), `/file/copy` gar nicht; geheime Felder (Passwort, Passphrase, SNMP-Passwörter, WireGuard-`private-key`) schwärzt es (Hardware 7.25). `$cfmRelease` und `$cfmRollback` kopieren das Archiv per `/file/copy` (ohne: wie bisher Lesen und Schreiben) – ein Release schickte vorher ~750 KB an den Syslog. `$cfmRekey` eines Managers exportiert den Host-Key je User neu (`/ip/ssh/export-host-key`, der Import verbraucht die Datei), statt den privaten Schlüssel per `/file/add` zurückzuschreiben – er stünde sonst im Syslog (UDP im Klartext übers MGMT-VLAN). Log-Texte (`:log`, `$cfmLog`, `$cfmWarn`, `:error` des Agenten, Bootstrap) mit ae/oe/ue/ss und `-`, weil RouterOS jedes Nicht-ASCII-Byte als `?` sendet; `tools/rsc-check.py` Regel `log-ascii` (Fehler unter `cfm/work/`, sonst Hinweis). Terminal-Ausgaben (`:put`) und Kommentare bleiben. Labor: `e2e.sh` 14g/14h prüfen, dass nach Rekey und Release weder `PRIVATE KEY` noch Archivinhalt im Log stehen (7.25: 405 grün). Hardware 2026-11-02: Das erste Release nach dem Update läuft noch mit dem installierten alten Code (`cfm-mgr` lädt `cfm-mgr-*`), ab dem nächsten schickt der Manager statt ~1250 nur ~100 Zeilen (zwei kleine `/file add`: `index.dat`, meta). Skript-Änderungen (`/system script set source=`) protokolliert RouterOS mit Quelltext – nur bei Code-Änderungen, ohne Geheimnisse
+
+#### <a id="du3.5"></a>DU3.5 · WLAN-Debug-Log als Feature
+
+*2026-11-20 · Nutzer (TODO 96)*
+
+**Frage:** Messungen am Rand der Abdeckung brauchen `wireless,debug` am CAPsMAN (Abweisungen der access-list,
+Abbrüche, 802.11v) – bisher ein Handeintrag `wdebug`, der vor jedem Release weg musste.
+
+**Optionen (gewählt fett):** **`global.rsc` `"wifiDebug"={"<Gerät>"=<RAM-Zeilen>}`, Topics fest `wireless,debug`** ·
+im Hostfile des Geräts mit eigenen Topics
+
+**Entscheidung:** Die Rolle `base` legt für das genannte Gerät die Aktion `cfmwdebug` (RAM, Zeilen aus dem Eintrag)
+und die Regel `wireless,debug` → `cfmwdebug` an; entfällt der Eintrag, entfernt sie die Regel, solange es die Aktion
+gibt, die GC die Aktion (wie bei `cfmremote`, DU3.3). `$cfmCheck`: Name wie im Inventar, 1000–100000 Zeilen, Hinweis,
+solange es an ist. Die Dauermessung einer Site nutzt den Puffer, wenn es ihn gibt.
+
+**Verworfen:** eigene Topics je Gerät (bisher nur `wireless,debug` gebraucht; die Regel ohne Kommentar ließe sich
+mit wechselnden Topics nicht sauber abgleichen).
+
+**Begründung:** Ein Release lässt den Puffer stehen, kein Rollback durch einen gleichnamigen Handeintrag, und das
+Abschalten ist ein Release – vergessen wird er so nicht mehr (Hinweis in `$cfmCheck`).
 
 ### <a id="du4"></a>DU4 · Meldungen und Monitoring
 
@@ -2240,6 +2328,24 @@ Version 1–40, Maske nach den Strafpunkten der Norm), `build.py` setzt ihn an d
 Version 40 voll, Umlaute, alle acht Masken); die WIFI-Zeichenkette gleicht der von `wifi-sign.py`. Dazu einmal von
 Hand im Browser (Firefox headless, REST nachgebildet): Vorschau, Druckansicht nur mit dem Blatt, QR-Code aus dem
 Screenshot mit zbar dekodiert.
+
+#### <a id="dt3.5"></a>DT3.5 · Kanalplanung im cfm-Editor
+
+*2026-11-20 · Nutzer (TODO 96)*
+
+**Frage:** Kanäle prüfen und einen Vorschlag übernehmen, ohne die Zeile `"radios"` von Hand zu kopieren.
+
+**Optionen (gewählt fett):** **Knöpfe „Kanäle“ und „WLAN-Scan“, Vorschlag per Knopf in `wifi.rsc` im Editor
+übernehmen (Speichern bleibt von Hand, Rückweg als Kommentar)** · nur Anzeige · ohne GUI
+
+**Entscheidung:** „Kanäle“ = `$cfmChannels`. „WLAN-Scan“ öffnet eine Leiste (Band, alle EU-Kanäle, letzte Messung, ein
+AP) und startet `$cfmWifiScan`; danach je Vorschlag ein Knopf. Übernehmen ersetzt in `wifi.rsc` je AP **nur das
+gescannte Band** (die Zeile der 2,4-GHz-Vorschläge nennt nur `"2"` – sonst gingen die 5/6-GHz-Pins verloren), die
+übrigen Pins, Listen und `off` bleiben; der alte Eintrag steht als Kommentar `# <Datum> Kanalvorschlag … Rückweg:
+"radios"=…` hinter dem Array. Gespeichert wird erst mit Strg+S; Prüfen, Probelauf und Release wie sonst.
+
+**Umsetzung:** `tools/editor/cfm-radios.js` (Eintrag finden ohne Kommentarzeilen und Zeichenketten, kleiner Parser
+für `radios`, Werte als Rohtext), `build.py` setzt es ein; Test `tools/editor/cfm-radios-test.py` (node).
 
 ## <a id="archiv"></a>Archiv
 
@@ -2618,3 +2724,12 @@ DT3.4.1 (WLAN-Schild im Editor).
 Anlass: Befunde beim Rollout an beiden Standorten (2026-11-13) und offene Punkte (TODO 78, 82, 83). Der Nutzer
 entschied in einer Fragerunde (Laden aus `work/` mit Sperre nach einem Rollback; Passphrase aus dem Vault, PPSK
 wählbar) und gab zwei Wünsche zum Editor dazu; Umsetzung und Labortests unbeaufsichtigt.
+
+### Kanalplanung, MLO je SSID, Debug-Log (2026-11-19/20)
+
+Entscheidungen: DW3.9.2 (Kanalvorschlag: Leistung als EIRP, Suche ab dem laufenden Plan, freies Spektrum), DW2.3.1
+(MLO je SSID), DU3.5 (WLAN-Debug-Log als Feature), DT3.5 (Kanalplanung im cfm-Editor).
+
+Anlass: Abend an einem Standort (2026-11-19): Altnetz auf die MikroTiks gezogen, Fremd-WLAN abgeschaltet, Scans ohne
+Fremdradios (TODO 96). Der Nutzer entschied den Umfang und die Form in drei Fragerunden; Umsetzung, Labortests und
+Doku in der Nacht unbeaufsichtigt.

@@ -7,7 +7,9 @@
 #            $cfmSecret key=psk.main value=...   (bei eigenen Sites den eigenen Schlüssel nehmen!)
 #  master    SSID, die das physische Radio trägt (die übrigen werden virtuelle APs)
 #  channels  Kanal-Pools je Band; RouterOS wählt daraus den passendsten Kanal.
-#            skipDfs = "10min-cac" (Wetterradar-Kanäle meiden) | "all" | "disabled"
+#            dfs (nur 5 GHz, DW3.10) = höchste erlaubte Wartezeit vor dem Senden (CAC) auf DFS-Kanälen:
+#              "no-cac" (keine DFS-Kanäle) | "1min-cac" (DFS ohne Wetterradar 5600-5650) | "10min-cac" (alle);
+#              ohne Angabe wie "10min-cac" (RouterOS-Standard). Je AP abweichend: siehe dfs unten
 #            sec/ft/ftOverDs/pmf überschreiben die Security aller SSIDs auf diesem Band (eigenes
 #            Profil cfm-<SSID>-<Band>g, gleiche Passphrase). 6 GHz verlangt WPA3 mit PMF:
 #              "6"={"band"="6ghz-ax";"freq"="5955,5975,...";"width"="20/40/80/160mhz";"sec"="wpa3-psk";"pmf"="required"}
@@ -31,6 +33,9 @@
 #            Drei APs, die sich hören, brauchen drei getrennte Blöcke - mit 80 MHz gibt es in der EU ohne
 #            Wetterradar nur zwei (36-48, 100-112); $cfmCheck lehnt Pins ab, deren Block über 5725 MHz reicht.
 #            (ohne Eintrag wählt der CAPsMAN bei jeder Neuverbindung aus dem Pool unter channels; gilt auch für den Fallback)
+#  dfs       optional je AP-Identity (nur 5 GHz, DW3.10): höchste erlaubte CAC, Werte wie dfs unter channels, z.B.
+#            {"cm1"="10min-cac";"ap2"="no-cac"} - am CAPsMAN selbst (ohne Fallback) kostet Wetterradar nur beim
+#            Start 10 min; an einem AP mit Fallback bei jedem Neuprovisionieren und im Fallback ($cfmCheck warnt)
 #  txPower   optional Sendeleistung je AP-Identity und Band in dBm am Anschluss (TODO 72, DW3.7), z.B. bei externen
 #            Antennen: {"cm1"={"2"=14;"5"=17}}. antenna-gain wirkt nicht (CRS418, 2026-11-16) - die EIRP-Grenze
 #            (Sendeleistung + Antennengewinn - Kabeldämpfung) selbst einhalten. Ohne Eintrag: Landeslimit.
@@ -64,7 +69,7 @@
 # 5 GHz (TODO 87, Befund 2026-11-16): In DE gelten auf 5150-5350 und 5470-5725 bis 23 bzw. 30 dBm EIRP, auf
 #            5745-5825 nur 14 dBm (SRD-Band) - aus einem gemischten Pool wählte RouterOS den oberen Bereich, 9 dB
 #            weniger. Die Vorlage nimmt die zwei 80-MHz-Blöcke 5180-5240 (36-48) und DFS 5500-5560 (100-112). Nicht im
-#            Pool (DW3.8, 2026-11-17): 5580 (Block 116-128 enthält Wetterradar, 10 min CAC) und 5660-5700 (80 MHz auf
+#            Pool (DW3.8, 2026-11-17): 5580 (Block 116-128 enthält Wetterradar, 10 min CAC, je AP über dfs) und 5660-5700 (80 MHz auf
 #            132-144 = 5650-5730, über dem Ende des Bands 5470-5725) - je AP mit Breite nutzbar, z.B. "5660/40".
 #            Preis von DFS: Nach jedem Start eines Radios auf einem DFS-Kanal ist 5 GHz mindestens 60 s still
 #            (CAC), bei Radar wechselt der Kanal - auch im lokalen Fallback der APs. Variante ohne DFS: unter dem Block.
@@ -81,14 +86,15 @@
   };
   "channels"={
     "2"={"band"="2ghz-ax";"freq"="2412,2437,2462";"width"="20mhz"};
-    "5"={"band"="5ghz-ax";"freq"="5180,5200,5220,5240,5500,5520,5540,5560";"width"="20/40/80mhz";"skipDfs"="10min-cac"}
+    "5"={"band"="5ghz-ax";"freq"="5180,5200,5220,5240,5500,5520,5540,5560";"width"="20/40/80mhz";"dfs"="1min-cac"}
   };
   "reselect"="03:00";
   "ppsk"={};
   "radios"={};
+  "dfs"={};
   "txPower"={};
   "steer"={};
   "others"={}
 }
 # Variante ohne DFS (TODO 87): keine CAC, aber nur ein 80-MHz-Block - alle APs im selben Kanal. Zum Umschalten einkommentieren:
-# :set ($cfmWifi->"channels"->"5") {"band"="5ghz-ax";"freq"="5180,5200,5220,5240";"width"="20/40/80mhz"}
+# :set ($cfmWifi->"channels"->"5") {"band"="5ghz-ax";"freq"="5180,5200,5220,5240";"width"="20/40/80mhz";"dfs"="no-cac"}

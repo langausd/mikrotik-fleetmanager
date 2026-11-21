@@ -10,6 +10,15 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-21:** **TODO 92** umgesetzt (Hardware offen, bleibt in TODO.md): `dfs` als höchste erlaubte CAC
+  (`no-cac`/`1min-cac`/`10min-cac`) unter `channels` 5 GHz und je AP als eigene Map, ersetzt `skipDfs` (Breaking
+  Change, `$cfmCheck` lehnt den alten Schlüssel mit Übersetzung ab); Kanal-Objekte je AP aus `radios` setzen jetzt
+  `skip-dfs-channels`; `$cfmWifiScan` rechnet je AP mit dessen Wert; Warnung bei `10min-cac` an APs mit Fallback
+  (DW3.10). **Paket-Download** mit bis zu drei Versuchen (Pause 5 s/20 s) nach den Abbrüchen „Bad message“ im Labor.
+  MNDP-Prüfung im Labor mit eigener raw-Regel und zweitem Anstoß, ohne ankommende Pakete übersprungen statt rot.
+  Auswertung der Dauermessungen zum 5-GHz-Steering → **TODO 97**. Labor: `e2e.sh` **542 von 542**, VRRP, MLAG,
+  Onboarding grün ([TESTSTAND.md](TESTSTAND.md)).
+
 * **Am 2026-11-19/20 (vor Ort an einem Standort, danach Nachtschicht):** Hardware: Altnetz (2,4 GHz) auf die
   MikroTiks gezogen, Fremd-WLAN abgeschaltet, zweiter Einsatz von `$cfmWifiScan` (Befunde → TODO 96). **TODO 96**
   umgesetzt (Hardware offen, bleibt in TODO.md): Leistung vor dem Scan als EIRP mit Antennengewinn, Suche mit dem

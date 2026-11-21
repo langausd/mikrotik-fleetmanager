@@ -1,6 +1,6 @@
 # Teststand
 
-Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-20).
+Was im CHR-Labor und auf echter Hardware geprüft ist und was auf Hardware noch offen ist (Stand 2026-11-21).
 Wie die Labortests laufen: [Admin-Guide Kapitel 12](admin-guide.md#12-testlabor) und
 [tools/chr-lab/README.md](../tools/chr-lab/README.md). Nummern wie DW1.5 verweisen auf
 [DECISIONS.md](DECISIONS.md), Nummern wie „TODO 58“ auf [TODO.md](TODO.md), Eigenheiten von RouterOS stehen in
@@ -12,7 +12,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Überblick
 
 * **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
-  alle vier Tests fehlerfrei – zuletzt am 2026-11-20 der Gesamttest (532 Prüfungen), VRRP (184), MLAG (72) und das Onboarding (14/15/18), am 2026-11-16 der Gesamttest (485), am 2026-11-12 abends der Gesamttest (477) und drei VRRP-Router mit
+  alle vier Tests fehlerfrei – zuletzt am 2026-11-21 der Gesamttest (542 Prüfungen), VRRP (184), MLAG (72) und das Onboarding (14/15/18), am 2026-11-20 der Gesamttest (532), am 2026-11-16 der Gesamttest (485), am 2026-11-12 abends der Gesamttest (477) und drei VRRP-Router mit
   Standortkopplung (184, dazu `asymRouting` mit Netzen DR3.2.1 und Standort ohne `pubkey` DR4.3.1), am Vormittag
   desselben Tages der Gesamttest (477, zwei veraltete Erwartungen korrigiert) und VRRP (164); am 2026-11-08 der Gesamttest (469), VRRP (137),
   LACP/MLAG/isolierte VLANs (72) und das Onboarding mit Werks-IP (14), im CAPs-Modus (15) und hinter einem nicht
@@ -146,6 +146,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   14 Folgefehler; vom Rechner aus gleich danach geladen); Wiederholung **532 von 532**. Mit dem Stand davor (Änderungen
   danach nur in `mgr-scan`, `$cfmAudit` und Kommentaren): `e2e-vrrp.sh` **184**, `e2e-mlag.sh` **72**,
   `e2e-onboard.sh` **14/15/18**. Dazu `cfm-radios-test.py` 6.
+  2026-11-21 (TODO 92 DW3.10, Download-Wiederholung, MNDP-Prüfung): `e2e.sh` **542 von 542** im ersten Lauf – neu
+  „Paket-Download: drei Versuche, dann Fehler“ (Version ohne Paket, Warnung je Fehlversuch, keine Reste), `dfs` je AP
+  im Scan (Wetterradar nur für den AP mit `10min-cac`), im Apply (`skip-dfs-channels` am eigenen Kanal-Objekt, Pin
+  erbt `dfs` des Bands) und in `$cfmCheck` (altes `skipDfs` mit Übersetzung abgelehnt, Pin auf Wetterradar Fehler bzw.
+  in einer Liste Warnung); MNDP-Gegenprobe mit eigener raw-Regel grün. Mit demselben Stand `e2e-vrrp.sh` **184**,
+  `e2e-mlag.sh` **72**, `e2e-onboard.sh` **14/15/18**.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

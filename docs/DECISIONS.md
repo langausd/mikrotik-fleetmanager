@@ -1743,6 +1743,8 @@ Kanal-Pools zentral in `wifi.rsc`, optionales Pinning pro AP ebenfalls in `wifi.
 
 *2026-11-16 · Nutzer (TODO 87)*
 
+**Status:** `skipDfs` heißt seit DW3.10 `dfs` (`"1min-cac"` statt `skipDfs="10min-cac"`).
+
 **Frage:** Welcher 5-GHz-Pool steht in der Vorlage `wifi.rsc`?
 
 **Entscheidung:** 5180–5240 und DFS 5500–5580/5660–5700 mit `skipDfs="10min-cac"` (wie ein Standort seit 2026-11-16), Begründung als Kommentar darüber; die Variante ohne DFS (nur 5180–5240) steht auskommentiert als `:set` darunter (ein Kommentar im Array-Literal wäre ein Fehler). `$cfmCheck` nennt DFS-Kanäle in Pool und `radios` als **Hinweis** – eine neue Stufe neben Fehler und Warnung, ausgegeben von `$cfmCheck` und vom Editor („Prüfen“), nicht gezählt und im Release nicht wiederholt (Nutzer: Hinweis, keine Dauerwarnung)
@@ -1797,7 +1799,7 @@ Breite über 5725 MHz reicht, Warnung bei einer Liste bzw. beim Pool unter `chan
 
 **Verworfen:** Unterstruktur `{"freq"=…;"width"=…}` (länger, die Kurzform reicht) · alle APs auf 40 MHz über `channels`
 (kostet cm1 die 80 MHz ohne Not) · Wetterradar-Kanäle erlauben (`skipDfs` je AP, 10 min CAC bei jedem Neuprovisionieren,
-nachrangig: TODO 92)
+nachrangig: TODO 92 – umgesetzt als DW3.10, `dfs` je AP)
 
 **Begründung:** Unterschiedliche Breiten je AP stören das Roaming nicht (die Breite steht in den Beacons jedes Senders,
 FT hängt an SSID, Sicherheit und Mobility Domain); Clients, die den erwarteten Durchsatz mitbewerten, bleiben
@@ -1809,7 +1811,7 @@ Abdeckung ein Vorteil.
 *2026-11-17/18 · Nutzer (TODO 93; Anlass: Kanalplanung an einem Standort mit drei APs, die sich hören)*
 
 **Status:** korrigiert durch DW3.9.1 (Kanal vor dem Scan) und DW3.9.2 (Leistung als EIRP, Suche ab dem laufenden Plan,
-freies Spektrum).
+freies Spektrum); `skipDfs` heißt seit DW3.10 `dfs` und gilt je AP.
 
 **Frage:** `$cfmWifiScan` schlug nur für 2,4 GHz vor. Bei 5/6 GHz entscheiden Primärkanal **und** Breite, ob sich
 Blöcke überlappen; dazu kommen DFS (CAC im lokalen Fallback), unterschiedliche EIRP-Grenzen je Teilband und fremde
@@ -1893,6 +1895,33 @@ anderem Primärkanal; die Kombinationen sahen je AP nur einen Block, die Runden 
 Mit dem laufenden Plan als Start ist kein Vorschlag schlechter als er. Am Standort gewählt (Nutzer): ein Rand-AP von
 5745 (14 dBm EIRP) auf 5500/80 DFS (30 dBm) – beim Rundgang hielt 5 GHz bis an die Grundstücksgrenze, die übrigen
 Pins blieben.
+
+#### <a id="dw3.10"></a>DW3.10 · DFS als höchste erlaubte Wartezeit, je AP
+
+*2026-11-21 · Nutzer (TODO 92)*
+
+**Frage:** Wie erlaubt man Wetterradar-Kanäle (10 min CAC) nur an einzelnen APs? Dabei fiel auf: Die Kanal-Objekte je AP
+aus `radios` (`cfm-5g-<AP>`) bekamen `skip-dfs-channels` gar nicht – eine Liste je AP konnte still auf Wetterradar landen.
+Und `skipDfs="disabled"` las sich als doppelte Verneinung (Nutzer: „Heißt das jetzt, dass DFS genutzt wird oder nicht?“).
+
+**Entscheidung:** `skipDfs` entfällt (Breaking Change). Neu `dfs` = **höchste erlaubte CAC am Radio**: `"no-cac"` (keine
+DFS-Kanäle → `skip-dfs-channels=all`), `"1min-cac"` (DFS ohne Wetterradar → `10min-cac`), `"10min-cac"` (alle →
+`disabled`; so auch ohne Angabe). Nur bei 5 GHz: unter `channels` → `"5"` für alle, je AP in einer eigenen Map ohne Band,
+`"dfs"={"ap1"="10min-cac";"ap2"="no-cac"}`. Kanal-Objekte je AP erben den Wert (eigener, sonst der des Bands); ein AP nur
+mit `dfs` bekommt ein eigenes Kanal-Objekt mit dem Pool des Bands. `$cfmWifiScan` rechnet die Kandidaten je AP mit
+seinem Wert. `$cfmCheck`: **Fehler** bei `skipDfs` (mit Übersetzung `10min-cac` → `1min-cac`, `all` → `no-cac`,
+`disabled` → `10min-cac`), `dfs` an einem anderen Band, unbekanntem Wert, `dfs` je AP mit Band, einem Pin, dessen Block
+`dfs` ausschließt; **Warnung** bei einer Liste mit solchen Kanälen (RouterOS lässt sie aus) und bei `10min-cac` an APs
+mit Fallback (Rolle `ap`) – ausdrücklich gesetzt, je AP oder unter `channels`; ohne Angabe nicht (RouterOS-Standard). Der
+DFS-Hinweis (DW3.6) entfällt bei `no-cac`.
+
+**Verworfen:** `skipDfs` je AP (dieselbe doppelte Verneinung) · Zusatz `/wr` im `radios`-Wert (noch ein Format im
+String) · `skipDfs` weiter lesen mit Warnung (beide Standorte stellen beim nächsten Release ohnehin um; Nutzer: Fehler)
+· Band in der Map je AP (DFS gibt es nur bei 5 GHz).
+
+**Begründung:** Der Wert sagt direkt, wie lange ein Radio nach dem Start schlimmstenfalls still ist – das ist die
+Abwägung, die der Admin trifft. Am CAPsMAN-Gerät (ohne Fallback, CAC nur beim Start) lohnt Wetterradar eher als an einem
+AP, der nach jedem Neuprovisionieren und im Fallback wartet.
 
 #### <a id="dw4.1"></a>DW4.1 · Gast-SSID per Home Assistant schalten
 
@@ -2733,3 +2762,11 @@ Entscheidungen: DW3.9.2 (Kanalvorschlag: Leistung als EIRP, Suche ab dem laufend
 Anlass: Abend an einem Standort (2026-11-19): Altnetz auf die MikroTiks gezogen, Fremd-WLAN abgeschaltet, Scans ohne
 Fremdradios (TODO 96). Der Nutzer entschied den Umfang und die Form in drei Fragerunden; Umsetzung, Labortests und
 Doku in der Nacht unbeaufsichtigt.
+
+### DFS je AP (2026-11-21)
+
+Entscheidung: DW3.10 (`dfs` = höchste erlaubte CAC, global und je AP, ersetzt `skipDfs`). Nebenbei: Paket-Download des
+Managers mit drei Versuchen (`$cfmPkgFetch`, Abbrüche „Bad message“ im Labor), MNDP-Prüfung im Labor mit Diagnose.
+
+Anlass: TODO 92 und die Lücke bei den Kanal-Objekten je AP; der Nutzer entschied Name und Werte in zwei Fragerunden
+(positive Formulierung statt doppelter Verneinung, Breaking Change mit Fehler in `$cfmCheck`).

@@ -62,15 +62,34 @@
   :if (![$cfmFileEx $lp]) do={
     :if ($dl = "no") do={ :set ($r->"err") "fehlt"; :return $r }
     :local url ("https://download.mikrotik.com/routeros/" . $ver . "/" . $fn)
-    :put ("lade " . $url)
+    # Bis zu drei Versuche (5 s, 20 s Pause): Einzelne Abbrüche ("Bad message") kamen im Labor wiederholt vor,
+    # der nächste Versuch gelang jeweils. Auch eine Datei ohne NPK-Kennung (abgeschnitten) lädt neu.
     :local fe ""
-    :onerror e in={ /tool/fetch url=$url dst-path=$lp as-value } do={ :set fe $e }
-    :if ([:len $fe] > 0) do={
-      :onerror e in={ /file/remove [find where name=$lp] } do={}
-      :set ($r->"err") ("Download fehlgeschlagen (" . $fe . ")")
+    :local n 0
+    :local done false
+    :while (!$done and $n < 3) do={
+      :set n ($n + 1)
+      :set fe ""
+      :if ($n = 1) do={ :put ("lade " . $url) } else={ :put ("lade " . $url . " (Versuch " . $n . ")") }
+      :onerror e in={ /tool/fetch url=$url dst-path=$lp as-value } do={ :set fe $e }
+      :if ([:len $fe] = 0) do={
+        :delay 1s
+        :if ([$cfmPkgOk $lp]) do={ :set done true } else={ :set fe "keine NPK-Kennung" }
+      }
+      :if (!$done) do={
+        :onerror e in={ /file/remove [find where name=$lp] } do={}
+        :if ($n < 3) do={
+          :local w 5
+          :if ($n = 2) do={ :set w 20 }
+          :log warning ("cfm: Download " . $fn . " Versuch " . $n . " fehlgeschlagen (" . $fe . ") - neuer Versuch in " . $w . " s")
+          :delay ([:totime ($w . "s")])
+        }
+      }
+    }
+    :if (!$done) do={
+      :set ($r->"err") ("Download fehlgeschlagen nach " . $n . " Versuchen (" . $fe . ")")
       :return $r
     }
-    :delay 1s
   }
   :if (![$cfmPkgOk $lp]) do={
     # Probe (dl=no) ändert nichts; sonst weg damit, der nächste Auftrag lädt neu

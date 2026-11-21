@@ -1,10 +1,10 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-20)
+## Übersicht offener Punkte (Stand 2026-11-21)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 97). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 98). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -45,6 +45,20 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     (DU3.5), **Editor** „Kanäle“/„WLAN-Scan“ mit Übernehmen (DT3.5), Admin-Guide **8.19 WLAN-Kanäle planen**.
     Hardware: `$cfmWifiScan band=5` am Standort (Leistungszeile plausibel, „breit“ ≤ Aktuell), `band=6` mit Vorschlag,
     Editor-Knöpfe im Browser, `wifiDebug` am CAPsMAN, MLO-Test (48).
+* **Neu 2026-11-21:**
+  * **92 – DFS je AP** (*umgesetzt 21.11., DW3.10, Labor; Hardware offen*): `skipDfs` ersetzt durch `dfs` = höchste
+    erlaubte CAC (`no-cac` | `1min-cac` | `10min-cac`), unter `channels` und je AP (`"dfs"={"ap1"="10min-cac"}`); die
+    Kanal-Objekte je AP aus `radios` erben den Wert (bisher ohne `skip-dfs-channels`). **Breaking Change:** Vor dem
+    nächsten Release mit diesem Stand an beiden Standorten `"skipDfs"="10min-cac"` → `"dfs"="1min-cac"` (sonst Fehler
+    in `$cfmCheck`). Hardware: `cfm-5g-<AP>` mit `skip-dfs-channels=10min-cac` nach dem Release.
+  * **97 – 5-GHz-Steering erreicht das Handy nicht** (*Befund 21.11. aus den Dauermessungen, Test offen*): Ein Samsung
+    S24U (`ft-wpa3-psk`) lag am 20.11. 44 min am Stück unter `threshold` −74 (5-s-Proben −75 … −86) – im Debug-Puffer
+    keine einzige Zeile `transition requests`, kein Kick. In allen Messungen seit 26.10. bekam es auf keinem Band
+    Vorschläge (nur „0 transition requests sent“ als Kandidat auf 6 GHz), andere Clients schon (Laptop ohne FT:
+    Vorschläge und Kick auf 5 GHz; ein OnePlus mit FT: Vorschläge auf 2,4 GHz). Vermutung: Das Handy meldet kein BSS
+    Transition (802.11v) – RouterOS schickt dann nichts, und der Kick trennt FT-Clients ohnehin nicht (DW2.5). Test vor
+    Ort: Handy und Laptop nebeneinander unter der Schwelle, Puffer live mitlesen. Bestätigt sich das, hilft bei
+    solchen Clients nur die Trennschwelle (`drop`/`join`/`hold`) auch auf 5 GHz.
 * **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
   * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
     Interface ohne eigenen (`cfm:wdp…`); der Plan wollte Radios und Slaves entfernen. Fix im Arbeitsstand
@@ -88,8 +102,6 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     kein DFS; Test an einem Standort mit zwei 6-GHz-Radios). **Umgesetzt** wie entschieden; abweichend vom Entwurf
     oben: Kandidaten aus dem Pool, `all=yes` für alle EU-Kanäle (der Pool aus TODO 90 enthält 5660 nicht mehr);
     Suche über die je AP besten K Kandidaten statt aller ~3400 Pläne, danach zwei Runden reihum.
-  * **92 – nachrangig (Option 3):** Wetterradar-Kanäle (10 min CAC) je AP erlauben (`skipDfs` je AP) – CAC bei jedem
-    Neuprovisionieren beachten.
 * **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
   (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
   2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
@@ -196,8 +208,12 @@ behoben 2026-11-05 (DW2.2.1, DP3.1.1) bzw. neu gelöst 2026-11-16 (DW1.12), im L
 * **Labor-Wackler MNDP mit Quelle 0.0.0.0** (`e2e.sh` Abschnitt 14, DR2.5): Die Prüfung „cm1: MNDP mit Quelle
   0.0.0.0 still verworfen“ wartet auf einen Treffer im Zähler der Drop-Regel. Fehlschläge 2026-10-31, 2026-11-06 und
   2026-11-08 (7.25.1) – auch nach dem Anstoßen (MNDP an cm2 aus und wieder an, danach bis zu 120 s): Zähler 0, cm2
-  sendet MNDP (`cdp;lldp;mndp`, 30 s). Das Verhalten stimmt jeweils (kein `cfm-drop` im Log). Offen: Sendet cm2 über
-  den Bridge-Port ohne Adresse nur manchmal mit Quelle 0.0.0.0? Gegenprobe per Sniffer an cm1 `ether3`.
+  sendet MNDP (`cdp;lldp;mndp`, 30 s). Das Verhalten stimmt jeweils (kein `cfm-drop` im Log). *2026-11-21:* Mit zwei
+  VMs nachgestellt (Trunk-Port ohne Adresse, `protocol-mode=none`, Gegenseite `pvid=10`, derselbe Ablauf mit Anstoßen):
+  11 von 11 Mal kam das erste Paket nach 3 s an, immer `connection-state=new` – kein Hinweis auf Connection-Tracking.
+  Die Prüfung stößt jetzt nach 60 s ein zweites Mal an und zählt davor in `raw`/prerouting (Handregel): Kam nichts mit
+  Quelle 0.0.0.0 an, gilt sie als übersprungen („cm2 sendet nicht“, kein Fehler von cm1); kam etwas an und die
+  Drop-Regel zählt nicht, ist sie rot. Offen bleibt, warum cm2 im vollen Labor manchmal nicht sendet.
 
 * **Labor-Wackler MLAG: sw2 im zweiten Apply nicht idempotent** (`e2e-mlag.sh` Schritt 7, 7.25.1, 2026-11-08): einmal
   `add=6;rem=3;set=6`, sw1 mit derselben Rolle sauber, die Wiederholung grün. Die VMs waren schon ersetzt, das

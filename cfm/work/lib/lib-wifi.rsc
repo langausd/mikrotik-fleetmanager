@@ -6,6 +6,14 @@
 # deren Syntaxfallen gelten hier ebenso.
 # ============================================================
 
+:global cfmDfsSkip do={
+  # dfs (DW3.10, höchste erlaubte CAC) -> skip-dfs-channels von RouterOS (meidet, was darüber liegt);
+  # ohne Angabe RouterOS-Standard (alle DFS-Kanäle)
+  :local v [:tostr $1]
+  :if ($v = "no-cac") do={ :return "all" }
+  :if ($v = "1min-cac") do={ :return "10min-cac" }
+  :return "disabled"
+}
 # MLO je SSID (DW2.3.1): {"<SSID-Schlüssel>"=true|false} aus "mlo" im ssids-Eintrag ("enabled"/"disabled"), sonst aus
 # dem globalen "mlo" (Standard disabled): Master an bei master/all/auto, weitere SSIDs nur bei all/auto. RouterOS kann je
 # Provisioning-Regel nur die Master-SSID (multi-link-mode=master) oder alle (all) ins MLD nehmen - welche Kombination
@@ -146,7 +154,9 @@
     :local rs [:tostr ($w->"reselect")]
     :if ([:len $rs] = 5) do={ :set rs ($rs . ":00") }
     :if ([:len $rs] > 0) do={ :set ($cp->"reselect-time") $rs }
-    :if ([:len [:tostr ($c->"skipDfs")]] > 0) do={ :set ($cp->"skip-dfs-channels") ($c->"skipDfs") }
+    # dfs (DW3.10) = höchste erlaubte CAC -> skip-dfs-channels (meidet, was darüber liegt)
+    :global cfmDfsSkip
+    :if ($b = "5") do={ :set ($cp->"skip-dfs-channels") [$cfmDfsSkip ($c->"dfs")] }
     $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b) n=({"name"=("cfm-" . $b . "g")}) p=$cp
   }
   # Security je Band (z.B. 6 GHz: nur WPA3 mit PMF required): Ein Kanal-Eintrag mit sec/ft/ftOverDs/pmf
@@ -309,7 +319,18 @@
       :if ($wn = "80") do={ :set wd "20/40/80mhz" }
       :if ($wn = "160") do={ :set wd "20/40/80/160mhz" }
     }
-    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $apn) n=({"name"=$chn}) p=({"name"=$chn;"band"=($c->"band");"frequency"=$fq;"width"=$wd})
+    :local cp ({"name"=$chn;"band"=($c->"band");"width"=$wd})
+    # nur dfs je AP ohne Pin/Liste: Pool aus channels; ohne Pool wählt RouterOS aus allen Kanälen des Bands
+    :if ([:len $fq] = 0) do={ :set fq [:tostr ($c->"freq")] }
+    :if ([:len $fq] > 0) do={ :set ($cp->"frequency") $fq }
+    # DFS je AP (DW3.10): eigener Wert aus dfs, sonst der des Bands - auch für Pins und Listen aus radios
+    :if ($b = "5") do={
+      :global cfmDfsSkip
+      :local dv [:tostr ($w->"dfs"->$apn)]
+      :if ([:len $dv] = 0) do={ :set dv [:tostr ($c->"dfs")] }
+      :set ($cp->"skip-dfs-channels") [$cfmDfsSkip $dv]
+    }
+    $cfmEnsure m="/interface/wifi/channel" k=("wch:" . $b . "-" . $apn) n=({"name"=$chn}) p=$cp
     :return $chn
   }
   # radios je AP und Band (DW3.1, DW3.7, DW3.8): eine Frequenz (Pin), eine Liste (Pool dieses AP, RouterOS wählt
@@ -321,7 +342,9 @@
     :foreach b,c in=($w->"channels") do={
       :local chn ("cfm-" . $b . "g")
       :local f [:tostr ($w->"radios"->$ap->$b)]
-      :if ([:len $f] > 0 and $f != "off") do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f] }
+      # dfs je AP ohne Pin (DW3.10): eigenes Kanal-Objekt mit dem Pool des Bands
+      :local dv ($b = "5" and [:len [:tostr ($w->"dfs"->$ap)]] > 0)
+      :if (([:len $f] > 0 and $f != "off") or ([:len $f] = 0 and $dv)) do={ :set chn [$pinch b=$b apn=$ap c=$c f=$f w=$w] }
       $mcfg key=("l" . $b) name=("cfm-l" . $b) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b) tx=[:tostr ($w->"txPower"->$ap->$b)]
       :set ($cf->$b) ("cfm-l" . $b)
       :if ($f = "off") do={ :set ($cf->$b) "off" }
@@ -334,16 +357,18 @@
   :local own ({})
   :foreach apn,x in=($w->"radios") do={ :set ($own->$apn) 1 }
   :foreach apn,x in=($w->"txPower") do={ :set ($own->$apn) 1 }
+  :foreach apn,x in=($w->"dfs") do={ :set ($own->$apn) 1 }
   :foreach apn,x in=$own do={
     :foreach b,c in=($w->"channels") do={
       :local f [:tostr ($w->"radios"->$apn->$b)]
       :local tx [:tostr ($w->"txPower"->$apn->$b)]
+      :local dv ($b = "5" and [:len [:tostr ($w->"dfs"->$apn)]] > 0)
       :if ($f = "off") do={
         :set ($rules->[:len $rules]) ({"b"=$b;"cfg"="";"re"=("^" . $apn . "\$");"off"=true})
       } else={
-        :if ([:len $f] > 0 or [:len $tx] > 0) do={
+        :if ([:len $f] > 0 or [:len $tx] > 0 or $dv) do={
           :local chn ("cfm-" . $b . "g")
-          :if ([:len $f] > 0) do={ :set chn [$pinch b=$b apn=$apn c=$c f=$f] }
+          :if ([:len $f] > 0 or $dv) do={ :set chn [$pinch b=$b apn=$apn c=$c f=$f w=$w] }
           $mcfg key=("m" . $b . "-" . $apn) name=("cfm-m" . $b . "-" . $apn) s=$ms mk=$mk country=($w->"country") ch=$chn sec=($msec->$b) stg=($stn->$b) dp=($mdp->$b) tx=$tx
           :set ($rules->[:len $rules]) ({"b"=$b;"cfg"=("cfm-m" . $b . "-" . $apn);"re"=("^" . $apn . "\$")})
         }

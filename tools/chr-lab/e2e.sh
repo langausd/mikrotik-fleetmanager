@@ -410,6 +410,10 @@ r 1 '/file/add name="cfm/pkg/7.0.0/routeros-7.0.0.npk" contents="x"' >/dev/null
 # keine NPK-Kennung: die Probe meldet das, ohne die Datei anzufassen (TODO 37)
 mgr ':global cfmPkgFetch; :put ("E=" . ([$cfmPkgFetch ver=7.0.0 arch=x86_64 pkg=routeros dl=no]->"err"))' | grep -q "E=kein RouterOS-Paket" && ok "Datei ohne NPK-Kennung erkannt" || bad "NPK-Prüfung der Fälschung"
 expect 1 '[:len [/file/find where name="cfm/pkg/7.0.0/routeros-7.0.0.npk"]] = 1' "Probe lässt die Datei liegen"
+# Download mit Wiederholung (Abbrüche „Bad message“ im Labor): eine Version, die es nicht gibt (404), dreimal versucht
+out=$(mgr ':global cfmPkgFetch; :put ("E=" . ([$cfmPkgFetch ver=7.0.1 arch=x86_64 pkg=routeros]->"err"))')
+echo "$out" | grep -q "E=Download fehlgeschlagen nach 3 Versuchen" && echo "$out" | grep -q "(Versuch 3)" && ok "Paket-Download: drei Versuche, dann Fehler" || { bad "Paket-Download mit Wiederholung"; echo "$out" | tail -4; }
+expect 1 '[:len [/log/find where message~"Download routeros-7.0.1.npk Versuch 2 fehlgeschlagen"]] = 1 and [:len [/file/find where name~"7.0.1"]] <= 1 and [:len [/file/find where name="cfm/pkg/7.0.1/routeros-7.0.1.npk"]] = 0' "Paket-Download: Warnung je Fehlversuch, keine Reste"
 mgr '$cfmPkgPrune' >/dev/null
 expect 1 '[:len [/file/find where name~"^cfm/pkg/7.0.0"]] = 0 and [:len [/file/find where name="cfm/pkg/7.24.1/routeros-7.24.1.npk"]] = 1' "Paketversion ohne Einsatz gelöscht, 7.24.1 bleibt"
 
@@ -461,14 +465,27 @@ echo "$out" | grep -qE "^(cm1 +ether3 +cm2 +ether2|cm2 +ether2 +cm1 +ether3) +ok
 # Karten einer VM, DP1.2) landet es im VLAN: nachgestellt mit pvid=10 an cm1:ether3. cm1 verwirft es still (DR2.5)
 expect 3 '[:typeof [:find [/ip/neighbor/discovery-settings/get protocol] "mndp"]] = "num"' "cm2 (stp=none): Nachbarsuche mit MNDP"
 n0=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
+# Zähler davor in raw/prerouting (Handregel, cm1 hat als Nicht-Router keinen raw-Block): Kam überhaupt MNDP mit
+# Quelle 0.0.0.0 an? Unterscheidet „cm2 hat nicht gesendet“ (Labor-Wackler, TODO) von „Filter greift nicht“
+r 1 '/ip/firewall/raw/add chain=prerouting protocol=udp dst-port=5678 src-address=0.0.0.0 action=passthrough comment=e2e-mndp' >/dev/null
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=10 frame-types=admit-all' >/dev/null
 # Senden anstoßen: MNDP an cm2 kurz aus und wieder an. Sonst kam das erste Paket nach discover-interval (30 s)
-# vereinzelt erst nach über 70 s. Danach bis zu 120 s auf den Zähler warten (wackelt trotzdem, TODO)
-r 3 ':local p [/ip/neighbor/discovery-settings/get protocol]; /ip/neighbor/discovery-settings/set protocol=lldp; :delay 2s; /ip/neighbor/discovery-settings/set protocol=$p' >/dev/null
-for _ in $(seq 1 24); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; done
+# vereinzelt erst nach über 70 s. Mit zwei VMs nachgestellt (2026-11-21) kam es in 11 von 11 Fällen nach 3 s;
+# im vollen Labor nicht immer -> nach 60 s ein zweiter Anstoß, insgesamt bis zu 120 s
+nudge() { r 3 ':local p [/ip/neighbor/discovery-settings/get protocol]; /ip/neighbor/discovery-settings/set protocol=lldp; :delay 2s; /ip/neighbor/discovery-settings/set protocol=$p' >/dev/null; }
+nudge
+for k in $(seq 1 24); do sleep 5; [ "$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)" -gt 0 ] 2>/dev/null && break; [ "$k" = 12 ] && nudge; done
 r 1 '/interface/bridge/port/set [find interface=ether3] pvid=1 frame-types=admit-only-vlan-tagged' >/dev/null
 n1=$(r 1 ':put [:len [/log/find where message~"0.0.0.0:5678"]]' | tail -1 | tr -dc 0-9)
-expect 1 '[/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets] > 0' "cm1: MNDP mit Quelle 0.0.0.0 still verworfen (DR2.5)"
+mraw=$(r 1 ':put [/ip/firewall/raw/get [find comment=e2e-mndp] packets]' | tail -1 | tr -dc 0-9)
+mflt=$(r 1 ':put [/ip/firewall/filter/get [find comment~"cfm:fwb" and src-address="0.0.0.0" and dst-port="5678"] packets]' | tail -1 | tr -dc 0-9)
+r 1 '/ip/firewall/raw/remove [find comment=e2e-mndp]' >/dev/null
+if [ "${mraw:-0}" = 0 ]; then
+  # nichts angekommen: die Drop-Regel ist so nicht prüfbar (Labor-Wackler, cm2 sendet nicht), kein Fehler von cm1
+  echo "  – übersprungen: cm1 hat in 120 s kein MNDP mit Quelle 0.0.0.0 empfangen (raw 0, Filter ${mflt:-?}; cm2 sendet nicht, TODO)"
+else
+  [ "${mflt:-0}" -gt 0 ] && ok "cm1: MNDP mit Quelle 0.0.0.0 still verworfen (DR2.5)" || bad "cm1: MNDP mit Quelle 0.0.0.0 angekommen (raw $mraw), Drop-Regel zählt nicht (Filter ${mflt:-?})"
+fi
 [ -n "$n0" ] && [ -n "$n1" ] && [ "$n1" -le "$n0" ] && ok "cm1: kein cfm-drop für MNDP mit Quelle 0.0.0.0" || bad "cm1: cfm-drop für 0.0.0.0:5678 im Log ($n0 -> $n1)"
 expect 1 '[/file/get [find where name="cfm/state/netzplan.md"] contents] ~ "graph LR"' "netzplan.md mit Mermaid-Diagramm"
 mgr '$cfmLinks accept=yes' | grep -q "Baseline gespeichert: 2 Links" && ok "Baseline mit 2 Links eingefroren" || bad "Baseline"
@@ -549,13 +566,16 @@ echo "$l" | grep -q "Kosten 60 " && echo "$l" | grep -q "apC=55[0-6]0/80" && ech
 ba=$(echo "$l" | grep -o "apA=5[0-9]*" | cut -d= -f2); bb=$(echo "$l" | grep -o "apB=5[0-9]*" | cut -d= -f2)
 [ -n "$ba" ] && [ -n "$bb" ] && [ $(( (ba - 5180) / 40 )) != $(( (bb - 5180) / 40 )) ] && ok "WLAN-Scan 5 GHz breit: apA und apB in getrennten 40-MHz-Blöcken" || bad "apA/apB überlappen ($ba/$bb)"
 echo "$out" | grep -q "^Vorschlag robust Kosten 20 " && echo "$out" | grep -A2 "^Vorschlag breit" | grep -q 'wifi.rsc: "radios"={"apA"={"5"="5[12][0-9]0/40"};"apB"' && ok "WLAN-Scan 5 GHz: Plan robust und Zeile radios mit Breite" || { bad "WLAN-Scan 5 GHz robust/radios"; echo "$out" | tail -9; }
-# Liste je AP ersetzt den Pool (5640 Wetterradar fällt bei skipDfs 10min-cac weg, 5660/80 reicht über 5725),
+# Liste je AP ersetzt den Pool (5640 Wetterradar fällt bei dfs 1min-cac weg, 5660/80 reicht über 5725),
 # Band aus, Pins anderer Bänder bleiben in der Zeile; all=yes nimmt alle EU-Kanäle dazu
 mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"radios\") {\"apB\"={\"5\"=\"5640,5660,5680\";\"2\"=\"2437\"};\"apX\"={\"5\"=\"off\"}}\n")' >/dev/null
 out=$(mgr '$cfmWifiScan data=yes')
 echo "$out" | grep -q "^Kandidaten (Kanal/Breite) je AP: apA 24 apB 4 apC 24 " && echo "$out" | grep -q "^Vorschlag breit  Kosten 60  apA=5[12][0-9]0/80 apB=56[68]0/40 apC=55[0-6]0/80" && ok "WLAN-Scan 5 GHz: Liste je AP, kein Block über 5725 MHz, kein Wetterradar" || { bad "WLAN-Scan 5 GHz Liste je AP"; echo "$out" | tail -9; }
 echo "$out" | grep -q "^Aktuell: apA=5180/80 apB=5200/80 (kein Kandidat) apC=5500/80" && echo "$out" | grep -A2 "^Vorschlag breit" | grep -q '"apB"={"2"="2437";"5"="56[68]0/40"};"apC"={"5"="55[0-6]0/80"};"apX"={"5"="off"}}' && ok "WLAN-Scan 5 GHz: aktueller Kanal außerhalb der Liste, Zeile radios behält 2,4-GHz-Pin und Band aus" || { bad "Aktuell/Zeile radios"; echo "$out" | grep "wifi.rsc\|Aktuell"; }
 mgr '$cfmWifiScan data=yes all=yes' | grep -q "^Kandidaten (Kanal/Breite) je AP: apA 42 apB 4 apC 42 " && ok "WLAN-Scan 5 GHz all=yes: alle EU-Kanäle" || bad "WLAN-Scan all=yes"
+# dfs je AP (TODO 92): apB darf Wetterradar -> 5640 mit 20, 40 und 80 MHz kommen dazu (4 -> 7), Zeile nennt die Abweichung
+mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"radios\") {\"apB\"={\"5\"=\"5640,5660,5680\"}}\n:set (\$cfmWifi->\"dfs\") {\"apB\"=\"10min-cac\"}\n")' >/dev/null
+mgr '$cfmWifiScan data=yes' | grep -q "^Kandidaten (Kanal/Breite) je AP: apA 24 apB 7 apC 24 .*, dfs 1min-cac, apB 10min-cac$" && ok "WLAN-Scan 5 GHz: dfs je AP erlaubt Wetterradar nur für apB" || { bad "WLAN-Scan dfs je AP"; mgr '$cfmWifiScan data=yes' | grep "^Kandidaten"; }
 mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW' >/dev/null
 # schwach gehörte eigene APs (-88 dBm): breit nimmt die Überlappung für 80 MHz in Kauf, robust nicht
 mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"5\",\"t\":\"e2e\",\"own\":{\"m00:00:00:00:0A:01\":\"apA\",\"m00:00:00:00:0B:01\":\"apB\",\"m00:00:00:00:0C:01\":\"apC\"},\"pw\":{\"apA\":{\"f\":5180,\"tx\":20},\"apB\":{\"f\":5180,\"tx\":20},\"apC\":{\"f\":5180,\"tx\":20}},\"aps\":{\"apA\":[[\"m00:00:00:00:0B:01\",\"E\",5200,-88],[\"m00:00:00:00:0C:01\",\"E\",5500,-88]],\"apB\":[[\"m00:00:00:00:0A:01\",\"E\",5180,-88],[\"m00:00:00:00:0C:01\",\"E\",5500,-88]],\"apC\":[[\"m00:00:00:00:0A:01\",\"E\",5180,-88],[\"m00:00:00:00:0B:01\",\"E\",5200,-88]]}}")' | grep -i "error"
@@ -589,12 +609,13 @@ mgr ':global e2eW; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2e
 mgr ':global cfmWrite; $cfmWrite "cfm/state/wifiscan.json" ("{\"band\":\"2\",\"t\":\"e2e\",\"own\":{},\"aps\":{\"apA\":[],\"apB\":[]}}")' | grep -i "error" 
 mgr '$cfmWifiScan data=yes' | grep -q "keine Messung mit Netzen" && ok "WLAN-Scan data=yes ohne Netze: kein Vorschlag" || bad "WLAN-Scan data=yes ohne Netze"
 r 1 '/file/remove [find where name="cfm/state/wifiscan.json"]' >/dev/null
-expect 1 '[:tostr [/interface/wifi/channel/get [find name="cfm-5g"] reselect-time]] = "03:00:00" and [/interface/wifi/channel/get [find name="cfm-5g"] skip-dfs-channels] = "10min-cac"' "cm1: Kanalprofil 5 GHz mit nächtlicher Neuwahl, ohne DFS-Wartezeit"
+expect 1 '[:tostr [/interface/wifi/channel/get [find name="cfm-5g"] reselect-time]] = "03:00:00" and [/interface/wifi/channel/get [find name="cfm-5g"] skip-dfs-channels] = "10min-cac"' "cm1: Kanalprofil 5 GHz mit nächtlicher Neuwahl, dfs 1min-cac (ohne Wetterradar)"
 # Je AP (TODO 72, DW3.7): Pool je AP (Liste in radios), txPower, Band aus ("off" -> Regel action=none)
-mgr ':global e2eW7 [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW7 . ":set (\$cfmWifi->\"radios\") {\"cm1\"={\"5\"=\"5180,5200,5220\";\"2\"=\"off\"}}\n:set (\$cfmWifi->\"txPower\") {\"cm1\"={\"5\"=17}}\n")' >/dev/null
+mgr ':global e2eW7 [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW7 . ":set (\$cfmWifi->\"radios\") {\"cm1\"={\"5\"=\"5180,5200,5220\";\"2\"=\"off\"}}\n:set (\$cfmWifi->\"txPower\") {\"cm1\"={\"5\"=17}}\n:set (\$cfmWifi->\"dfs\") {\"cm1\"=\"no-cac\"}\n")' >/dev/null
 rv=$(mgr '$cfmRelease msg=" radios/txPower" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (Pool je AP, txPower, Band aus) angewendet" || { bad "cm1 Apply v$rv"; r 1 '/log/print where message~"^cfm: "' | tail -6; }
 expect 1 '[:tostr [/interface/wifi/channel/get [find name="cfm-5g-cm1"] frequency]] = "5180;5200;5220" and [/interface/wifi/configuration/get [find name="cfm-m5-cm1"] channel] = "cfm-5g-cm1" and [/interface/wifi/configuration/get [find name="cfm-m5-cm1"] tx-power] = 17' "cm1: Pool je AP und txPower in der eigenen Master-Konfiguration"
+expect 1 '[/interface/wifi/channel/get [find name="cfm-5g-cm1"] skip-dfs-channels] = "all" and [/interface/wifi/channel/get [find name="cfm-5g"] skip-dfs-channels] = "10min-cac"' "cm1: dfs je AP no-cac -> skip-dfs-channels all am eigenen Kanal, Band bleibt 1min-cac (DW3.10)"
 expect 1 '[:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and action=none and identity-regexp="^cm1\$" and supported-bands=2ghz-ax]] = 1 and [:len [/interface/wifi/configuration/find where name="cfm-m2-cm1"]] = 0' "cm1: Band 2 aus - Regel ohne Provisionierung, keine eigene Konfiguration"
 expect 1 '[:pick [/interface/wifi/provisioning/find where comment~"^cfm:wprov"] 0] = [:pick [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and action=none] 0]' "cm1: Regel Band aus als erste, vor den allgemeinen Regeln"
 n0=$(r 1 ':put [:len [/log/find where message~"geaendert: /interface/wifi/(channel|configuration|provisioning)"]]' | tail -1 | tr -dc 0-9)
@@ -606,6 +627,7 @@ rv=$(mgr '$cfmRelease msg=" ohne txPower" all=yes' | grep -o 'Release v[0-9]*' |
 agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (txPower entfernt) angewendet" || bad "cm1 Apply v$rv"
 expect 1 '[:len [:tostr [/interface/wifi/configuration/get [find name="cfm-m5-cm1"] tx-power]]] = 0 and [:len [/log/find where message~"cfm-m5-cm1: tx-power entfernt"]] >= 1 and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov" and action=none]] = 0' "cm1: txPower und Band aus wieder heraus"
 expect 1 '[:tostr [/interface/wifi/channel/get [find name="cfm-5g-cm1"] frequency]] = "5500" and [/interface/wifi/channel/get [find name="cfm-5g-cm1"] width] = "20/40mhz"' "cm1: Pin mit Breite 5500/40 -> Kanal 5500, width 20/40mhz (DW3.8)"
+expect 1 '[/interface/wifi/channel/get [find name="cfm-5g-cm1"] skip-dfs-channels] = "10min-cac"' "cm1: Pin ohne dfs je AP erbt dfs des Bands (1min-cac -> skip-dfs-channels 10min-cac)"
 out=$(mgr ':global cfmCheck; :global e2eW7; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW7 . ":set (\$cfmWifi->\"radios\") {\"cm1\"={\"2\"=\"off\";\"5\"=\"off\"};\"sw1\"={\"5\"=\"2412\";\"2\"=\"kanal1\"}}\n:set (\$cfmWifi->\"txPower\") {\"cm1\"={\"5\"=40;\"2\"=10}}\n:set (\$cfmWifi->\"others\") {\"zb\"={\"type\"=\"zigbee\";\"ch\"=18}}\n:set (\$cfmWifi->\"radios\"->\"cm2\") {\"2\"=\"2412,2437\";\"5\"=\"5660/80\"}\n:set (\$cfmWifi->\"radios\"->\"ph1\") {\"5\"=\"5660/40\";\"2\"=\"2437/80\"}\n:set (\$cfmWifi->\"channels\"->\"5\"->\"freq\") \"5180,5500,5660\"\n"); :local ck [$cfmCheck]')
 echo "$out" | grep -q "Fehler: wifi.rsc: radios sw1 5: 2412 MHz liegt nicht im Band" && echo "$out" | grep -q "Fehler: wifi.rsc: radios sw1 2=kanal1: weder Frequenz" && ok "\$cfmCheck: radios mit falscher Frequenz und falschem Wert" || { bad "Prüfung radios"; echo "$out" | grep -i radios; }
 echo "$out" | grep -q "Fehler: wifi.rsc: txPower cm1 5=40: ganze dBm 1-30" && echo "$out" | grep -q "Warnung: wifi.rsc: txPower cm1 2 wirkt nicht, das Band ist dort off" && echo "$out" | grep -q "Warnung: wifi.rsc: radios cm1: alle Bänder off" && ok "\$cfmCheck: txPower außerhalb 1-30, txPower an Band aus, alle Bänder aus" || { bad "Prüfung txPower/off"; echo "$out" | grep -i "txPower\|off"; }
@@ -616,6 +638,14 @@ echo "$out" | grep -q "Warnung: wifi.rsc: radios cm2 2=2437 überdeckt zb" && ! 
 echo "$out" | grep -q "^Hinweis: wifi.rsc: 5 GHz mit DFS-Kanälen (Pool 5500,5660; radios cm2 5660, ph1 5660)" && ! echo "$out" | grep -q "Warnungen.*DFS" && ok "\$cfmCheck: DFS im Pool und in radios (mit Breite) als Hinweis (DW3.6)" || { bad "Hinweis DFS fehlt"; echo "$out" | grep -i "dfs\|Prüfung:"; }
 echo "$out" | grep -q "Fehler: wifi.rsc: radios cm2 5=5660/80: 5660 MHz mit 80 MHz belegt 5650-5730 MHz" && ! echo "$out" | grep -q "radios ph1 5=5660/40:" && echo "$out" | grep -q "Fehler: wifi.rsc: radios ph1 2=2437/80: 2,4 GHz höchstens 40 MHz" && ok "\$cfmCheck: Pin über 5725 MHz abgelehnt, 5660/40 zulässig, 2,4 GHz höchstens 40 MHz (DW3.8)" || { bad "Prüfung Breite je AP"; echo "$out" | grep -i "radios\|5725"; }
 echo "$out" | grep -q "Warnung: wifi.rsc: channels 5: 5660 MHz mit bis zu 80 MHz reicht über 5725 MHz" && ok "\$cfmCheck: Pool mit Block über 5725 MHz als Warnung (DW3.8)" || { bad "Warnung Pool 5725 fehlt"; echo "$out" | grep -i "channels\|5725"; }
+# DFS je AP (TODO 92, DW3.10): skipDfs abgelöst (Fehler mit Übersetzung), dfs je AP ohne Band, Pin auf Wetterradar
+# bei 1min-cac abgelehnt, 10min-cac an einem AP mit Fallback (Rolle ap, Gerät nur im Inventar) als Warnung
+out=$(mgr ':global cfmCheck; :global e2eW7; :global e2eI [/file/get [/file/find name="cfm/meta/inventory.rsc"] contents]; /file/set [/file/find name="cfm/meta/inventory.rsc"] contents=($e2eI . ":set (\$cfmInv->\"ap9\") {\"serial\"=\"SERIAL-AP9\";\"role\"=\"ap\";\"ring\"=2;\"ip\"=\"192.168.10.98\"}\n"); /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW7 . ":set (\$cfmWifi->\"channels\"->\"2\"->\"skipDfs\") \"all\"\n:set (\$cfmWifi->\"channels\"->\"2\"->\"dfs\") \"no-cac\"\n:set (\$cfmWifi->\"radios\") {\"cm2\"={\"5\"=\"5620\"};\"ph1\"={\"5\"=\"5620,5500\"};\"ap9\"={\"5\"=\"5620/20\"}}\n:set (\$cfmWifi->\"dfs\") {\"cm1\"={\"5\"=\"no-cac\"};\"sw1\"=\"5min\";\"ap9\"=\"10min-cac\"}\n"); :local ck [$cfmCheck]; :foreach e in=($ck->"err") do={ :put ("ERR " . $e) }; :foreach e in=($ck->"warn") do={ :put ("WARN " . $e) }; /file/set [/file/find name="cfm/meta/inventory.rsc"] contents=$e2eI')
+echo "$out" | grep -q 'ERR wifi.rsc: channels 2: skipDfs gibt es nicht mehr - "skipDfs"="all" heißt jetzt "dfs"="no-cac"' && echo "$out" | grep -q "ERR wifi.rsc: channels 2: dfs nur bei 5 GHz" && ok "\$cfmCheck: skipDfs abgelehnt mit Übersetzung, dfs nur bei 5 GHz" || { bad "Prüfung skipDfs/dfs"; echo "$out" | grep -i "dfs"; }
+echo "$out" | grep -q "ERR wifi.rsc: dfs cm1: nur der Wert, ohne Band" && echo "$out" | grep -q "ERR wifi.rsc: dfs sw1=5min unbekannt (no-cac | 1min-cac | 10min-cac)" && ok "\$cfmCheck: dfs je AP ohne Band, unbekannter Wert" || { bad "Prüfung dfs je AP"; echo "$out" | grep -i "dfs"; }
+echo "$out" | grep -q "ERR wifi.rsc: radios cm2 5=5620: 5620 MHz mit 80 MHz belegt 5570-5650 MHz (Wetterradar, 10 min CAC), dfs=1min-cac erlaubt das nicht" && echo "$out" | grep -q "WARN wifi.rsc: radios ph1 5=5620,5500: 5620 MHz .*RouterOS lässt diesen Kanal aus" && ! echo "$out" | grep -q "radios ap9 5=" && ok "\$cfmCheck: Pin auf Wetterradar bei 1min-cac Fehler, in einer Liste Warnung, mit dfs je AP erlaubt" || { bad "Prüfung Pin/Wetterradar"; echo "$out" | grep -i "radios"; }
+echo "$out" | grep -q "WARN wifi.rsc: dfs 10min-cac an APs mit Fallback (ap9)" && ok "\$cfmCheck: Wetterradar an einem AP mit Fallback als Warnung" || { bad "Warnung 10min-cac/Fallback"; echo "$out" | grep -i "fallback\|dfs"; }
+expect 1 '[:typeof [:find [/file/get [/file/find name="cfm/meta/inventory.rsc"] contents] "SERIAL-AP9"]] = "nil"' "Inventar nach der DFS-Prüfung wiederhergestellt"
 mgr ':global e2eW7; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=$e2eW7' >/dev/null
 # PPSK: zweite Passphrase auf der IoT-SSID landet in VLAN 40
 mgr ':global e2eW [/file/get [/file/find name="cfm/work/wifi.rsc"] contents]; /file/set [/file/find name="cfm/work/wifi.rsc"] contents=($e2eW . ":set (\$cfmWifi->\"ppsk\") {\"iot\"={\"gast\"={\"vlan\"=40;\"isolation\"=\"yes\"}}}\n")' >/dev/null

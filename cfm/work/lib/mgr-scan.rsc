@@ -146,8 +146,8 @@
 # Kandidaten je AP: (Primärfrequenz, Breite) - Primärfrequenzen aus dem Pool (channels), eine Liste in radios ersetzt
 # ihn für diesen AP (ihr "/<Breite>" begrenzt die Breite), ein einzelner Pin kommt dazu; all=yes nimmt alle
 # EU-Kanäle (5 GHz 36-64 und 100-140, 6 GHz die PSC-Kanäle) dazu. Breiten bis zur höchsten aus width. Zulässig nur
-# ganze Blöcke in 5150-5350, 5470-5725 (EU, DW3.8) oder 5725-5850 (nur Pool-Kanäle), 6 GHz 5945-6425; skipDfs
-# 10min-cac lässt das Wetterradar (5600-5650) aus, all alle DFS-Kanäle.
+# ganze Blöcke in 5150-5350, 5470-5725 (EU, DW3.8) oder 5725-5850 (nur Pool-Kanäle), 6 GHz 5945-6425; dfs (DW3.10,
+# je AP oder unter channels) 1min-cac lässt das Wetterradar (5600-5650) aus, no-cac alle DFS-Kanäle.
 # Kosten in Hundertsteln eines fremden Netzes mit Gewicht 1 (Signal + 95 dB, wie bei 2,4 GHz):
 #   fremde Netze  Gewicht x Störanteil ($cfmScanOv5) mit ihrem Block aus dem Scan
 #   eigene APs    doppeltes Gewicht, die sich hören (in beiden Richtungen gezählt)
@@ -173,7 +173,7 @@
   :local dmx [$dbl $mw]
   :local has do={ :foreach p in=$2 do={ :if ($p = [:tonum $1]) do={ :return true } }; :return false }
   :local tab do={ :local f [:tonum $1]; :if ($f >= 5925) do={ :return 23 }; :if ($f > 5725) do={ :return 14 }; :if ($f > 5400) do={ :return 30 }; :return 23 }
-  :local sk [:tostr ($chs->"skipDfs")]
+  :local sk [:tostr ($chs->"dfs")]
   :local pool ({})
   :foreach x in=[:toarray [:tostr ($chs->"freq")]] do={ :local n [:tonum $x]; :if ([:typeof $n] = "num") do={ :set ($pool->[:len $pool]) $n } }
   :local base ({})
@@ -195,6 +195,9 @@
     :if ($rv = "off") do={ :put ("  " . $ap . ": radios \"" . $bd . "\"=off - nicht im Vorschlag") } else={
       :local rf $rv
       :local amw $mw
+      # höchste erlaubte CAC (DW3.10): je AP, sonst unter channels
+      :local ask [:tostr ($cfmWifi->"dfs"->$ap)]
+      :if ([:len $ask] = 0) do={ :set ask $sk }
       :local sl [:find $rv "/"]
       :if ([:typeof $sl] = "num") do={ :set rf [:pick $rv 0 $sl] }
       :local pr ({})
@@ -260,8 +263,8 @@
             :local dfs 0
             :if ($bd != "6" and $hi > 5250 and $lo < 5725) do={ :set dfs 1 }
             :if ($dfs = 1 and $lo < 5650 and $hi > 5600) do={ :set dfs 2 }
-            :if ($sk = "all" and $dfs > 0) do={ :set v false }
-            :if ($sk = "10min-cac" and $dfs = 2) do={ :set v false }
+            :if ($ask = "no-cac" and $dfs > 0) do={ :set v false }
+            :if ($ask = "1min-cac" and $dfs = 2) do={ :set v false }
             :if ($v) do={
               :local pw [$tab $f]
               :if ($cap < $pw) do={ :set pw $cap }
@@ -271,7 +274,7 @@
           }
         }
       }
-      :if ([:len $cl] = 0) do={ :put ("  " . $ap . ": keine zulässigen Kanäle (Pool/radios, skipDfs, EU-Grenzen) - nicht im Vorschlag") } else={
+      :if ([:len $cl] = 0) do={ :put ("  " . $ap . ": keine zulässigen Kanäle (Pool/radios, dfs, EU-Grenzen) - nicht im Vorschlag") } else={
         :local nets ($sc->"aps"->$ap)
         :local c2 ({})
         :foreach c in=$cl do={
@@ -455,7 +458,14 @@
   }
   :local ns ""
   :for i from=0 to=($na - 1) do={ :set ns ($ns . " " . ($apl->$i) . " " . [:len ($cand->$i)]) }
-  :put ("Kandidaten (Kanal/Breite) je AP:" . $ns . " - bis " . $mw . " MHz, Pool " . [:tostr ($chs->"freq")] . ", skipDfs " . $sk)
+  :local dfo ""
+  :if ($bd = "5") do={
+    :set dfo $sk
+    :if ([:len $dfo] = 0) do={ :set dfo "10min-cac (ohne Angabe)" }
+    :foreach ap in=$aps do={ :local x [:tostr ($cfmWifi->"dfs"->$ap)]; :if ([:len $x] > 0 and $x != $sk) do={ :set dfo ($dfo . ", " . $ap . " " . $x) } }
+    :set dfo (", dfs " . $dfo)
+  }
+  :put ("Kandidaten (Kanal/Breite) je AP:" . $ns . " - bis " . $mw . " MHz, Pool " . [:tostr ($chs->"freq")] . $dfo)
   :if ([:len $pwl] > 0) do={ :put ("Leistung vor dem Scan (am Anschluss + Antennengewinn = EIRP, dBm):" . $pwl) }
   # aktueller Stand: vom CAPsMAN vor dem Scan (pre=, TODO 95) bzw. live (data=yes), sonst monitor-Werte der Messung
   :local live $pre

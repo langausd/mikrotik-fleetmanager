@@ -192,6 +192,18 @@
                     :local t ("wifi.rsc: radios " . $apn . " 5=" . $fv . ": " . $n . " MHz mit " . $wn . " MHz belegt " . ($bl->0) . "-" . ($bl->1) . " MHz, über dem Ende des Bands 5470-5725 (EU)")
                     :if ([:typeof [:find $fl ","]] = "num") do={ :set ($warn->[:len $warn]) ($t . " - RouterOS kann diesen Block wählen; Breite angeben (z.B. /40)") } else={ :set ($err->[:len $err]) ($t . " - schmaler pinnen (z.B. /40)") }
                   }
+                  # DFS (DW3.10): Block mit mehr CAC als dfs erlaubt - RouterOS meidet ihn (skip-dfs-channels)
+                  :local ev [:tostr ($cfmWifi->"dfs"->$apn)]
+                  :if ([:len $ev] = 0) do={ :set ev [:tostr ($cfmWifi->"channels"->"5"->"dfs")] }
+                  :local cls 0
+                  :if (($bl->1) > 5250 and ($bl->0) < 5725) do={ :set cls 1 }
+                  :if ($cls = 1 and ($bl->0) < 5650 and ($bl->1) > 5600) do={ :set cls 2 }
+                  :if (($ev = "no-cac" and $cls > 0) or ($ev = "1min-cac" and $cls = 2)) do={
+                    :local t ("wifi.rsc: radios " . $apn . " 5=" . $fv . ": " . $n . " MHz mit " . $wn . " MHz belegt " . ($bl->0) . "-" . ($bl->1) . " MHz")
+                    :if ($cls = 2) do={ :set t ($t . " (Wetterradar, 10 min CAC)") } else={ :set t ($t . " (DFS)") }
+                    :set t ($t . ", dfs=" . $ev . " erlaubt das nicht")
+                    :if ([:typeof [:find $fl ","]] = "num") do={ :set ($warn->[:len $warn]) ($t . " - RouterOS lässt diesen Kanal aus") } else={ :set ($err->[:len $err]) ($t . " - anderen Kanal pinnen oder dfs je AP erlauben (\"dfs\"={\"" . $apn . "\"=\"10min-cac\"})") }
+                  }
                 }
               }
             }
@@ -200,6 +212,47 @@
       }
     }
     :if ($noff > 0 and $noff >= [:len ($cfmWifi->"channels")]) do={ :set ($warn->[:len $warn]) ("wifi.rsc: radios " . $apn . ": alle Bänder off - der AP sendet nichts") }
+  }
+  # DFS (DW3.10): dfs = höchste erlaubte CAC (no-cac | 1min-cac | 10min-cac), unter channels nur bei 5 GHz, je AP als
+  # eigene Map ohne Band. skipDfs gibt es nicht mehr (Breaking Change 2026-11-21) - Übersetzung in der Meldung
+  :local dfsV ({"no-cac"=1;"1min-cac"=1;"10min-cac"=1})
+  :foreach bb,c in=($cfmWifi->"channels") do={
+    :local sk [:tostr ($c->"skipDfs")]
+    :if ([:len $sk] > 0) do={
+      :local nv "10min-cac"
+      :if ($sk = "all") do={ :set nv "no-cac" }
+      :if ($sk = "10min-cac") do={ :set nv "1min-cac" }
+      :set ($err->[:len $err]) ("wifi.rsc: channels " . $bb . ": skipDfs gibt es nicht mehr - \"skipDfs\"=\"" . $sk . "\" heißt jetzt \"dfs\"=\"" . $nv . "\" (höchste erlaubte CAC, DW3.10)")
+    }
+    :local dv [:tostr ($c->"dfs")]
+    :if ([:len $dv] > 0) do={
+      :if ($bb != "5") do={ :set ($err->[:len $err]) ("wifi.rsc: channels " . $bb . ": dfs nur bei 5 GHz") }
+      :if ([:typeof ($dfsV->$dv)] = "nothing") do={ :set ($err->[:len $err]) ("wifi.rsc: channels " . $bb . ": dfs=" . $dv . " unbekannt (no-cac | 1min-cac | 10min-cac)") }
+    }
+  }
+  :local gdfs [:tostr ($cfmWifi->"channels"->"5"->"dfs")]
+  :local has5 ([:typeof ($cfmWifi->"channels"->"5")] = "array")
+  :foreach apn,dv in=($cfmWifi->"dfs") do={
+    :if ([:typeof ($inv->$apn)] != "array") do={ :set ($warn->[:len $warn]) ("wifi.rsc: dfs nennt " . $apn . ", nicht im Inventar") } else={
+      :if ([:typeof ($radio->$apn)] = "nothing") do={ :set ($warn->[:len $warn]) ("wifi.rsc: dfs nennt " . $apn . " ohne Rolle ap oder capsman und ist nicht der CAPsMAN") }
+    }
+    :if ([:typeof $dv] = "array") do={ :set ($err->[:len $err]) ("wifi.rsc: dfs " . $apn . ": nur der Wert, ohne Band (gilt für 5 GHz), z.B. \"" . $apn . "\"=\"10min-cac\"") } else={
+      :if ([:typeof ($dfsV->[:tostr $dv])] = "nothing") do={ :set ($err->[:len $err]) ("wifi.rsc: dfs " . $apn . "=" . [:tostr $dv] . " unbekannt (no-cac | 1min-cac | 10min-cac)") }
+    }
+    :if (!$has5) do={ :set ($warn->[:len $warn]) ("wifi.rsc: dfs " . $apn . " wirkt nicht, channels hat kein Band 5") }
+  }
+  # Wetterradar an APs mit lokalem Fallback (Rolle ap): 10 min CAC bei jedem Neuprovisionieren und im Fallback.
+  # Nur bei ausdrücklichem Wert (je AP oder unter channels), nicht beim RouterOS-Standard ohne Angabe
+  :if ($has5) do={
+    :local wl ""
+    :foreach n,d in=$inv do={
+      :if (("," . [:tostr ($d->"role")] . ",") ~ ",ap,") do={
+        :local ev [:tostr ($cfmWifi->"dfs"->$n)]
+        :if ([:len $ev] = 0) do={ :set ev $gdfs }
+        :if ($ev = "10min-cac" and [:tostr ($cfmWifi->"radios"->$n->"5")] != "off") do={ :if ([:len $wl] > 0) do={ :set wl ($wl . ", ") }; :set wl ($wl . $n) }
+      }
+    }
+    :if ([:len $wl] > 0) do={ :set ($warn->[:len $warn]) ("wifi.rsc: dfs 10min-cac an APs mit Fallback (" . $wl . "): auf Wetterradar-Kanälen (5600-5650) ist 5 GHz nach jedem Neuprovisionieren und im Fallback bis zu 10 min still") }
   }
   # Sendeleistung je AP und Band (TODO 72, DW3.7): bekannte APs, Bänder aus channels, ganze dBm 1-30
   :foreach apn,tp in=($cfmWifi->"txPower") do={
@@ -354,10 +407,14 @@
     :if ([:len $r] > 0) do={ :set r [:pick $r 1 [:len $r]] }
     :return $r
   }
-  :local dc [$dfs ($cfmWifi->"channels"->"5"->"freq")]
+  # dfs=no-cac (DW3.10): RouterOS meidet die DFS-Kanäle, kein Hinweis (Pins dagegen meldet die Prüfung oben)
+  :local dc ""
+  :if ($gdfs != "no-cac") do={ :set dc [$dfs ($cfmWifi->"channels"->"5"->"freq")] }
   :local da ""
   :foreach apn,pins in=($cfmWifi->"radios") do={
-    :if ([:typeof $pins] = "array" and [:len [$dfs [$pinF ($pins->"5")]]] > 0) do={ :set da ($da . ", " . $apn . " " . [$dfs [$pinF ($pins->"5")]]) }
+    :local ev [:tostr ($cfmWifi->"dfs"->$apn)]
+    :if ([:len $ev] = 0) do={ :set ev $gdfs }
+    :if ($ev != "no-cac" and [:typeof $pins] = "array" and [:len [$dfs [$pinF ($pins->"5")]]] > 0) do={ :set da ($da . ", " . $apn . " " . [$dfs [$pinF ($pins->"5")]]) }
   }
   :if ([:len $dc] > 0 or [:len $da] > 0) do={
     :local s "wifi.rsc: 5 GHz mit DFS-Kanälen ("

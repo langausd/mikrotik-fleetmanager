@@ -308,12 +308,20 @@ Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg
   EIRP-Grenze selbst einhalten: `txPower` ≤ Limit − Antennengewinn + Kabeldämpfung (Limit in DE: 20 dBm auf 2,4 GHz, 23 dBm auf 5150–5350, 30 dBm auf 5470–5725, 14 dBm auf
   5745–5825). Entfernen nimmt `tx-power` aus der Konfiguration wieder heraus (Log „tx-power entfernt“). Ein neuer
   Wert startet das Radio neu (Clients kurz weg).
-* `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (in der Vorlage `03:00`; leer = nur beim Start);
-  je Band `skipDfs` (`10min-cac` meidet die Wetterradar-Kanäle mit 10 Minuten Wartezeit).
+* `reselect`: Uhrzeit der nächtlichen Kanal-Neuwahl (in der Vorlage `03:00`; leer = nur beim Start).
+* `dfs` (DW3.10, nur 5 GHz): die **höchste erlaubte Wartezeit vor dem Senden** (CAC) auf DFS-Kanälen – unter
+  `channels` → `"5"` für alle APs, in der Map `dfs` je AP abweichend (ohne Band):
+  `"no-cac"` (keine DFS-Kanäle), `"1min-cac"` (DFS ohne Wetterradar 5600–5650, Vorlage), `"10min-cac"` (alle; so
+  verhält sich RouterOS ohne Angabe). Beispiel: `"dfs"={"cm1"="10min-cac";"ap2"="no-cac"}` – der CAPsMAN funkt ohne
+  Fallback und wartet nur beim Start, ap2 bleibt ganz ohne DFS. Der Wert gilt auch für Pins und Listen aus `radios`
+  (Kanal-Objekt `cfm-5g-<AP>`). `$cfmCheck`: Fehler bei einem Pin, den `dfs` ausschließt (in einer Liste Warnung:
+  RouterOS lässt den Kanal aus), Warnung bei `10min-cac` an APs mit Fallback (Rolle `ap`: bis zu 10 min kein 5 GHz
+  nach jedem Neuprovisionieren und im Fallback). Das frühere `skipDfs` lehnt `$cfmCheck` mit der Übersetzung ab:
+  `skipDfs` `10min-cac` → `dfs` `1min-cac`, `all` → `no-cac`, `disabled` → `10min-cac`.
 * **5-GHz-Pool bewusst wählen** (TODO 87): Mit `country=Germany` sendet ein Radio auf 5745–5825 MHz nur mit
   14 dBm, auf 5180–5240 mit 23 dBm und im DFS-Bereich 5470–5725 bis 30 dBm EIRP (Pegelmessung 2026-11-16: −70 → −51 dBm
   am Nachbar-AP nach dem Wechsel von 5745 auf DFS). Aus einem gemischten Pool nahm RouterOS zweimal den oberen Bereich.
-  Die Vorlage nimmt deshalb 5180–5240 und DFS 5500–5580/5660–5700 (`skipDfs="10min-cac"` spart das Wetterradar
+  Die Vorlage nimmt deshalb 5180–5240 und DFS 5500–5580/5660–5700 (`dfs="1min-cac"` spart das Wetterradar
   aus). **DFS kostet:** Nach jedem Start eines Radios auf einem DFS-Kanal ist 5 GHz mindestens 60 s still (CAC), bei
   Radar wechselt der Kanal – das gilt auch im lokalen Fallback eines AP. Die Variante ohne DFS steht auskommentiert in
   der Vorlage (keine CAC, aber nur ein 80-MHz-Block, alle APs im selben Kanal). `$cfmCheck` weist auf DFS-Kanäle in
@@ -1401,7 +1409,8 @@ fremdes Netz mit Gewicht 1 (Gewicht wie bei 2,4 GHz: `w(s) = s + 95`), die Ausga
    (`"5640,5660,5680/40"`: auch die Breite höchstens 40), ein einzelner Pin kommt dazu. `all=yes` nimmt alle EU-Kanäle
    dazu (5 GHz 36–64 und 100–140, 6 GHz die PSC-Kanäle 5975, 6055 … 6375). Breiten 20/40/80/160 bis zur höchsten aus
    `width`. Zulässig sind nur ganze Blöcke in 5150–5350, 5470–5725 und (nur Pool-Kanäle) 5725–5850 MHz, 6 GHz
-   5945–6425; `skipDfs` `10min-cac` lässt Blöcke mit Wetterradar (5600–5650) weg, `all` alle DFS-Blöcke.
+   5945–6425; `dfs` (je AP, sonst unter `channels`) `1min-cac` lässt Blöcke mit Wetterradar (5600–5650) weg,
+   `no-cac` alle DFS-Blöcke.
    `radios` `"off"` nimmt den AP heraus.
 2. **Blöcke im Raster:** 40/80/160 MHz ab Kanal 36 bzw. 149 (5 GHz) und Kanal 1 (6 GHz), wie RouterOS sie belegt –
    z.B. 5500/80 → 5490–5570, 5660/40 → 5650–5690, 6135/160 → 6105–6265. Fremde Netze bringen ihren Block aus dem
@@ -1445,7 +1454,7 @@ fremdes Netz mit Gewicht 1 (Gewicht wie bei 2,4 GHz: `w(s) = s + 95`), die Ausga
 Ausgabe (gekürzt, drei APs, die sich mit −50 dBm hören, zwei 80-MHz-Blöcke):
 
 ```
-Kandidaten (Kanal/Breite) je AP: ap1 24 ap2 24 cm1 24 - bis 80 MHz, Pool 5180,…,5560, skipDfs 10min-cac
+Kandidaten (Kanal/Breite) je AP: ap1 24 ap2 24 cm1 24 - bis 80 MHz, Pool 5180,…,5560, dfs 1min-cac
 Aktuell:          Kosten 200 ap1=5180/80 ap2=5200/80 cm1=5500/80
 Vorschlag breit  Kosten 40  ap1=5220/40 ap2=5180/40 cm1=5500/80
   Anteile: fremde Netze 0, eigene APs 0, DFS 0, Leistung 0, Breite 40
@@ -2106,7 +2115,7 @@ Die Grenzen setzt RouterOS selbst (`country`). `$cfmCheck` lehnt Blöcke über 5
 * **Radar:** Erkennt das Radio Radar, verlässt es den Kanal und meidet ihn danach 30 min. Erkennbar daran, dass
   `$cfmChannels` einen anderen Kanal als den Pin zeigt (oder eine neue Warnung „mehrfach“); im Syslog (Graylog) nach
   `radar` suchen. Flughafen-Rundsichtradare senden meist im S-Band (2,7–2,9 GHz), nicht bei 5 GHz; auf 5 GHz
-  schützt DFS vor allem Wetterradar (5600–5650, `skipDfs` `10min-cac` lässt es aus) und einzelne andere Radare.
+  schützt DFS vor allem Wetterradar (5600–5650, `dfs` `1min-cac` lässt es aus) und einzelne andere Radare.
   Fehlalarme gibt es. Springt ein AP öfter, ihn auf 36–48 legen.
 * **Wann DFS lohnt:** wenn ein AP weit reichen muss (Rand, außen) oder mehr getrennte 80-MHz-Blöcke nötig sind, als
   36–48 hergibt. Nicht für jeden AP: Ein CAC oder Radar trifft dann viele zugleich. Gut verteilt: höchstens ein

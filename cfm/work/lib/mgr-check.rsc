@@ -718,7 +718,18 @@
       }
     }
   }
-  :if (!$got) do={ :error "keine Antwort vom Probelauf (Agent beschäftigt?) - später erneut" }
+  :if (!$got) do={
+    # Grund aus dem Log des Geräts: Ein Agent vor TODO 6 scheitert an Plänen über ~60 KB ("contents too long")
+    :local le ""
+    :onerror e in={
+      :local r2 [$cfmExec ip=($d->"ip") cmd=(":local l [/log/find where topics~\"error\" and message~\"^cfm: \"]; :if ([:len \$l] > 0) do={ :put [/log/get [:pick \$l ([:len \$l] - 1)] message] }")]
+      :set le [:tostr ($r2->"output")]
+      :while ([:len $le] > 0 and [:pick $le ([:len $le] - 1)] ~ "[\r\n]") do={ :set le [:pick $le 0 ([:len $le] - 1)] }
+    } do={}
+    :if ($le ~ "contents too long") do={ :error ("Bericht des Probelaufs größer als eine Datei fasst (~60 KB) - der Agent auf " . $host . " kürzt ihn erst nach dem nächsten Release (TODO 6); bis dahin kleinere Schritte planen") }
+    :if ([:len $le] > 0) do={ :error ("keine Antwort vom Probelauf - letzter cfm-Fehler im Log von " . $host . " (evtl. älter): " . [:pick $le 0 200]) }
+    :error "keine Antwort vom Probelauf (Agent beschäftigt?) - später erneut"
+  }
   :local pc [/file/get [find where name=$lf] contents]
   :global cfmPutLines; $cfmPutLines $pc
   :if ($show = "yes" and [:typeof [:find $pc "# Soll-Objekte"]] = "nil") do={ :put ("Hinweis: Der Agent auf " . $host . " kennt die Objektliste noch nicht (erst nach dem nächsten Release) - oben steht der normale Plan") }

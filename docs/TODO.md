@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-21)
+## Übersicht offener Punkte (Stand 2026-11-22)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
@@ -19,6 +19,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   je AP und Band aus (72 → DW3.7); 5-GHz-Pool der Vorlage mit DFS (87 → DW3.6); Hinweis in `upload-seed.sh` (86).
   *Hardware 2026-11-18 (v40) bestanden* bis auf die Isolation nach dem Wiederverbinden (→ 94); offen aus DW3.7 der
   Pegeltest von `txPower` am CAP ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
+* **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
+  Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
   * **94 – Gast-Isolation nach dem Wiederverbinden und im Fallback** (*umgesetzt 18.11. abends, DW1.12.2, Labor;
     Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
@@ -57,7 +59,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     Vorschläge (nur „0 transition requests sent“ als Kandidat auf 6 GHz), andere Clients schon (Laptop ohne FT:
     Vorschläge und Kick auf 5 GHz; ein OnePlus mit FT: Vorschläge auf 2,4 GHz). Vermutung: Das Handy meldet kein BSS
     Transition (802.11v) – RouterOS schickt dann nichts, und der Kick trennt FT-Clients ohnehin nicht (DW2.5). Test vor
-    Ort: Handy und Laptop nebeneinander unter der Schwelle, Puffer live mitlesen. Bestätigt sich das, hilft bei
+    Ort: Handy und Laptop nebeneinander unter der Schwelle, Puffer live mitlesen, dazu ein Mitschnitt am Funk (62). Bestätigt sich das, hilft bei
     solchen Clients nur die Trennschwelle (`drop`/`join`/`hold`) auch auf 5 GHz.
 * **Neu 2026-11-17 (Hardware, Entscheidungen des Nutzers), Umsetzung über Nacht:**
   * **88 – Index unter `/interface/wifi`** (DW1.12): RouterOS zeigt dort den Kommentar des Datapaths an jedem
@@ -121,7 +123,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
-* **Offen im Verbesserungsplan:** 6, 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 73–75,
+* **Offen im Verbesserungsplan:** 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 73–75,
   79–81.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -241,14 +243,15 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 
 ### Mittelfristig
 
-6. **Plan-Modus – Rest** (umgesetzt: DG3.4): Grenze der Berichtsgröße bei sehr großen Plänen prüfen.
+Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
 
 ### Größere Ausbauten
 
 13. **IPv6** (Präfixe je VLAN, Router Advertisements, IPv6-Firewall).
-14. **Zentrale Admin-Anmeldung per RADIUS** (User Manager auf dem Manager).
+14. **Zentrale Admin-Anmeldung per RADIUS** (User Manager auf dem Manager; Grundlage: [RADIUS.md](RADIUS.md), Schritt 5).
 16. **WPA2/WPA3-Enterprise** (externer RADIUS oder User Manager) – Rest von „WLAN-Ausbau“ (umgesetzt: DW2.2);
-    Voraussetzung für 65b. PPSK-VLANs auf Hardware: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware).
+    Für 65b reicht der RADIUS-Teil ([RADIUS.md](RADIUS.md), Schritt 5: danach WPA-Enterprise mit denselben
+    Benutzern). PPSK-VLANs auf Hardware: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware).
 <!-- -->
 18. **Optional Git als Arbeitsort** mit Review vor dem Release – bewusste Alternative zu DG1.2,
     z.B. bei mehreren Admins.
@@ -352,6 +355,12 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     (WNM). Nutzen: Klarheit für eine Fehlermeldung an den Hersteller; wechselt der Client auf Vorschläge,
     ließen sich `drop`/`hold` der Trennschwelle großzügiger setzen – jede harte Trennung kostet ~3 s
     Verbindung, ein Wechsel per FT fast nichts.
+    *Vorbereitet 2026-11-22 (Hardware-Test offen, mit 97):* Optionen laut MikroTik-Doku: `/interface/wifi/sniffer
+    <Interface> pcap-file=… pcap-size-limit=… duration=… filter="…"` (libpcap-ähnlich: `addr1..3`, `type`/`subtype`,
+    Flags) oder `stream-address=` (TZSP); er hört auf dem aktuellen Kanal des Interfaces. Auswertung
+    `tools/wlan-btm.py` (tools/README): Fähigkeiten aus (Re)Association/Probe Request (BTM-Bit, 802.11k, FT, AKM),
+    Ablauf, WNM-Frames. Mit PMF (WPA3) sind BTM-Request/-Response verschlüsselt – die Frage „kann der Client BTM“
+    beantwortet dann der unverschlüsselte Association Request. Die Registration-Table zeigt keine Client-Fähigkeiten.
 63. **NTP-Umleitung – Rest** (umgesetzt: DN2.2, seit 2026-10-24 an einem Standort): Uhrzeit in der
     Weboberfläche einer OpenBeken-Lampe prüfen.
 65. **Fremdgerät mit der Haupt-SSID bzw. am gemeinsamen Dock ins Gäste-VLAN** (Wunsch des Nutzers, 2026-10-26)
@@ -360,7 +369,8 @@ Alle erledigt, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
     NetworkManager das ungetaggte Haupt-VLAN und getaggt alle übrigen VLANs nutzt (auch MGMT). Zwei Teile:
     * **(a) WLAN** ist umgesetzt (DW2.6), auf Hardware seit 2026-11-05 an einem Standort im Betrieb (an einem CAP:
       VLAN, Lease, Internet ja, LAN nein); offen: Roaming ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
-    * **(b) Kabel am gemeinsamen Dock** – *wartet auf 802.1X* (WPA-Enterprise/RADIUS, TODO 16): Port mit
+    * **(b) Kabel am gemeinsamen Dock** – *wartet auf 802.1X* (WPA-Enterprise/RADIUS, TODO 16; *Konzept 2026-11-22 mit
+      Laborbefunden: [RADIUS.md](RADIUS.md), User Manager statt PacketFence, Fragen an den Nutzer offen*): Port mit
       dot1x und MAC-Auth, VLAN vom RADIUS. Die einfachen Wege tragen nicht: Eine Switch-Regel je MAC
       (`src-mac-address` + `new-vlan-id`; das Menü gibt es auf dem QCA-8386 eines hAP be³, Wirkung
       ungetestet) scheitert, wenn das Dock für beide Laptops mit seiner eigenen MAC sendet (ohne

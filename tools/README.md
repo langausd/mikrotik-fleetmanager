@@ -19,6 +19,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`editor/`](#editor) | cfm-Editor, cfm-Monitor und cfm-DNS als Lesezeichen für WebFig |
 | [`upgrade-mirror.py`](#upgrade-mirrorpy) | RouterOS-Update für Geräte ohne Internet |
 | [`pcap-ziele.py`](#pcap-zielepy) | Internet-Ziele eines Geräts aus einem Mitschnitt, Vorschlag für `allow` |
+| [`wlan-btm.py`](#wlan-btmpy) | WLAN-Mitschnitt: kann ein Client Wechselvorschläge (802.11v), bekommt er welche? |
 | [`wifi-sign.py`](#wifi-signpy) | WLAN-Schild als A4-PDF: QR-Code, SSID, Passphrase (de/en) |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
@@ -146,7 +147,7 @@ git commit --no-verify                       # im Ausnahmefall ohne Prüfung
 ```
 
 Auf GitHub prüft zusätzlich die Action `rsc-check` (`.github/workflows/rsc-check.yml`) jeden Push – neben
-`rsc-check.py` auch die Tests der übrigen Werkzeuge (`wifi-sign.py`, QR-Encoder, `upload-seed.sh`, `new-site.py`).
+`rsc-check.py` auch die Tests der übrigen Werkzeuge (`wifi-sign.py`, QR-Encoder, `upload-seed.sh`, `wlan-btm.py`, `new-site.py`).
 Ein Fehler bricht die Schritte danach ab; im Log der Action den ersten roten Schritt ansehen.
 
 ## `editor/`
@@ -224,6 +225,29 @@ Je Gerät siehst du die DNS-Anfragen, die Verbindungen ins Internet (Port, Adres
 TLS oder HTTP) und im LAN, am Ende einen Vorschlag wie `"waschmaschine"={"api.example.com:tcp/443"}`.
 Prüfe ihn: Einträge mit einer IP statt eines Namens können sich ändern. Liest pcap (auch das „modifizierte“ der Fritz!Box) und pcapng, auch abgebrochene `.part`-Dateien, ohne
 Fremdpakete. Verschlüsseltes QUIC (`udp/443`) zeigt nur die Adresse, den Namen dann aus den DNS-Anfragen.
+
+## `wlan-btm.py`
+
+Ein Client bleibt an einem schwachen AP hängen, obwohl `steer` (DW2.4) ihn wechseln lassen soll. Vorschläge zum
+Wechsel (BSS Transition, 802.11v) schickt der AP nur Clients, die das in ihrer Anmeldung melden. Das Skript liest einen
+Mitschnitt vom Funk und zeigt es je Client – dazu 802.11k, FT, die AKMs und den Ablauf (Anmeldung, Trennung mit Grund,
+Wechselvorschläge mit Antwort).
+
+1. Mitschnitt auf einem freien Radio im Kanal des APs (es sendet währenddessen nicht als AP):
+   `/interface/wifi/sniffer wifi1 pcap-file=btm pcap-size-limit=20000000 duration=4m filter="type == 0 && subtype != 8"`
+   (nur Management-Frames ohne Beacons), Datei per `scp` holen. Oder als Strom: `stream-address=<Rechner>` und am
+   Rechner `tcpdump -i <if> -w btm.pcap udp port 37008`.
+2. Während der Aufnahme am Client WLAN aus und wieder an – erst der Association Request zeigt die Fähigkeiten.
+3. Auswerten:
+
+```bash
+tools/wlan-btm.py btm.pcap --mac 02:00:00:00:00:AA     # ein Client
+tools/wlan-btm.py btm.pcap                              # alle, die sich im Mitschnitt anmelden
+```
+
+Steht dort „meldet KEIN BSS Transition“, hilft bei diesem Client nur eine Trennschwelle (`drop`/`join`/`hold`).
+Mit PMF (WPA3) sind die Wechselvorschläge selbst verschlüsselt – das Skript zeigt dann nur Zeit, Richtung und Länge.
+Liest pcap/pcapng mit 802.11, Radiotap (mit Signal) oder TZSP; nur Standardbibliothek.
 
 ## `wifi-sign.py`
 

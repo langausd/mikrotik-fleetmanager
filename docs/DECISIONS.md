@@ -198,6 +198,8 @@ Der Reconciler erzeugt Kommandos per `:parse`, übergibt aber alle Werte als Var
 
 **Umsetzung:** `$cfmPlan host=…` legt einen Schnappschuss `plan/` samt signiertem Plan-Manifest an. Das Gerät führt die Rollen mit `cfmDry=true` aus: `cfmRun` überspringt add/set/remove, die Meldungen des Reconcilers (mit Werten) sind der Plan. `*.post.rsc` wird übersprungen, direkte Befehle in Rollen sind mit `$cfmDry` abgesichert. Damit die cfm-Objekte der `*.post.rsc` nicht als verwaist erscheinen, merkt sich der echte Apply ihre Schlüssel (`cfm/post.json`, nur die Schlüssel, die erst diese Datei gesehen hat); der Probelauf derselben Datei behält genau diese. Start per `:execute`, Ergebnis per SFTP (ssh-exec bricht lange Befehle ab).
 
+*Nachtrag 2026-11-22 (TODO 6):* Eine Datei fasst höchstens 61 439 Byte (ROUTEROS-EIGENHEITEN). Ein längerer Plan (z.B. Erst-Apply eines Routers) ließ den Agent beim Schreiben scheitern, und der Manager meldete nach 3 min nur „keine Antwort“. Jetzt kürzt der Agent die Meldungen an einer Zeilengrenze bei 56 000 Zeichen („... gekuerzt: n weitere Zeilen“), die Summe `add/rem/set` darunter zählt weiter alles. Bleibt die Antwort aus, nennt `$cfmPlan` den letzten cfm-Fehler aus dem Log des Geräts – bei `contents too long` mit dem Hinweis, dass der installierte Agent erst nach dem nächsten Release kürzt (der Probelauf läuft immer mit dem Agent des Geräts).
+
 ### <a id="dg4"></a>DG4 · Code-Umfang und Laufzeit
 
 #### <a id="dg4.1"></a>DG4.1 · Dateizugriff über den Namen

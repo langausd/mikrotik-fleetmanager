@@ -2412,7 +2412,7 @@ Inventarname.
 |---|---|
 | `$cfmRelease [msg="…"] [all=yes] [force=yes]` | `work/` prüfen und als neue Version an Ring 0 (bzw. alle) freigeben; `force=yes` trotz inhaltlicher Prüffehler |
 | `$cfmCheck [quiet=yes]` | inhaltliche Prüfung von `work/` (läuft bei jedem Release): gibt Warnungen, Fehler und „Prüfung: N Fehler, M Warnungen“ aus und liefert `{"err"=…;"warn"=…}` zurück; `quiet=yes` nur zurückgeben (DG2.4.1) |
-| `$cfmPlan host=<n>` | Probelauf: was ein Release von `work/` auf dem Gerät ändern würde |
+| `$cfmPlan host=<n>` | Probelauf: was ein Release von `work/` auf dem Gerät ändern würde (lange Berichte kürzt der Agent bei ~56 000 Zeichen, die Summe zählt alles; TODO 6) |
 | `$cfmPlan host=<n> from=<verz> role=<rollen>` | Probelauf eines anderen Stands (`cfm/<verz>/`) bzw. mit anderen Rollen, ohne `work/` und Inventar zu ändern |
 | `$cfmShow host=<n> [ver=<N>] [objects=yes]` | effektive Konfiguration: zusammengeführte Daten bzw. Soll-Objekte vom Gerät (8.3) |
 | `$cfmDiff [ver=<A>] [to=<B>\|work]` | Unterschiede zwischen zwei Ständen: Dateien, betroffene Geräte, Zeilen der Datendateien (8.3) |

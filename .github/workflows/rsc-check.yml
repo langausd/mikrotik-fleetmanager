@@ -30,5 +30,7 @@ jobs:
         run: python3 tools/editor/cfm-radios-test.py -v
       - name: upload-seed.sh gegen einen nachgebauten SFTP-Server
         run: python3 tools/upload-seed-test.py -v
+      - name: wlan-btm.py (802.11v aus einem WLAN-Mitschnitt)
+        run: python3 tools/wlan-btm-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site
         run: python3 tools/new-site.py "$RUNNER_TEMP/site-ci" --name cm-ci --uplink ether2 --user ci --mgmt-extra 10.0.0.0/8

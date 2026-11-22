@@ -166,6 +166,13 @@ expect 1 '[:typeof [:find [/file/get [/file/find name="cfm/work/vlans.rsc"] cont
 out=$(mgr ':onerror e in={ $cfmPlan host=sw1 from=work } do={ :put ("ERR " . $e) }')
 echo "$out" | grep -q "ERR from=work" && ok "from=work abgelehnt (nur eigene Verzeichnisse)" || { bad "from=work nicht abgelehnt"; echo "$out" | tail -2; }
 mgr ':foreach f in=[/file/find where name~"^cfm/umzug"] do={ :onerror e in={ /file/remove $f } do={} }' >/dev/null
+# Grenze der Berichtsgröße (TODO 6): /file/set schreibt höchstens 61 439 Byte. 1000 MikroTik-Update-Hosts im Hostfile
+# ergeben mit Rolle router ~74 KB Plan - der Agent kürzt an einer Zeilengrenze, die Summe zählt alles
+mgr ':global e2eH [/file/get [/file/find name="cfm/work/hosts/sw1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=($e2eH . ":local a ({}); :for i from=1 to=1000 do={ :set a (\$a, (\"e2e-plan-grenze-\" . \$i . \".beispiel.invalid\")) }; :set (\$cfmG->\"onboard\"->\"mtHosts\") \$a\n")' >/dev/null
+out=$(mgr '$cfmPlan host=sw1 role=switch,router')
+echo "$out" | grep -q "gekuerzt: [0-9]* weitere Zeilen" && echo "$out" | grep -Eq "# Plan sw1 .*add=1[0-9]{3}" && ! echo "$out" | grep -q "keine Antwort" && ok "Probelauf über 60 KB: an einer Zeilengrenze gekürzt, Summe mit allen Einträgen (TODO 6)" || { bad "Probelauf über 60 KB"; echo "$out" | grep -E "gekuerzt|# Plan|Antwort|FEHLER" | head -4; }
+expect 1 '[/file/get [/file/find name="cfm/state/sw1/plan.txt"] size] < 61440 and [:len [/file/get [/file/find name="cfm/state/sw1/plan.txt"] contents]] > 50000' "Plan-Datei auf dem Manager unter 60 KB und lesbar"
+mgr ':global e2eH; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eH' >/dev/null
 # Hostnamen ohne Rücksicht auf die Schreibweise (TODO 77): zentrale Suche $cfmHostName, Kollision im Check
 out=$(mgr ':global cfmHostName; :put ("H=" . [$cfmHostName "Sw1"] . "/" . [$cfmHostName "cm1"] . "/" . [$cfmHostName "xx9"] . "/[" . [$cfmHostName ""] . "]")')
 echo "$out" | grep -qF "H=sw1/cm1/xx9/[]" && ok "\$cfmHostName: Sw1 -> sw1, exakt bleibt, unbekannt unverändert, leer bleibt leer" || { bad "\$cfmHostName"; echo "$out" | tail -2; }

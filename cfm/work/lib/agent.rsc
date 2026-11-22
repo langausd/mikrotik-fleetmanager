@@ -388,13 +388,25 @@
       :set cfmShowAll false
       :set cfmDl $dl0
       :global cfmStat
-      :local rep ("# id=" . [:tostr ($arg->"id")] . "\n" . $cfmPlanOut . "# Plan " . ($pm->"name") . " (Stand work/): " . [:tostr $cfmStat] . "\n")
+      # /file/set schreibt höchstens 61 439 Byte, /file/get liest größere Dateien als "" (CHR 7.25.1, TODO 6): langen
+      # Plan an einer Zeilengrenze kürzen; die Summe darunter zählt weiter alles. :find mit Start sucht erst danach.
+      :local body $cfmPlanOut
+      :local lim 56000
+      :if ([:len $body] > $lim) do={
+        :local p 0
+        :local q [:find $body "\n"]
+        :while ([:typeof $q] = "num" and $q < $lim) do={ :set p ($q + 1); :set q [:find $body "\n" $q] }
+        :local n 0
+        :while ([:typeof $q] = "num") do={ :set n ($n + 1); :set q [:find $body "\n" $q] }
+        :set body ([:pick $body 0 $p] . "... gekuerzt: " . $n . " weitere Zeilen (" . ([:len $body] - $p) . " Zeichen) - eine Datei fasst nur ~60 KB; die Summe unten zaehlt alles\n")
+      }
+      :local rep ("# id=" . [:tostr ($arg->"id")] . "\n" . $body . "# Plan " . ($pm->"name") . " (Stand work/): " . [:tostr $cfmStat] . "\n")
       :if (($arg->"show") = "yes") do={
         # /file/get liest nur ~60 KB: lange Listen (Manager mit vielen Skripten) kürzen
         :if ([:len $cfmShowOut] > 50000) do={ :set cfmShowOut ([:pick $cfmShowOut 0 50000] . "\n… gekürzt (über 50 000 Zeichen)\n") }
         :set rep ("# id=" . [:tostr ($arg->"id")] . "\n# Soll-Objekte " . ($pm->"name") . " (Stand work/, ohne post.rsc)\n" . $cfmShowOut)
       }
-      :if ([:len $perr] > 0) do={ :set rep ($rep . "# FEHLER im Probelauf (ein Apply würde zurückrollen): " . $perr . "\n") }
+      :if ([:len $perr] > 0) do={ :set rep ($rep . "# FEHLER im Probelauf (ein Apply würde zurückrollen): " . [:pick $perr 0 2000] . "\n") }
       $cfmWrite ($dir . "/out/plan.txt") $rep
       :put $rep
       :error "cfm-done"

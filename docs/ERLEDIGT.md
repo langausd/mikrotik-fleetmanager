@@ -10,6 +10,14 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-22:** **TODO 6** (Plan-Modus, Rest Berichtsgröße) erledigt: Der Agent kürzt den Planbericht vor dem
+  Schreiben auf ~56 KB an einer Zeilengrenze („gekuerzt: N weitere Zeilen“, die Summe zählt alles), die
+  FEHLER-Zeile auf 2000 Zeichen; `$cfmPlan` meldet bei Zeitüberschreitung die letzte `cfm:`-Fehlerzeile des Geräts
+  (alter Agent: „contents too long“). **TODO 62** vorbereitet: `tools/wlan-btm.py` wertet einen WLAN-Mitschnitt
+  (Radiotap/TZSP) auf 802.11v aus (BSS-Transition-Bit in Association Requests, BTM-Anfragen/-Antworten, PMF-geschützte
+  Aktionen), mit Test in der CI; Messung vor Ort offen. **Konzept RADIUS/802.1X** (`docs/RADIUS.md`): User Manager auf
+  dem Manager statt PacketFence, Ziel Dock-Port (65b), Laborbefunde zu Dot1X, offene Fragen. Labor e2e 544/544, VRRP
+  184, MLAG 72, Onboarding 14/15/18.
 * **Am 2026-11-21:** **TODO 92** umgesetzt (Hardware offen, bleibt in TODO.md): `dfs` als höchste erlaubte CAC
   (`no-cac`/`1min-cac`/`10min-cac`) unter `channels` 5 GHz und je AP als eigene Map, ersetzt `skipDfs` (Breaking
   Change, `$cfmCheck` lehnt den alten Schlüssel mit Übersetzung ab); Kanal-Objekte je AP aus `radios` setzen jetzt
@@ -318,6 +326,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     (`"allow"={"*liste"}` → forward-Regeln mit Adresse + MAC, NAT nach Kennzeichen). Labor `e2e.sh` 14m grün (2026-11-12),
     Admin-Guide 4 und 8.18 (Liste per Mitschnitt). Volltext unten unter „Frühere Fassungen“. Rest (Standort): eigene
     Listen für die Cloud-Geräte an einem Standort anlegen (`tuya` schon auf Domains umgestellt).
+6. ~~**Plan-Modus – Rest: Berichtsgröße**~~ – *erledigt 2026-11-22 (Nachtrag DG3.4):* Eine Datei fasst höchstens
+   61 439 Byte; der Agent kürzt den Bericht eines Probelaufs an einer Zeilengrenze (Summe vollständig), `$cfmPlan`
+   nennt bei ausbleibender Antwort den letzten cfm-Fehler des Geräts. Labor: `e2e.sh` Schritt 6 (Plan mit ~74 KB).
 7. ~~**RouterOS-Versionspflege – Rest: Pakete auf den Backup-Manager**~~ – *umgesetzt 2026-11-05 (Nachtrag DV1.2):*
    `$cfmMirror` holt `meta/upgrade.dat` und die Pakete offener Aufträge in die eigene Ablage (Pfad umgeschrieben),
    löscht Versionen ohne Auftrag. Labor: `e2e.sh` Schritt 13.

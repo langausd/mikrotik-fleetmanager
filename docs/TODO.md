@@ -115,7 +115,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   (38, DV1.5) lief über den Spiegel (hEX) und per `via=internet` (CRS, 7.25).
 * **RouterOS 7.25:** stable seit 2026-10-22, beide Standorte seit 2026-10-26/28 darauf
   ([TESTSTAND.md](TESTSTAND.md)); offen aus 48: FT für MLD (DW2.3).
-* **Vorbereitet, Test mit Hardware:** 25 (Zertifikate für WebFig/API, DS3.6 – Labor grün, erster Einsatz 2026-11-23).
+* **Im Einsatz an einem Standort:** 25 (Zertifikate für WebFig/API, DS3.6, seit 2026-11-23; Rest siehe 25).
 * **Zurückgestellt:** 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant; *seit 2026-11-01 an einem Standort in Betrieb, Graylog 8.15*).
 * **Vorbereitet, Test nur mit Hardware:** MLAG auf CRS3xx (Hardware-Offload, Ausfall eines Knotens,
@@ -287,8 +287,8 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     (aus den gemeldeten Paketen), wenn ein AP das Paket hat.*
 <!-- -->
 25. **WebFig per HTTPS – Rest** (umgesetzt 2026-11-23: DS3.6, Zertifikate einer öffentlichen CA für `www-ssl` und
-    `api-ssl`, Schlüssel auf dem Gerät, Signer `tools/cert-signer/`; Labor `e2e.sh` 14n, Admin-Guide 8.20). **Offen:**
-    erster Einsatz an Hardware (Let's Encrypt über acme-dns, Signer außerhalb), danach `www` in den Management-Netzen
+    `api-ssl`, Schlüssel auf dem Gerät, Signer `tools/cert-signer/`; Labor `e2e.sh` 14n, Admin-Guide 8.20; Hardware
+    2026-11-23 an einem Standort mit drei Geräten bestanden, TESTSTAND). **Offen:** zweiter Standort, danach `www` in den Management-Netzen
     abschalten (auf Routern bleibt es für die DNS-Selbstbedienung, DN3.2); `notify`-Meldung bei TLS-Fehlern bzw. kurz
     vor Ablauf (bisher nur `$cfmTlsStatus` und Log); Home-Assistant-Integration auf `api-ssl` umstellen (8.20, 6.7).
 <!-- -->

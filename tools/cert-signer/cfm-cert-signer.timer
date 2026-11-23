@@ -1,0 +1,10 @@
+[Unit]
+Description=cfm: Signer alle 10 Minuten
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

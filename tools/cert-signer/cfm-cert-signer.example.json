@@ -1,0 +1,15 @@
+{
+  "managers": [
+    {"host": "192.0.2.1", "user": "cfm-cert", "key": "/etc/cfm-cert-signer/id_ed25519", "path": "cfm"}
+  ],
+  "domains": ["site.example.org"],
+  "outdir": "/srv/cfm-certs",
+  "state": "/var/lib/cfm-cert-signer/state.json",
+  "mode": "certbot",
+  "certbot": {
+    "hook": "/etc/letsencrypt/acme-dns/acme-dns-auth.py",
+    "account": "cfm-mikrotik",
+    "staging": false,
+    "cname_target": "00000000-0000-0000-0000-000000000000.acme-dns.example.org"
+  }
+}

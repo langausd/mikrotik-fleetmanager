@@ -1,0 +1,7 @@
+[Unit]
+Description=cfm: CSRs der Geräte signieren und Manager anstoßen (DS3.6)
+After=network-online.target acme-dns.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cfm-cert-signer.py -c /etc/cfm-cert-signer.json

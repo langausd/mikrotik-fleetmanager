@@ -488,9 +488,10 @@
   :local mf [$cfmMfRead $mfl key=$key]
   :set cfmMf $mf
   :local v ($mf->"v")
-  # Hash ohne RouterOS-Auftrag: ein neuer oder erledigter Auftrag löst keinen Apply aus
+  # Hash ohne RouterOS-Auftrag und TLS-Zertifikat (DS3.6): ein neuer oder erledigter Auftrag, ein neues Zertifikat
+  # lösen keinen Apply aus
   :local m2 ({})
-  :foreach k,x in=$mf do={ :if ($k != "ros") do={ :set ($m2->$k) $x } }
+  :foreach k,x in=$mf do={ :if ($k != "ros" and $k != "tls") do={ :set ($m2->$k) $x } }
   :local mfh [:convert [:serialize to=json $m2] transform=md5 to=hex]
   :set ($st->"name") ($mf->"name")
   :set ($st->"ring") ($mf->"ring")
@@ -758,6 +759,18 @@
         }
       }
     } do={ :log warning ("cfm: cfm-iso nicht nachgetragen: " . $e) }
+  }
+
+  # --- TLS-Zertifikat (DS3.6): bei jedem Lauf, nicht nur beim Apply - Code aus lib/base.tls.rsc der angewendeten Version ---
+  :if ([:typeof ($mf->"tls")] = "array" and [:len [:tostr (($mf->"tls")->"cn")]] > 0) do={
+    :onerror e in={
+      :local tf [:parse [/file/get ($cfmDl . "/lib/base.tls.rsc") contents]]
+      $tf
+      :global cfmTls
+      :set st [$cfmTls tls=($mf->"tls") st=$st key=$key mgr=$mgr]
+    } do={ :log warning ("cfm: TLS: " . $e) }
+  } else={
+    :if ([:typeof ($st->"tls")] != "nothing") do={ :set ($st->"tls"); :set ($st->"csr") }
   }
 
   # --- Bericht ---

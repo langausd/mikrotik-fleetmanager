@@ -380,6 +380,25 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
     }
   }
 }
+# Zertifikate (DS3.6): Dienste mit Zertifikat aus tls, Signer-Adressen (nur auf Managern, SSH)
+:local tls ($cfmG->"tls")
+:local tlsSvc ({})
+:local tlsFrom ({})
+:if ([:typeof $tls] = "array" and [:len [:tostr ($tls->"signer")]] > 0) do={
+  :local sl ($tls->"services")
+  :if ([:typeof $sl] = "nothing") do={ :set sl {"www-ssl";"api-ssl"} }
+  :foreach x in=$sl do={ :if ($x = "www-ssl" or $x = "api-ssl") do={ :set ($tlsSvc->$x) 1 } }
+  :foreach x in=($tls->"from") do={
+    :local a [:tostr $x]
+    :if ([:typeof [:find $a "/"]] = "nil") do={ :set a ($a . "/32") }
+    :set ($tlsFrom->[:len $tlsFrom]) $a
+  }
+}
+:if ($isMgr and [:len $tlsFrom] > 0) do={
+  :local fl ({})
+  :foreach a in=$tlsFrom do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=[:tostr ($cfmG->"services"->"ssh")];"src-address"=$a}) }
+  $cfmBlock m="/ip/firewall/filter" k="tlssign" l=$fl
+}
 :foreach s in={"telnet";"ftp";"www";"www-ssl";"reverse-proxy";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
   :local addr [$cfmKeys $an]
@@ -393,9 +412,18 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
     :local aa ({}); :foreach x in=$addr do={ :set ($aa->$x) 1 }; :foreach x,y in=$selfN do={ :set ($aa->$x) 1 }
     :set addr [$cfmKeys $aa]
   }
+  # Signer der Zertifikate (DS3.6): SSH zum Manager nur von tls.from (User cfm-cert, roles/manager.rsc)
+  :if ($s = "ssh" and $isMgr and [:len $tlsFrom] > 0) do={
+    :local aa ({}); :foreach x in=$addr do={ :set ($aa->$x) 1 }; :foreach x in=$tlsFrom do={ :set ($aa->$x) 1 }
+    :set addr [$cfmKeys $aa]
+  }
   :if ([:len $port] > 0) do={
     :local sp ({"disabled"="no";"port"=$port})
     :set ($sp->$saf) $addr
+    # Zertifikat aus tls (DS3.6, lib/base.tls.rsc); bis es da ist, none (der Dienst lauscht dann nicht)
+    :if ([:typeof ($tlsSvc->$s)] != "nothing") do={
+      :if ([:len [/certificate/find where name="cfm-tls"]] > 0) do={ :set ($sp->"certificate") "cfm-tls" } else={ :set ($sp->"certificate") "none" }
+    }
     $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=$sp
   } else={
     $cfmSet m="/ip/service" n=({"name"=$s;"dynamic"=false}) p=({"disabled"="yes"})

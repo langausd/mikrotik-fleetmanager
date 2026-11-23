@@ -118,6 +118,8 @@ def bedarf(site):
     g = tokens(lesen(site, "global.rsc") or "")
     snmp = genutzt_wenn_nicht_leer(g, "snmp")
     r["base.snmp"] = (snmp, "global.rsc snmp" + ("" if snmp else " leer"))
+    tls = genutzt_wenn_nicht_leer(g, "tls")
+    r["base.tls"] = (tls, "global.rsc tls" + ("" if tls else " leer"))
 
     v = tokens(lesen(site, "vlans.rsc") or "")
     iso = False

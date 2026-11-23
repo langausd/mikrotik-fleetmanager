@@ -115,7 +115,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   (38, DV1.5) lief über den Spiegel (hEX) und per `via=internet` (CRS, 7.25).
 * **RouterOS 7.25:** stable seit 2026-10-22, beide Standorte seit 2026-10-26/28 darauf
   ([TESTSTAND.md](TESTSTAND.md)); offen aus 48: FT für MLD (DW2.3).
-* **Zurückgestellt:** 25 (WebFig per HTTPS – bis Let's Encrypt über acme-dns steht), 22 (Disk-Logging
+* **Vorbereitet, Test mit Hardware:** 25 (Zertifikate für WebFig/API, DS3.6 – Labor grün, erster Einsatz 2026-11-23).
+* **Zurückgestellt:** 22 (Disk-Logging
   – ein externer Syslog-Server ist geplant; *seit 2026-11-01 an einem Standort in Betrieb, Graylog 8.15*).
 * **Vorbereitet, Test nur mit Hardware:** MLAG auf CRS3xx (Hardware-Offload, Ausfall eines Knotens,
   Umbau im laufenden Betrieb), isolierte VLANs an echten APs (seit 2026-11-04 im Betrieb an einem Standort; der
@@ -285,12 +286,11 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     Gerät umsetzen und testen. *Seit 2026-10-04 warnen die Rolle `ap` (Log, Probelauf) und `$cfmCheck`
     (aus den gemeldeten Paketen), wenn ein AP das Paket hat.*
 <!-- -->
-25. **WebFig per HTTPS** – *zurückgestellt (2026-10-01), bis Let's Encrypt über acme-dns mit einer
-    öffentlichen Domain steht (dann Zertifikat per DNS-Challenge statt selbstsigniert).* – `services` kennt `www-ssl`, die Rolle `base` setzt aber nur Port und
-    Adressen; ohne Zertifikat lauscht RouterOS dort nicht. Bis dahin geht das Web-Interface nur
-    per `www` (HTTP, Passwort unverschlüsselt, auf die Management-Netze begrenzt). Umsetzung:
-    je Gerät ein selbstsigniertes Zertifikat (oder von einer CA auf dem Manager signiert) anlegen,
-    an `www-ssl` hängen und bei Namens-/Adressänderung erneuern; danach `www` abschalten.
+25. **WebFig per HTTPS – Rest** (umgesetzt 2026-11-23: DS3.6, Zertifikate einer öffentlichen CA für `www-ssl` und
+    `api-ssl`, Schlüssel auf dem Gerät, Signer `tools/cert-signer/`; Labor `e2e.sh` 14n, Admin-Guide 8.20). **Offen:**
+    erster Einsatz an Hardware (Let's Encrypt über acme-dns, Signer außerhalb), danach `www` in den Management-Netzen
+    abschalten (auf Routern bleibt es für die DNS-Selbstbedienung, DN3.2); `notify`-Meldung bei TLS-Fehlern bzw. kurz
+    vor Ablauf (bisher nur `$cfmTlsStatus` und Log); Home-Assistant-Integration auf `api-ssl` umstellen (8.20, 6.7).
 <!-- -->
 37. **Paketprüfung – Rest** (umgesetzt: DV1.4, NPK-Kennung): Prüfsummen von MikroTik nutzen, falls es eine
     Liste gibt.

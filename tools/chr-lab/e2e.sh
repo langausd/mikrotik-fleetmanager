@@ -73,7 +73,8 @@ if r 1 ':put [:len [/log/find where message="cfm: Primary-Manager bereit"]]' | t
 expect 1 '[:len [/interface/bridge/find]] = 1 and [:len [/ip/dhcp-client/find where interface=ether1]] = 1 and [:len [/file/find where name~"bootstrap-(stufe|uebergabe)|cfm-uebergabe"]] = 0 and [:len [/system/scheduler/find where name~"^cfm-bootstrap"]] = 0 and [:len [/log/find where message="cfm: Bootstrap - post erledigt"]] = 1' "cm1: leere Config mit Bootstrap (eine Bridge, DHCP-Client, post erledigt, keine Markierungen und Übergabe-Scheduler mehr)"
 expect 1 '[:len [/log/find where message="cfm: Bootstrap Stufe 3 als cfm"]] = 1' "cm1: Bootstrap nach dem Reset an cfm übergeben (Stufe 3 als cfm)"
 agentwait 1 1 cm1 && ok "cm1 hat v1 angewendet" || bad "cm1 Apply v1"
-expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = 15' "cm1: 15 Manager-Module als Skripte (von der Rolle übernommen)"
+nm=$(ls "$ROOT"/cfm/work/lib/mgr-*.rsc | wc -l)
+expect 1 '[:len [/system/script/find where name~"^cfm-mgr-" and comment~"^cfm:sys:mgr-"]] = '"$nm" "cm1: $nm Manager-Module als Skripte (von der Rolle übernommen)"
 expect 1 '[:len [/file/find where name="cfm/dl/web/cfm-editor.js"]] = 1 and [:len [/file/find where name="cfm/dl/web/cfm-monitor.js"]] = 1' "cm1 (manager): Code für das Lade-Lesezeichen in cfm/dl/web/ (DT3.2)"
 expect 1 '[/system/scheduler/get [find name="cfm-mgr-tick"] on-event] ~ "cfm-mgr-onb-tick" and [/system/scheduler/get [find name="cfm-mgr-onb-tick"] on-event] ~ "cfmTickBusy"' "cm1: die beiden Manager-Ticks sperren sich gegenseitig"
 expect 1 '[:len [/ip/firewall/filter/find where comment~"^cfm:fwb" and action=accept and dst-port="67"]] = 1' "cm1: minimale Firewall erlaubt DHCP im Onboarding-VLAN"
@@ -1435,6 +1436,64 @@ mgr ':global e2eG14m; :global e2eL14m; /file/set [/file/find name="cfm/work/glob
 rv=$(mgr '$cfmRelease msg=" ohne Domain/Lease-allow" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
 agentwait 2 "$rv" sw1 || bad "sw1 Apply v$rv (ohne Domain/Lease-allow): $(stat sw1 res)"
 expect 2 '[:len [/ip/dns/static/find where comment~"^cfm:dnsal:"]] = 0 and [:len [/ip/firewall/filter/find where comment~"^cfm:fw" and src-address="192.168.30.21"]] = 0 and [:len [/ip/firewall/nat/find where src-address="192.168.30.21"]] = 0' "sw1: FWD-Eintrag und Client-Regeln wieder weg"
+
+step "14n. Zertifikate (DS3.6): CSR vom Gerät, Signer (Test-CA) liest per SSH nur lesend, Manager holt und verteilt"
+# Test-CA mit Zwischenzertifikat auf dem Host; der Signer (tools/cert-signer) liest die CSRs über den SSH-Forward von cm1
+# (Quelle dort 10.0.2.2 = tls.from), legt die Zertifikate in $LAB/tls/out, ein HTTP-Dienst liefert sie (VMs: 10.0.2.2)
+T="$LAB/tls"; rm -rf "$T"; mkdir -p "$T/out"
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$T/ca.key" -out "$T/ca.pem" -days 30 -subj "/CN=cfm Labor-CA" 2>/dev/null
+openssl req -newkey rsa:2048 -nodes -keyout "$T/int.key" -out "$T/int.csr" -subj "/CN=cfm Labor-Zwischen-CA" 2>/dev/null
+printf "basicConstraints=critical,CA:TRUE\nkeyUsage=keyCertSign,cRLSign\n" > "$T/int.ext"
+openssl x509 -req -in "$T/int.csr" -CA "$T/ca.pem" -CAkey "$T/ca.key" -CAcreateserial -out "$T/int.pem" -days 30 -extfile "$T/int.ext" 2>/dev/null
+ssh-keygen -q -t ed25519 -N "" -C signer@lab -f "$T/signer_key"
+TP=$((LABPORT + 95))
+python3 -m http.server $TP --bind 127.0.0.1 --directory "$T/out" > "$T/http.log" 2>&1 & tpid=$!
+cat > "$T/signer.json" <<EOT
+{"managers": [{"host": "127.0.0.1", "port": $((LABPORT + 10)), "user": "cfm-cert", "key": "$T/signer_key", "known_hosts": "/dev/null", "path": "cfm"}],
+ "domains": ["internal"], "outdir": "$T/out", "state": "$T/state.json", "mode": "testca",
+ "testca": {"cert": "$T/int.pem", "key": "$T/int.key", "chain": "$T/int.pem", "days": 20}}
+EOT
+echo "put $T/signer_key.pub cfm/work/authorized_keys.cfm-cert" | put 1
+mgr ':global e2eG14n [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14n . ":set (\$cfmG->\"tls\") {\"signer\"=\"http://10.0.2.2:'$TP'/\";\"from\"={\"10.0.2.2\"};\"services\"={\"www-ssl\";\"api-ssl\"};\"renew\"=10}\n:set (\$cfmG->\"services\"->\"www-ssl\") 443\n:set (\$cfmG->\"services\"->\"api-ssl\") 8729\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" TLS" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 && ok "sw1 und cm1 haben v$rv (tls) angewendet" || bad "Apply v$rv (tls): sw1 $(stat sw1 res), cm1 $(stat cm1 res)"
+expect 2 '[:len [/file/find where name="cfm/out/tls.csr"]] = 1 and [:len [/file/find where name="cfm/tls.key"]] = 1 and [:len [/certificate/find where name="cfm-tls-req"]] = 0 and [:len [/file/find where name~"^certificate-request"]] = 0' "sw1: Schlüssel und CSR erzeugt, Vorlage und Rohdateien weg"
+expect 2 '[/ip/service/get [find name="www-ssl" and !dynamic] disabled] = false and [:tostr [/ip/service/get [find name="www-ssl" and !dynamic] certificate]] = "none"' "sw1: www-ssl an, ohne Zertifikat (certificate=none)"
+expect 1 '[:len [/user/find where name="cfm-cert" and group="cfm-cert" and !disabled]] = 1 and [/user/group/get [find name="cfm-cert"] policy] ~ "ssh" and !([/user/group/get [find name="cfm-cert"] policy] ~ "(^|,)(write|ftp)") and [:len [/user/ssh-keys/find where user="cfm-cert"]] = 1 and [:len [/system/script/find where name="cfm-cert-pull" and dont-require-permissions]] = 1' "cm1: User cfm-cert (ssh,read, Key), Skript cfm-cert-pull"
+mgr ':global cfmCollect; $cfmCollect' >/dev/null
+expect 1 '[:len [/file/find where name="cfm/state/sw1/tls.csr"]] = 1' "cm1: CSR von sw1 abgeholt (state/sw1/tls.csr)"
+# Der Signer-User darf nichts schreiben
+SK=(ssh -p $((LABPORT + 10)) "${O[@]}" -o BatchMode=yes -i "$T/signer_key" cfm-cert@127.0.0.1)
+o=$("${SK[@]}" '/file/add name=e2e-cert.txt contents=x; /system/identity/set name=boese; :put ende' 2>&1 | tr -d '\r')
+expect 1 '[:len [/file/find where name="e2e-cert.txt"]] = 0 and [/system/identity/get name] != "boese"' "cfm-cert: kein Schreibzugriff (Datei, Identität)"
+o=$(python3 "$ROOT/tools/cert-signer/cfm-cert-signer.py" -c "$T/signer.json" 2>&1)
+echo "$o" | grep -q "sw1 (sw1.internal): Zertifikat bereit" && echo "$o" | grep -q "cfm-cert-pull -> .*geaendert: [1-9]" && ok "Signer: CSR von sw1 signiert, cfm-cert-pull geholt" || { bad "Signer"; echo "$o" | tail -8; }
+for _ in $(seq 1 45); do r 2 ':put [:len [/certificate/find where name="cfm-tls"]]' | tail -1 | grep -qx 1 && break; sleep 4; done
+expect 2 '[:len [/certificate/find where name="cfm-tls" and common-name="sw1.internal" and private-key and !trusted]] = 1 and [:len [/certificate/find where name~"^cfm-tls-ca-"]] = 1 and [:tostr [/ip/service/get [find name="www-ssl" and !dynamic] certificate]] = "cfm-tls" and [:tostr [/ip/service/get [find name="api-ssl" and !dynamic] certificate]] = "cfm-tls"' "sw1: Zertifikat mit Schlüssel und Kette, an www-ssl und api-ssl"
+expect 2 '[:len [/file/find where name="cfm/out/tls.csr"]] = 0 and [:len [/file/find where name="cfm/tls.key"]] = 0' "sw1: CSR und Schlüsseldatei nach dem Import weg"
+# zweiter Lauf: nichts Neues, kein Anstoßen
+o=$(python3 "$ROOT/tools/cert-signer/cfm-cert-signer.py" -c "$T/signer.json" 2>&1)
+echo "$o" | grep -q "signiere" && bad "Signer signiert ohne neuen CSR: $o" || ok "Signer: ohne neuen CSR nichts zu tun"
+t0=$(stat sw1 t); mgr '$cfmPush host=sw1 force=yes' >/dev/null
+for _ in $(seq 1 60); do [ "$(stat sw1 t)" != "$t0" ] && break; sleep 4; done
+stat sw1 stats | grep -q "add=0;rem=0;set=0;skip=0" && ok "tls idempotent" || bad "tls idempotent: $(stat sw1 stats)"
+# Erneuern: renew größer als die Laufzeit (20 Tage) -> neuer Schlüssel, neuer CSR, neues Zertifikat ersetzt das alte
+fp0=$(r 2 ':put [/certificate/get [find name="cfm-tls"] fingerprint]' | tail -1)
+mgr ':global e2eG14n; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14n . ":set (\$cfmG->\"tls\") {\"signer\"=\"http://10.0.2.2:'$TP'/\";\"from\"={\"10.0.2.2\"};\"services\"={\"www-ssl\";\"api-ssl\"};\"renew\"=25}\n:set (\$cfmG->\"services\"->\"www-ssl\") 443\n:set (\$cfmG->\"services\"->\"api-ssl\") 8729\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" TLS erneuern" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 || bad "sw1 Apply v$rv (renew 25): $(stat sw1 res)"
+mgr ':global cfmCollect; $cfmCollect' >/dev/null
+o=$(python3 "$ROOT/tools/cert-signer/cfm-cert-signer.py" -c "$T/signer.json" 2>&1)
+for _ in $(seq 1 45); do f=$(r 2 ':put [/certificate/get [find name="cfm-tls"] fingerprint]' | tail -1); [ -n "$f" ] && [ "$f" != "$fp0" ] && break; sleep 4; done
+[ -n "$f" ] && [ "$f" != "$fp0" ] && ok "sw1: neues Zertifikat nach renew (neuer Schlüssel)" || { bad "sw1: kein neues Zertifikat nach renew"; echo "$o" | tail -5; }
+expect 2 '[:len [/certificate/find where common-name="sw1.internal"]] = 1 and [:len [/certificate/find where name~"^cfm-tls-ca-"]] = 1' "sw1: altes Zertifikat und doppelte Kette entfernt"
+mgr ':global cfmTlsStatus; $cfmTlsStatus' | grep -q "sw1 .*sw1.internal" && ok "\$cfmTlsStatus zeigt sw1" || bad "\$cfmTlsStatus"
+# aufräumen: tls aus -> GC entfernt User cfm-cert und Skript; das Zertifikat bleibt (kein cfm-Objekt), Dienste wie in services
+mgr ':global e2eG14n; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG14n; /file/remove [find name="cfm/work/authorized_keys.cfm-cert"]' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne TLS" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 || bad "Apply v$rv (ohne tls): sw1 $(stat sw1 res), cm1 $(stat cm1 res)"
+expect 1 '[:len [/user/find where name="cfm-cert"]] = 0 and [:len [/system/script/find where name="cfm-cert-pull"]] = 0' "cm1: ohne tls User cfm-cert und cfm-cert-pull weg"
+kill $tpid 2>/dev/null
 
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)

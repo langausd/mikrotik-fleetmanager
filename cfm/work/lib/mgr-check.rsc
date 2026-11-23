@@ -354,6 +354,7 @@
   :if ($rtr and [:len ($cfmWg->"sites")] > 0) do={ :set ($fneed->"router.site") "wireguard.rsc sites" }
   :if ($rtr and [:tostr ($cfmWg->"self"->"ddns"->"type")] = "dyndns2") do={ :set ($fneed->"router.ddns") "wireguard.rsc self.ddns" }
   :if ([:typeof ($cfmG->"snmp")] = "array") do={ :if ([:len ($cfmG->"snmp"->"from")] > 0) do={ :set ($fneed->"base.snmp") "global.rsc snmp" } }
+  :if ([:len [:tostr ($cfmG->"tls"->"signer")]] > 0) do={ :set ($fneed->"base.tls") "global.rsc tls" }
   :foreach vid,v in=$cfmVlans do={ :if ([:tostr ($v->"isolate")] = "yes") do={ :set ($fneed->"base.iso") ("vlans.rsc isolate, VLAN " . $vid) } }
   :foreach u,g in=($cfmG->"users") do={ :if ([$fex ($w . "/authorized_keys." . $u)]) do={ :set ($fneed->"base.sshkeys") ("authorized_keys." . $u) } }
   :foreach vid,v in=$cfmVlans do={ :if ($rtr and ([:len [:tostr ($v->"limit")]] > 0 or [:len [:tostr ($v->"limitClient")]] > 0)) do={ :set ($fneed->"router.limit") ("vlans.rsc limit, VLAN " . $vid) } }
@@ -584,6 +585,13 @@
       }
     }
   } else={ :if ([:typeof $snmp] != "nothing") do={ :set ($err->[:len $err]) "global.rsc: snmp muss ein Array sein ({\"from\"=…})" } }
+  # Zertifikate (DS3.6): Prüfung in lib/mgr-tls.rsc
+  :global cfmCheckTls
+  :if ([:typeof $cfmCheckTls] != "nothing") do={
+    :local ct [$cfmCheckTls w=$w]
+    :foreach e in=($ct->"err") do={ :set ($err->[:len $err]) $e }
+    :foreach e in=($ct->"warn") do={ :set ($warn->[:len $warn]) $e }
+  }
   :local slf [:tostr ($cfmG->"syslogFormat")]
   :if ([:len $slf] > 0 and $slf != "syslog" and $slf != "default") do={ :set ($err->[:len $err]) ("global.rsc: syslogFormat=" . $slf . " unbekannt (syslog|default)") }
   # WLAN-Debug-Log (DU3.5): {"<Gerät>"=<RAM-Zeilen>}; der Name muss genau so im Inventar stehen (die Rolle vergleicht
@@ -624,7 +632,8 @@
     :local fn [/file/get $f name]
     :local rel [:pick $fn ([:len $w] + 1) [:len $fn]]
     :local u [:pick $rel 16 [:len $rel]]
-    :if ([:typeof ($cfmG->"users"->$u)] = "nothing") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
+    :if ([:typeof ($cfmG->"users"->$u)] = "nothing" and $u != "cfm-cert") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
+    :if ($u = "cfm-cert" and [:typeof ($cfmG->"users"->$u)] != "nothing") do={ :set ($err->[:len $err]) "global.rsc users: cfm-cert ist der User des Zertifikat-Signers (DS3.6) - anderen Namen wählen" }
     :local ln 0
     :local t ([/file/get $f contents] . "\n")
     :while ([:len $t] > 0) do={

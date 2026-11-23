@@ -78,6 +78,29 @@ $cfmEnsure m="/system/scheduler" k="sys:mgr-boot" n=({"name"="cfm-mgr-boot"}) p=
 :onerror e in={ :if ([/file/get "flash" type] = "directory") do={ :set mb "flash/cfm" } } do={}
 $cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-tick"}) p=({"name"="cfm-mgr-onb-tick";"start-time"="startup";"interval"="1m";"on-event"=(":if ([:len [/system/script/job/find where script=\"cfm-mgr-onb-tick\"]] < 2) do={ :local s 0; :onerror e in={ :set s [/file/get \"" . $mb . "/meta/onboard.dat\" size] } do={}; :if (\$s > 2) do={ :global cfmTickBusy; :local w 0; :while (\$cfmTickBusy = true and [:len [/system/script/job/find where script=\"cfm-mgr-tick\"]] > 0 and \$w < 15) do={ :delay 2s; :set w (\$w + 1) }; :if (\$w < 15) do={ /system script run cfm-mgr; :global cfmOnbTickRun; \$cfmOnbTickRun } } } else={ :log warning \"cfm: mgr-onb-tick uebersprungen (Vorlauf haengt)\" }")})
 
+# --- Signer der Zertifikate (DS3.6, global.rsc tls): User cfm-cert nur mit ssh,read (liest state/<name>/tls.csr),
+#     nur von tls.from, nur per Key (authorized_keys.cfm-cert; ohne Datei kann er sich nicht anmelden), und das Skript
+#     cfm-cert-pull, das er starten darf (dont-require-permissions, wie cfm-dnsreq) - es holt die Zertifikate
+#     vom Signer ($cfmTlsPull) und stößt die Geräte an. SSH-Freigabe für tls.from setzt base. Ohne tls räumt die GC auf ---
+:local tls ($cfmG->"tls")
+:if (!$backup and [:typeof $tls] = "array" and [:len [:tostr ($tls->"signer")]] > 0 and [:len ($tls->"from")] > 0) do={
+  :local fa ""
+  :foreach x in=($tls->"from") do={ :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . [:tostr $x]) }
+  $cfmEnsure m="/user/group" k="grp:cert" n=({"name"="cfm-cert"}) p=({"name"="cfm-cert";"policy"="ssh,read"})
+  $cfmEnsure m="/user" k="user:cfm-cert" n=({"name"="cfm-cert"}) p=({"name"="cfm-cert";"group"="cfm-cert";"address"=$fa;"disabled"="no"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
+  :local src ":if ([:len [/system/script/job/find where script=\"cfm-cert-pull\"]] > 1) do={ :put \"cfm-cert-pull laeuft bereits\"; :error \"cfm-done\" }; /system script run cfm-mgr; :global cfmTlsPull; :put (\"geaendert: \" . [\$cfmTlsPull])"
+  $cfmEnsure m="/system/script" k="sys:cert-pull" n=({"name"="cfm-cert-pull"}) p=({"name"="cfm-cert-pull";"source"=$src;"policy"=$pol;"dont-require-permissions"="yes"})
+  # Key des Signers: dieselbe Logik wie die Admin-Keys (Sollzustand aus der Datei), nur für diesen User
+  :local akx false
+  :onerror e in={ :set akx ([:len [/file/get ($cfmDl . "/authorized_keys.cfm-cert") name]] > 0) } do={}
+  :if ($akx) do={
+    :global cfmCtx; :global cfmFeat
+    :set cfmCtx ({"users"={"cfm-cert"="cfm-cert"}})
+    $cfmFeat "base.sshkeys"
+    :set cfmCtx ({})
+  } else={ $cfmLog "tls: authorized_keys.cfm-cert fehlt - der Signer kann sich nicht anmelden" }
+}
+
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---
 $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-dev";"policy"="ssh,ftp,read"})
 

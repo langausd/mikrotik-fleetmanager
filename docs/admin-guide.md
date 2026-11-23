@@ -227,6 +227,7 @@ irgendetwas ausgerollt wird.
 | `users` | Admin-Benutzer → Gruppe | |
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
 | `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `reverse-proxy`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet – auch `reverse-proxy`, den RouterOS 7.2x ab Werk auf Port 443 ohne Adressbeschränkung einschaltet. `$cfmCheck` meldet unbekannte Namen und doppelte Ports als Fehler | `ssh`, `winbox` |
+| `tls` | Zertifikate einer öffentlichen CA für `www-ssl`/`api-ssl` (DS3.6, 8.20): `{"signer"="http://…:8080";"from"={"<Signer-IP>"};"services"={"www-ssl";"api-ssl"};"renew"=30}` – Name je Gerät `<name>.<domain>`; leer = aus | `{}` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
 | `notify` | Benachrichtigungen (DU4.1, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
 
@@ -2157,6 +2158,43 @@ Die Grenzen setzt RouterOS selbst (`country`). `$cfmCheck` lehnt Blöcke über 5
   Dutzend Metern kaum, nasses Laub, beschlagene oder nasse Scheiben und Personen im Weg aber schon, und Clients
   verhalten sich je nach Akku- und Energiesparzustand anders.
 
+### 8.20 Zertifikate für WebFig und API (DS3.6)
+
+Mit `tls` in `global.rsc` bekommt jedes Gerät ein Zertifikat einer öffentlichen CA (z.B. Let's Encrypt) für
+`<name>.<domain>` (Name klein) und hängt es an `www-ssl` und `api-ssl`. Browser und Home Assistant vertrauen ihm ohne
+Ausnahme – vorausgesetzt, der Name wird benutzt (`https://ap1.site1.example.org`), nicht die IP-Adresse: Für private
+Adressen stellt keine öffentliche CA aus.
+
+**Ablauf.** Das Gerät erzeugt Schlüssel und CSR selbst; der Schlüssel verlässt es nie. Der Manager holt den CSR mit dem
+Status (`state/<name>/tls.csr`). Ein **Signer** außerhalb von RouterOS – ein Linux-Host mit certbot und acme-dns,
+Vorlage in `tools/cert-signer/` – liest die CSRs per SSH als User `cfm-cert`, lässt sie per DNS-01 signieren, legt die
+Zertifikate per HTTP bereit und startet am Manager `cfm-cert-pull`. Der Manager holt sie, schreibt die Manifeste neu und
+stößt die Geräte an; jedes Gerät nimmt sein Zertifikat nur, wenn es zu seinem Schlüssel passt. Gilt es nur noch `renew`
+Tage (Standard 30), erzeugt das Gerät einen neuen Schlüssel und CSR – die Erneuerung läuft dann von selbst.
+
+**Einrichten.**
+
+1. Signer aufsetzen (`tools/cert-signer/README.md`): Hook, Konfiguration, SSH-Key, HTTP-Dienst, Timer. Für jeden
+   Gerätenamen einen CNAME `_acme-challenge.<name>.<domain>` auf die acme-dns-Subdomain des Signers anlegen (ein
+   gemeinsames Konto für alle Geräte; `cfm-cert-signer.py --cnames` listet die bekannten Namen).
+2. Den öffentlichen Key des Signers als `work/authorized_keys.cfm-cert` ablegen.
+3. `global.rsc`: `"tls"={"signer"="http://<signer>:8080";"from"={"<signer-ip>"};"services"={"www-ssl";"api-ssl"}}`
+   und die Dienste in `services` aufnehmen, z.B. `"www-ssl"=443;"api-ssl"=8729`. Der Signer braucht einen Weg zum
+   Manager (SSH) und der Manager zum Signer (HTTP); `base` öffnet SSH am Manager nur für `tls.from`.
+4. `$cfmRelease`. Nach dem Apply erzeugt jedes Gerät seinen CSR; spätestens nach dem nächsten Manager-Tick liegt er am
+   Manager (`$cfmCollect` holt sofort), der Signer holt ihn bei seinem nächsten Lauf.
+5. `$cfmTlsStatus` zeigt je Gerät Name, Resttage und Zustand; `ok` = Zertifikat aktiv.
+
+**Was der Signer darf.** `cfm-cert` hat nur `ssh,read` (kein `write`, kein `ftp` – das wäre Schreibzugriff auf alle
+Dateien), meldet sich nur per Key und nur von `tls.from` an. Er kann CSRs lesen und das Skript `cfm-cert-pull` starten,
+das mit `dont-require-permissions` nur von der festen Adresse `tls.signer` holt. Ein falsches oder fremdes Zertifikat
+lehnt das Gerät ab (kein passender Schlüssel), das alte bleibt aktiv; `$cfmTlsStatus` und das Log nennen den Grund.
+
+**Grenzen.** `www` (HTTP) bleibt, solange es in `services` steht – erst abschalten, wenn alle Geräte `ok` melden (auf
+Routern dient `www` außerdem der DNS-Selbstbedienung, DN3.2). Die Namen müssen intern auflösen: die Router
+beantworten `<name>.<domain>` selbst (DN1.1). Den Schlüssel erneuert erst der nächste CSR; nach einem Reset erzeugt das
+Gerät von selbst einen neuen.
+
 ## 9. Sicherheitsnetze und Notfälle
 
 | Situation | Automatisch | Deine Aufgabe |
@@ -2416,6 +2454,8 @@ Inventarname.
 | `$cfmPlan host=<n> from=<verz> role=<rollen>` | Probelauf eines anderen Stands (`cfm/<verz>/`) bzw. mit anderen Rollen, ohne `work/` und Inventar zu ändern |
 | `$cfmShow host=<n> [ver=<N>] [objects=yes]` | effektive Konfiguration: zusammengeführte Daten bzw. Soll-Objekte vom Gerät (8.3) |
 | `$cfmDiff [ver=<A>] [to=<B>\|work]` | Unterschiede zwischen zwei Ständen: Dateien, betroffene Geräte, Zeilen der Datendateien (8.3) |
+| `$cfmTlsStatus` | Zertifikate je Gerät: Name, Resttage, Zustand (`ok`/`csr`/`err`), offener CSR am Manager, Fehler (DS3.6) |
+| `$cfmTlsPull [host=<n>] [all=yes]` | Zertifikate vom Signer holen (sonst nur für Geräte mit offenem CSR), Manifeste neu, Geräte anstoßen; dasselbe startet der Signer per Skript `cfm-cert-pull` |
 | `$cfmArchivePrune [keep=<n>]` | alte Versionen löschen (automatisch nach jedem Release) |
 | `$cfmPromote [ring=1\|2]` | Version des vorigen Rings freigeben |
 | `$cfmRollback ver=<N> [all=yes]` | alten Stand als neue Version freigeben (überschreibt `work/`) |
@@ -2459,12 +2499,13 @@ Inventarname.
 | `work/` | Arbeitsstand (Daten, Rollen, Hostfiles, Bibliothek, `web/` mit dem Code für das Lesezeichen „cfm“, DT3.2) |
 | `archive/v<N>/` | freigegebene Versionen mit `index.dat` (Dateien + SHA-512) |
 | `live/m/<serial>.mf` | signierte Manifeste je Gerät |
+| `live/c/<serial>.pem` | Zertifikat mit Kette je Gerät (öffentlich, DS3.6; der Hash steht im Manifest) |
 | `plan/` | Schnappschuss von `work/` für den Probelauf, mit Plan-Manifesten `plan/m/` |
 | `pkg/<ver>/` | RouterOS-Pakete für `$cfmUpgrade` (oder unter `pkgPath`) |
 | `meta/` | `inventory.rsc`, `rings.dat`, `vault.dat`, `keys/`, `onboard.dat`, `pending.dat`, `upgrade.dat`, `links.dat` (Baseline), `netcheck.dat`, `notify.dat` (offene Meldungen, DU4.1), `hook.dat` (Stand der Git-Sicherung), nach einem Push an einen CAPsMAN `follow.dat` (Nachfassen, Scheduler `cfm-mgr-follow`); auf dem Backup-Manager `notify-b.dat` und nach der Beförderung `PROMOTED` |
 | `onb/` | Arbeitsdateien des Onboardings (`probe.rsc`, `probe.txt`, `go.rsc`, `<name>-bootstrap.rsc`) |
 | `cfm-bootstrap.rsc` | Bootstrap-Datei für neue Geräte (`$cfmBootstrap`) |
-| `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät |
+| `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät, offener CSR `tls.csr` (DS3.6) |
 | `state/netzplan.md` | Netzplan (Mermaid + Tabelle), auf Anforderung `netzplan.dot` und `netzplan.csv` |
 | `state/wifiscan.json` | letzte Messung von `$cfmWifiScan` (ein Band; nur mit gemessenen Netzen) |
 | `vault/<name>-vault.bak` | verschlüsseltes Manager-Backup |

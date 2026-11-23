@@ -461,6 +461,17 @@
           :if ($rl ~ ",router," and [:len $wgpub] > 0) do={ :set ($m->"wgpub") $wgpub }
           :if ($rl ~ ",router," and [:len $wgsp] > 0) do={ :set ($m->"wgsitepub") $wgsp }
           :if ([:len $rmac] > 0) do={ :set ($m->"rmac") $rmac }
+          # Zertifikat (DS3.6, lib/mgr-tls.rsc): Name, bereitliegendes Zertifikat mit Hash; ändert den Manifest-Hash
+          # des Agents nicht (ein neues Zertifikat ist kein Apply)
+          :if ([:len [:tostr ($cfmG->"tls"->"signer")]] > 0) do={
+            :global cfmTlsCn
+            :local tf ("live/c/" . $sfn . ".pem")
+            :local th ""
+            :if ([$cfmFileEx ($b . "/" . $tf)]) do={ :onerror e in={ :set th [:convert [/file/get ($b . "/" . $tf) contents] transform=sha512 to=hex] } do={} }
+            :local tsv ($cfmG->"tls"->"services")
+            :if ([:typeof $tsv] = "nothing") do={ :set tsv {"www-ssl";"api-ssl"} }
+            :set ($m->"tls") ({"cn"=[$cfmTlsCn $name];"f"=$tf;"h"=$th;"r"=[:tonum ($cfmG->"tls"->"renew")];"s"=$tsv})
+          }
           # offener RouterOS-Auftrag ($cfmUpgrade); ändert den Manifest-Hash des Agents nicht
           :if ($pl = 0 and [:typeof ($ord->$name)] = "array") do={ :set ($m->"ros") ($ord->$name) }
           :local body [:serialize to=json $m]
@@ -722,6 +733,15 @@
           :local new [$cfmJson ($sd . "/status.dat")]
           :if ([:tostr ($new->"et")] != [:tostr ($old->"et")] or ![$cfmFileEx ($sd . "/export.rsc")]) do={
             :onerror e in={ /tool/fetch url=("sftp://" . ($d->"ip") . "/" . $got . "/export.rsc") user="cfm" dst-path=($sd . "/export.rsc") as-value } do={}
+          }
+          # offener CSR (DS3.6): holen, wenn neu; erledigt -> weg (der Signer liest state/<name>/tls.csr)
+          :local nc [:tostr ($new->"csr")]
+          :if ([:len $nc] > 0) do={
+            :if ($nc != [:tostr ($old->"csr")] or ![$cfmFileEx ($sd . "/tls.csr")]) do={
+              :onerror e in={ /tool/fetch url=("sftp://" . ($d->"ip") . "/" . $got . "/tls.csr") user="cfm" dst-path=($sd . "/tls.csr") as-value } do={ :log warning ("cfm: TLS - CSR von " . $name . " nicht geholt: " . $e) }
+            }
+          } else={
+            :if ([$cfmFileEx ($sd . "/tls.csr")]) do={ :onerror e in={ /file/remove ($sd . "/tls.csr") } do={} }
           }
         }
       }

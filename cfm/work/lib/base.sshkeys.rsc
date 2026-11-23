@@ -19,7 +19,11 @@
 # ============================================================
 :global cfmG; :global cfmDl; :global cfmDry; :global cfmStat
 :global cfmLog; :global cfmWarn; :global cfmShowAll; :global cfmShowObj
-:foreach u,grp in=($cfmG->"users") do={
+# Die Rolle manager lädt das Modul ein zweites Mal für den User des Zertifikat-Signers (DS3.6): cfmCtx->"users"
+:global cfmCtx
+:local ul ($cfmG->"users")
+:if ([:typeof ($cfmCtx->"users")] = "array") do={ :set ul ($cfmCtx->"users") }
+:foreach u,grp in=$ul do={
   :local akf ($cfmDl . "/authorized_keys." . $u)
   # per Name statt /file/find (DG4.1, auf dem Manager Hunderte Dateien); eine gelöschte Datei liefert
   # /file/get u.U. weiter als Eintrag ohne Namen

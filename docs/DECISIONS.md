@@ -623,7 +623,19 @@ Der Dienst `reverse-proxy` (TODO 30) steht in der Dienstliste der Rolle `base` w
 
 *2026-10-01 · technisch, nicht abgefragt*
 
-WebFig per HTTPS (TODO 25) ist zurückgestellt, bis Let's Encrypt über acme-dns mit einer öffentlichen Domain steht.
+WebFig per HTTPS (TODO 25) ist zurückgestellt, bis Let's Encrypt über acme-dns mit einer öffentlichen Domain steht. *Aufgelöst durch DS3.6.*
+
+#### <a id="ds3.6"></a>DS3.6 · Zertifikate einer öffentlichen CA: Schlüssel auf dem Gerät, Signer außerhalb
+
+*2026-11-23 · Nutzer (abgestimmt 2026-11-20, Transport 2026-11-23)*
+
+**Thema:** `www-ssl` und `api-ssl` mit einem Zertifikat einer öffentlichen CA (Let's Encrypt), TODO 25.
+
+**Optionen (gewählt fett):** Wer stellt aus: **zentraler Signer außerhalb von RouterOS (z.B. certbot mit acme-dns, DNS-01)** · eingebauter ACME-Client jedes Geräts (`/certificate/add-acme`, für eigene Domains nur HTTP-01: Port 80 jedes Geräts aus dem Internet, öffentliche DNS-Einträge je Gerät) · eigene CA auf dem Manager (Browser vertrauen ihr nicht); Schlüssel: **erzeugt das Gerät selbst, nur der CSR geht hinaus** · zentral erzeugt und per Secret-Push verteilt; Transport: **der Signer liest die CSRs am Manager per SSH als User ohne Schreibrecht (`ssh,read`) und startet ein Skript mit `dont-require-permissions`, das die Zertifikate per HTTP vom Signer holt** · Signer schreibt per SFTP auf den Manager (bräuchte `ftp` = Schreibzugriff auf alle Dateien) · REST; Namen: **`<name>.<domain>` je Gerät (eigenes Zertifikat, eigener Schlüssel)** · ein Zertifikat für alle; Erneuern: **das Gerät erzeugt rechtzeitig (`renew`, Standard 30 Tage) einen neuen Schlüssel und CSR, der Signer signiert jeden neuen CSR** · Signer verlängert nach Laufzeit mit demselben Schlüssel.
+
+**Begründung:** Ein privater Schlüssel als Datei auf dem Manager widerspräche DS2.2 (RouterOS-SFTP kennt keine Verzeichnisrechte, jedes Gerät könnte ihn lesen). CSR und Zertifikat sind öffentlich: Sie dürfen über SFTP, HTTP ohne TLS und das Manifest laufen; geprüft wird am Ziel (das Gerät nimmt ein Zertifikat nur, wenn der Import den privaten Schlüssel dazu findet und der Name stimmt; der Signer prüft Signatur, Name unter einer erlaubten Domain und dass das Zertifikat zum CSR passt). Weil das Gerät die Erneuerung auslöst, braucht der Signer keine Laufzeitlogik, und jede Erneuerung bringt einen frischen Schlüssel. Der Signer-User kann nichts ändern; das Skript `cfm-cert-pull` holt nur von der festen Adresse `tls.signer`.
+
+**Umsetzung:** `global.rsc` `tls` = `{"signer";"from";"services";"renew"}`. Gerät (`lib/base.tls.rsc`, vom Agent bei jedem Lauf geladen, nicht nur beim Apply): RouterOS 7.25 legt mit `/certificate/add` (Vorlage) und `create-certificate-request key-passphrase=` die Dateien `certificate-request.pem` und `certificate-request_key.pem` (verschlüsselt) an; die Vorlage selbst hat keinen Schlüssel. Der Agent hebt beide in `cfm/out/tls.csr` und `cfm/tls.key` auf (Passphrase = Anfang des Geräteschlüssels). Beim Import zuerst die Kette (Blatt und Zwischenzertifikat), dann den Schlüssel: RouterOS hängt ihn an das passende Zertifikat (Flag `K`) und löscht beide Dateien. Das Blatt heißt `cfm-tls`, die Kette `cfm-tls-ca-<skid>`, beide `trusted=no`; `www-ssl` liefert die Kette mit aus (Labor: `openssl s_client` mit der Test-CA „verify ok“). Manager: `$cfmCollect` holt den CSR nach `state/<name>/tls.csr`; `$cfmTlsPull` (Skript `cfm-cert-pull`) legt Zertifikate unter `live/c/<serial>.pem` ab und trägt Name, Pfad und SHA-512 ins Manifest (`tls`, wie `ros` nicht im Manifest-Hash des Agents: ein Zertifikat ist kein Apply). `base` bindet `cfm-tls` an die Dienste aus `tls.services` (bis dahin `certificate=none`) und öffnet SSH auf Managern für `tls.from`. Signer: `tools/cert-signer/` (certbot `--csr` mit acme-dns-Hook, im Labor eine Test-CA). Labor: `e2e.sh` Schritt 14n.
 
 ## <a id="do"></a>DO · Onboarding
 
@@ -2543,6 +2555,7 @@ Entscheidung“ aus den Einleitungen der Runden):
 | Umsetzungsentscheidungen: Geräte-Rückmeldungen nur als Daten | DS1.3 |
 | Umsetzungsentscheidungen: Dienst `reverse-proxy` | DS3.4 |
 | Umsetzungsentscheidungen, „Zurückgestellt“: WebFig per HTTPS zurückgestellt | DS3.5 |
+| Zertifikate einer öffentlichen CA (TODO 25) | DS3.6 |
 | Umsetzungsdetails Onboarding: Onboarding-VLAN 88 | DO1.4 |
 | Umsetzungsdetails Onboarding: Zweistufiger Push: Probe, dann Reset mit Bootstrap | DO1.5 |
 | Umsetzungsdetails Onboarding: Eine Sitzung gleichzeitig, Werksgeräte finden | DO1.6 |

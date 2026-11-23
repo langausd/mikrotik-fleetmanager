@@ -41,7 +41,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   SNMPv3, Syslog-Inhalt, Feature-Module, ein RouterOS-Downgrade auf 7.24.1 und das eingebaute Update von einem
   Spiegel; seit 2026-11-11 Freigaben nach Domain und je Client (Schritt 14m, DR2.8/DR2.9); seit 2026-11-16 die Ausgabe
   von `$cfmCheck` (Schritt 7), `$cfmIsPrimary` ohne Daten auf dem Backup (Schritt 10) und Manager-Module aus `work/`
-  samt Sperre nach einem Rollback (Schritt 17, DM1.4).
+  samt Sperre nach einem Rollback (Schritt 17, DM1.4); seit 2026-11-23 Zertifikate (Schritt 14n, DS3.6): Schlüssel und CSR
+  auf dem Gerät, Signer mit Test-CA über SSH als `cfm-cert` ohne Schreibrecht, `cfm-cert-pull`, Import mit Kette, Bindung
+  an `www-ssl`/`api-ssl`, Erneuern mit neuem Schlüssel, Aufräumen.
 * `tools/editor/cfm-qr-test.py`: QR-Encoder des WLAN-Schilds (gjs erzeugt, libzbar dekodiert), auch in der CI.
 * `tools/editor/cfm-radios-test.py`: Kanalvorschlag in `wifi.rsc` übernehmen (node; nur das gescannte Band, Rückweg-Kommentar), auch in der CI.
 * `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15) und hinter
@@ -333,6 +335,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **Zertifikate für WebFig und API** (DS3.6, 2026-11-23, Labor siehe Schritt 14n): echte Kette von Let's Encrypt
+  (Blatt + Zwischenzertifikat, Import auf ARM/ARM64), Dauer der Schlüsselerzeugung (RSA 2048) auf kleinen Geräten,
+  Signer außerhalb (certbot `--csr` mit acme-dns, SSH als `cfm-cert` über eine Standortkopplung), Browser und
+  `api-ssl` mit dem Namen `<name>.<domain>`; Erneuern nach `renew` Tagen ohne Eingriff.
 * **Je AP: Pool, `txPower`, Band aus** (DW3.7, 2026-11-16, Labor grün): Senkt `txPower` am CAP den Pegel wie an der
   CRS418 (Pegel an einem festen Empfänger, nicht nur `monitor`)? Übernimmt der CAP die Leistung aus der
   Master-Konfiguration des CAPsMAN, auch für die virtuellen APs? `"off"`: Regel `action=none` mit einem echten CAP,

@@ -39,6 +39,7 @@
   "adminUser"="disable";
   "services"={"ssh"=22;"winbox"=8291};
   "capsmanApi"={};
+  "tls"={};
   "hook"={"host"="";"user"="cfm"};
   "notify"={"url"="";"stale"="30m";"licWarn"="14d"}
 }
@@ -104,3 +105,11 @@
 #             öffnet dort den Dienst api nur für from, legt den User (Gruppe cfm-api: read,api,test) an,
 #             Passwort NUR im Vault: $cfmSecret key=user.homeassistant value=... (Secret-Push). {} = aus.
 #             Unverschlüsselt (api) – das Passwort geht im Klartext durchs Netz.
+#  tls        Zertifikate einer öffentlichen CA, z.B. Let's Encrypt (DS3.6), für www-ssl und api-ssl:
+#             {"signer"="http://192.168.10.40:8080";"from"={"192.168.10.40/32"};"services"={"www-ssl";"api-ssl"};
+#             "renew"=30}. Jedes Gerät erzeugt Schlüssel und CSR für <name>.<domain> (Name klein) selbst; der
+#             Schlüssel verlässt das Gerät nie. Ein Signer (tools/cert-signer/) liest die CSRs per SSH als User
+#             cfm-cert (Gruppe ssh,read; nur Key aus authorized_keys.cfm-cert; nur von from) und startet danach
+#             cfm-cert-pull: Der Manager holt <signer>/<name>.<domain>.pem und verteilt es. services: Dienste, die
+#             das Zertifikat bekommen (sie gehen nur an, wenn sie in services stehen). renew: neuer Schlüssel und
+#             CSR, wenn das Zertifikat weniger als so viele Tage gilt (Standard 30). {} = aus.

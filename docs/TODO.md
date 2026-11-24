@@ -21,7 +21,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   Pegeltest von `txPower` am CAP ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
 * **Neu 2026-11-24:** 55 (NetBox) entschieden als Variante C: in NetBox planen (Geräte, Kabel, Ports mit
   cfm-Profil als Custom Field, VLANs, Prefixe, alle IPs), Abgleich gegen Soll und Ist nur auf Wunsch, aus NetBox
-  per Custom Script auslösbar; NetBox schreibt nicht in die Site-Daten (DT2.2). Sechs Fragen vor der Umsetzung offen.
+  per Custom Script auslösbar, das im NetBox-Container läuft; Tunnel als NetBox-Objekte; einmaliger Start-Import;
+  NetBox schreibt nicht in die Site-Daten (DT2.2). Offen: NetBox-Version.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -326,15 +327,16 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
       * **Nur auf Wunsch, aus NetBox auslösbar:** als NetBox Custom Script („cfm-Abgleich“ je Site, Ergebnis im
         Job-Log, Vorschlag als Datei). Die Logik steckt in einem eigenständigen `tools/netbox-abgleich.py`
         (CLI, im Labor testbar), das Custom Script ruft nur auf. Kein Lauf im Manager-Tick.
-      * **Offen, vor der Umsetzung zu klären:** (1) Wo läuft der Abgleich? Möglich ist (a) im NetBox-Container mit
-        SSH-Zugang zum Manager (eigener Nutzer nur zum Lesen, wie `cfm-cert`, `pull-site.sh`) oder (b) auf der
-        VM als kleiner HTTP-Dienst, den das Custom Script aufruft (Muster: `tools/cert-signer`, HTTP :8080).
-        (2) Woher kommt das Ist der Adressen? Liefert der Agent `/ip/address` (samt VRRP und WireGuard) schon an
-        den Manager, oder braucht es einen neuen Bericht? (3) Abbildung mehrerer Standorte: NetBox-Site je
-        cfm-Site, Standortkopplung (DR4.3) und Tunnel als Circuit oder nur als Kabel/Interface? (4) Werden
-        abgeleitete Adressen (aus Rollen berechnet, nicht in den Site-Daten) in NetBox geplant oder nur als Ist
-        angezeigt? (5) Ein Erst-Import (cfm → NetBox, Variante A als einmaliger Startpunkt), damit man nicht
-        bei null plant? (6) NetBox-Version und API-Token (nicht im Repo, wie die übrigen Secrets).
+      * **Entschieden 2026-11-24:** (1) Der Abgleich läuft im NetBox-Container. Das Custom Script holt die Daten
+        selbst per SSH vom Manager (eigener Nutzer nur zum Lesen, wie `cfm-cert`; `pull-site.sh`). (2) Standortkopplung
+        und Tunnel (WireGuard, Fritz!Box) als eigene NetBox-Objekte (VPN → Tunnels mit Terminations, ab NetBox 3.7).
+        (3) Auch die Adressen, die cfm aus den Rollen berechnet, werden in NetBox geplant. Der Abgleich meldet,
+        wenn das Ergebnis abweicht. (4) Einmaliger Start-Import cfm → NetBox (Geräte, Ports mit `cfm_port`, Kabel,
+        VLANs, Prefixe, IPs, Tunnel), danach wird in NetBox gepflegt. (5) SSH-Schlüssel (und ggf. Einstellungen)
+        liegen im NetBox-Container, nicht im Repo. Das Custom Script arbeitet über das ORM und braucht kein API-Token.
+      * **Noch offen:** NetBox-Version (fragt der Nutzer nach; bestimmt die Script-API und ob Tunnels vorhanden sind).
+        Ob der Agent `/ip/address` (samt VRRP, WireGuard) schon an den Manager meldet oder ein neuer Bericht nötig
+        ist, prüfe ich im Code.
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein

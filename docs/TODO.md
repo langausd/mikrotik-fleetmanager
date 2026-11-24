@@ -335,8 +335,10 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         VLANs, Prefixe, IPs, Tunnel), danach wird in NetBox gepflegt. (5) SSH-Schlüssel (und ggf. Einstellungen)
         liegen im NetBox-Container, nicht im Repo. Das Custom Script arbeitet über das ORM und braucht kein API-Token.
       * **Noch offen:** NetBox-Version (fragt der Nutzer nach; bestimmt die Script-API und ob Tunnels vorhanden sind).
-        Ob der Agent `/ip/address` (samt VRRP, WireGuard) schon an den Manager meldet oder ein neuer Bericht nötig
-        ist, prüfe ich im Code.
+        *Geklärt:* Für das Ist der Adressen braucht es keinen neuen Bericht. Der Agent legt `/export terse` ab, der
+        Manager holt es nach `state/<name>/export.rsc` (`$cfmCollect`). Daraus liest der Abgleich `/ip address`,
+        VRRP, WireGuard, Bridge-Ports und VLANs je Gerät, zusammen mit `status.json` (Modell, Seriennummer,
+        Version, Nachbarn).
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein

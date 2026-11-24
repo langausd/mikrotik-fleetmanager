@@ -156,7 +156,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   2026-11-22 (TODO 6 Berichtsgröße): `e2e.sh` **544 von 544** im ersten Lauf – neu in Schritt 6 „Probelauf über
   60 KB“ (1000 Hostnamen: Bericht gekürzt mit Zeilenzahl, Summe zählt alles, keine Zeitüberschreitung) und „Plan-Datei
   auf dem Manager unter 60 KB und lesbar“. Mit demselben Stand `e2e-vrrp.sh` **184**, `e2e-mlag.sh` **72**,
-  `e2e-onboard.sh` **14/15/18**. Dazu `wlan-btm-test.py` 7. Dot1X/User Manager von Hand im Probe-Labor (Befunde in
+  `e2e-onboard.sh` **14/15/18**. Dazu `wlan-btm-test.py` 7 (seit 2026-11-24: 11). Dot1X/User Manager von Hand im Probe-Labor (Befunde in
   RADIUS.md §3 und ROUTEROS-EIGENHEITEN).
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 

@@ -7,6 +7,9 @@ Zu TODO 62/97: Bekommt ein Client Wechselvorschläge, und kann er sie überhaupt
   * Fähigkeiten aus Association/Reassociation Request und Probe Request: BSS Transition (802.11v, Bit 19 der
     Extended Capabilities), 802.11k (RM Enabled Capabilities), FT (Mobility Domain), AKMs aus RSN.
     Fehlt das BTM-Bit, schickt der AP keine Vorschläge – dann wirkt nur die Trennschwelle (drop/join/hold, DW2.5).
+    Jede Fassung getrennt: je Quelle (Association Request, gezielter Probe Request, Wildcard-Probe) und SSID –
+    Handys schicken je nach Probe verschiedene Extended Capabilities. Maßgeblich ist der (Re)Association Request;
+    FT und AKM stehen erst dort (Probe Requests tragen keine Mobility Domain, meist kein RSN).
   * Ablauf: Authentication (Open/FT/SAE), (Re)Association mit Status, Deauth/Disassoc mit Grund, Action-Frames.
     Ohne PMF sind WNM-Frames lesbar (BTM-Request mit Disassociation Imminent/Kandidaten, BTM-Response mit Status);
     mit PMF (WPA3) sind sie verschlüsselt – dann nur Richtung, Zeit und Länge („geschützt“).
@@ -156,6 +159,7 @@ def caps(el):
     c = {}
     ext = el.get(127)
     c["btm"] = None if ext is None else (len(ext) >= 3 and bool(ext[2] & 0x08))
+    c["extlen"] = None if ext is None else len(ext)
     c["rrm"] = 70 in el
     c["ft"] = 54 in el
     rsn = el.get(48)
@@ -177,12 +181,34 @@ def caps(el):
     return c
 
 
-def caps_str(c):
+def caps_str(c, probe=False):
+    """Fähigkeiten als Text; probe=True: FT/AKM nicht ableiten (stehen erst im Association Request)"""
     b = {True: "ja", False: "NEIN", None: "? (keine Extended Capabilities)"}[c["btm"]]
-    s = f"BTM (802.11v) {b}, 802.11k {'ja' if c['rrm'] else 'nein'}, FT {'ja' if c['ft'] else 'nein'}"
+    if c["btm"] is False and c.get("extlen") is not None and c["extlen"] < 3:
+        b += f" (Extended Capabilities nur {c['extlen']} Byte)"
+    s = f"BTM (802.11v) {b}, 802.11k {'ja' if c['rrm'] else 'nein'}"
+    if not probe:
+        s += f", FT {'ja' if c['ft'] else 'nein'}"
     if c["akm"]:
         s += ", AKM " + "/".join(c["akm"])
     return s
+
+
+def art(r):
+    """Quelle einer Fassung: Association Request (auch Re-), gezielter Probe Request oder Wildcard-Probe"""
+    if r["sub"] in (0, 2):
+        return "Association Request"
+    return "Probe Request gezielt" if r["caps"]["ssid"] else "Probe Request Wildcard"
+
+
+def fassung_key(r):
+    c = r["caps"]
+    probe = r["sub"] == 4
+    return (art(r), c["ssid"], c["btm"], c.get("extlen") if c["btm"] is False else None, c["rrm"],
+            None if probe else c["ft"], tuple(c["akm"]))
+
+
+ART_ORDER = {"Association Request": 0, "Probe Request gezielt": 1, "Probe Request Wildcard": 2}
 
 
 def parse(f):
@@ -272,10 +298,14 @@ def analyse(path, macs, alle=False, probe=False, out=sys.stdout):
         if cl is None:
             continue
         von = "Client" if r["a2"] == cl else "AP " + r["a2"]
-        c = clients.setdefault(cl, {"caps": None, "quelle": "", "n": {}})
+        c = clients.setdefault(cl, {"caps": None, "quelle": "", "n": {}, "fassungen": {}})
         key = ("Client→AP " if von == "Client" else "AP→Client ") + r["name"]
         c["n"][key] = c["n"].get(key, 0) + 1
-        if "caps" in r and von == "Client" and (c["caps"] is None or sub in (0, 2)):
+        if "caps" in r and von == "Client" and sub in (0, 2, 4):
+            k = fassung_key(r)
+            fa = c["fassungen"].setdefault(k, {"caps": r["caps"], "art": k[0], "n": 0, "von": ts, "bis": ts})
+            fa["n"] += 1
+            fa["bis"] = ts
             if sub in (0, 2) or c["quelle"] in ("", "Probe Request"):
                 c["caps"], c["quelle"] = r["caps"], r["name"]
         if sub in (4, 5) and not alle:
@@ -288,7 +318,8 @@ def analyse(path, macs, alle=False, probe=False, out=sys.stdout):
         if "status" in r:
             txt += f" Status {r['status']}"
         if "caps" in r and von == "Client" and sub in (0, 2, 4):
-            txt += f" [{caps_str(r['caps'])}" + (f", SSID {r['caps']['ssid']}" if r["caps"]["ssid"] else "") + "]"
+            txt += f" [{caps_str(r['caps'], probe=sub == 4)}" + \
+                (f", SSID {r['caps']['ssid']}" if r["caps"]["ssid"] else "") + "]"
         if r["retry"]:
             txt += " (Wiederholung)"
         events.append((ts, cl, von, txt, sig))
@@ -304,17 +335,52 @@ def analyse(path, macs, alle=False, probe=False, out=sys.stdout):
     for cl in sorted(clients):
         c = clients[cl]
         print(f"  {cl}:", file=out)
-        if c["caps"]:
-            print(f"    {caps_str(c['caps'])} (aus {c['quelle']})", file=out)
-            if c["caps"]["btm"] is False:
-                print("    → meldet KEIN BSS Transition: Der AP schickt keine Wechselvorschläge; nur die Trennschwelle "
-                      "(drop/join/hold) bringt ihn zum Wechsel (DW2.5)", file=out)
-        else:
-            print("    Fähigkeiten unbekannt: kein (Re)Association/Probe Request im Mitschnitt – WLAN am Client aus "
-                  "und wieder an, während der Sniffer läuft", file=out)
+        for line in summary(c):
+            print("    " + line, file=out)
         for k in sorted(c["n"]):
             print(f"    {c['n'][k]:5d} × {k}", file=out)
     return clients
+
+
+def hm(ts):
+    return time.strftime("%H:%M:%S", time.localtime(ts))
+
+
+def summary(c):
+    """Zeilen der Zusammenfassung eines Clients: jede Fassung getrennt, dann das Urteil"""
+    fs = sorted(c["fassungen"].values(), key=lambda f: (ART_ORDER[f["art"]], f["caps"]["ssid"], f["von"]))
+    if not fs:
+        return ["Fähigkeiten unbekannt: kein (Re)Association/Probe Request im Mitschnitt – WLAN am Client aus "
+                "und wieder an, während der Sniffer läuft"]
+    out = []
+    for f in fs:
+        wo = f"SSID {f['caps']['ssid']}" if f["caps"]["ssid"] else "ohne SSID"
+        zeit = hm(f["von"]) if f["n"] == 1 else f"{hm(f['von'])}–{hm(f['bis'])}"
+        out.append(f"{f['art']}, {wo}: {caps_str(f['caps'], probe=f['art'] != 'Association Request')} "
+                   f"({f['n']}×, {zeit})")
+    assoc = [f for f in fs if f["art"] == "Association Request"]
+    if assoc:
+        for ssid in sorted({f["caps"]["ssid"] for f in assoc}):
+            btm = {f["caps"]["btm"] for f in assoc if f["caps"]["ssid"] == ssid}
+            wo = f"SSID {ssid}" if ssid else "ohne SSID"
+            if btm == {True}:
+                out.append(f"→ {wo}: meldet BSS Transition – der AP darf Wechselvorschläge schicken")
+            elif True in btm:
+                out.append(f"→ {wo}: BSS Transition nicht in jedem Association Request – je Anmeldung verschieden")
+            else:
+                out.append(f"→ {wo}: meldet KEIN BSS Transition: Der AP schickt keine Wechselvorschläge; nur die "
+                           "Trennschwelle (drop/join/hold) bringt ihn zum Wechsel (DW2.5)")
+    else:
+        btm = {f["caps"]["btm"] for f in fs}
+        if btm == {True}:
+            t = "ja in allen Probe Requests"
+        elif True in btm:
+            t = "in manchen Probe Requests ja, in anderen nein"
+        else:
+            t = "in keinem Probe Request"
+        out.append(f"→ BSS Transition {t} – maßgeblich ist der Association Request, er fehlt im Mitschnitt "
+                   "(WLAN am Client aus und wieder an, während der Sniffer läuft); FT steht erst dort")
+    return out
 
 
 def main():

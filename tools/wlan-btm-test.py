@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests für tools/wlan-btm.py: Fähigkeiten (BTM-Bit, 802.11k, FT, AKM), WNM-Frames, Kapselungen 105/127/TZSP."""
+"""Tests für tools/wlan-btm.py: Fähigkeiten (BTM-Bit, 802.11k, FT, AKM) je Fassung, WNM-Frames, Kapselungen 105/127/TZSP."""
 import importlib.util
 import io
 import os
@@ -34,8 +34,8 @@ def rsn(*akms):
     return b + b"\x8c\x00"
 
 
-def assoc(cl, btm=True, ft=True, rrm=True, re=False):
-    el = ie(0, b"Haus") + ie(48, rsn(8, 9) if ft else rsn(8))
+def assoc(cl, btm=True, ft=True, rrm=True, re=False, ssid=b"Haus"):
+    el = ie(0, ssid) + ie(48, rsn(8, 9) if ft else rsn(8))
     if rrm:
         el += ie(70, b"\x73\x00\x00\x00\x00")
     if ft:
@@ -136,6 +136,41 @@ class T(unittest.TestCase):
         res, _ = self.run_on(pcap([probe, assoc(CL)]), macs=[wb.mac_str(CL)])
         self.assertTrue(res[wb.mac_str(CL)]["caps"]["btm"])
         self.assertEqual(res[wb.mac_str(CL)]["quelle"], "Association Request")
+
+    def probe(self, ssid, btm, ext=None):
+        ext = ext if ext is not None else bytes([0x04, 0x00, 0x08 if btm else 0x00, 0x00])
+        return hdr(4, BC, CL, BC) + ie(0, ssid) + ie(70, b"\x73\x00\x00\x00\x00") + ie(127, ext)
+
+    def test_fassungen_getrennt_ohne_assoc(self):
+        # Befund 2026-11-22: gezielte Probes für die eigene SSID ohne BTM-Bit, Wildcard-Probes mit
+        fr = [self.probe(b"Haus", False), self.probe(b"", True), self.probe(b"Haus", False), self.probe(b"", True)]
+        res, out = self.run_on(pcap(fr), macs=[wb.mac_str(CL)])
+        fa = res[wb.mac_str(CL)]["fassungen"]
+        self.assertEqual(len(fa), 2)
+        self.assertEqual(sorted(f["n"] for f in fa.values()), [2, 2])
+        self.assertIn("Probe Request gezielt, SSID Haus: BTM (802.11v) NEIN, 802.11k ja (2×", out)
+        self.assertIn("Probe Request Wildcard, ohne SSID: BTM (802.11v) ja, 802.11k ja (2×", out)
+        self.assertIn("in manchen Probe Requests ja, in anderen nein – maßgeblich ist der Association Request", out)
+        self.assertNotIn("meldet KEIN BSS Transition", out)
+        self.assertNotIn("FT nein", out)   # FT nicht aus Probe Requests ableiten
+
+    def test_assoc_je_ssid(self):
+        fr = [self.probe(b"Haus", False), assoc(CL, ssid=b"Haus"), assoc(CL, btm=False, ft=False, ssid=b"Gast")]
+        res, out = self.run_on(pcap(fr), macs=[wb.mac_str(CL)])
+        self.assertIn("Association Request, SSID Gast: BTM (802.11v) NEIN, 802.11k ja, FT nein", out)
+        self.assertIn("Association Request, SSID Haus: BTM (802.11v) ja, 802.11k ja, FT ja, AKM SAE/FT-SAE", out)
+        self.assertIn("→ SSID Haus: meldet BSS Transition", out)
+        self.assertIn("→ SSID Gast: meldet KEIN BSS Transition", out)
+        # Association Request vor den Probe Requests
+        self.assertLess(out.index("Association Request, SSID Gast"), out.index("Probe Request gezielt, SSID Haus"))
+
+    def test_assoc_wechselnd(self):
+        res, out = self.run_on(pcap([assoc(CL), assoc(CL, btm=False)]), macs=[wb.mac_str(CL)])
+        self.assertIn("nicht in jedem Association Request", out)
+
+    def test_ext_caps_kurz(self):
+        res, out = self.run_on(pcap([self.probe(b"", None, ext=b"\x04\x00")]), macs=[wb.mac_str(CL)])
+        self.assertIn("NEIN (Extended Capabilities nur 2 Byte)", out)
 
 
 if __name__ == "__main__":

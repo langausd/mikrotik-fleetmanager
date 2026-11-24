@@ -336,9 +336,10 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     das Radio läuft dabei lokal weiter und hört trotzdem fremde Frames auf seinem Kanal (Monitor-Modus) – aber nur in
     Funkreichweite: Ein Client am anderen Ende des Hauses fehlte ganz, direkt daneben 62 Probe Requests in 10 min.
     Befund Android-Handy (FT): gezielte Probes für die eigene SSID ohne BTM-Bit, Wildcard-Probes teils mit – passt dazu,
-    dass es nie Vorschläge bekam; der Association Request fehlt noch. **Offen:** `tools/wlan-btm.py` wertet je Client
-    nur eine Fassung der Extended Capabilities und meldete pauschal „BTM nein“ – je SSID bzw. Fassung getrennt
-    ausgeben; FT aus Probe Requests nicht ableiten (steht erst im Association Request).
+    dass es nie Vorschläge bekam; der Association Request fehlt noch. *2026-11-24:* `tools/wlan-btm.py` zeigt jede
+    Fassung getrennt (Quelle und SSID), urteilt nur nach dem Association Request und leitet FT nicht mehr aus Probe
+    Requests ab (vorher eine Fassung je Client, pauschal „BTM nein“). **Offen:** Mitschnitt mit Association Request
+    (WLAN am Handy aus/an neben dem Mitschneider), zusammen mit 97.
 63. **NTP-Umleitung – Rest** (umgesetzt: DN2.2, seit 2026-10-24 an einem Standort): Uhrzeit in der
     Weboberfläche einer OpenBeken-Lampe prüfen.
 65. **Fremdgerät mit der Haupt-SSID bzw. am gemeinsamen Dock ins Gäste-VLAN** (Wunsch des Nutzers, 2026-10-26)

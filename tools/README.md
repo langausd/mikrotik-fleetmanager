@@ -237,7 +237,9 @@ Wechselvorschläge mit Antwort).
 1. Mitschnitt auf einem freien Radio im Kanal des APs (es sendet währenddessen nicht als AP):
    `/interface/wifi/sniffer wifi1 pcap-file=btm pcap-size-limit=20000000 duration=4m filter="type == 0 && subtype != 8"`
    (nur Management-Frames ohne Beacons), Datei per `scp` holen. Oder als Strom: `stream-address=<Rechner>` und am
-   Rechner `tcpdump -i <if> -w btm.pcap udp port 37008`.
+   Rechner `tcpdump -i <if> -w btm.pcap udp port 37008`. An einem Radio, das der CAPsMAN verwaltet, lehnt RouterOS den
+   Sniffer ab (`failure: not allowed`, 7.25.1); vorher `/interface/wifi/cap/set enabled=no` – das Radio hört dann im
+   Monitor-Modus auch fremde Frames auf seinem Kanal, aber nur in Funkreichweite: Gerät nahe an den Client stellen.
 2. Während der Aufnahme am Client WLAN aus und wieder an – erst der Association Request zeigt die Fähigkeiten.
 3. Auswerten:
 
@@ -246,7 +248,12 @@ tools/wlan-btm.py btm.pcap --mac 02:00:00:00:00:AA     # ein Client
 tools/wlan-btm.py btm.pcap                              # alle, die sich im Mitschnitt anmelden
 ```
 
-Steht dort „meldet KEIN BSS Transition“, hilft bei diesem Client nur eine Trennschwelle (`drop`/`join`/`hold`).
+Die Zusammenfassung zeigt jede Fassung der Fähigkeiten getrennt – je Quelle (Association Request, gezielter Probe
+Request, Wildcard-Probe) und SSID, mit Anzahl und Zeit. Handys schicken je nach Probe verschiedene Extended
+Capabilities (ein Android-Handy: gezielte Probes ohne BTM-Bit, Wildcard-Probes mit); das Urteil („→ …“) stützt sich
+deshalb nur auf den (Re)Association Request je SSID. FT und AKM nennt das Skript nur dort – Probe Requests tragen keine
+Mobility Domain. Fehlt der Association Request, sagt die letzte Zeile das. Steht dort „meldet KEIN BSS Transition“,
+hilft bei diesem Client nur eine Trennschwelle (`drop`/`join`/`hold`).
 Mit PMF (WPA3) sind die Wechselvorschläge selbst verschlüsselt – das Skript zeigt dann nur Zeit, Richtung und Länge.
 Liest pcap/pcapng mit 802.11, Radiotap (mit Signal) oder TZSP; nur Standardbibliothek.
 

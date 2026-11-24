@@ -2265,6 +2265,37 @@ Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie
 
 **Nachtrag 2026-11-06:** `upload-seed.sh` prüft vor dem Upload alles, was hinübergeht, mit `tools/rsc-check.py` und bricht bei einem Fehler ab, ohne etwas hochzuladen (`--no-check` überspringt das). Anlass: Ein Hostfile mit Kommentar im Array-Literal kam auf den Manager, erst `$cfmCheck` meldete den Syntaxfehler – rsc-check kennt die Regel, lief aber nur von Hand und in der CI.
 
+#### <a id="dt2.3"></a>DT2.3 · NetBox: planen und abgleichen
+
+*2026-11-24 · Nutzer (TODO 55)*
+
+**Frage:** Geräte, Verkabelung, Ports, VLANs, Prefixe und Adressen in NetBox planen – und wie verhält sich das zu den
+Site-Daten, die nach DT2.2 der Manager führt?
+
+**Optionen (gewählt fett):** Richtung: Einweg-Export cfm → NetBox (nur Doku) · NetBox als Quelle der Site-Daten (bräuchte
+eine Ablösung von DT2.2) · **in NetBox planen, Abgleich gegen cfm berichtet, NetBox schreibt nicht** (Nutzer);
+Portkonfiguration: **Custom Fields mit dem vollständigen cfm-Profil** (`cfm_port` am Interface, `cfm_port_default` und
+`cfm_role` am Gerät), dazu der native 802.1Q-Modus geprüft (Nutzer) · nur Portliste; Auslöser: **nur auf Wunsch, aus
+NetBox heraus (Custom Script)** (Nutzer) · regelmäßig; Umfang: **auch VLANs, Prefixe und alle konfigurierten Adressen**
+(Nutzer); Ablauf: **im NetBox-Container, SSH zum Manager** (Nutzer) · HTTP-Dienst auf einem anderen Host; Tunnel:
+**als NetBox-Tunnel** (ab 3.7) (Nutzer) · nur Interfaces; abgeleitete Adressen (Router .250+id, VIPs, Onboarding):
+**in NetBox planen** (Nutzer) · nur anzeigen; Start: **einmaliger Import cfm → NetBox** (Nutzer); Zugangsdaten: **im
+Container** (Nutzer) · Vault
+
+**Umsetzung (Baustein 1, *technisch, nicht abgefragt*):** Die Site-Daten sind RouterOS-Skripte (Schleifen in
+`vlans.rsc`, Hostfiles dürfen zentrale Daten überschreiben) und lassen sich außerhalb von RouterOS nicht zuverlässig
+auswerten. Deshalb wertet der Manager sie selbst aus: `$cfmNetbox [ver=N]` (`lib/mgr-netbox.rsc`, Standard letztes
+Release) schreibt `state/netbox.json` (VLANs mit Netz und Gateway, Leases mit Adresse, WireGuard, Inventar) und je Gerät
+`state/<name>/netbox.json` (Hostfile, Ports mit aufgelöstem Profil wie `$cfmShow`, Bond-Slaves, MLAG; Daten je Gerät neu
+geladen). Das Ist kommt aus dem, was der Manager ohnehin sammelt: `status.dat` (Seriennummer, Modell, Nachbarn) und
+`export.rsc` (Adressen, Bridge-Ports und -VLANs, Bonds). Neu meldet der Agent seine Ethernet-Ports (`eth`), weil der
+Export nur Ports mit eigener Einstellung nennt. `tools/netbox-abgleich.py` liest NetBox per REST (oder einen gespeicherten
+Plan) und berichtet je Bereich Abweichungen und Hinweise; Kabel dreifach (NetBox ↔ Hostfile `links` ↔ LLDP/MNDP), Ports
+nach Profil und aufgelöstem 802.1Q-Ergebnis, ein vom Soll abweichendes Gerät nur als Hinweis (Release ausstehend).
+`:serialize` schreibt Ziffern-Strings als Zahl (`"10"` → `10.000000`); das Tool liest solche Werte als Text. Labor:
+`e2e.sh` Schritt 14, Tests `tools/netbox-abgleich-test.py`. Offen: Start-Import, Custom Script mit eigenem SSH-User nur
+zum Lesen, Vorschlag für Hostfiles (TODO 55)
+
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
 
 #### <a id="dt3.1"></a>DT3.1 · Editor im Browser: Lesezeichen für WebFig
@@ -2785,3 +2816,12 @@ Managers mit drei Versuchen (`$cfmPkgFetch`, Abbrüche „Bad message“ im Labo
 
 Anlass: TODO 92 und die Lücke bei den Kanal-Objekten je AP; der Nutzer entschied Name und Werte in zwei Fragerunden
 (positive Formulierung statt doppelter Verneinung, Breaking Change mit Fehler in `$cfmCheck`).
+
+### NetBox-Abgleich (2026-11-24)
+
+Entscheidung: DT2.3 (in NetBox planen, cfm abgleichen; Baustein 1: `$cfmNetbox`, Ethernet-Ports im Agent-Status,
+`tools/netbox-abgleich.py`).
+
+Anlass: Wunsch des Nutzers, Geräteinventar, Verkabelung und Portkonfiguration in NetBox zu planen und mit cfm
+abzugleichen (TODO 55, Idee seit 2026-10-16). Der Nutzer entschied Richtung, Umfang und Ablauf in zwei Fragerunden und
+wollte Baustein 1 vor den weiteren sehen.

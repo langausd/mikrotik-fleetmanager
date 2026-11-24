@@ -2195,6 +2195,44 @@ Routern dient `www` außerdem der DNS-Selbstbedienung, DN3.2). Die Namen müssen
 beantworten `<name>.<domain>` selbst (DN1.1). Den Schlüssel erneuert erst der nächste CSR; nach einem Reset erzeugt das
 Gerät von selbst einen neuen.
 
+### 8.21 NetBox: planen und abgleichen (DT2.3)
+
+Du planst Geräte, Verkabelung, Ports, VLANs, Prefixe und Adressen in NetBox (ab 3.7). `tools/netbox-abgleich.py`
+vergleicht diesen Plan mit dem Soll in cfm und dem Ist auf den Geräten und nennt die Unterschiede. Übernehmen musst du
+sie selbst: im cfm-Editor oder in den Site-Daten, wie jede andere Änderung. NetBox schreibt nichts in cfm (DT2.2).
+
+**NetBox vorbereiten.** Eine Site je cfm-Standort. Gerätenamen wie im Inventar. Drei Custom Fields (Typ Text):
+
+| Objekt | Feld | Inhalt |
+|---|---|---|
+| Device | `cfm_role` | Rollen wie im Inventar, z.B. `switch,manager` (ohne `base`) |
+| Device | `cfm_port_default` | Profil wie `portDefault` im Hostfile, z.B. `access:20` |
+| Interface | `cfm_port` | Profil wie unter `ports`, z.B. `trunk`, `trunk-ap`, `access:30`, `hybrid:177`, `wan`, `off` |
+
+Ein Ethernet-Port ohne `cfm_port` erbt `cfm_port_default` (wie in cfm, nicht für Bond-Slaves). Bonds sind Interfaces
+vom Typ LAG, die Slaves zeigen mit `lag` darauf. Den 802.1Q-Modus (access, tagged, tagged-all mit untagged/tagged
+VLANs) pflegst du am besten mit – der Abgleich prüft, ob er zum Profil passt. Kabel zwischen Interfaces; die
+Standortkopplung als Tunnel mit dem Namen des Standorts aus `wireguard.rsc` (`sites`), auch `wg-site-<name>` geht.
+Adressen planst du vollständig: MGMT (primary IPv4), Gateways und VIPs (Rolle VIP oder VRRP, wenn sie auf mehreren
+Routern liegen), die realen Adressen der Router (`.250+routerId`), Onboarding, feste Leases mit DNS-Namen
+(`<name>` oder `<name>.<domain>`) und die WireGuard-Adressen.
+
+**Abgleichen.**
+
+```bash
+NETBOX_TOKEN=… tools/netbox-abgleich.py --netbox https://netbox.example --site <slug> --manager admin@<manager>
+```
+
+Das Tool startet am Manager `$cfmNetbox`: Der Manager wertet seine Site-Daten aus (Standard letztes Release; `--ver 0`
+= `work/`, also auch Änderungen, die noch nicht freigegeben sind) und legt sie unter `state/` ab. Das Tool holt sie
+zusammen mit dem Status und dem Export jedes Geräts und vergleicht. `✘` ist eine Abweichung zwischen NetBox und cfm
+bzw. Gerät, `!` ein Hinweis, z.B. „im Hostfile fehlt links“ mit fertiger Zeile oder „Release noch nicht angewendet“,
+wenn ein Gerät vom Soll abweicht. Ein Gerät, das noch nichts gemeldet hat, fehlt im Ist (`kein Ist vom Gerät`).
+
+**Grenzen.** Kabel zu Geräten ohne LLDP/MNDP sieht nur NetBox und das Hostfile. Adressen aus DHCP (z.B. ein WAN mit
+`dhcp`) fehlen im Export. Noch nicht umgesetzt (TODO 55): Start-Import cfm → NetBox, Auslösen aus NetBox per Custom
+Script mit eigenem SSH-User nur zum Lesen, Vorschlag für die Hostfiles als Datei.
+
 ## 9. Sicherheitsnetze und Notfälle
 
 | Situation | Automatisch | Deine Aufgabe |
@@ -2475,6 +2513,7 @@ Inventarname.
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
+| `$cfmNetbox [ver=<N>]` | Soll-Daten als JSON nach `state/netbox.json` und `state/<name>/netbox.json` für den NetBox-Abgleich (8.21); Standard letztes Release, `ver=0` = `work/` |
 | `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN) live vom CAPsMAN, Sendeleistung am Anschluss + Antennengewinn = EIRP (Spalte `DBM`), Warnung bei gleichem Kanal an einem Switch |
 | `$cfmSniff host=<router> mac=<MAC,…>\|lease=<Name,…> [dauer=2h] [max=20] [iface=…] [mirror=<Port>]` | Mitschnitt nur dieser Geräte auf einem Gerät mit Rolle `router`/`manager` (DU2.3); nach `dauer` holt der Manager-Tick die Datei nach `sniff/` (abholen per scp, auswerten mit `tools/pcap-ziele.py`); `stop=yes` beendet vorzeitig, ohne Argumente Übersicht. Sieht nur Verkehr über die CPU (geroutet oder eigene Radios); vom Switch-Chip gebrückten Verkehr holt `mirror=<Port>` dazu (Port zur CPU spiegeln, DU2.3.1, auf Hardware ungetestet; Last auf der CPU, am Ende zurückgebaut) |

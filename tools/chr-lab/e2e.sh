@@ -502,6 +502,28 @@ out=$(mgr '$cfmLinks export=yes')
 echo "$out" | grep -q "sw1 ether2: erwartet cm1:ether3, gefunden cm1:ether2" && ok "Hostfile-Angabe links wird geprüft" || { bad "Erwartung nicht geprüft"; echo "$out" | tail -4; }
 expect 1 '[:len [/file/find where name="cfm/state/netzplan.dot"]] = 1 and [/file/get [find where name="cfm/state/netzplan.csv"] contents] ~ "geraet_a;port_a"' "Export: netzplan.dot und netzplan.csv"
 mgr ':global e2eH; /file/set [/file/find name="cfm/work/hosts/sw1.rsc"] contents=$e2eH' >/dev/null
+# NetBox-Abgleich (TODO 55): $cfmNetbox schreibt das Soll, der Agent meldet seine Ethernet-Ports, das Tool vergleicht
+# mit einem kleinen Plan (ein Kabel cm1:ether2 - sw1:ether2, keine Ports, keine Adressen)
+stat cm1 eth | grep -q "ether3" && ok "Agent meldet die Ethernet-Ports (status eth)" || bad "status eth fehlt: $(stat cm1 eth)"
+nbn=$(mgr ':global cfmNetbox; :put ("NB=" . [$cfmNetbox])' | grep -o "NB=[0-9]*")
+[ "$nbn" = "NB=3" ] && ok "\$cfmNetbox: Soll für 3 Geräte geschrieben" || bad "\$cfmNetbox ($nbn)"
+rm -rf "$LAB/nb-state"; mkdir -p "$LAB/nb-state"
+{ echo "get cfm/state/netbox.json $LAB/nb-state/netbox.json"
+  for h in cm1 sw1 cm2; do mkdir -p "$LAB/nb-state/$h"; for f in netbox.json status.dat export.rsc; do echo "-get cfm/state/$h/$f $LAB/nb-state/$h/$f"; done; done; } | put 1
+cat > "$LAB/nb-plan.json" <<'NBEOF'
+{"site": "labor", "devices": {
+ "cm1": {"serial": "", "model": "", "part": "", "nbrole": "", "role": null, "port_default": null, "ip": "192.168.10.2", "status": "active"},
+ "sw1": {"serial": "", "model": "", "part": "", "nbrole": "", "role": null, "port_default": null, "ip": "192.168.10.21", "status": "active"},
+ "cm2": {"serial": "", "model": "", "part": "", "nbrole": "", "role": null, "port_default": null, "ip": "192.168.10.3", "status": "active"}},
+ "interfaces": {"cm1": {}, "sw1": {}, "cm2": {}}, "cables": [["cm1", "ether2", "sw1", "ether2"]],
+ "vlans": {}, "prefixes": {}, "ips": [], "tunnels": {}}
+NBEOF
+out=$(python3 "$ROOT/tools/netbox-abgleich.py" --plan "$LAB/nb-plan.json" --state "$LAB/nb-state" 2>&1)
+echo "$out" | grep -qE "✘ cm1 ether3 +LLDP/MNDP sieht cm2:ether2, in NetBox kein Kabel" && ! echo "$out" | grep -qE "✘ (cm1|sw1) ether2 +(NetBox|LLDP)" \
+  && ok "NetBox-Abgleich: geplantes Kabel passt zu LLDP, ungeplantes gemeldet" || { bad "NetBox-Abgleich Kabel"; echo "$out" | grep -A6 "^Kabel"; }
+echo "$out" | grep -qE "✘ cm1 ether1 +am Gerät, fehlt in NetBox" && echo "$out" | grep -qE "✘ 192\.168\.10\.21 +in cfm \(MGMT\) \(auf sw1 vlan10\), fehlt in NetBox" \
+  && echo "$out" | grep -qE "✘ 88 +in cfm \(ONBOARD\), fehlt in NetBox" \
+  && ok "NetBox-Abgleich: Ports (status eth), Adressen (Soll + Export) und VLANs" || { bad "NetBox-Abgleich Ports/Adressen/VLANs"; echo "$out" | tail -12; }
 # Gerätesuche (TODO 53): live über die drei VMs; im Labor gibt es nur die Geräte selbst – ihren Ort liefert LLDP
 mgr '$cfmFind' | grep -q "Aufruf: \$cfmFind" && ok "\$cfmFind ohne Angaben: Aufruf" || bad "\$cfmFind ohne Angaben"
 swm=$(stat sw1 mac)

@@ -22,7 +22,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Neu 2026-11-24:** 55 (NetBox) entschieden als Variante C: in NetBox planen (Geräte, Kabel, Ports mit
   cfm-Profil als Custom Field, VLANs, Prefixe, alle IPs), Abgleich gegen Soll und Ist nur auf Wunsch, aus NetBox
   per Custom Script auslösbar, das im NetBox-Container läuft; Tunnel als NetBox-Objekte; einmaliger Start-Import;
-  NetBox schreibt nicht in die Site-Daten (DT2.2). Alle Fragen geklärt, bereit zur Umsetzung.
+  NetBox schreibt nicht in die Site-Daten (DT2.2). *Baustein 1 umgesetzt (DT2.3, Labor):* `$cfmNetbox` (Soll als JSON),
+  Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). Offen: Bausteine 2 und 3.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -304,8 +305,8 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     bei `$cfmFind`/cfm-Monitor). Standorte, die nur per WireGuard erreichbar sind: Peer für den
     LibreNMS-Server. Die Netzanbindung (zweite Schnittstelle im MGMT-VLAN, entschieden 2026-10-16) steht in
     [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
-55. **NetBox: planen und abgleichen** (Idee 2026-10-16; *Variante C entschieden 2026-11-24*, noch nicht
-    umgesetzt). Eine NetBox-Instanz gibt es bereits. Die beiden früheren Varianten bleiben verworfen bzw. zurückgestellt:
+55. **NetBox: planen und abgleichen** (Idee 2026-10-16; *Variante C entschieden 2026-11-24, DT2.3*; Baustein 1
+    umgesetzt 2026-11-24, siehe unten). Eine NetBox-Instanz gibt es bereits. Die beiden früheren Varianten bleiben verworfen bzw. zurückgestellt:
     * ~~**A – Einweg-Export cfm → NetBox**~~ (nur Doku, für die Fehlersuche wenig Nutzen).
     * ~~**B – NetBox als Quelle**~~ (NetBox erzeugt `vlans.rsc`/`leases.rsc`; widerspricht DT2.2).
     * **C – In NetBox planen, cfm abgleichen** (Wunsch des Nutzers): In NetBox werden Geräte, Verkabelung, Ports
@@ -340,6 +341,17 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         Manager holt es nach `state/<name>/export.rsc` (`$cfmCollect`). Daraus liest der Abgleich `/ip address`,
         VRRP, WireGuard, Bridge-Ports und VLANs je Gerät, zusammen mit `status.json` (Modell, Seriennummer,
         Version, Nachbarn).
+      * **Bausteine:** (1) *umgesetzt 2026-11-24:* Abgleich-Tool samt Tests. Der Manager wertet die Site-Daten selbst
+        aus (`$cfmNetbox`, `lib/mgr-netbox.rsc` → `state/netbox.json`, `state/<name>/netbox.json`), weil sie
+        RouterOS-Skripte sind; das Ist kommt aus `status.dat` (neu: Ethernet-Ports `eth`) und `export.rsc`.
+        `tools/netbox-abgleich.py` (REST oder gespeicherter Plan, `--manager` per SSH/SFTP als Admin) berichtet
+        Geräte, Ports, Kabel, VLANs, Prefixe, IP-Adressen und Tunnel. Tests `tools/netbox-abgleich-test.py`, Labor
+        `e2e.sh` Schritt 14. Gegen eine echte NetBox noch nicht gelaufen. (2) *offen:* einmaliger Start-Import cfm →
+        NetBox (Geräte, Interfaces mit `cfm_port`, Kabel, VLANs, Prefixe, IPs, Tunnel; Custom Fields anlegen).
+        (3) *offen:* NetBox Custom Script „cfm-Abgleich“ (3.7 und 4.x) samt Anleitung; am Manager ein eigener User
+        nur `ssh,read` (wie `cfm-cert`) und ein Skript mit `dont-require-permissions`, das `$cfmNetbox` startet. Lesen
+        dann ohne SFTP (`ftp` wäre Schreibrecht), z.B. per `/file/read` in Stücken: `export.rsc` eines Managers hat
+        ~500 KB, `/file/get` liest nur ~60 KB. Dazu der Vorschlag für die Hostfiles (`ports`, `links`) als Datei.
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein

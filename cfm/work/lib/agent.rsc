@@ -120,6 +120,10 @@
     }
   } do={}
   :set ($s->"nb") $nb
+  # Ethernet-Ports des Geräts (NetBox-Abgleich, TODO 55): Der Export nennt nur Ports mit eigener Einstellung
+  :local eth ({})
+  :onerror e in={ :foreach i in=[/interface/ethernet/find] do={ :set ($eth->[:len $eth]) [/interface/ethernet/get $i name] } } do={}
+  :set ($s->"eth") $eth
   # APs: aktueller Kanal je Radio ($cfmChannels, $cfmWifiScan), {Radio;"c"Kanal}. Ein CAPsMAN meldet nur
   # seine eigenen Radios, wenn sie senden (capsmanRadios, TODO 46) - seine Interface-Liste enthält
   # auch die aller CAPs

@@ -21,6 +21,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`pcap-ziele.py`](#pcap-zielepy) | Internet-Ziele eines Geräts aus einem Mitschnitt, Vorschlag für `allow` |
 | [`wlan-btm.py`](#wlan-btmpy) | WLAN-Mitschnitt: kann ein Client Wechselvorschläge (802.11v), bekommt er welche? |
 | [`wifi-sign.py`](#wifi-signpy) | WLAN-Schild als A4-PDF: QR-Code, SSID, Passphrase (de/en) |
+| [`netbox-abgleich.py`](#netbox-abgleichpy) | Planung in NetBox mit cfm (Soll) und den Geräten (Ist) abgleichen |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
@@ -275,6 +276,30 @@ nicht ausgestrahlt). Typ im QR-Code: `WPA` für WPA2 und gemischt WPA2/WPA3, `SA
 die Passphrase und entsteht mit Rechten `0600` – nicht ins Repo legen, nach einem Passwortwechsel neu erzeugen. Braucht
 `python3-segno` und `python3-cairo` (Debian/Ubuntu). Tests: `tools/wifi-sign-test.py`.
 Dasselbe Schild ohne Python: Knopf „WLAN-Schild“ im cfm-Editor (DT3.4.1).
+
+## `netbox-abgleich.py`
+
+Vergleicht die Planung in NetBox mit cfm und den Geräten (TODO 55, DT2.3, Admin-Guide 8.21). NetBox ist der
+Planungsstand, cfm bleibt führend: Das Tool ändert nichts, weder in NetBox noch in den Site-Daten, es berichtet nur.
+
+```bash
+NETBOX_TOKEN=… tools/netbox-abgleich.py --netbox https://netbox.example --site <slug> --manager admin@192.168.10.2
+tools/netbox-abgleich.py --netbox … --site … --token-file ~/.netbox-token --state <verz>   # state/ liegt lokal
+tools/netbox-abgleich.py --plan plan.json --state <verz>                                  # ohne NetBox
+```
+
+* Mit `--manager` startet das Tool am Manager `$cfmNetbox` (wertet die Site-Daten aus, Standard: letztes Release,
+  `--ver 0` = `work/`) und holt per SFTP `state/netbox.json` und je Gerät `state/<name>/netbox.json`, `status.dat`
+  und `export.rsc`. Dafür brauchst du wie bei `pull-site.sh` einen SSH-Key am Manager.
+* Verglichen werden Geräte (Seriennummer, Modell, `cfm_role`, MGMT-IP), Ports (vorhanden, Profil `cfm_port` bzw.
+  `cfm_port_default`, 802.1Q-Modus, Bond), Kabel (NetBox ↔ `links` im Hostfile ↔ LLDP/MNDP), VLANs, Prefixe,
+  IP-Adressen (MGMT, Gateways/VIPs, feste Leases, WireGuard und alle Adressen auf den Geräten) und Tunnel der
+  Standortkopplung.
+* Ausgabe je Bereich: `✘` Abweichung, `!` Hinweis, mit `--alle` auch `·` Info (z.B. Adressen, die nur in NetBox
+  stehen). `--json` gibt die Befunde als JSON aus, `--plan-speichern <datei>` legt den gelesenen Plan ab. Exit-Code
+  0 ohne Abweichung, 1 mit, 2 bei einem Fehler.
+* `--vlan-group <slug>`: VLANs aus einer VLAN-Gruppe statt der Site. Token mit `nbt_` (NetBox 4.5) geht als Bearer,
+  ältere als `Token`. Nur Standardbibliothek; Tests: `tools/netbox-abgleich-test.py`.
 
 ## `wg-client-setup.sh`
 

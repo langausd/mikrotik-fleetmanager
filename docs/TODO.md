@@ -1,6 +1,6 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-22)
+## Übersicht offener Punkte (Stand 2026-11-24)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
@@ -22,10 +22,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
-  * **94 – Gast-Isolation nach dem Wiederverbinden und im Fallback** (*umgesetzt 18.11. abends, DW1.12.2, Labor;
-    Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
-    Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf (bis 15 min) offen, die `fb-…`
-    im Fallback ebenso. Jetzt Abgleich in jedem Takt.
+  * **94 – Gast-Isolation nach dem Wiederverbinden und im Fallback** (DW1.12.2): *erledigt, Hardware bestanden
+    2026-11-23 (v42)*, siehe [ERLEDIGT.md](ERLEDIGT.md#erledigte-punkte).
   * **95 – Kanalvorschlag 5 GHz auf Hardware korrigiert** (*umgesetzt 19.11. nachts, DW3.9.1, Labor; nur
     Framework-Upload, kein Release*): `cfmScanBlk` versteht `5500/ax/Ceee/D` und `/I`; Kanal und Sendeleistung
     werden vor dem Scan gelesen; `$cfmCheck` warnt nicht mehr bei `radios`/`txPower` für den Manager als CAPsMAN
@@ -104,13 +102,11 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     kein DFS; Test an einem Standort mit zwei 6-GHz-Radios). **Umgesetzt** wie entschieden; abweichend vom Entwurf
     oben: Kandidaten aus dem Pool, `all=yes` für alle EU-Kanäle (der Pool aus TODO 90 enthält 5660 nicht mehr);
     Suche über die je AP besten K Kandidaten statt aller ~3400 Pläne, danach zwei Runden reihum.
-* **Zuerst: Test vor Ort (74)** der drei Fixes vom 2026-11-05 (unter „Bekannte Fehler“): Fallback-Kopie
-  (DW1.8.1), normale Passphrase bei PPSK (DW2.2.1), `cfm-iso` nach `slaves-static` (DP3.1.1). Der Code läuft seit
-  2026-11-06 an einem Standort (v99), die Tests dort stehen aus.
-* **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus, im Labor nur
-  Darstellung und Prüfung): 40a (Gast/IoT im lokalen Fallback,
-  DW1.8; erster Versuch 2026-11-04 scheiterte am Fehler unten). 39 (Steering je Band + Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort
-  ([TESTSTAND.md](TESTSTAND.md#bestanden)).
+* **Rest von 74 am Wochenende 28./29.11. am zweiten Standort:** zwei Gäste an verschiedenen APs (kein Ping untereinander, Zähler
+  `cfm:iso` am AP: `ip` oder `vlan`?) und die Tests von 74 am zweiten Standort. Am Pilot-Standort bestanden: Fallback weiterer
+  SSIDs (18.11.), Isolation nach der Rückkehr (94, 23.11.), normale Passphrase und FT-Roaming mit PPSK (17.11.).
+* **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus): 39 (Steering je Band +
+  Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort ([TESTSTAND.md](TESTSTAND.md#bestanden)).
 * **Nur mit Hardware:** die Punkte unter „Offen auf Hardware“ in [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware). Das eingebaute Update
   (38, DV1.5) lief über den Spiegel (hEX) und per `via=internet` (CRS, 7.25).
 * **RouterOS 7.25:** stable seit 2026-10-22, beide Standorte seit 2026-10-26/28 darauf
@@ -124,7 +120,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   Gäste an verschiedenen APs) und an Switch-Ports mit `hw=no`.
 * **Größere Ausbauten:** 13, 14, 16, 18 sowie 79 (Netinstall-Station und Branding-Paket, Plan in
   [NETINSTALL.md](NETINSTALL.md)).
-* **Offen im Verbesserungsplan:** 13, 14, 16, 18, 21–23, 25, 37, 40, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 73–75,
+* **Offen im Verbesserungsplan:** 13, 14, 16, 18, 21–23, 25, 37, 48, 49, 51, 54, 55, 58, 62, 63, 65, 67–69, 73–75,
   79–81.
 
 ## Onboarding: weitere Wege in den Onboarding-Zustand
@@ -176,31 +172,10 @@ was auf Hardware und im Labor schon bestanden hat.
 
 ## Bekannte Fehler
 
-Fehler aus den Hardware-Tests vom 2026-11-04 und 2026-11-16 (CRS418 als CAPsMAN, hAP ax² als CAPs, 7.25; Eigenheiten
-dazu in [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten)). *Im Code
-behoben 2026-11-05 (DW2.2.1, DP3.1.1) bzw. neu gelöst 2026-11-16 (DW1.12), im Labor geprüft soweit ohne Funk möglich
-([TESTSTAND.md](TESTSTAND.md)); der Test vor Ort (74) steht aus – bis dahin bleiben sie hier. Die beiden Fehler rund um
-`slaves-static` (zweiter Apply stellt noch einmal um, SSID der Slaves nur in `about`) sind mit DW1.12 gegenstandslos:
-[ERLEDIGT.md](ERLEDIGT.md#behobene-fehler).*
-
-* **Gast-Kopie im lokalen Fallback sendet nicht** (DW1.8/DW1.8.1, Hardware 2026-11-16, hAP ax² als CAPs, 7.25):
-  RouterOS nimmt die vom CAPsMAN angelegten Slaves im Fallback außer Betrieb, auch mit `slaves-static` und lokaler
-  Konfiguration daran; nur die Master-SSID sendet lokal weiter. *Neu gelöst 2026-11-16 (DW1.12, TODO 84):* eigene
-  lokale virtuelle APs je Fallback-SSID, geschaltet vom Skript `cfm-fallback` (alle 10 s); `slaves-static` schaltet
-  cfm ab. Im Labor geprüft ohne Funk, Test vor Ort offen (74 a).
-* **Mit PPSK geht die normale Passphrase der SSID nicht mehr** (DW2.2, `lib/lib-wifi.rsc`, Secret-Push): RouterOS
-  ignoriert die `passphrase` eines Profils mit `multi-passphrase-group`. Fix: Für jede SSID mit `ppsk` einen
-  Gruppeneintrag ohne `vlan-id` (Kommentar z.B. `cfm:mpp:<ssid>`) mit der Passphrase aus `psk.<ssid>` anlegen – auf
-  dem CAPsMAN und im lokalen Fallback der APs; der Secret-Push setzt ihn wie die übrigen Einträge. Weil Ändern oder
-  Entfernen eines Eintrags dessen Clients trennt: Secret-Push und Rolle setzen die Passphrase nur, wenn sie sich
-  ändert (Vergleich vor dem `set`; ob ein `set` mit gleichem Wert trennt, ist offen), und legen Einträge nicht neu an.
-  Admin-Guide (PPSK) und DW2.2 ergänzen. Bis dahin ist die betroffene SSID an einem Standort aus.
-* **`cfm-iso` nach dem Neuverbinden veraltet** (DP3.1/DW1.8, `roles/ap.rsc`; *auf Hardware bestätigt 2026-11-12 und
-  2026-11-16*): Der CAP legt seine virtuellen APs nach jedem Neuverbinden (mit `slaves-static` auch nach jedem
-  Neuprovisionieren) mit neuen Namen an; das statische Mitglied in `cfm-iso` zeigt dann ins Leere, bis Rolle oder Agent
-  nachtragen (bis zu 15 min greift der Bridge-Filter für Gäste nicht). *Neu gelöst 2026-11-16 (DW1.12):* Ohne
-  `slaves-static` keine neuen Namen beim Neuprovisionieren; das Skript `cfm-fallback` trägt zwei Takte (~20 s) nach
-  dem Wiederverbinden nach – an jedem AP mit isolierten VLANs. Im Labor geprüft, Test vor Ort offen (74 c/d).
+Eigenheiten von RouterOS stehen in [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md#auf-hardware-verifizierte-routeros-eigenheiten).
+Die drei WLAN-Fehler aus den Hardware-Tests vom 2026-11-04 und 2026-11-16 (Gast-Kopie im Fallback, normale Passphrase
+bei PPSK, `cfm-iso` nach dem Neuverbinden) sind seit 2026-11-23 auf Hardware behoben:
+[ERLEDIGT.md](ERLEDIGT.md#behobene-fehler).
 
 * **Backup-Manager: Einspielen der Manager-Module scheitert** (`roles/manager.rsc`, hAP be³ Media 7.25.1,
   2026-11-08): zweimal `no such item (/file/get; line 26)` gleich nach dem Ersetzen eines anderen Modul-Skripts,
@@ -294,11 +269,6 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
 <!-- -->
 37. **Paketprüfung – Rest** (umgesetzt: DV1.4, NPK-Kennung): Prüfsummen von MikroTik nutzen, falls es eine
     Liste gibt.
-<!-- -->
-40. **Lokaler Fallback der APs: weitere SSIDs** (DW1.6) – *neu gelöst 2026-11-16 (DW1.12, TODO 84):* `fallback="yes"`
-    an einer SSID → eigene lokale virtuelle APs je Radio, normal aus, das Skript `cfm-fallback` schaltet sie ~20 s nach
-    dem Verlust des CAPsMAN ein und beim Wiederverbinden aus; `slaves-static` (DW1.8) entfällt. Offen: Test vor Ort
-    (74 a, [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)). Frühere Teile in [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
 <!-- -->
 48. **RouterOS 7.25 – Rest** (Befunde und Changelog-Durchsicht: [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen),
     Läufe: [TESTSTAND.md](TESTSTAND.md)): **FT für MLD-Geräte** („wifi - add fast transition support for MLD
@@ -410,23 +380,12 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     * *2026-11-04:* WLAN-Prüfung aus `mgr-check.rsc` nach `mgr-checkw.rsc` ausgelagert (DM1.1; 57,4 → 47,1 KB),
       Labor 7.25 ok (Gesamttest und Übergang, TESTSTAND), Hardware offen: erstes Release nach dem Update (der WLAN-Teil kommt aus `work/`). Nicht empfohlen:
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
-74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04** (an beiden Standorten: CRS418 bzw. hAP be³ als CAPsMAN,
-    nächste Termine vor Ort): (a) Fallback einer Gast-SSID – CAPWAP zu einem AP sperren, sendet die SSID lokal weiter,
-    Lease, Isolation, Rückkehr (40, DW1.8); (b) PPSK: normale Passphrase und PPSK nebeneinander, FT-Roaming zwischen
-    den APs mit PPSK, gibt der CAPsMAN die Gruppe an die CAPs weiter (oder gelten die lokalen Einträge), trennt der
-    Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
-    der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
-    nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.
-    *2026-11-12 an einem Standort (v37):* (b) bestanden bis auf das Roaming zwischen zwei CAPs (Befund „falsches
-    Passwort“ beim ersten PPSK-Versuch, Ursache offen – nicht WPA3, Korrektur 2026-11-13, siehe TESTSTAND), (c) bestanden an den Radios des CAPsMAN, die lokale Kopie aus (a) hängt an; offen: (a) Client-Test im
-    Fallback, (c) an zwei APs mit Zählern, (d), der zweite Standort.
-    *2026-11-16 (v39):* (a) Master-SSID im Fallback bestanden, **Gast-Kopie sendet im Fallback nicht** (TESTSTAND,
-    „Weitere SSIDs im lokalen Fallback“) – Ursache offen, nächster Schritt: Diagnose-Durchgang mit Log aus dem AP;
-    (d) `cfm-iso` folgte nach dem Neuprovisionieren (Kanalwechsel) den neuen Interface-Namen. Nebenbefund:
-    deaktivierte alte virtuelle APs bleiben am CAP liegen (je Neuprovisionierung neue Namen).
-    *2026-11-16 abends (unbeaufsichtigt, DW1.12):* (a) neu gelöst über eigene lokale virtuelle APs und das Skript
-    `cfm-fallback`, (d) entfällt (`slaves-static` wird abgeschaltet, die Reste räumt die Rolle ab, TODO 85). Testplan
-    für den nächsten Termin: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware) „Fallback weiterer SSIDs (DW1.12)“.
+74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04 – Rest** (bestanden am Pilot-Standort, siehe
+    [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen) und [TESTSTAND.md](TESTSTAND.md#bestanden)): **(c)** zwei Gäste an
+    *verschiedenen* APs – kein Ping untereinander, Gateway und Internet gehen, Zähler `cfm:iso` an beiden APs (sieht der
+    Bridge-Filter WLAN-Frames als `ip` oder `vlan`?); bisher nur an den Radios des CAPsMAN geprüft (12.11.). **Zweiter
+    Standort** (hAP be³ als CAPsMAN): Fallback weiterer SSIDs mit Rückkehr, PPSK mit normaler Passphrase und
+    FT-Roaming zwischen zwei CAPs. Geplant: Wochenende 28./29.11. am zweiten Standort.
 75. **`$cfmSniff` bei gebrücktem Verkehr – Rest** (umgesetzt 2026-11-05: `mirror=<Port>`, DU2.3.1): auf Hardware
     prüfen – Eigenschaftsnamen je Switch-Chip (CRS3xx/5xx je Port, ältere Chips am Switch), geht die CPU als Ziel,
     CPU-Last, sieht der Sniffer die gespiegelten Frames. Erster Test: CRS418 an dem Standort, der nur brückt.

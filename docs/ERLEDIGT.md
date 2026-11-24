@@ -10,6 +10,14 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-24 (Abgleich mit den Session-Logs der Termine am Pilot-Standort):** **TODO 94** erledigt – Hardware 2026-11-23
+  (v42, ap2): Rückkehr aus dem Fallback, `cfm-fallback` trägt in derselben Sekunde beide Gast-Slaves (2,4 und 5 GHz)
+  in `cfm-iso` ein und entfernt die Verweise auf die alten Interfaces. **TODO 40** erledigt (Fallback weiterer SSIDs,
+  Hardware 2026-11-18). **TODO 74** bis auf einen Rest bestanden (17.11.: normale Passphrase bei PPSK und FT-Roaming
+  mit PPSK zwischen drei APs; 18.11.: Fallback weiterer SSIDs; 23.11.: Isolation nach der Rückkehr); offen bleiben zwei
+  Gäste an verschiedenen APs und der zweite Standort. Die drei WLAN-Fehler vom 2026-11-04/16 stehen jetzt unter
+  „Behobene Fehler“.
+
 * **Am 2026-11-22:** **TODO 6** (Plan-Modus, Rest Berichtsgröße) erledigt: Der Agent kürzt den Planbericht vor dem
   Schreiben auf ~56 KB an einer Zeilengrenze („gekuerzt: N weitere Zeilen“, die Summe zählt alles), die
   FEHLER-Zeile auf 2000 Zeichen; `$cfmPlan` meldet bei Zeitüberschreitung die letzte `cfm:`-Fehlerzeile des Geräts
@@ -830,7 +838,53 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     nicht im Apply, der `slaves-static` abschaltet, nicht auf dem CAPsMAN-Gerät; der Probelauf nennt sie. Ohne
     `slaves-static` entstehen keine neuen mehr. Hardware-Test offen (74).
 
+40. ~~**Lokaler Fallback der APs: weitere SSIDs**~~ (DW1.6) – *erledigt 2026-11-18 (DW1.12, Hardware):* An einem
+    Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25, v40) senden im Fallback beide `fb-guest-…` (2,4 GHz ~33 s, 5 GHz
+    nach der CAC ~83 s nach dem Abriss), Laptop mit fester BSSID an beiden, Lease im Gast-VLAN, Internet; Rückkehr ohne
+    Aussetzer. Die Isolation nach der Rückkehr folgte mit 94. Frühere Fassungen unten.
+94. ~~**Gast-Isolation nach dem Wiederverbinden und im Fallback**~~ – *erledigt 2026-11-23 (DW1.12.2, Hardware v42):*
+    `cfm-fallback` gleicht `cfm-iso` in jedem Takt ab. Test an einem AP per Bridge-Filter (3 min): Fallback-SSIDs an
+    nach ~20 s, bei der Rückkehr beide Gast-Slaves in derselben Sekunde in `cfm-iso` („nachgetragen (cfm-fallback)“),
+    Verweise auf die vorher neu angelegten Interfaces entfernt. Befund vom 18.11.: Der 5-GHz-Gast-Slave entsteht erst
+    nach der CAC und stand bis zum Agent-Lauf (bis 15 min) ohne Isolation. Text bis dahin:
+
+  * **94 – Gast-Isolation nach dem Wiederverbinden und im Fallback** (*umgesetzt 18.11. abends, DW1.12.2, Labor;
+    Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
+    Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf (bis 15 min) offen, die `fb-…`
+    im Fallback ebenso. Jetzt Abgleich in jedem Takt.
+
 ## Frühere Fassungen
+
+### 74 · Hardware-Test WLAN nach den Fixes vom 2026-11-04 (Stand bis 2026-11-24)
+
+74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04** (an beiden Standorten: CRS418 bzw. hAP be³ als CAPsMAN,
+    nächste Termine vor Ort): (a) Fallback einer Gast-SSID – CAPWAP zu einem AP sperren, sendet die SSID lokal weiter,
+    Lease, Isolation, Rückkehr (40, DW1.8); (b) PPSK: normale Passphrase und PPSK nebeneinander, FT-Roaming zwischen
+    den APs mit PPSK, gibt der CAPsMAN die Gruppe an die CAPs weiter (oder gelten die lokalen Einträge), trennt der
+    Secret-Push laufende PPSK-Clients (DW2.2); (c) isoliertes Gast-VLAN mit zwei Gästen an verschiedenen APs, Zähler
+    der Bridge-Filter am AP (sieht er WLAN-Frames als `ip` oder `vlan`?), Limit unverändert (DP3.1); (d) zweiter Apply
+    nach `slaves-static` kommt von selbst. Danach [TESTSTAND.md](TESTSTAND.md) „Offen auf Hardware“ nachziehen.
+    *2026-11-12 an einem Standort (v37):* (b) bestanden bis auf das Roaming zwischen zwei CAPs (Befund „falsches
+    Passwort“ beim ersten PPSK-Versuch, Ursache offen – nicht WPA3, Korrektur 2026-11-13, siehe TESTSTAND), (c) bestanden an den Radios des CAPsMAN, die lokale Kopie aus (a) hängt an; offen: (a) Client-Test im
+    Fallback, (c) an zwei APs mit Zählern, (d), der zweite Standort.
+    *2026-11-16 (v39):* (a) Master-SSID im Fallback bestanden, **Gast-Kopie sendet im Fallback nicht** (TESTSTAND,
+    „Weitere SSIDs im lokalen Fallback“) – Ursache offen, nächster Schritt: Diagnose-Durchgang mit Log aus dem AP;
+    (d) `cfm-iso` folgte nach dem Neuprovisionieren (Kanalwechsel) den neuen Interface-Namen. Nebenbefund:
+    deaktivierte alte virtuelle APs bleiben am CAP liegen (je Neuprovisionierung neue Namen).
+    *2026-11-16 abends (unbeaufsichtigt, DW1.12):* (a) neu gelöst über eigene lokale virtuelle APs und das Skript
+    `cfm-fallback`, (d) entfällt (`slaves-static` wird abgeschaltet, die Reste räumt die Rolle ab, TODO 85). Testplan
+    für den nächsten Termin: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware) „Fallback weiterer SSIDs (DW1.12)“.
+    *Nachtrag 2026-11-24 (aus den Session-Logs):* (b) am 2026-11-17 bestanden – normale Passphrase von der Test-SSID mit
+    `vlan-id=200` (der erste Versuch brach nach 7 s mit Lease aus VLAN 200 ab: der Schlüssel wurde angenommen, Ursache
+    beim Handy), FT-Roaming mit PPSK `ft-wpa2-psk` ap1 → ap2 → cm1 → ap1 mit VLAN 2, Dauer-Ping ohne Verlust; (a) am
+    2026-11-18 bestanden bis auf die Isolation nach der Rückkehr (94, bestanden 2026-11-23); (d) entfällt (DW1.12).
+
+### 40 · Lokaler Fallback der APs: weitere SSIDs (Stand bis 2026-11-24)
+
+40. **Lokaler Fallback der APs: weitere SSIDs** (DW1.6) – *neu gelöst 2026-11-16 (DW1.12, TODO 84):* `fallback="yes"`
+    an einer SSID → eigene lokale virtuelle APs je Radio, normal aus, das Skript `cfm-fallback` schaltet sie ~20 s nach
+    dem Verlust des CAPsMAN ein und beim Wiederverbinden aus; `slaves-static` (DW1.8) entfällt. Offen: Test vor Ort
+    (74 a, [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)). Frühere Teile in [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
 
 ### 40 · Lokaler Fallback der APs: weitere SSIDs (Stand bis 2026-11-16)
 
@@ -1197,6 +1251,30 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* ~~**Gast-Kopie im lokalen Fallback sendet nicht**~~, ~~**Mit PPSK geht die normale Passphrase der SSID nicht
+  mehr**~~ und ~~**`cfm-iso` nach dem Neuverbinden veraltet**~~ – *auf Hardware behoben (TODO 74):* PPSK 2026-11-17
+  (DW2.2.1, normale Passphrase im VLAN der SSID, FT-Roaming mit PPSK zwischen den APs), Fallback weiterer SSIDs
+  2026-11-18 (DW1.12), `cfm-iso` nach der Rückkehr 2026-11-23 (DW1.12.2, TODO 94). Frühere Texte:
+
+  * **Gast-Kopie im lokalen Fallback sendet nicht** (DW1.8/DW1.8.1, Hardware 2026-11-16, hAP ax² als CAPs, 7.25):
+    RouterOS nimmt die vom CAPsMAN angelegten Slaves im Fallback außer Betrieb, auch mit `slaves-static` und lokaler
+    Konfiguration daran; nur die Master-SSID sendet lokal weiter. *Neu gelöst 2026-11-16 (DW1.12, TODO 84):* eigene
+    lokale virtuelle APs je Fallback-SSID, geschaltet vom Skript `cfm-fallback` (alle 10 s); `slaves-static` schaltet
+    cfm ab. Im Labor geprüft ohne Funk, Test vor Ort offen (74 a).
+  * **Mit PPSK geht die normale Passphrase der SSID nicht mehr** (DW2.2, `lib/lib-wifi.rsc`, Secret-Push): RouterOS
+    ignoriert die `passphrase` eines Profils mit `multi-passphrase-group`. Fix: Für jede SSID mit `ppsk` einen
+    Gruppeneintrag ohne `vlan-id` (Kommentar z.B. `cfm:mpp:<ssid>`) mit der Passphrase aus `psk.<ssid>` anlegen – auf
+    dem CAPsMAN und im lokalen Fallback der APs; der Secret-Push setzt ihn wie die übrigen Einträge. Weil Ändern oder
+    Entfernen eines Eintrags dessen Clients trennt: Secret-Push und Rolle setzen die Passphrase nur, wenn sie sich
+    ändert (Vergleich vor dem `set`; ob ein `set` mit gleichem Wert trennt, ist offen), und legen Einträge nicht neu an.
+    Admin-Guide (PPSK) und DW2.2 ergänzen. Bis dahin ist die betroffene SSID an einem Standort aus.
+  * **`cfm-iso` nach dem Neuverbinden veraltet** (DP3.1/DW1.8, `roles/ap.rsc`; *auf Hardware bestätigt 2026-11-12 und
+    2026-11-16*): Der CAP legt seine virtuellen APs nach jedem Neuverbinden (mit `slaves-static` auch nach jedem
+    Neuprovisionieren) mit neuen Namen an; das statische Mitglied in `cfm-iso` zeigt dann ins Leere, bis Rolle oder Agent
+    nachtragen (bis zu 15 min greift der Bridge-Filter für Gäste nicht). *Neu gelöst 2026-11-16 (DW1.12):* Ohne
+    `slaves-static` keine neuen Namen beim Neuprovisionieren; das Skript `cfm-fallback` trägt zwei Takte (~20 s) nach
+    dem Wiederverbinden nach – an jedem AP mit isolierten VLANs. Im Labor geprüft, Test vor Ort offen (74 c/d).
 
 * **CI rot seit 2026-11-12 (`wifi-sign-test.py`)** – *behoben 2026-11-19:* `ubuntu-latest` zieht auf Ubuntu 26 um;
   dessen cairo schreibt PDF 1.7 mit komprimierten Objekt-Streams, die MediaBox `595.27` steht nicht mehr im Klartext.

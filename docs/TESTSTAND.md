@@ -22,8 +22,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   ([ERLEDIGT.md](ERLEDIGT.md#behobene-fehler)) oder stehen in [TODO.md](TODO.md#bekannte-fehler) unter „Bekannte Fehler“.
 * **Noch nicht auf Hardware:** Beförderung und Rekey mit dem Backup-Manager (Spiegel und Ausfallmeldung am
   2026-11-08 bestanden), Onboarding gegen Werks-Configs von Routern
-  und CRS-Switches, die Fixes vom 2026-11-04 und 2026-11-16 (TODO 74: normale Passphrase bei PPSK, weitere SSIDs im
-  lokalen Fallback über eigene lokale virtuelle APs, `cfm-iso` nach dem Verbinden – DW1.12), `txPower`/Band aus je AP
+  und CRS-Switches, zwei Gäste an verschiedenen APs und der zweite Standort für die WLAN-Fixes (Rest von TODO 74), `txPower`/Band aus je AP
   (DW3.7), LACP-Bonds, MLAG und isolierte VLANs an Switches (DP2.1, DP2.2, DP3.1), dazu Einzelfragen unter [Offen auf Hardware](#offen-auf-hardware). Plane für jeden weiteren
   Gerätetyp einen Pilotbetrieb mit einem Testgerät ein. Neu seit 2026-11-05: `$cfmSniff mirror=` (DU2.3.1), Pakete
   auf dem Backup (TODO 7); der umschaltbare Port (DP1.4) nur an einem hAP be³ Media, nicht an einem CRS.
@@ -313,6 +312,28 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Wechsel auf einen DFS-Kanal. Framework-Update mit DM1.4/DG2.4.1 im selben Release: Module vorab importiert,
   `$cfmCheck` gibt selbst aus, alle Geräte `ok`.
 
+* **PPSK mit normaler Passphrase und FT-Roaming** (DW2.2, DW2.2.1, TODO 74 b): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). *2026-11-12 (CRS418 als CAPsMAN,
+  7.25, v37):* normale Passphrase als Gruppeneintrag (DW2.2.1) und PPSK nebeneinander in einer SSID, Secret-Push trennt
+  verbundene PPSK-Clients nicht mehr, FT-Wechsel zwischen den Bändern eines Radios-Paars behält das VLAN (der Kommentar
+  mit der Gruppe steht nur nach einer vollen Anmeldung). Ein neues Android-Profil
+  meldete mit der PPSK zunächst „falsches Passwort“, ein späterer Versuch ging. *Korrektur 2026-11-13:* Die SSID bot
+  nur WPA2 an (`authentication-types=wpa2-psk` an allen Radios) – die Vermutung „zuerst SAE“ trifft nicht zu, Ursache
+  offen (Tippfehler oder WPA3 im Profil gewählt?), Wiederholung vor Ort.
+  *2026-11-17 bestanden (v39):* normale Passphrase von der Test-SSID → `vlan-id=200` (ein erster Versuch brach nach 7 s
+  ab, mit Lease aus VLAN 200 – der Schlüssel war angenommen, Ursache beim Handy); FT-Roaming mit PPSK (`ft-wpa2-psk`,
+  VLAN 2) ap1 → ap2 → cm1 → ap1, auch zwischen den Bändern, Dauer-Ping ohne Verlust.
+* **Weitere SSIDs im lokalen Fallback, Vorgeschichte** (DW1.8 bis 2026-11-16, TODO 40): 2026-11-04 hing keine
+  lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent.
+  *2026-11-12 (v37):* beide hAP ax² hängen die lokale Kopie `cfm-guest` an die Gast-Interfaces, ohne `force`-Push.
+  Offen: der Client-Test im Fallback (CAPWAP zu einem AP sperren).
+  *2026-11-16 (v39, hAP ax², 7.25; Trennung per Bridge-Filter `output` auf die CAPsMAN-MAC, 3 min):* die
+  **Master-SSID sendet lokal weiter** (gleiche BSSID, Client nach ~10 s wieder verbunden, VLAN des Masters geht,
+  Rückkehr ohne Aussetzer). Die **Gast-Kopie sendet nicht**: Laptop mit fester BSSID der Gast-SSID → NetworkManager
+  `ssid-not-found` nach 16 s; Scan im Fallback zeigt am AP nur die Master-SSID, obwohl `cfm-guest` an den
+  Gast-Interfaces hängt und sie nach der Rückkehr `running` sind. cfm greift im Fallback nicht ein (erst der
+  Agent-Lauf meldet „WLAN im lokalen Fallback“). Diagnose (Log aus dem AP nach 60 s ohne CAPsMAN): nur die Master
+  aktiv, die vom CAPsMAN angelegten Slaves deaktiviert oder weg – Ursache gefunden, neu gelöst mit DW1.12 (nächster Eintrag). Dabei 5 GHz im
+  Fallback in DFS-CAC (lokale Kanalwahl). Clients ohne feste BSSID wechseln in 1–3 s zum Nachbarn.
 * **Fallback weiterer SSIDs (DW1.12)** – 2026-11-18 an einem Standort (CRS418 als CAPsMAN, zwei hAP ax², 7.25, v40):
   Probelauf je AP `add=4;rem=0;set=2` (DW1.12.1: kein `entfernt: … wdp…`). Erster Apply schaltet `slaves-static` ab
   (CAP trennt ~4 s), `cfm-apfollow` startet den zweiten Apply ~50 s später von selbst, er entfernt je AP **10** alte
@@ -322,7 +343,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Rückkehr: „aus“ 0–6 s nach dem Verbinden. **Befund:** den Gast-Slave am 5-GHz-Radio legt der CAP erst nach der
   CAC an – `cfm-fallback` trug nur zwei Takte nach dem Verbinden nach, der Slave stand bis zum nächsten Agent-Lauf
   (bis 15 min) ohne `cfm-iso` (zweimal reproduziert); die `fb-…` im Fallback ebenso. Fix DW1.12.2 (Abgleich in jedem
-  Takt), Hardware offen.
+  Takt): *2026-11-23 bestanden (v42, ap2, TODO 94):* Fallback-SSIDs an nach ~20 s, bei der Rückkehr beide Gast-Slaves
+  (2,4 und 5 GHz) in derselben Sekunde in `cfm-iso` („nachgetragen (cfm-fallback)“), Verweise auf die vorher neu
+  angelegten Interfaces entfernt. Nicht geprüft: zwei Gäste im Fallback ohne Ping untereinander.
 
 * **Kanalbreite in `radios`, Kanäle live, Vorschlag 5 GHz (DW3.8, TODO 91, DW3.9)** – 2026-11-18 am selben Standort:
   `$cfmCheck` warnt bei 5660–5700 mit 80 MHz vor der Blockgrenze 5725 (5580 nicht). `$cfmWifiScan band=5` lieferte
@@ -364,15 +387,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Bridge nach Neustart/Rollback:** Auf CHR nimmt eine Bridge mit VLAN-Filtering nach dem Boot sporadisch keine
   getaggten Frames an (cfm startet die Ports dann neu). Betrifft das auch Geräte mit Switch-Chip? Auf Hardware
   prüfen, ob die Log-Meldung „Bridge-Ports werden neu gestartet“ auftritt (bisher ein Datenpunkt ohne, siehe oben).
-* **PPSK** (DW2.2): Die VLANs aus den Einträgen gelten, auch mit FT (2026-11-04). *2026-11-12 (CRS418 als CAPsMAN,
-  7.25, v37):* normale Passphrase als Gruppeneintrag (DW2.2.1) und PPSK nebeneinander in einer SSID, Secret-Push trennt
-  verbundene PPSK-Clients nicht mehr, FT-Wechsel zwischen den Bändern eines Radios-Paars behält das VLAN (der Kommentar
-  mit der Gruppe steht nur nach einer vollen Anmeldung). Ein neues Android-Profil
-  meldete mit der PPSK zunächst „falsches Passwort“, ein späterer Versuch ging. *Korrektur 2026-11-13:* Die SSID bot
-  nur WPA2 an (`authentication-types=wpa2-psk` an allen Radios) – die Vermutung „zuerst SAE“ trifft nicht zu, Ursache
-  offen (Tippfehler oder WPA3 im Profil gewählt?), Wiederholung vor Ort. Offen: Roaming mit PPSK zwischen zwei CAPs,
-  `ppskOnly`; SSIDs mit `ppsk` nur WPA2 (Daten oder `$cfmCheck`-Warnung, nicht entschieden – MikroTik: multi-passphrase
-  nicht mit WPA3-PSK).
+* **PPSK – Rest** (DW2.2): `ppskOnly`; SSIDs mit `ppsk` nur WPA2 (Daten oder `$cfmCheck`-Warnung, nicht entschieden –
+  MikroTik: multi-passphrase nicht mit WPA3-PSK); zweiter Standort (TODO 74).
 * **Backup-Manager** (`manager-backup`, DM3.1/DM3.2/DS2.5) – bisher nur im Labor (`e2e.sh`: cm2, auch als
   `manager-backup,ap`). *2026-11-08 an einem Standort bestanden (siehe oben):* Spiegel, gesperrte Geräte-User,
   `primary/on`/`off` am Webhook, Geräte ziehen nicht vom Backup. Offen: Platz auf dem Backup über längere Zeit,
@@ -406,39 +422,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Standort vorher von Hand gelöscht.)
 * **Schaltbare SSID** (DW4.1/DW4.2, TODO 58): Aufräumen der festen Interfaces eines abgebauten AP; bleiben beim
   Abschalten von `capsmanRadios` feste Interfaces der eigenen Radios stehen?
-* **Isolation im Fallback und nach dem Wiederverbinden (DW1.12.2, TODO 94):** nach dem Release mit dem Fix an einem AP
-  trennen wie unten (3): im Fallback `fb-guest-…` in `cfm-iso` (Log „nachgetragen (cfm-fallback)“), zwei Gäste am
-  selben AP ohne Ping untereinander; nach der Rückkehr alle Gast-Slaves (auch 5 GHz nach der CAC) binnen 10 s in
-  `cfm-iso` (`/interface/bridge/port/print where dynamic` gegen `/interface/list/member/print where list=cfm-iso`).
-  Der Rest des Testplans ist am 2026-11-18 bestanden (siehe [Bestanden](#bestanden)).
 * **Kanalvorschlag nach DW3.9.1 (TODO 95):** nach dem Framework-Upload `$cfmWifiScan band=5` am CAPsMAN: „Aktuell“
   mit den echten Breiten (z.B. `ap2=5180/80`, nicht `/20`), kein `cm1=?`, Anteil „Leistung“ für die hAP ax² 0;
   `$cfmCheck` ohne „radios nennt cm1 ohne Rolle“.
-* **Fallback weiterer SSIDs (DW1.12, TODO 74 a)** – *bestanden 2026-11-18 bis auf die Isolation (DW1.12.2, oben);
-  Text bleibt als Testablauf:* Nach Framework-Upload und Release
-  (Release-Notiz: „DW1.12“) an jedem AP mit `fallback`: (1) Log `slaves-static` abgeschaltet und `cfm-apfollow`, nach
-  dem Wiederverbinden zweiter Apply mit „statischer virtueller AP … entfernt“ (an einem AP lagen fünf alte); danach
-  `/interface/wifi/print where !dynamic and master-interface!=""` nur noch `fb-…`. (2) `fb-guest-wifi1`/`-wifi2` da,
-  `X` (aus), CAPsMAN-Betrieb ungestört: Gast-SSID am AP weiter vom CAPsMAN (`/interface/wifi/print` am CAPsMAN), keine
-  Fehlermeldung zu `fb-…` im Log. **Wenn doch** (Konflikt mit dem vom CAPsMAN betriebenen Radio): festhalten,
-  Rückfall „anlegen/löschen im Skript“ (DW1.12 verworfen) umsetzen. (3) Trennung wie 2026-11-16 (Bridge-Filter
-  `output` auf die CAPsMAN-MAC, 3 min): nach ~20 s Log „kein CAPsMAN seit ~20 s - lokale Fallback-SSIDs an“, Gast-SSID
-  im Scan, Laptop mit fester BSSID verbindet (`fb-…` hat eine eigene MAC – BSSID notieren), Lease im Gast-VLAN,
-  Isolation (Ping zu einem zweiten Gast scheitert). (4) Filter weg: „CAPsMAN wieder verbunden - lokale Fallback-SSIDs
-  aus“, ~20 s später `cfm-iso` nachgetragen (Log „nach dem Verbinden“), Gast wieder über den CAPsMAN. (5) Wieviel
-  Zeit vergeht bis zur Gast-SSID (Ziel: ~30 s nach dem Abriss)? 5 GHz nach CAC?
-* **Weitere SSIDs im lokalen Fallback** (bis 2026-11-16 DW1.8, TODO 40a) und der Client-Test im Fallback. 2026-11-04 hing keine
-  lokale Kopie an (SSID der CAP-Slaves nur in `monitor`→`about`); Fix DW1.8.1 mit zweitem Apply vom Agent.
-  *2026-11-12 (v37):* beide hAP ax² hängen die lokale Kopie `cfm-guest` an die Gast-Interfaces, ohne `force`-Push.
-  Offen: der Client-Test im Fallback (CAPWAP zu einem AP sperren).
-  *2026-11-16 (v39, hAP ax², 7.25; Trennung per Bridge-Filter `output` auf die CAPsMAN-MAC, 3 min):* die
-  **Master-SSID sendet lokal weiter** (gleiche BSSID, Client nach ~10 s wieder verbunden, VLAN des Masters geht,
-  Rückkehr ohne Aussetzer). Die **Gast-Kopie sendet nicht**: Laptop mit fester BSSID der Gast-SSID → NetworkManager
-  `ssid-not-found` nach 16 s; Scan im Fallback zeigt am AP nur die Master-SSID, obwohl `cfm-guest` an den
-  Gast-Interfaces hängt und sie nach der Rückkehr `running` sind. cfm greift im Fallback nicht ein (erst der
-  Agent-Lauf meldet „WLAN im lokalen Fallback“). Diagnose (Log aus dem AP nach 60 s ohne CAPsMAN): nur die Master
-  aktiv, die vom CAPsMAN angelegten Slaves deaktiviert oder weg – Ursache gefunden, neu gelöst mit DW1.12 (oben). Dabei 5 GHz im
-  Fallback in DFS-CAC (lokale Kanalwahl). Clients ohne feste BSSID wechseln in 1–3 s zum Nachbarn.
 * **MLO mit FT** unter 7.25 („wifi - add fast transition support for MLD devices“, DW2.3, TODO 48).
 * **Neue Master-SSID mit eigenen Radios** (DW1.11): Schaltet der Secret-Push den CAPsMAN ein, provisioniert der
   erzwungene Apply die eigenen Radios mit allen SSIDs? (CHR hat keine Radios.) Beim nächsten Release mit neuer
@@ -451,8 +437,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 * **Isolierte VLANs** (DP3.1) an echten APs: Der CAPsMAN gibt `interface-list` nicht an die CAPs weiter, und
   Client-Isolation trennt nicht zwischen den Radios eines AP (beides 2026-11-04). *2026-11-12 (v37):* zwei Gäste an
   verschiedenen Radios des CAPsMAN (CRS418, 2,4 und 5 GHz) erreichen einander nicht mehr (Bridge-Filter, letzte
-  Regel `drop`), Gateway und Internet gehen; `cfm-iso` an den APs enthält die Gast-Interfaces. Offen: zwei Gäste an
-  verschiedenen APs und die Zähler am AP. Sieht der
+  Regel `drop`), Gateway und Internet gehen; `cfm-iso` an den APs enthält die Gast-Interfaces. Offen (TODO 74, geplant
+  28./29.11. am zweiten Standort): zwei Gäste an verschiedenen APs und die Zähler am AP. Sieht der
   Bridge-Filter WLAN-Frames als `ip` oder als `vlan` (Labor: virtio `ip`, e1000 `vlan`; die MAC-Regeln greifen in
   beiden Fällen)? An Switches: `hw=no` an isolierten
   Access-Ports (Durchsatz über die CPU).

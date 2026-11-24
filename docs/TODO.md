@@ -19,6 +19,9 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   je AP und Band aus (72 → DW3.7); 5-GHz-Pool der Vorlage mit DFS (87 → DW3.6); Hinweis in `upload-seed.sh` (86).
   *Hardware 2026-11-18 (v40) bestanden* bis auf die Isolation nach dem Wiederverbinden (→ 94); offen aus DW3.7 der
   Pegeltest von `txPower` am CAP ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
+* **Neu 2026-11-24:** 55 (NetBox) entschieden als Variante C: in NetBox planen (Geräte, Kabel, Ports mit
+  cfm-Profil als Custom Field, VLANs, Prefixe, alle IPs), Abgleich gegen Soll und Ist nur auf Wunsch, aus NetBox
+  per Custom Script auslösbar; NetBox schreibt nicht in die Site-Daten (DT2.2). Sechs Fragen vor der Umsetzung offen.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -300,13 +303,38 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     bei `$cfmFind`/cfm-Monitor). Standorte, die nur per WireGuard erreichbar sind: Peer für den
     LibreNMS-Server. Die Netzanbindung (zweite Schnittstelle im MGMT-VLAN, entschieden 2026-10-16) steht in
     [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen).
-55. **Netbox** (Idee, 2026-10-16, vorerst nicht) – zwei Varianten merken:
-    * **Einweg-Export cfm → Netbox:** Tool liest das Overlay (`pull-site.sh`), `inventory.rsc`,
-      `vlans.rsc`, `leases.rsc` und `netzplan.csv` (`$cfmLinks`) und legt per API Site, Geräte
-      (Modell, Seriennummer, Rolle, RouterOS-Version), Interfaces, MGMT-IPs, VLANs, Prefixe, feste IPs
-      mit DNS-Namen und Kabel an. Nur Doku, für die Fehlersuche wenig Nutzen.
-    * **Netbox als Quelle:** Netbox erzeugt `vlans.rsc`/`leases.rsc` u.a. Widerspricht DT2.2 (der Manager
-      führt die Site-Daten, der cfm-Editor schreibt hinein) – bräuchte eine neue Entscheidung, wer gewinnt.
+55. **NetBox: planen und abgleichen** (Idee 2026-10-16; *Variante C entschieden 2026-11-24*, noch nicht
+    umgesetzt). Eine NetBox-Instanz gibt es bereits. Die beiden früheren Varianten bleiben verworfen bzw. zurückgestellt:
+    * ~~**A – Einweg-Export cfm → NetBox**~~ (nur Doku, für die Fehlersuche wenig Nutzen).
+    * ~~**B – NetBox als Quelle**~~ (NetBox erzeugt `vlans.rsc`/`leases.rsc`; widerspricht DT2.2).
+    * **C – In NetBox planen, cfm abgleichen** (Wunsch des Nutzers): In NetBox werden Geräte, Verkabelung, Ports
+      samt Portkonfiguration, VLANs, Prefixe und alle konfigurierten IPs geplant. Ein Abgleich vergleicht den Plan mit
+      dem Soll in cfm (Site-Daten) und dem Ist (Inventar, Nachbarn, Adressen am Gerät) und berichtet die Abweichungen.
+      NetBox schreibt **nicht** in die Site-Daten (DT2.2 bleibt). Wahlweise erzeugt der Abgleich einen Vorschlag
+      (Diff) für die Hostdateien, `vlans.rsc` und `leases.rsc`, den man per cfm-Editor oder `upload-seed.sh --site` übernimmt.
+      * **Gegenstücke:** Geräte (Modell, Seriennummer, Rolle, Standort) ↔ `meta/inventory.rsc`; Kabel ↔ `"links"`
+        der Hostdateien (Soll) und `$cfmLinks`/`netzplan.csv` (Ist per LLDP/MNDP), also Plan, Soll und Ist
+        nebeneinander; Portliste ↔ Interface-Vorlagen des Device-Type (NetBox Device-Type-Library) gegen die Ports
+        am Gerät; VLANs ↔ `vlans.rsc`; Prefixe ↔ Netze in `vlans.rsc`; IPs ↔ feste Leases (mit DNS-Namen),
+        statische DNS-Einträge, MGMT-Adressen, VIPs (VRRP), WireGuard-Adressen und die Adressen am Gerät.
+      * **Portkonfiguration über Custom Fields**, die alles abbilden, was cfm kennt: am Interface `cfm_port` mit dem
+        vollständigen Profil (`trunk`, `trunk-ap`, `access:<vid>`, `hybrid:<vid>`, `access-sw:<vid>`, `wan`, `off`,
+        später `vport:<vid>`, außerdem Sonderwerte wie `cage`), am Gerät `cfm_port_default` (`portDefault`) und
+        ggf. weitere Host-Schlüssel (`stpPrio`, `igmp`, `portSwitch` …). Der Abgleich prüft zusätzlich, ob der
+        native 802.1Q-Modus (access/tagged, untagged/tagged VLANs) in NetBox zum Profil passt. Dann bleibt auch die
+        normale NetBox-Ansicht aussagekräftig. Bonds gehören als LAG-Interfaces dazu.
+      * **Nur auf Wunsch, aus NetBox auslösbar:** als NetBox Custom Script („cfm-Abgleich“ je Site, Ergebnis im
+        Job-Log, Vorschlag als Datei). Die Logik steckt in einem eigenständigen `tools/netbox-abgleich.py`
+        (CLI, im Labor testbar), das Custom Script ruft nur auf. Kein Lauf im Manager-Tick.
+      * **Offen, vor der Umsetzung zu klären:** (1) Wo läuft der Abgleich? Möglich ist (a) im NetBox-Container mit
+        SSH-Zugang zum Manager (eigener Nutzer nur zum Lesen, wie `cfm-cert`, `pull-site.sh`) oder (b) auf der
+        VM als kleiner HTTP-Dienst, den das Custom Script aufruft (Muster: `tools/cert-signer`, HTTP :8080).
+        (2) Woher kommt das Ist der Adressen? Liefert der Agent `/ip/address` (samt VRRP und WireGuard) schon an
+        den Manager, oder braucht es einen neuen Bericht? (3) Abbildung mehrerer Standorte: NetBox-Site je
+        cfm-Site, Standortkopplung (DR4.3) und Tunnel als Circuit oder nur als Kabel/Interface? (4) Werden
+        abgeleitete Adressen (aus Rollen berechnet, nicht in den Site-Daten) in NetBox geplant oder nur als Ist
+        angezeigt? (5) Ein Erst-Import (cfm → NetBox, Variante A als einmaliger Startpunkt), damit man nicht
+        bei null plant? (6) NetBox-Version und API-Token (nicht im Repo, wie die übrigen Secrets).
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein

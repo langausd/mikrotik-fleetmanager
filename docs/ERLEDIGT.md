@@ -10,7 +10,7 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
-* **Am 2026-11-24 (Abgleich mit den Session-Logs der Termine am Pilot-Standort):** **TODO 94** erledigt – Hardware 2026-11-23
+* **Am 2026-11-24 (Abgleich mit den Session-Logs der Termine an einem Standort):** **TODO 94** erledigt – Hardware 2026-11-23
   (v42, ap2): Rückkehr aus dem Fallback, `cfm-fallback` trägt in derselben Sekunde beide Gast-Slaves (2,4 und 5 GHz)
   in `cfm-iso` ein und entfernt die Verweise auf die alten Interfaces. **TODO 40** erledigt (Fallback weiterer SSIDs,
   Hardware 2026-11-18). **TODO 74** bis auf einen Rest bestanden (17.11.: normale Passphrase bei PPSK und FT-Roaming
@@ -874,7 +874,7 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     *2026-11-16 abends (unbeaufsichtigt, DW1.12):* (a) neu gelöst über eigene lokale virtuelle APs und das Skript
     `cfm-fallback`, (d) entfällt (`slaves-static` wird abgeschaltet, die Reste räumt die Rolle ab, TODO 85). Testplan
     für den nächsten Termin: [TESTSTAND.md](TESTSTAND.md#offen-auf-hardware) „Fallback weiterer SSIDs (DW1.12)“.
-    *Nachtrag 2026-11-24 (aus den Session-Logs):* (b) am 2026-11-17 bestanden – normale Passphrase von der Test-SSID mit
+    *Nachtrag 2026-11-24 (aus den Session-Logs):* (b) am 2026-11-17 bestanden – normale Passphrase einer Test-SSID mit
     `vlan-id=200` (der erste Versuch brach nach 7 s mit Lease aus VLAN 200 ab: der Schlüssel wurde angenommen, Ursache
     beim Handy), FT-Roaming mit PPSK `ft-wpa2-psk` ap1 → ap2 → cm1 → ap1 mit VLAN 2, Dauer-Ping ohne Verlust; (a) am
     2026-11-18 bestanden bis auf die Isolation nach der Rückkehr (94, bestanden 2026-11-23); (d) entfällt (DW1.12).

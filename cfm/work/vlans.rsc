@@ -4,6 +4,7 @@
 #  zone   Firewall-Zone (mgmt|lan|iot|guest|… siehe policy in global.rsc)
 #  net    Subnetz; Default 192.168.<VID>.0/24 (nur VID <= 255)
 #  gw     Host-Anteil des Gateways/VRRP-VIP (Default 1)
+#  vrid   VRRP-ID (1-255) - nur nötig bei VRRP (routerId) und VID > 255; sonst gilt die VID
 #  dhcp   "a-b" Host-Bereich des DHCP-Pools oder "no" (Default "no")
 #  dns    DNS-Server für DHCP-Clients (Default = Gateway)
 #  dhcpGw Host-Anteil des Gateways, das DHCP-Clients bekommen, wenn es nicht der Router sein soll -

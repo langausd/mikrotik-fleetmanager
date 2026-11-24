@@ -31,6 +31,10 @@ lokale Ausnahmen bleiben möglich. Kein Ansible, kein Container, keine externe A
   Status, WLAN-Schild mit QR-Code als A4-PDF)
   und den cfm-Monitor (WLAN-Clients und Roaming, Gerätesuche), auf Routern cfm-DNS (Clients sehen gesperrte
   Domains und schalten sie befristet frei, DN3.2); den Code lädt es vom Gerät (DT3.2).
+* **Zertifikate:** Jedes Gerät bekommt für WebFig und API ein Zertifikat einer öffentlichen CA (z.B. Let's Encrypt);
+  den Schlüssel erzeugt es selbst, signiert wird außerhalb von RouterOS (`tools/cert-signer/`, DS3.6).
+* **NetBox:** Geräte, Kabel, Ports, VLANs und Adressen in NetBox planen und mit cfm und den Geräten abgleichen
+  (`tools/netbox-abgleich.py`, DT2.3); NetBox schreibt nichts in cfm.
 
 Alle Design-Entscheidungen samt verworfener Alternativen stehen in [docs/DECISIONS.md](docs/DECISIONS.md).
 **Für den Einsatz in der eigenen Flotte:** [docs/admin-guide.md](docs/admin-guide.md) (Planung,
@@ -84,6 +88,11 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `tools/rsc-check.py` | RouterOS-Fallen in `.rsc`-Dateien statisch finden; Pre-Commit-Hook `tools/git-hooks/`, GitHub Action `rsc-check` |
 | `tools/wg-client-setup.sh` | WireGuard-Verbindung zum Router per NetworkManager (`nmcli`) anlegen |
 | `tools/pcap-ziele.py` | Internet-Ziele eines Geräts aus einem Mitschnitt (pcap/pcapng), Vorschlag für eine `allow`-Liste |
+| `tools/wifi-sign.py` | WLAN-Schild als A4-PDF mit QR-Code, SSID und Passphrase |
+| `tools/wlan-btm.py` | WLAN-Mitschnitt auswerten: meldet ein Client 802.11v/k/r, bekommt er Wechselvorschläge (DW2.5) |
+| `tools/netbox-abgleich.py` | Planung in NetBox mit cfm (Soll) und den Geräten (Ist) abgleichen (DT2.3) |
+| `tools/home-assistant/` | Gast-SSID und umschaltbaren Port aus Home Assistant schalten ([Anleitung](docs/home-assistant.md)) |
+| `tools/cert-signer/` | Signer für die Gerätezertifikate: CSRs vom Manager lesen, per certbot und acme-dns signieren (DS3.6) |
 | `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |
 | `tools/git-host/cfm-git-sync` | externe Git-Sicherung (Forced Command auf einem Linux-Host) |
 | `tools/chr-lab/` | Testlabor mit RouterOS-CHR in QEMU: `lab.sh`, Gesamttest `e2e.sh`, Onboarding-Test `e2e-onboard.sh`, Router-Probe mit drei VRRP-Routern und Standortkopplung `e2e-vrrp.sh`, LACP/MLAG und isolierte VLANs `e2e-mlag.sh`, Lab-Overlays `seed/`, `seed-vrrp/`, `seed-mlag*/`, Empfänger für Meldungen `notify-sink.py`, dyndns2-Attrappe `fake-ddns.py` |
@@ -97,12 +106,12 @@ Auf dem Manager (`cfm/` bzw. `flash/cfm/`): `work/`, `meta/`, `archive/v<N>/`, `
 
 | Rolle | Inhalt |
 |---|---|
-| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, SNMPv3 für LibreNMS (`snmp`, DU4.3), RAM-Log ohne `system,info` (DU3.2), Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Agent |
+| `base` (immer) | Identity, Bridge + VLAN-Filtering, Port-Profile, Bridge-VLAN-Tabelle, MGMT-VLAN/IP/Route, IP-Services nur aus MGMT, SSH-Härtung, Zeitzone/NTP/Syslog, SNMPv3 für LibreNMS (`snmp`, DU4.3), RAM-Log ohne `system,info` (DU3.2), Admin-User und optional deren SSH-Keys (`authorized_keys.<user>`), Firmware-Aktivierung, Bonds (`bonds` im Hostfile) und MLAG (`mlag.rsc`), Filter isolierter VLANs, Zertifikat für `www-ssl`/`api-ssl` (`tls`, DS3.6), Agent |
 | `switch` | IGMP-Snooping, DHCP-Snooping (Trunks = trusted). Bewusst schlank. |
 | `ap` | CAP des wifi-CAPsMAN (Name und Adresse aus dem Manifest), lokaler Fallback der Haupt-SSID je Radio (`capsman-or-local`), weitere SSIDs mit `fallback="yes"` |
 | `capsman` | wifi-CAPsMAN aus `wifi.rsc` (Security, Datapath, Steering je Band, Mindestsignal, Trennschwelle je Band, Kanäle, Provisioning, PPSK); genau ein Gerät, eigene Radios optional (`capsmanRadios`); schaltbare SSIDs (`switch`, Skripte z.B. für Home Assistant, Auto-Aus; feste Interfaces, die übrigen SSIDs senden beim Schalten weiter) |
 | `router` | VLAN-Interfaces, Adressen (VRRP optional: `.250+routerId`, VIP `.gw`), DHCP (bei VRRP nur Master) mit festen Leases aus `leases.rsc`, Zonen-Listen, Firewall-Block mit Hook-Chains `local-input`/`local-forward`, NAT je Policy-Ziel, Freigabelisten, DNS mit Namen `<name>.<domain>` für Leases und alle aufgenommenen Geräte, optional Upstream/Adlisten/Ausnahmen/Weiterleitungen/Abfrage-Log aus `dns.rsc` (DN3.1) und DNS-Selbstbedienung für Clients (DN3.2), NTP-Server, WireGuard-Fernzugang (optional) |
-| `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN; CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
+| `manager` | Manager-Funktionen, SFTP-Gruppe, DHCP im Onboarding-VLAN, mit `tls` der User `cfm-cert` für den Zertifikat-Signer (nur lesend); CAPsMAN nur, solange kein Gerät die Rolle `capsman` hat; Manager-Tick alle `mgrTick`, Onboarding jede Minute |
 | `manager-backup` | wie `manager`, ohne CAPsMAN, spiegelt den Primary, read-only; Geräte ziehen erst nach `$cfmPromoteManager` von hier (SFTP-User bis dahin gesperrt) |
 
 Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsman"`).
@@ -168,6 +177,9 @@ Rollen sind kombinierbar (`"switch,manager"`, `"router,manager"`, `"switch,capsm
 | Gerät finden (MAC, IP, Name, Port, AP/SSID) | `$cfmFind <text>`, Filter `host=` `port=` `ap=` `ssid=` `vlan=` `signal=-75`; im Browser: cfm-Monitor in WebFig des Managers, Reiter Suche (Admin-Guide 8.11) |
 | Clients je AP, Roaming nachvollziehen | Lesezeichen „cfm-Monitor“ in WebFig des CAPsMAN, Reiter WLAN (`tools/editor/install.html`, Admin-Guide 8.10) |
 | Gast-WLAN nur bei Bedarf | `"switch"="off"` an der SSID → Release; am CAPsMAN `cfm-ssid-guest-on`/`-off` (z.B. aus Home Assistant über die API, [Anleitung](docs/home-assistant.md)), Auto-Aus mit `autoOff` |
+| Gerät mitschneiden (z.B. für eine `allow`-Liste) | `$cfmSniff host=<router> lease=<name> dauer=12h` → Datei unter `cfm/sniff/`, auswerten mit `tools/pcap-ziele.py` (DU2.3) |
+| Zertifikate der Geräte | `tls` in `global.rsc` und Signer (Admin-Guide 8.20); Stand je Gerät: `$cfmTlsStatus` |
+| Planung in NetBox abgleichen | `tools/netbox-abgleich.py --netbox … --site … --manager …` (Admin-Guide 8.21) |
 | Kanalplan per Scan | `$cfmWifiScan` (der CAPsMAN scannt über jeden AP und seine eigenen Radios nacheinander, Pin-Vorschlag für 2,4 GHz nach einem Kostenmodell, Admin-Guide 8.7, für 5/6 GHz Kanal und Breite je AP als Plan „breit“ und „robust“, DW3.9; Zigbee, Thread, Milight und Bluetooth aus `wifi.rsc` → `others` zählen mit, DW3.5); `host=<ap>` misst nur einen AP neu |
 
 ## Automatisches Onboarding (Push in die Werks-Config)
@@ -240,9 +252,9 @@ auf sein normales Profil zurück. Stand: `$cfmOnboardStatus`, Abbruch: `$cfmOnbo
 * Einzelne Dateien < 60 KB (`/file get`-Grenze), das prüft `$cfmRelease`.
 * **Bestandsgeräte:** Vor dem ersten Apply `$cfmAudit` laufen lassen. Alte Bridge-VLAN-Einträge mit
   mehreren VIDs kollidieren sonst mit den verwalteten Einträgen (per `op=purge` entfernen).
-* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2, 7.25 und 7.26beta1
+* RouterOS ≥ 7.22 (`rosMin`); im CHR-Labor getestet mit 7.24.2, 7.24.5, 7.25rc1, 7.25rc2, 7.25, 7.25.1 und 7.26beta1
   (Einzelheiten: [docs/TESTSTAND.md](docs/TESTSTAND.md)). Auf
-  Hardware im Einsatz an zwei Standorten (seit 7.23.1, inzwischen alle Geräte auf 7.25): CRS418 als Router und Manager, Manager als
+  Hardware im Einsatz an zwei Standorten (seit 7.23.1, inzwischen alle Geräte auf 7.25 bzw. 7.25.1): CRS418 als Router und Manager, Manager als
   CHR in einer VM, CRS328 als Core-Switch, CRS310, hAP be³ als CAPsMAN und AP, hAP ax²/ax³, cAP ax, hEX,
   L009; an einem Standort routen vier davon (hAP be³, CHR, CRS310, CRS328) per VRRP. Ab 7.24
   brauchen Skripte, die aus Winbox gestartet `ssh-exec` nutzen, ggf. `dont-require-permissions=yes`.

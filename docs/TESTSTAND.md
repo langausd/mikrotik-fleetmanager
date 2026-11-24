@@ -319,7 +319,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   meldete mit der PPSK zunächst „falsches Passwort“, ein späterer Versuch ging. *Korrektur 2026-11-13:* Die SSID bot
   nur WPA2 an (`authentication-types=wpa2-psk` an allen Radios) – die Vermutung „zuerst SAE“ trifft nicht zu, Ursache
   offen (Tippfehler oder WPA3 im Profil gewählt?), Wiederholung vor Ort.
-  *2026-11-17 bestanden (v39):* normale Passphrase von der Test-SSID → `vlan-id=200` (ein erster Versuch brach nach 7 s
+  *2026-11-17 bestanden (v39):* normale Passphrase einer Test-SSID → `vlan-id=200` (ein erster Versuch brach nach 7 s
   ab, mit Lease aus VLAN 200 – der Schlüssel war angenommen, Ursache beim Handy); FT-Roaming mit PPSK (`ft-wpa2-psk`,
   VLAN 2) ap1 → ap2 → cm1 → ap1, auch zwischen den Bändern, Dauer-Ping ohne Verlust.
 * **Weitere SSIDs im lokalen Fallback, Vorgeschichte** (DW1.8 bis 2026-11-16, TODO 40): 2026-11-04 hing keine
@@ -355,7 +355,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   vorher/nachher (2026-11-19): im Mittel gleich, Randlage leicht besser; ein Radio nach dem Wechsel auf 5180 bei
   gleicher Leistung (18 dBm) 4–10 dB schwächer, Ursache offen. Fehler im Vorschlag (Breite `/20` wegen Zusatz `/D`,
   CAPsMAN-Radio `?` in der CAC, Fehlalarm Rolle) → DW3.9.1, Hardware offen (unten).
-* **Zertifikate für WebFig und API** (DS3.6, 2026-11-23, Pilot-Standort, v42, 7.25, hAP ax² und CRS418): Schlüssel und
+* **Zertifikate für WebFig und API** (DS3.6, 2026-11-23, an einem Standort, v42, 7.25, hAP ax² und CRS418): Schlüssel und
   CSR auf dem Gerät (mit dem zweiten Agent-Lauf nach dem Apply), Signer im anderen Standort per SSH als `cfm-cert`
   über eine Fritz!Box-Kopplung, certbot `--csr` mit acme-dns (~10 s je Gerät), `cfm-cert-pull`, Import der echten Kette
   von Let's Encrypt; `$cfmTlsStatus` alle drei `ok`, 89 Tage.
@@ -363,7 +363,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 ## Offen auf Hardware
 
 * **Zertifikate – Rest** (DS3.6): Browser und `api-ssl` mit dem Namen (Home Assistant), Erneuern nach `renew` Tagen ohne
-  Eingriff (erstmals ~Januar 2027), Signer für einen zweiten Manager (zweiter Standort).
+  Eingriff (erstmals ~Januar 2027), Signer für einen zweiten Manager (anderer Standort).
 * **Je AP: Pool, `txPower`, Band aus** (DW3.7, 2026-11-16, Labor grün): Senkt `txPower` am CAP den Pegel wie an der
   CRS418 (Pegel an einem festen Empfänger, nicht nur `monitor`)? Übernimmt der CAP die Leistung aus der
   Master-Konfiguration des CAPsMAN, auch für die virtuellen APs? `"off"`: Regel `action=none` mit einem echten CAP,

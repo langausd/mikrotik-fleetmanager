@@ -36,7 +36,8 @@ systemctl daemon-reload; systemctl enable --now cfm-cert-http.service cfm-cert-s
 Danach:
 
 * **DNS:** je Gerät `_acme-challenge.<name>.<domain> CNAME <cname_target>` (dasselbe Ziel für alle). Ein Gerät, das
-  neu dazukommt, braucht nur diesen Eintrag – keine neue Registrierung.
+  neu dazukommt, braucht nur diesen Eintrag – keine neue Registrierung. `cfm-cert-signer.py -c … --cnames` gibt die
+  Zeilen für alle bekannten Namen aus.
 * **Firewall des Signers:** Port 8080 nur für die Manager öffnen; die acme-dns-API nur für localhost bzw. die Hosts mit
   eigenem Client.
 * **Manager:** `tls` in `global.rsc` (Admin-Guide 8.20), `authorized_keys.cfm-cert`, Release.

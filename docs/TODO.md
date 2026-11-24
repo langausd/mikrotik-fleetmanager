@@ -4,7 +4,7 @@
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 98). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 99). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -108,7 +108,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
     oben: Kandidaten aus dem Pool, `all=yes` für alle EU-Kanäle (der Pool aus TODO 90 enthält 5660 nicht mehr);
     Suche über die je AP besten K Kandidaten statt aller ~3400 Pläne, danach zwei Runden reihum.
 * **Rest von 74 am Wochenende 28./29.11. am zweiten Standort:** zwei Gäste an verschiedenen APs (kein Ping untereinander, Zähler
-  `cfm:iso` am AP: `ip` oder `vlan`?) und die Tests von 74 am zweiten Standort. Am Pilot-Standort bestanden: Fallback weiterer
+  `cfm:iso` am AP: `ip` oder `vlan`?) und die Tests von 74 am zweiten Standort. Am ersten Standort bestanden: Fallback weiterer
   SSIDs (18.11.), Isolation nach der Rückkehr (94, 23.11.), normale Passphrase und FT-Roaming mit PPSK (17.11.).
 * **Vorbereitet, Test nur mit Hardware vor Ort** (Code fertig, standardmäßig aus): 39 (Steering je Band +
   Mindestsignal, DW2.4) läuft seit 2026-10-17 an einem Standort ([TESTSTAND.md](TESTSTAND.md#bestanden)).
@@ -202,6 +202,12 @@ bei PPSK, `cfm-iso` nach dem Neuverbinden) sind seit 2026-11-23 auf Hardware beh
   `add=6;rem=3;set=6`, sw1 mit derselben Rolle sauber, die Wiederholung grün. Die VMs waren schon ersetzt, das
   Agent-Log von sw2 fehlt. Bei Wiederkehr vor dem Stoppen `/log/print where message~"gesetzt|entfernt|angelegt"`
   auf sw2 sichern.
+
+* **98 – VLAN-ID über 255 mit VRRP ohne `vrid`** (Befund 2026-11-24 bei der Doku-Prüfung, nicht beobachtet):
+  `roles/router.rsc` nimmt die VID als VRRP-ID, über 255 den VLAN-Schlüssel `vrid`. Fehlt er, legt die Rolle das
+  VRRP-Interface ohne gültige `vrid` an (Apply-Fehler, Rollback). `$cfmCheck` sollte das vorher melden (VID > 255,
+  `l3` nicht `no`, ein Router mit `routerId` → `vrid` 1–255 und eindeutig). Dokumentiert ist `vrid` seit 2026-11-24
+  (Admin-Guide 4, Kopf von `vlans.rsc`); ebenso braucht ein solches VLAN `net` (`$cfmNet`).
 
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
@@ -426,7 +432,7 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     * *2026-11-04:* WLAN-Prüfung aus `mgr-check.rsc` nach `mgr-checkw.rsc` ausgelagert (DM1.1; 57,4 → 47,1 KB),
       Labor 7.25 ok (Gesamttest und Übergang, TESTSTAND), Hardware offen: erstes Release nach dem Update (der WLAN-Teil kommt aus `work/`). Nicht empfohlen:
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
-74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04 – Rest** (bestanden am Pilot-Standort, siehe
+74. **Hardware-Test WLAN nach den Fixes vom 2026-11-04 – Rest** (bestanden am ersten Standort, siehe
     [ERLEDIGT.md](ERLEDIGT.md#frühere-fassungen) und [TESTSTAND.md](TESTSTAND.md#bestanden)): **(c)** zwei Gäste an
     *verschiedenen* APs – kein Ping untereinander, Gateway und Internet gehen, Zähler `cfm:iso` an beiden APs (sieht der
     Bridge-Filter WLAN-Frames als `ip` oder `vlan`?); bisher nur an den Radios des CAPsMAN geprüft (12.11.). **Zweiter

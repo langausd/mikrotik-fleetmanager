@@ -13,7 +13,7 @@ Läuft auf einem Linux-Host (z.B. dem acme-dns-Server), per systemd-Timer alle p
 Schlüssel sieht der Signer nie: Die Geräte erzeugen sie selbst. Ein CSR, der schon signiert wurde (gleicher
 öffentlicher Schlüssel), wird nicht noch einmal signiert; die Geräte erneuern selbst rechtzeitig (tls.renew).
 
-  cfm-cert-signer.py -c /etc/cfm-cert-signer.json [--dry-run] [--once-cn <CN>]
+  cfm-cert-signer.py -c /etc/cfm-cert-signer.json [--dry-run] [--force <CN>]
   cfm-cert-signer.py -c … --cnames     # CNAME-Zeilen für alle bekannten CNs (für die DNS-Zone)
 
 Konfiguration (JSON):

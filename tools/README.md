@@ -100,6 +100,7 @@ tools/pull-site.sh admin@192.168.10.2 --overlay site              # holen
 * Eine lokale Datei, die anders war, bleibt als `datei~` liegen. `upload-seed.sh` lädt solche
   Dateien nie hoch, du kannst sie vergleichen und dann löschen.
 * Dateien, die es nur im Overlay gibt, nennt das Skript, löscht sie aber nicht.
+* `--port` (SSH) und `--base flash/cfm` wie bei `upload-seed.sh`.
 * Wann: nach Änderungen am Manager, vor einem Upload mit `--site` und regelmäßig als Sicherung.
   `site/` und `site-*/` sind von Git ausgenommen. Sichere sie selbst, z.B. in einem privaten Repo.
 
@@ -201,6 +202,7 @@ Ist das Update durch, beendest du den Spiegel mit Strg+C.
   hast), `--offline` nimmt dann nur den Zwischenspeicher (`--dir`, Standard `~/.cache/cfm-upgrade-mirror`).
 * Port 80 schon belegt (z.B. Apache)? `--export /var/www/html` schreibt die Dateien statisch hinein.
   Danach `routeros/` dort wieder löschen.
+* Ohne root: `--port 8080` und eine Weiterleitung von Port 80 dorthin; `--bind <IP>` lauscht nur auf einer Adresse.
 * Die Geräte müssen deinen Rechner auf Port 80 erreichen (Firewall des Rechners). Die Pakete sind
   von MikroTik signiert, RouterOS prüft das beim Installieren.
 
@@ -255,6 +257,8 @@ Capabilities (ein Android-Handy: gezielte Probes ohne BTM-Bit, Wildcard-Probes m
 deshalb nur auf den (Re)Association Request je SSID. FT und AKM nennt das Skript nur dort – Probe Requests tragen keine
 Mobility Domain. Fehlt der Association Request, sagt die letzte Zeile das. Steht dort „meldet KEIN BSS Transition“,
 hilft bei diesem Client nur eine Trennschwelle (`drop`/`join`/`hold`).
+`--alle` zeigt jeden Management-Frame der Clients (sonst Probe Requests nur zusammengefasst), `--probe` die Fähigkeiten
+aus Probe Requests auch ohne `--mac` (zufällige MACs der Handys erscheinen dann einzeln).
 Mit PMF (WPA3) sind die Wechselvorschläge selbst verschlüsselt – das Skript zeigt dann nur Zeit, Richtung und Länge.
 Liest pcap/pcapng mit 802.11, Radiotap (mit Signal) oder TZSP; nur Standardbibliothek.
 
@@ -272,7 +276,7 @@ tools/wifi-sign.py --name Cafe --sec none                         # offenes Netz
 ```
 
 Optionen: `--title "Gäste-WLAN|Guest Wi-Fi"` (zwei Zeilen), `--hint "…"` (Zeile am unteren Rand), `--hidden` (SSID
-nicht ausgestrahlt). Typ im QR-Code: `WPA` für WPA2 und gemischt WPA2/WPA3, `SAE` nur bei reinem WPA3. Das PDF enthält
+nicht ausgestrahlt), `--passphrase-stdin` (Passphrase aus einer Pipe), `--port` (SSH-Port des Managers). Typ im QR-Code: `WPA` für WPA2 und gemischt WPA2/WPA3, `SAE` nur bei reinem WPA3. Das PDF enthält
 die Passphrase und entsteht mit Rechten `0600` – nicht ins Repo legen, nach einem Passwortwechsel neu erzeugen. Braucht
 `python3-segno` und `python3-cairo` (Debian/Ubuntu). Tests: `tools/wifi-sign-test.py`.
 Dasselbe Schild ohne Python: Knopf „WLAN-Schild“ im cfm-Editor (DT3.4.1).
@@ -298,6 +302,7 @@ tools/netbox-abgleich.py --plan plan.json --state <verz>                        
 * Ausgabe je Bereich: `✘` Abweichung, `!` Hinweis, mit `--alle` auch `·` Info (z.B. Adressen, die nur in NetBox
   stehen). `--json` gibt die Befunde als JSON aus, `--plan-speichern <datei>` legt den gelesenen Plan ab. Exit-Code
   0 ohne Abweichung, 1 mit, 2 bei einem Fehler.
+* `--port` (SSH) und `--base flash/cfm` wie bei `upload-seed.sh`.
 * `--vlan-group <slug>`: VLANs aus einer VLAN-Gruppe statt der Site. Token mit `nbt_` (NetBox 4.5) geht als Bearer,
   ältere als `Token`. Nur Standardbibliothek; Tests: `tools/netbox-abgleich-test.py`.
 
@@ -316,7 +321,8 @@ tools/wg-client-setup.sh connect --name cfm-mgmt --endpoint <öffentliche-IP>:13
 nmcli connection up cfm-mgmt                         # verbinden
 ```
 
-Die Adresse passt zu `peers.<name>.addr` in `wireguard.rsc`. Mit VRRP ist der Endpoint die VIP des
+Den Schlüssel legt `genkey` unter `~/.config/wireguard/<name>.key` ab (`--keyfile` ändert das, bei `connect`
+ebenso); `--keepalive 25` hält die Verbindung hinter NAT offen. Die Adresse passt zu `peers.<name>.addr` in `wireguard.rsc`. Mit VRRP ist der Endpoint die VIP des
 WAN-VLANs, der Key ist auf allen Routern derselbe. Mehr dazu im Admin-Guide, Abschnitt 8.8.
 
 ## `git-host/cfm-git-sync`

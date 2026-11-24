@@ -6,8 +6,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), Eigenheiten vo
 [ROUTEROS-EIGENHEITEN.md](ROUTEROS-EIGENHEITEN.md), offene Punkte in [TODO.md](TODO.md), erledigte in
 [ERLEDIGT.md](ERLEDIGT.md).
 
-> **Teststand:** Im CHR-Labor laufen alle Tests mit RouterOS 7.25 fehlerfrei (Funkteile ausgenommen). Auf Hardware
-> läuft cfm an zwei Standorten mit 13 Geräten und RouterOS 7.25, an einem davon routen vier Geräte per VRRP. Was
+> **Teststand:** Im CHR-Labor laufen alle Tests mit RouterOS 7.25.1 fehlerfrei (Funkteile ausgenommen). Auf Hardware
+> läuft cfm an zwei Standorten mit 13 Geräten und RouterOS 7.25 bzw. 7.25.1, an einem davon routen vier Geräte per VRRP. Was
 > im Einzelnen geprüft ist und was auf Hardware noch offen ist (u.a. Backup-Manager, Onboarding gegen Werks-Configs
 > von Routern, MLAG, isolierte VLANs), steht in [TESTSTAND.md](TESTSTAND.md). Plane für jeden weiteren Gerätetyp
 > einen Pilotbetrieb mit einem Testgerät ein.
@@ -47,6 +47,10 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), Eigenheiten vo
   meldet der Manager per Webhook, z.B. an Home Assistant (8.9).
 * **Geräte finden:** `$cfmFind` zeigt live, an welchem Port oder AP eine MAC, IP oder ein Name hängt,
   mit SSID und Signal bei WLAN-Clients (8.11).
+* **Zertifikate:** WebFig und API jedes Geräts bekommen ein Zertifikat einer öffentlichen CA; den Schlüssel erzeugt
+  das Gerät selbst, signiert wird außerhalb von RouterOS (8.20).
+* **NetBox:** Wer Geräte, Kabel, Ports und Adressen in NetBox plant, gleicht den Plan mit cfm und den Geräten ab
+  (8.21); NetBox schreibt dabei nichts in cfm.
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
 und die Meldungen bei Zustandswechseln; Messwerte und Verlauf liefert LibreNMS über SNMPv3, 8.12; Syslog sammelt z.B. Graylog, 8.15), keine eigene grafische Oberfläche (Terminal-Befehle am
@@ -228,6 +232,7 @@ irgendetwas ausgerollt wird.
 | `adminUser` | `disable` = Werks-User `admin` abschalten, sobald auf dem Gerät ein User aus `users` aktiv ist; `keep` = nicht anfassen | `disable` |
 | `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `reverse-proxy`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet – auch `reverse-proxy`, den RouterOS 7.2x ab Werk auf Port 443 ohne Adressbeschränkung einschaltet. `$cfmCheck` meldet unbekannte Namen und doppelte Ports als Fehler | `ssh`, `winbox` |
 | `tls` | Zertifikate einer öffentlichen CA für `www-ssl`/`api-ssl` (DS3.6, 8.20): `{"signer"="http://…:8080";"from"={"<Signer-IP>"};"services"={"www-ssl";"api-ssl"};"renew"=30}` – Name je Gerät `<name>.<domain>`; leer = aus | `{}` |
+| `capsmanApi` | Lese-Zugang per RouterOS-API auf dem CAPsMAN und auf Geräten mit `portSwitch`, z.B. für Home Assistant (DU2.1, DP1.4.1, 6.7): `{"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}`, Passwort `$cfmSecret key=user.<user>`; leer = aus | `{}` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
 | `notify` | Benachrichtigungen (DU4.1, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
 
@@ -246,6 +251,7 @@ Schlüssel ist die VLAN-ID als String.
 | `asymRouting` | `"internet"` und/oder Netze, als Wert oder Liste (`{"internet";"192.168.99.0/24"}`): nur am WAN-VLAN, wenn der Internet-Router im selben Netz steht. Hosts, die die VIP (`gw`) als Gateway nehmen, kommen damit ins Internet bzw. in private Netze hinter dem Internet-Router (z.B. dessen VPN zu einem anderen Standort) – Hinweg über die Router ohne Verbindungsverfolgung, Antwort direkt vom Internet-Router. Übergangslösung bis zu einem Transfernetz, Standard aus (8.13, DR3.2, DR3.2.1) |
 | `limit`, `limitClient` | Bandbreite `"Download/Upload"` aus Sicht der Clients, Einheiten `k`/`M`/`G` ohne Komma (`"1500k"` statt `"1.5M"`). `limit` gilt für das ganze Netz, die Clients teilen es gleich auf; `limitClient` ist die Obergrenze je Client, mit oder ohne `limit`. Die Router legen dafür eine Simple Queue `vlan<VID>` an (bei `limitClient` dazu PCQ-Typen `cfm-pcq<VID>-down/-up`) und nehmen das Netz vom Fasttrack aus. Das Limit gilt für allen gerouteten Verkehr des Netzes, auch zwischen Zonen (DR2.7) |
 | `l3` | `"no"` = reines L2-VLAN ohne Router-Interface |
+| `vrid` | VRRP-ID (1–255), nur nötig mit VRRP (`routerId`) bei einer VID über 255 – sonst ist die VID die VRRP-ID. Solche VLANs brauchen auch `net` |
 | `onboard` | `"yes"` markiert das Onboarding-VLAN (genau eins) |
 | `isolate` | `"yes"`: Clients des VLANs erreichen nur das Gateway und Broadcast, nicht einander – auch nicht über verschiedene APs oder Switches (DP3.1). Die Client-Isolation einer SSID allein trennt nur Clients am selben Radio. Neu angelegte WLAN-Interfaces der APs trägt der Agent bei jedem Lauf nach (DP3.1.1) |
 | `isolateAllow` | Ausnahmen der Isolation: Namen aus `leases.rsc` (desselben VLANs) oder MAC-Adressen, z.B. `"zigbee-hub,drucker"`; diese Geräte erreichen alle Clients und umgekehrt |
@@ -1251,7 +1257,7 @@ $cfmUpgrade ver=7.25.1 ring=1 at="2026-10-01 02:00"     # einmaliges Wartungsfen
 $cfmUpgrade ver=7.25.1 all=yes check=yes                # Probe: Pakete, Platz - kein Auftrag
 $cfmUpgrade                                             # offene Aufträge und ihr Stand
 $cfmUpgrade cancel=yes ring=1                           # Auftrag zurückziehen
-$cfmUpgrade ver=7.25.1 host=hex1 via=mirror mirror=192.168.10.50   # eingebautes Update vom Spiegel
+$cfmUpgrade ver=7.25.1 host=sw1 via=mirror mirror=192.168.10.50   # eingebautes Update vom Spiegel
 $cfmUpgrade ver=7.25.1 host=core via=internet           # eingebautes Update, Gerät hat Internet
 ```
 
@@ -1718,7 +1724,7 @@ Der Text sucht in MAC, IP, Namen, Gerät:Port, dem Nachbarn am Port, AP und SSID
 
 ```
 MAC               IP              Name                 Ort                        VLAN Info
-3A:F0:40:CE:BD:27 192.168.30.120  handy-anna           ap2 2g                     30   gast -60 dBm 154 Mbit/s seit 02:27:52
+3A:00:00:00:0A:01 192.168.30.120  handy-gast           ap2 2g                     30   gast -60 dBm 154 Mbit/s seit 02:27:52
 02:00:00:00:0C:01 192.168.30.50   drucker              sw1 ether7                 30
 02:00:00:00:0C:02                                      sw1 ether9                 30   Nachbar mini-switch, 3 MACs am Port
 ```
@@ -2162,7 +2168,7 @@ Die Grenzen setzt RouterOS selbst (`country`). `$cfmCheck` lehnt Blöcke über 5
 
 Mit `tls` in `global.rsc` bekommt jedes Gerät ein Zertifikat einer öffentlichen CA (z.B. Let's Encrypt) für
 `<name>.<domain>` (Name klein) und hängt es an `www-ssl` und `api-ssl`. Browser und Home Assistant vertrauen ihm ohne
-Ausnahme – vorausgesetzt, der Name wird benutzt (`https://ap1.site1.example.org`), nicht die IP-Adresse: Für private
+Ausnahme – vorausgesetzt, der Name wird benutzt (`https://ap1.site.example.org`), nicht die IP-Adresse: Für private
 Adressen stellt keine öffentliche CA aus.
 
 **Ablauf.** Das Gerät erzeugt Schlüssel und CSR selbst; der Schlüssel verlässt es nie. Der Manager holt den CSR mit dem
@@ -2437,7 +2443,8 @@ cd tools/chr-lab
                           # Router, Leases/DNS, Bandbreitenlimit, $cfmShow/$cfmDiff, Archiv, Schlüsselwechsel,
                           # RouterOS-Downgrade und Update vom Spiegel, Netzplan, PPSK, WLAN-Scan,
                           # Bestandsgeräte (Hostfile gw/dns/ntp/cpuVlans/bridgeFrames, Enroll ohne Apply),
-                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User, Gerätesuche, SNMPv3 …
+                          # CAPsMAN-Umzug, Watchdog-Rollback, Admin-Keys je User, Gerätesuche, SNMPv3,
+                          # Zertifikate (Test-CA), NetBox-Abgleich …
 ./e2e-onboard.sh fresh    # automatisches Onboarding eines "Werksgeräts" (Werks-IP 192.168.88.1)
 ./e2e-onboard.sh fresh dhcp   # dasselbe im CAPs-Modus (DHCP-Client, wie ein hAP an PoE/ether1)
 ./e2e-onboard.sh fresh manual # Switch gilt als nicht verwaltet ($cfmOnboard manual=yes)
@@ -2547,6 +2554,7 @@ Inventarname.
 | `state/<name>/` | `status.dat`, `export.rsc`, `audit.txt`, `plan.txt` je Gerät, offener CSR `tls.csr` (DS3.6) |
 | `state/netzplan.md` | Netzplan (Mermaid + Tabelle), auf Anforderung `netzplan.dot` und `netzplan.csv` |
 | `state/wifiscan.json` | letzte Messung von `$cfmWifiScan` (ein Band; nur mit gemessenen Netzen) |
+| `state/netbox.json`, `state/<name>/netbox.json` | ausgewertete Site-Daten für den NetBox-Abgleich (`$cfmNetbox`, 8.21), nur auf Anforderung |
 | `vault/<name>-vault.bak` | verschlüsseltes Manager-Backup |
 
 `.dat` statt `.json`, weil RouterOS lesenden SFTP-Nutzern `.json`- und `.backup`-Dateien verweigert.

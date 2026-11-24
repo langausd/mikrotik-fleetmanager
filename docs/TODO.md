@@ -22,7 +22,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Neu 2026-11-24:** 55 (NetBox) entschieden als Variante C: in NetBox planen (Geräte, Kabel, Ports mit
   cfm-Profil als Custom Field, VLANs, Prefixe, alle IPs), Abgleich gegen Soll und Ist nur auf Wunsch, aus NetBox
   per Custom Script auslösbar, das im NetBox-Container läuft; Tunnel als NetBox-Objekte; einmaliger Start-Import;
-  NetBox schreibt nicht in die Site-Daten (DT2.2). Offen: NetBox-Version.
+  NetBox schreibt nicht in die Site-Daten (DT2.2). Alle Fragen geklärt, bereit zur Umsetzung.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -334,7 +334,8 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         wenn das Ergebnis abweicht. (4) Einmaliger Start-Import cfm → NetBox (Geräte, Ports mit `cfm_port`, Kabel,
         VLANs, Prefixe, IPs, Tunnel), danach wird in NetBox gepflegt. (5) SSH-Schlüssel (und ggf. Einstellungen)
         liegen im NetBox-Container, nicht im Repo. Das Custom Script arbeitet über das ORM und braucht kein API-Token.
-      * **Noch offen:** NetBox-Version (fragt der Nutzer nach; bestimmt die Script-API und ob Tunnels vorhanden sind).
+      * NetBox-Version: mindestens 3.7 (Nutzer, 2026-11-24), Tunnels also vorhanden. Das Custom Script so schreiben,
+        dass es unter 3.7 und 4.x läuft (Unterschiede u.a. bei `log_*` und beim Ablegen von Scripts).
         *Geklärt:* Für das Ist der Adressen braucht es keinen neuen Bericht. Der Agent legt `/export terse` ab, der
         Manager holt es nach `state/<name>/export.rsc` (`$cfmCollect`). Daraus liest der Abgleich `/ip address`,
         VRRP, WireGuard, Bridge-Ports und VLANs je Gerät, zusammen mit `status.json` (Modell, Seriennummer,

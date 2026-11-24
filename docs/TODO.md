@@ -22,7 +22,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Neu 2026-11-24:** 55 (NetBox) entschieden als Variante C: in NetBox planen (Geräte, Kabel, Ports mit
   cfm-Profil als Custom Field, VLANs, Prefixe, alle IPs), Abgleich gegen Soll und Ist nur auf Wunsch, aus NetBox
   per Custom Script auslösbar, das im NetBox-Container läuft; Tunnel als NetBox-Objekte; einmaliger Start-Import;
-  NetBox schreibt nicht in die Site-Daten (DT2.2). *Baustein 1 umgesetzt (DT2.3, Labor):* `$cfmNetbox` (Soll als JSON),
+  NetBox schreibt nicht in die Site-Daten (DT2.2). *Baustein 1 umgesetzt (DT2.3, Labor 562/563):* `$cfmNetbox` (Soll als JSON),
   Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). Offen: Bausteine 2 und 3.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
@@ -351,8 +351,9 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         aus (`$cfmNetbox`, `lib/mgr-netbox.rsc` → `state/netbox.json`, `state/<name>/netbox.json`), weil sie
         RouterOS-Skripte sind; das Ist kommt aus `status.dat` (neu: Ethernet-Ports `eth`) und `export.rsc`.
         `tools/netbox-abgleich.py` (REST oder gespeicherter Plan, `--manager` per SSH/SFTP als Admin) berichtet
-        Geräte, Ports, Kabel, VLANs, Prefixe, IP-Adressen und Tunnel. Tests `tools/netbox-abgleich-test.py`, Labor
-        `e2e.sh` Schritt 14. Gegen eine echte NetBox noch nicht gelaufen. (2) *offen:* einmaliger Start-Import cfm →
+        Geräte, Ports, Kabel, VLANs, Prefixe, IP-Adressen und Tunnel. Tests `tools/netbox-abgleich-test.py` (29), Labor
+        `e2e.sh` Schritt 14 (2026-11-24: 562/563, der eine rote Punkt ein bekannter Zeitfehler, nachgestellt grün). Gegen
+        eine echte NetBox noch nicht gelaufen. (2) *offen:* einmaliger Start-Import cfm →
         NetBox (Geräte, Interfaces mit `cfm_port`, Kabel, VLANs, Prefixe, IPs, Tunnel; Custom Fields anlegen).
         (3) *offen:* NetBox Custom Script „cfm-Abgleich“ (3.7 und 4.x) samt Anleitung; am Manager ein eigener User
         nur `ssh,read` (wie `cfm-cert`) und ein Skript mit `dont-require-permissions`, das `$cfmNetbox` startet. Lesen

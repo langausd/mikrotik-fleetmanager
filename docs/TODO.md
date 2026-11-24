@@ -361,6 +361,14 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     `tools/wlan-btm.py` (tools/README): Fähigkeiten aus (Re)Association/Probe Request (BTM-Bit, 802.11k, FT, AKM),
     Ablauf, WNM-Frames. Mit PMF (WPA3) sind BTM-Request/-Response verschlüsselt – die Frage „kann der Client BTM“
     beantwortet dann der unverschlüsselte Association Request. Die Registration-Table zeigt keine Client-Fähigkeiten.
+    *Hardware 2026-11-22 (hAP ax³ als Mitschneider, 7.25.1):* Am vom CAPsMAN verwalteten Radio lehnt RouterOS den
+    Sniffer ab (`failure: not allowed`, auch mit Policy `sniff`); mit `/interface/wifi/cap/set enabled=no` geht er,
+    das Radio läuft dabei lokal weiter und hört trotzdem fremde Frames auf seinem Kanal (Monitor-Modus) – aber nur in
+    Funkreichweite: Ein Client am anderen Ende des Hauses fehlte ganz, direkt daneben 62 Probe Requests in 10 min.
+    Befund Android-Handy (FT): gezielte Probes für die eigene SSID ohne BTM-Bit, Wildcard-Probes teils mit – passt dazu,
+    dass es nie Vorschläge bekam; der Association Request fehlt noch. **Offen:** `tools/wlan-btm.py` wertet je Client
+    nur eine Fassung der Extended Capabilities und meldete pauschal „BTM nein“ – je SSID bzw. Fassung getrennt
+    ausgeben; FT aus Probe Requests nicht ableiten (steht erst im Association Request).
 63. **NTP-Umleitung – Rest** (umgesetzt: DN2.2, seit 2026-10-24 an einem Standort): Uhrzeit in der
     Weboberfläche einer OpenBeken-Lampe prüfen.
 65. **Fremdgerät mit der Haupt-SSID bzw. am gemeinsamen Dock ins Gäste-VLAN** (Wunsch des Nutzers, 2026-10-26)

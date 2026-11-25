@@ -85,7 +85,7 @@ $cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-ti
 :local tls ($cfmG->"tls")
 :if (!$backup and [:typeof $tls] = "array" and [:len [:tostr ($tls->"signer")]] > 0 and [:len ($tls->"from")] > 0) do={
   :local fa ""
-  :foreach x in=($tls->"from") do={ :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . [:tostr $x]) }
+  :foreach x in=($tls->"from") do={ :local a [:tostr $x]; :if (!($a ~ "/")) do={ :set a ($a . "/32") }; :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . $a) }
   $cfmEnsure m="/user/group" k="grp:cert" n=({"name"="cfm-cert"}) p=({"name"="cfm-cert";"policy"="ssh,read"})
   $cfmEnsure m="/user" k="user:cfm-cert" n=({"name"="cfm-cert"}) p=({"name"="cfm-cert";"group"="cfm-cert";"address"=$fa;"disabled"="no"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
   :local src ":if ([:len [/system/script/job/find where script=\"cfm-cert-pull\"]] > 1) do={ :put \"cfm-cert-pull laeuft bereits\"; :error \"cfm-done\" }; /system script run cfm-mgr; :global cfmTlsPull; :put (\"geaendert: \" . [\$cfmTlsPull])"
@@ -106,10 +106,11 @@ $cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-ti
 #     (dont-require-permissions) - es wertet die Site-Daten aus und gibt Soll und Ist als Text aus ($cfmNetboxOut, letztes
 #     Release; /file/read darf der User selbst nicht). SSH-Freigabe setzt base.
 #     Nur auf dem Primary (dort liegt der Status der Geräte). Ohne netbox räumt die GC auf ---
+# Adressen ohne Präfix mit /32: RouterOS speichert sie beim User so, sonst meldet jeder Apply eine Änderung
 :local nbc ($cfmG->"netbox")
 :if (!$backup and [:typeof $nbc] = "array" and [:len ($nbc->"from")] > 0) do={
   :local fa ""
-  :foreach x in=($nbc->"from") do={ :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . [:tostr $x]) }
+  :foreach x in=($nbc->"from") do={ :local a [:tostr $x]; :if (!($a ~ "/")) do={ :set a ($a . "/32") }; :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . $a) }
   $cfmEnsure m="/user/group" k="grp:netbox" n=({"name"="cfm-netbox"}) p=({"name"="cfm-netbox";"policy"="ssh,read"})
   $cfmEnsure m="/user" k="user:cfm-netbox" n=({"name"="cfm-netbox"}) p=({"name"="cfm-netbox";"group"="cfm-netbox";"address"=$fa;"disabled"="no"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
   :local src ":if ([:len [/system/script/job/find where script=\"cfm-netbox-run\"]] > 1) do={ :put \"cfm-netbox-run laeuft bereits\"; :error \"cfm-done\" }; /system script run cfm-mgr; :global cfmNetboxOut; \$cfmNetboxOut"

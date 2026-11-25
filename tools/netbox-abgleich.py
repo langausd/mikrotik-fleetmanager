@@ -774,6 +774,11 @@ def main(argv=None):
         if a.plan_speichern:
             with open(a.plan_speichern, "w", encoding="utf-8") as f:
                 json.dump(plan, f, indent=1, ensure_ascii=False, sort_keys=True)
+            if not a.state and not a.manager:
+                # nur NetBox lesen (z.B. vor dem Rollout von $cfmNetbox): Plan speichern, kurz zusammenfassen
+                print("Plan gespeichert: %s (%s)" % (a.plan_speichern, ", ".join(
+                    "%s %d" % (k, len(v)) for k, v in sorted(plan.items()) if isinstance(v, (list, dict)))))
+                return 0
         if a.state:
             d = a.state
         elif a.manager:

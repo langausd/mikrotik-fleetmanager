@@ -303,6 +303,8 @@ tools/netbox-abgleich.py --plan plan.json --state <verz>                        
   stehen). `--json` gibt die Befunde als JSON aus, `--plan-speichern <datei>` legt den gelesenen Plan ab. Exit-Code
   0 ohne Abweichung, 1 mit, 2 bei einem Fehler.
 * `--port` (SSH) und `--base flash/cfm` wie bei `upload-seed.sh`.
+* `--plan-speichern <datei>` ohne `--state`/`--manager`: nur NetBox lesen und den Plan speichern (Test von Token und
+  Zugriff, auch bevor `$cfmNetbox` auf dem Manager ist).
 * Token anlegen (nur lesend) und ablegen: Admin-Guide 8.21. `--ca <pem>` für eine NetBox mit eigenem Zertifikat,
   `--unsicher` prüft das Zertifikat nicht.
 * `--vlan-group <slug>`: VLANs aus einer VLAN-Gruppe statt der Site. Token mit `nbt_` (NetBox 4.5) geht als Bearer,

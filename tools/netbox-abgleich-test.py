@@ -473,6 +473,19 @@ class AbgleichTest(unittest.TestCase):
 
 
 class MainTest(unittest.TestCase):
+    def test_nur_plan(self):
+        with tempfile.TemporaryDirectory() as d:
+            pf, ziel = os.path.join(d, "plan.json"), os.path.join(d, "neu.json")
+            with open(pf, "w") as f:
+                json.dump(plan_basis(), f)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = nb.main(["--plan", pf, "--plan-speichern", ziel])
+            self.assertEqual(rc, 0)
+            self.assertIn("Plan gespeichert", out.getvalue())
+            with open(ziel) as f:
+                self.assertEqual(json.load(f), json.loads(json.dumps(plan_basis())))
+
     def test_main(self):
         with tempfile.TemporaryDirectory() as d:
             s = soll_basis()

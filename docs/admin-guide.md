@@ -2203,7 +2203,7 @@ Gerät von selbst einen neuen.
 
 ### 8.21 NetBox: planen und abgleichen (DT2.3)
 
-Du planst Geräte, Verkabelung, Ports, VLANs, Prefixe und Adressen in NetBox (ab 3.7). `tools/netbox-abgleich.py`
+Du planst Geräte, Verkabelung, Ports, VLANs, Prefixe und Adressen in NetBox (ab 3.7, auch 4.x bis 4.6). `tools/netbox-abgleich.py`
 vergleicht diesen Plan mit dem Soll in cfm und dem Ist auf den Geräten und nennt die Unterschiede. Übernehmen musst du
 sie selbst: im cfm-Editor oder in den Site-Daten, wie jede andere Änderung. NetBox schreibt nichts in cfm (DT2.2).
 

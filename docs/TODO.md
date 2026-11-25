@@ -341,8 +341,10 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         wenn das Ergebnis abweicht. (4) Einmaliger Start-Import cfm → NetBox (Geräte, Ports mit `cfm_port`, Kabel,
         VLANs, Prefixe, IPs, Tunnel), danach wird in NetBox gepflegt. (5) SSH-Schlüssel (und ggf. Einstellungen)
         liegen im NetBox-Container, nicht im Repo. Das Custom Script arbeitet über das ORM und braucht kein API-Token.
-      * NetBox-Version: mindestens 3.7 (Nutzer, 2026-11-24), Tunnels also vorhanden. Das Custom Script so schreiben,
-        dass es unter 3.7 und 4.x läuft (Unterschiede u.a. bei `log_*` und beim Ablegen von Scripts).
+      * NetBox-Version: mindestens 3.7 (Nutzer, 2026-11-24), Tunnels also vorhanden. Im Einsatz ist **4.6.4** im
+        Container (Nutzer, 2026-11-25). Das Custom Script so schreiben, dass es unter 3.7 und 4.x läuft (Unterschiede
+        u.a. bei `log_*` und beim Ablegen von Scripts); erster echter Abgleich gegen 4.6.4 steht aus. Der Container
+        braucht für Baustein 3 SSH-Zugang zum Manager (Quelle in `mgmtExtra` oder über das MGMT-VLAN).
         *Geklärt:* Für das Ist der Adressen braucht es keinen neuen Bericht. Der Agent legt `/export terse` ab, der
         Manager holt es nach `state/<name>/export.rsc` (`$cfmCollect`). Daraus liest der Abgleich `/ip address`,
         VRRP, WireGuard, Bridge-Ports und VLANs je Gerät, zusammen mit `status.json` (Modell, Seriennummer,

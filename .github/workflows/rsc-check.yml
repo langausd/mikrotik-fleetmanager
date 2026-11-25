@@ -36,5 +36,7 @@ jobs:
         run: python3 tools/netbox-abgleich-test.py -v
       - name: netbox-import (Start-Import, Rundlauf über den Abgleich)
         run: python3 tools/netbox-import-test.py -v
+      - name: NetBox Custom Script cfm-Abgleich (ORM-Abbildung gleich REST)
+        run: python3 tools/netbox/cfm_abgleich-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site
         run: python3 tools/new-site.py "$RUNNER_TEMP/site-ci" --name cm-ci --uplink ether2 --user ci --mgmt-extra 10.0.0.0/8

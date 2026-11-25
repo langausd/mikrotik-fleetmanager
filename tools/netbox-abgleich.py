@@ -17,6 +17,7 @@ Aufruf (aus dem Wurzelverzeichnis des Repos):
   tools/netbox-abgleich.py --netbox … --site … --state <verz>     # state/ liegt schon lokal (Kopie vom Manager)
   tools/netbox-abgleich.py --plan plan.json --state <verz>        # ohne NetBox (Tests, offline)
 Optionen: --token-file <datei> (sonst $NETBOX_TOKEN), --vlan-group <slug> (VLANs einer Gruppe statt der Site),
+  --lesend [--key <datei>] (als User cfm-netbox: nur Lesen, global.rsc netbox; so ruft es das Custom Script auf),
   --ver <N> ($cfmNetbox ver=, 0 = work/; Standard: letztes Release), --port, --base (wie upload-seed.sh),
   --plan-speichern <datei>, --json (Befunde als JSON), --alle (auch Infos: z.B. Adressen nur in NetBox).
 Exit-Code: 0 = keine Abweichung, 1 = Abweichungen, 2 = Fehler.
@@ -226,15 +227,16 @@ def _sshopts(port):
     return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "LogLevel=ERROR", "-p", str(port)]
 
 
-def fetch_state(dest, port, base, ver, out):
+def fetch_state(dest, port, base, ver, out, key=None):
     """$cfmNetbox auf dem Manager starten, dann state/ (nur die nötigen Dateien) per SFTP nach out holen."""
     arg = "" if ver is None else " ver=%d" % ver
     cmd = '/system script run cfm-mgr; :global cfmNetbox; :put ("CFMNB=" . [$cfmNetbox%s])' % arg
-    r = subprocess.run(["ssh"] + _sshopts(port) + [dest, cmd], capture_output=True, text=True, timeout=600)
+    kopt = ["-i", key] if key else []
+    r = subprocess.run(["ssh"] + _sshopts(port) + kopt + [dest, cmd], capture_output=True, text=True, timeout=600)
     m = re.search(r"CFMNB=(\d+)", r.stdout)
     if not m:
         raise RuntimeError("$cfmNetbox auf %s: %s" % (dest, (r.stdout + r.stderr).strip()[-400:]))
-    sopt = _sshopts(port)
+    sopt = _sshopts(port) + kopt
     sopt[sopt.index("-p")] = "-P"
 
     def sftp(batch):
@@ -249,6 +251,68 @@ def fetch_state(dest, port, base, ver, out):
             b.append("-get %s/state/%s/%s %s/%s/%s" % (base, n, f, out, n, f))
     sftp("\n".join(b) + "\n")
     return int(m.group(1))
+
+
+def _ro_parse(raw):
+    """Ausgabe von cfm-netbox-run ($cfmNetboxOut, Bytes) -> {pfad: bytes|None}; Zeilenenden kommen als LF an. Je Datei "##CFMF <pfad>" (fehlt sie:
+    "##CFMF <pfad> NONE"), je Stück "##CFMC <offset>" und die Daten; :put hängt an jedes Stück ein Zeilenende an."""
+    raw = raw.replace(b"\r\n", b"\n")
+    out, cur, chunks = {}, None, []
+
+    def fertig():
+        if cur is not None:
+            out[cur] = b"".join(chunks) if chunks is not None else None
+    for part in re.split(rb"(?m)^(##CFM[FC] [^\n]*)\n", raw)[1:]:
+        if part.startswith(b"##CFMF "):
+            fertig()
+            w = part[7:].decode("utf-8", "replace").rsplit(" NONE", 1)
+            cur = w[0]
+            chunks = None if part.endswith(b" NONE") else []
+        elif part.startswith(b"##CFMC "):
+            continue
+        elif chunks is not None and cur is not None:
+            chunks.append(part[:-1] if part.endswith(b"\n") else part)
+    fertig()
+    return out
+
+
+def _ro_save(raw, out):
+    """Ausgabe von cfm-netbox-run -> Dateien unter out (wie fetch_state: netbox.json, <gerät>/…); Rückgabe: Anzahl Geräte"""
+    txt = raw.decode("utf-8", "replace")
+    m = re.search(r"CFMNB=(\d+)", txt)
+    if not m:
+        raise RuntimeError("cfm-netbox-run: %s" % (txt.strip()[-400:] or "keine Ausgabe (global.rsc netbox gesetzt, Release angewendet?)"))
+    files = _ro_parse(raw)
+    got = False
+    for p, data in files.items():
+        if data is None or "/state/" not in p:
+            continue
+        rel = p.split("/state/", 1)[1]
+        if ".." in rel.split("/") or rel.startswith("/"):
+            continue
+        dst = os.path.join(out, *rel.split("/"))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        with open(dst, "wb") as f:
+            f.write(data)
+        got = got or rel == "netbox.json"
+    if not got:
+        raise RuntimeError("cfm-netbox-run: state/netbox.json fehlt in der Ausgabe")
+    return int(m.group(1))
+
+
+def fetch_state_lesend(dest, port, out, key=None, known_hosts=None):
+    """Wie fetch_state, aber als User cfm-netbox (ssh,read; global.rsc netbox, DT2.3): startet cfm-netbox-run. Das
+    wertet das letzte Release aus ($cfmNetbox) und gibt die Dateien als Text aus ($cfmNetboxOut) - der User selbst darf
+    weder SFTP (Policy ftp) noch /file/read. Die Ablage (cfm oder flash/cfm) kennt der Manager selbst."""
+    opt = _sshopts(port)
+    if key:
+        opt += ["-i", key]
+    if known_hosts:
+        opt += ["-o", "UserKnownHostsFile=" + known_hosts, "-o", "StrictHostKeyChecking=accept-new"]
+    r = subprocess.run(["ssh"] + opt + [dest, "/system script run cfm-netbox-run"], capture_output=True, timeout=900)
+    if r.returncode != 0 and not r.stdout:
+        raise RuntimeError("SSH zu %s: %s" % (dest, r.stderr.decode("utf-8", "replace").strip()[-400:]))
+    return _ro_save(r.stdout, out)
 
 
 # ---------------------------------------------------------------- Plan: NetBox REST
@@ -775,6 +839,9 @@ def main(argv=None):
     ap.add_argument("--state", help="lokale Kopie von state/ (statt --manager)")
     ap.add_argument("--manager", help="user@host des Primary-Managers")
     ap.add_argument("--port", type=int, default=22)
+    ap.add_argument("--lesend", action="store_true", help="als User cfm-netbox (nur Lesen, global.rsc netbox)")
+    ap.add_argument("--key", help="SSH-Schlüssel (z.B. für cfm-netbox)")
+    ap.add_argument("--known-hosts", help="known_hosts-Datei für --lesend (neue Hosts werden aufgenommen)")
     ap.add_argument("--base", default="cfm")
     ap.add_argument("--ver", type=int)
     ap.add_argument("--json", action="store_true")
@@ -807,7 +874,12 @@ def main(argv=None):
             d = a.state
         elif a.manager:
             tmp = tempfile.mkdtemp(prefix="cfm-nb-")
-            fetch_state(a.manager, a.port, a.base, a.ver, tmp)
+            if a.lesend:
+                if a.ver is not None:
+                    ap.error("--ver geht nicht mit --lesend (cfm-netbox-run wertet das letzte Release aus)")
+                fetch_state_lesend(a.manager, a.port, tmp, a.key, a.known_hosts)
+            else:
+                fetch_state(a.manager, a.port, a.base, a.ver, tmp, a.key)
             d = tmp
         else:
             ap.error("--state oder --manager angeben")

@@ -233,6 +233,7 @@ irgendetwas ausgerollt wird.
 | `services` | aktive IP-Dienste mit Port (RouterOS-Namen: `telnet`, `ftp`, `www`, `www-ssl`, `reverse-proxy`, `api`, `api-ssl`, `ssh`, `winbox` – **nicht** `http`/`https`), alle anderen werden abgeschaltet – auch `reverse-proxy`, den RouterOS 7.2x ab Werk auf Port 443 ohne Adressbeschränkung einschaltet. `$cfmCheck` meldet unbekannte Namen und doppelte Ports als Fehler | `ssh`, `winbox` |
 | `tls` | Zertifikate einer öffentlichen CA für `www-ssl`/`api-ssl` (DS3.6, 8.20): `{"signer"="http://…:8080";"from"={"<Signer-IP>"};"services"={"www-ssl";"api-ssl"};"renew"=30}` – Name je Gerät `<name>.<domain>`; leer = aus | `{}` |
 | `capsmanApi` | Lese-Zugang per RouterOS-API auf dem CAPsMAN und auf Geräten mit `portSwitch`, z.B. für Home Assistant (DU2.1, DP1.4.1, 6.7): `{"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}`, Passwort `$cfmSecret key=user.<user>`; leer = aus | `{}` |
+| `netbox` | Abgleich aus NetBox heraus (DT2.3, 8.21): `{"from"={"192.168.10.60/32"}}` = Adresse des NetBox-Containers; der Primary-Manager bekommt den User `cfm-netbox` (nur `ssh,read`, Key aus `authorized_keys.cfm-netbox`) und das Skript `cfm-netbox-run`; leer = aus | `{}` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
 | `notify` | Benachrichtigungen (DU4.1, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
 
@@ -2278,9 +2279,16 @@ mehrere (z.B. `…RM` und `…IN`), nimmt es den ersten und sagt das; fehlt eine
 gemeldet hat, kommt nur mit MGMT-Adresse an `vlan<mgmtVlan>`. Danach `tools/netbox-abgleich.py`: Direkt nach dem
 Import sollte es keine Abweichung melden.
 
+**Aus NetBox auslösen.** Das Custom Script `tools/netbox/cfm_abgleich.py` startet den Abgleich auf Knopfdruck in NetBox
+(*Anpassen → Skripte → cfm-Abgleich*, Site wählen). Es liest den Plan über die Datenbank, Soll und Ist als User
+`cfm-netbox` vom Primary-Manager. Der darf nur lesen und `cfm-netbox-run` starten; das Skript gibt Soll und Ist als Text
+aus (kein SFTP). Dafür in `global.rsc` `"netbox"={"from"={"<IP des Containers>/32"}}` und den Schlüssel des
+Containers als `authorized_keys.cfm-netbox`; Einrichtung im Container: `tools/netbox/README.md`. Dasselbe von der
+Kommandozeile: `netbox-abgleich.py … --manager cfm-netbox@<manager> --lesend --key <datei>`.
+
 **Grenzen.** Kabel zu Geräten ohne LLDP/MNDP sieht nur NetBox und das Hostfile. Adressen aus DHCP (z.B. ein WAN mit
-`dhcp`) fehlen im Export. Noch nicht umgesetzt (TODO 55): Auslösen aus NetBox per Custom Script mit eigenem SSH-User
-nur zum Lesen, Vorschlag für die Hostfiles als Datei.
+`dhcp`) fehlen im Export. Der Weg über `cfm-netbox` wertet immer das letzte Release aus (kein `--ver`). Vorschläge für
+die Hostfiles stehen nur als Hinweis im Bericht (`links` mit fertiger Zeile), nicht als eigene Datei.
 
 ## 9. Sicherheitsnetze und Notfälle
 

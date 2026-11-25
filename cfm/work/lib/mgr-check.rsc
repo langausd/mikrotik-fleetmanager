@@ -585,10 +585,15 @@
       }
     }
   } else={ :if ([:typeof $snmp] != "nothing") do={ :set ($err->[:len $err]) "global.rsc: snmp muss ein Array sein ({\"from\"=…})" } }
-  # Zertifikate (DS3.6): Prüfung in lib/mgr-tls.rsc
-  :global cfmCheckTls
+  # Zertifikate (DS3.6) und NetBox-Zugang (DT2.3): Prüfung in lib/mgr-tls.rsc bzw. lib/mgr-netbox.rsc
+  :global cfmCheckTls; :global cfmCheckNetbox
   :if ([:typeof $cfmCheckTls] != "nothing") do={
     :local ct [$cfmCheckTls w=$w]
+    :foreach e in=($ct->"err") do={ :set ($err->[:len $err]) $e }
+    :foreach e in=($ct->"warn") do={ :set ($warn->[:len $warn]) $e }
+  }
+  :if ([:typeof $cfmCheckNetbox] != "nothing") do={
+    :local ct [$cfmCheckNetbox w=$w]
     :foreach e in=($ct->"err") do={ :set ($err->[:len $err]) $e }
     :foreach e in=($ct->"warn") do={ :set ($warn->[:len $warn]) $e }
   }
@@ -632,8 +637,9 @@
     :local fn [/file/get $f name]
     :local rel [:pick $fn ([:len $w] + 1) [:len $fn]]
     :local u [:pick $rel 16 [:len $rel]]
-    :if ([:typeof ($cfmG->"users"->$u)] = "nothing" and $u != "cfm-cert") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
+    :if ([:typeof ($cfmG->"users"->$u)] = "nothing" and $u != "cfm-cert" and $u != "cfm-netbox") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
     :if ($u = "cfm-cert" and [:typeof ($cfmG->"users"->$u)] != "nothing") do={ :set ($err->[:len $err]) "global.rsc users: cfm-cert ist der User des Zertifikat-Signers (DS3.6) - anderen Namen wählen" }
+    :if ($u = "cfm-netbox" and [:typeof ($cfmG->"users"->$u)] != "nothing") do={ :set ($err->[:len $err]) "global.rsc users: cfm-netbox ist der User des NetBox-Abgleichs (DT2.3) - anderen Namen wählen" }
     :local ln 0
     :local t ([/file/get $f contents] . "\n")
     :while ([:len $t] > 0) do={

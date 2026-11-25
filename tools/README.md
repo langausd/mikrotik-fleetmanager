@@ -23,6 +23,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`wifi-sign.py`](#wifi-signpy) | WLAN-Schild als A4-PDF: QR-Code, SSID, Passphrase (de/en) |
 | [`netbox-abgleich.py`](#netbox-abgleichpy) | Planung in NetBox mit cfm (Soll) und den Geräten (Ist) abgleichen |
 | [`netbox-import.py`](#netbox-importpy) | Einmaliger Start-Import cfm → NetBox |
+| [`netbox/`](netbox/README.md) | NetBox Custom Script „cfm-Abgleich“: Abgleich aus NetBox heraus (eigene Anleitung) |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
@@ -306,6 +307,8 @@ tools/netbox-abgleich.py --plan plan.json --state <verz>                        
 * `--port` (SSH) und `--base flash/cfm` wie bei `upload-seed.sh`.
 * `--plan-speichern <datei>` ohne `--state`/`--manager`: nur NetBox lesen und den Plan speichern (Test von Token und
   Zugriff, auch bevor `$cfmNetbox` auf dem Manager ist).
+* `--lesend [--key <datei>] [--known-hosts <datei>]`: Soll und Ist als User `cfm-netbox` holen (nur Lesen, `global.rsc` `netbox`; das Skript
+  `cfm-netbox-run` gibt die Dateien aus, kein SFTP; immer das letzte Release, die Ablage kennt der Manager). So ruft es das Custom Script in `tools/netbox/` auf.
 * Token anlegen (nur lesend) und ablegen: Admin-Guide 8.21. `--ca <pem>` für eine NetBox mit eigenem Zertifikat,
   `--unsicher` prüft das Zertifikat nicht.
 * `--vlan-group <slug>`: VLANs aus einer VLAN-Gruppe statt der Site. Token mit `nbt_` (NetBox 4.5) geht als Bearer,

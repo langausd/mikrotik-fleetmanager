@@ -363,10 +363,14 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         `--schreiben`. Tests 12 (NetBox im Speicher, Rundlauf Import → Abgleich ohne Abweichung, 3.7/4.2/4.6), mit
         dem Labor-Stand vom 24.11. ohne Abweichung; `e2e.sh` Schritt 14 prüft das künftig mit. Gegen die echte NetBox
         (4.6.4) noch nicht gelaufen (Token mit Schreibrecht nötig).
-        (3) *offen:* NetBox Custom Script „cfm-Abgleich“ (3.7 und 4.x) samt Anleitung; am Manager ein eigener User
-        nur `ssh,read` (wie `cfm-cert`) und ein Skript mit `dont-require-permissions`, das `$cfmNetbox` startet. Lesen
-        dann ohne SFTP (`ftp` wäre Schreibrecht), z.B. per `/file/read` in Stücken: `export.rsc` eines Managers hat
-        ~500 KB, `/file/get` liest nur ~60 KB. Dazu der Vorschlag für die Hostfiles (`ports`, `links`) als Datei.
+        (3) *umgesetzt 2026-11-25:* `global.rsc` `netbox`={"from"=…}: der Primary-Manager bekommt den User `cfm-netbox`
+        (nur `ssh,read`, Key aus `authorized_keys.cfm-netbox`, nur von `from`, SSH-Freigabe in base) und das Skript
+        `cfm-netbox-run` (`dont-require-permissions`, startet `$cfmNetbox` und gibt die Dateien per `/file/read` in
+        Stücken aus, `$cfmNetboxOut`: der User selbst darf weder SFTP noch `/file/read`); `$cfmCheck` prüft `from` und
+        Key. `netbox-abgleich.py --lesend` braucht dafür einen SSH-Aufruf. Custom Script `tools/netbox/cfm_abgleich.py` (Plan per ORM, 3.7–4.6) mit Anleitung
+        `tools/netbox/README.md`, Tests (ORM-Abbildung gleich REST), `e2e.sh` Schritt 14o. *Offen:* Vorschlag für
+        die Hostfiles als eigene Datei (bisher nur die `links`-Zeilen als Hinweis im Bericht); erster Lauf in der
+        echten NetBox.
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein

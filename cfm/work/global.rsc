@@ -40,6 +40,7 @@
   "services"={"ssh"=22;"winbox"=8291};
   "capsmanApi"={};
   "tls"={};
+  "netbox"={};
   "hook"={"host"="";"user"="cfm"};
   "notify"={"url"="";"stale"="30m";"licWarn"="14d"}
 }
@@ -113,3 +114,7 @@
 #             cfm-cert-pull: Der Manager holt <signer>/<name>.<domain>.pem und verteilt es. services: Dienste, die
 #             das Zertifikat bekommen (sie gehen nur an, wenn sie in services stehen). renew: neuer Schlüssel und
 #             CSR, wenn das Zertifikat weniger als so viele Tage gilt (Standard 30). {} = aus.
+#  netbox     Abgleich aus NetBox heraus (DT2.3, TODO 55): {"from"={"192.168.10.60/32"}} = Adresse des NetBox-Containers.
+#             Die Manager bekommen den User cfm-netbox (Gruppe ssh,read; nur Key aus authorized_keys.cfm-netbox; nur
+#             von from) und das Skript cfm-netbox-run, das $cfmNetbox startet. Das Custom Script in NetBox
+#             (tools/netbox/) liest damit Soll und Ist; ändern kann der User nichts. {} = aus.

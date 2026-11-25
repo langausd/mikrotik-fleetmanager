@@ -1521,6 +1521,45 @@ agentwait 2 "$rv" sw1 && agentwait 1 "$rv" cm1 || bad "Apply v$rv (ohne tls): sw
 expect 1 '[:len [/user/find where name="cfm-cert"]] = 0 and [:len [/system/script/find where name="cfm-cert-pull"]] = 0' "cm1: ohne tls User cfm-cert und cfm-cert-pull weg"
 kill $tpid 2>/dev/null
 
+step "14o. NetBox-Abgleich aus NetBox (DT2.3): User cfm-netbox nur lesend, cfm-netbox-run gibt die Dateien aus"
+# Wie das Custom Script (tools/netbox/cfm_abgleich.py): SSH als cfm-netbox (Quelle 10.0.2.2 = netbox.from), Soll/Ist
+# ohne SFTP lesen, gegen den Plan aus dem Start-Import abgleichen; dazu derselbe Stand per SFTP als Admin zum Vergleich
+N="$LAB/nbro"; rm -rf "$N"; mkdir -p "$N/ro" "$N/sftp"
+ssh-keygen -q -t ed25519 -N "" -C cfm-netbox@lab -f "$N/key"
+echo "put $N/key.pub cfm/work/authorized_keys.cfm-netbox" | put 1
+mgr ':global e2eG14o [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14o . ":set (\$cfmG->\"netbox\") {\"from\"={\"10.0.2.2\"}}\n")' >/dev/null
+mgr '$cfmCheck' | grep -qiE "netbox|cfm-netbox" && { bad "\$cfmCheck meldet etwas zu netbox"; mgr '$cfmCheck' | grep -i netbox; } || ok "\$cfmCheck: netbox mit from und Key ohne Meldung"
+rv=$(mgr '$cfmRelease msg=" NetBox lesend" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (netbox) angewendet" || bad "Apply v$rv (netbox): cm1 $(stat cm1 res)"
+expect 1 '[:len [/user/find where name="cfm-netbox" and group="cfm-netbox" and !disabled]] = 1 and [/user/group/get [find name="cfm-netbox"] policy] ~ "ssh" and !([/user/group/get [find name="cfm-netbox"] policy] ~ "(^|,)(write|ftp)") and [:len [/user/ssh-keys/find where user="cfm-netbox"]] = 1 and [:len [/system/script/find where name="cfm-netbox-run" and dont-require-permissions]] = 1' "cm1: User cfm-netbox (ssh,read, Key), Skript cfm-netbox-run"
+expect 1 '[:len [/ip/firewall/filter/find where comment~"nbread" and src-address~"^10.0.2.2"]] = 1' "cm1: SSH-Freigabe für netbox.from"
+NK=(ssh -p $((LABPORT + 10)) "${O[@]}" -o BatchMode=yes -i "$N/key" cfm-netbox@127.0.0.1)
+o=$("${NK[@]}" '/file/add name=e2e-nb.txt contents=x; /system/identity/set name=boese; :put ende' 2>&1 | tr -d '\r')
+expect 1 '[:len [/file/find where name="e2e-nb.txt"]] = 0 and [/system/identity/get name] != "boese"' "cfm-netbox: kein Schreibzugriff (Datei, Identität)"
+# Vergleich mit SFTP (ohne CR: die Ausgabe kommt mit LF); trifft dazwischen ein neuer Export ein, noch einmal
+for try in 1 2 3; do
+  rm -rf "$N/ro" "$N/sftp"; mkdir -p "$N/ro" "$N/sftp"
+  o=$(cd "$ROOT/tools" && python3 -c "
+import importlib.util,sys
+s=importlib.util.spec_from_file_location('a','netbox-abgleich.py'); a=importlib.util.module_from_spec(s); s.loader.exec_module(a)
+print('NB=%d' % a.fetch_state_lesend('cfm-netbox@127.0.0.1', $((LABPORT + 10)), '$N/ro', '$N/key', '/dev/null'))" 2>&1)
+  { for h in cm1 sw1 cm2; do mkdir -p "$N/sftp/$h"; for f in netbox.json export.rsc; do echo "-get cfm/state/$h/$f $N/sftp/$h/$f"; done; done; } | put 1
+  same=1; for h in cm1 sw1 cm2; do for f in netbox.json export.rsc; do cmp -s <(tr -d '\r' < "$N/ro/$h/$f" 2>/dev/null) <(tr -d '\r' < "$N/sftp/$h/$f") || same=0; done; done
+  [ $same = 1 ] && break; sleep 20
+done
+echo "$o" | grep -q "NB=3" && ok "cfm-netbox: cfm-netbox-run startet \$cfmNetbox (3 Geräte)" || { bad "cfm-netbox-run"; echo "$o" | tail -4; }
+sz=$(command stat -c %s "$N/sftp/cm1/export.rsc" 2>/dev/null)
+[ $same = 1 ] && ok "cfm-netbox-run (/file/read in Stücken): netbox.json und export.rsc aller Geräte gleich wie per SFTP (cm1 $sz Bytes, Versuch $try)" \
+  || bad "Ausgabe von cfm-netbox-run weicht von SFTP ab (3 Versuche)"
+python3 "$ROOT/tools/netbox-import.py" --site labor --state "$N/ro" --plan-speichern "$N/plan.json" >/dev/null 2>&1
+out=$(python3 "$ROOT/tools/netbox-abgleich.py" --plan "$N/plan.json" --manager cfm-netbox@127.0.0.1 --port $((LABPORT + 10)) --lesend --key "$N/key" --known-hosts /dev/null 2>&1)
+echo "$out" | grep -qE "^(0 Abweichungen|Keine Abweichungen)" && ok "netbox-abgleich --lesend: Plan aus dem Import ohne Abweichung" || { bad "netbox-abgleich --lesend"; echo "$out" | tail -8; }
+# aufräumen: netbox aus -> GC entfernt User, Skript und Freigabe
+mgr ':global e2eG14o; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG14o; /file/remove [find name="cfm/work/authorized_keys.cfm-netbox"]' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne NetBox" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 || bad "Apply v$rv (ohne netbox): cm1 $(stat cm1 res)"
+expect 1 '[:len [/user/find where name="cfm-netbox"]] = 0 and [:len [/user/group/find where name="cfm-netbox"]] = 0 and [:len [/system/script/find where name="cfm-netbox-run"]] = 0 and [:len [/ip/firewall/filter/find where comment~"nbread"]] = 0' "cm1: ohne netbox User, Gruppe, Skript und Freigabe weg"
+
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)
 chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ("RES=" . ($r->"output"))' | sed -n 's/^RES=//p' | head -1; }

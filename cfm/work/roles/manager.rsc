@@ -101,6 +101,29 @@ $cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-ti
   } else={ $cfmLog "tls: authorized_keys.cfm-cert fehlt - der Signer kann sich nicht anmelden" }
 }
 
+# --- NetBox-Abgleich (DT2.3, global.rsc netbox): User cfm-netbox nur mit ssh,read, nur
+#     von netbox.from, nur per Key (authorized_keys.cfm-netbox), und das Skript cfm-netbox-run, das er starten darf
+#     (dont-require-permissions) - es wertet die Site-Daten aus und gibt Soll und Ist als Text aus ($cfmNetboxOut, letztes
+#     Release; /file/read darf der User selbst nicht). SSH-Freigabe setzt base.
+#     Nur auf dem Primary (dort liegt der Status der Geräte). Ohne netbox räumt die GC auf ---
+:local nbc ($cfmG->"netbox")
+:if (!$backup and [:typeof $nbc] = "array" and [:len ($nbc->"from")] > 0) do={
+  :local fa ""
+  :foreach x in=($nbc->"from") do={ :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . [:tostr $x]) }
+  $cfmEnsure m="/user/group" k="grp:netbox" n=({"name"="cfm-netbox"}) p=({"name"="cfm-netbox";"policy"="ssh,read"})
+  $cfmEnsure m="/user" k="user:cfm-netbox" n=({"name"="cfm-netbox"}) p=({"name"="cfm-netbox";"group"="cfm-netbox";"address"=$fa;"disabled"="no"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
+  :local src ":if ([:len [/system/script/job/find where script=\"cfm-netbox-run\"]] > 1) do={ :put \"cfm-netbox-run laeuft bereits\"; :error \"cfm-done\" }; /system script run cfm-mgr; :global cfmNetboxOut; \$cfmNetboxOut"
+  $cfmEnsure m="/system/script" k="sys:netbox-run" n=({"name"="cfm-netbox-run"}) p=({"name"="cfm-netbox-run";"source"=$src;"policy"=$pol;"dont-require-permissions"="yes"})
+  :local akx false
+  :onerror e in={ :set akx ([:len [/file/get ($cfmDl . "/authorized_keys.cfm-netbox") name]] > 0) } do={}
+  :if ($akx) do={
+    :global cfmCtx; :global cfmFeat
+    :set cfmCtx ({"users"={"cfm-netbox"="cfm-netbox"}})
+    $cfmFeat "base.sshkeys"
+    :set cfmCtx ({})
+  } else={ $cfmLog "netbox: authorized_keys.cfm-netbox fehlt - NetBox kann sich nicht anmelden" }
+}
+
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---
 $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-dev";"policy"="ssh,ftp,read"})
 

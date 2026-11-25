@@ -9,6 +9,11 @@
 #     Rückgabe: Anzahl Geräte. tools/netbox-abgleich.py liest diese Dateien zusammen mit state/<name>/status.dat
 #     und state/<name>/export.rsc (Ist) und vergleicht sie mit NetBox. Die Site-Daten selbst ändert nichts.
 #     Die Daten werden je Gerät neu geladen: Ein Hostfile darf zentrale Daten überschreiben (Admin-Guide 4).
+#   $cfmNetboxOut   für das Skript cfm-netbox-run (global.rsc netbox): $cfmNetbox, dann "CFMNB=<n>" und die Dateien
+#                   für den Abgleich als Text (state/netbox.json, je Gerät netbox.json, status.dat, export.rsc; je Datei
+#                   "##CFMF <pfad>" oder "##CFMF <pfad> NONE", je Stück "##CFMC <offset>" und die Daten). Der User
+#                   cfm-netbox (ssh,read) darf /file/read nicht selbst, das Skript läuft mit den Rechten des Eigentümers
+#   $cfmCheckNetbox w=<work>   Prüfung von global.rsc netbox (aus $cfmCheck): from, authorized_keys.cfm-netbox
 # ============================================================
 
 :global cfmNetbox do={
@@ -118,4 +123,47 @@
   }
   :global cfmMgrData; :set cfmMgrData 0
   :return $n
+}
+
+:global cfmNetboxOut do={
+  :global cfmNetbox; :global cfmMB; :global cfmInvLoad
+  :local n [$cfmNetbox]
+  :put ("CFMNB=" . $n)
+  :local b [$cfmMB]
+  :local fl ({($b . "/state/netbox.json")})
+  :foreach hn,hd in=[$cfmInvLoad] do={
+    :foreach f in={"netbox.json";"status.dat";"export.rsc"} do={ :set ($fl->[:len $fl]) ($b . "/state/" . $hn . "/" . $f) }
+  }
+  :foreach f in=$fl do={
+    :local sz -1
+    :onerror e in={ :set sz [/file/get $f size] } do={}
+    :if ($sz < 0) do={ :put ("##CFMF " . $f . " NONE") } else={
+      :put ("##CFMF " . $f)
+      :local o 0
+      :while ($o < $sz) do={
+        :put ("##CFMC " . $o)
+        :put ([/file/read file=$f offset=$o chunk-size=30000 as-value]->"data")
+        :set o ($o + 30000)
+      }
+    }
+  }
+}
+
+:global cfmCheckNetbox do={
+  :global cfmG
+  :local err ({}); :local warn ({})
+  :local nb ($cfmG->"netbox")
+  :if ([:typeof $nb] = "nothing") do={ :return ({"err"=$err;"warn"=$warn}) }
+  :if ([:typeof $nb] != "array") do={ :set ($err->0) "global.rsc: netbox muss ein Array sein ({\"from\"=…})"; :return ({"err"=$err;"warn"=$warn}) }
+  :if ([:len $nb] = 0) do={ :return ({"err"=$err;"warn"=$warn}) }
+  :if ([:len ($nb->"from")] = 0) do={ :set ($warn->[:len $warn]) "global.rsc: netbox ohne from - NetBox kann sich nicht anmelden (kein User cfm-netbox)" }
+  :foreach a in=($nb->"from") do={
+    :local ip [:tostr $a]
+    :if ([:typeof [:find $ip "/"]] != "nil") do={ :set ip [:pick $ip 0 [:find $ip "/"]] }
+    :if ([:typeof [:toip $ip]] != "ip") do={ :set ($err->[:len $err]) ("global.rsc: netbox from: " . $a . " ist keine IPv4-Adresse/kein Netz") }
+  }
+  :local ok false
+  :onerror e in={ :set ok ([:len [/file/get ($w . "/authorized_keys.cfm-netbox") name]] > 0) } do={}
+  :if (!$ok and [:len ($nb->"from")] > 0) do={ :set ($warn->[:len $warn]) "netbox: authorized_keys.cfm-netbox fehlt in work/ - NetBox kann sich nicht anmelden" }
+  :return ({"err"=$err;"warn"=$warn})
 }

@@ -166,6 +166,34 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(nb._vids("10,20-22"), {10, 20, 21, 22})
 
 
+class LesendTest(unittest.TestCase):
+    def test_ro_parse(self):
+        # so gibt RouterOS es über SSH aus: :put hängt \r\n an, Stücke zu je CHUNK Bytes
+        daten = "zeile1\nzweite Zeile mit Ümlaut\n".encode("utf-8")
+        a, b = daten[:20], daten[20:]   # Schnitt mitten im Ü
+        raw = (b"##CFMF cfm/state/a\r\n##CFMC 0\r\n" + a + b"\r\n##CFMC 20\r\n" + b + b"\r\n"
+               b"##CFMF cfm/state/b NONE\r\n##CFMF cfm/state/c\r\n")
+        r = nb._ro_parse(raw)
+        self.assertEqual(r["cfm/state/a"], daten)
+        self.assertIsNone(r["cfm/state/b"])
+        self.assertEqual(r["cfm/state/c"], b"")
+
+    def test_ro_save(self):
+        raw = (b"CFMNB=1\r\n##CFMF flash/cfm/state/netbox.json\r\n##CFMC 0\r\n{\"inv\":{}}\r\n"
+               b"##CFMF flash/cfm/state/sw1/status.dat\r\n##CFMC 0\r\nx\r\n"
+               b"##CFMF flash/cfm/state/sw1/export.rsc NONE\r\n##CFMF cfm/state/../boese\r\n##CFMC 0\r\ny\r\n")
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(nb._ro_save(raw, d), 1)
+            self.assertEqual(open(os.path.join(d, "netbox.json"), "rb").read(), b'{"inv":{}}')
+            self.assertEqual(open(os.path.join(d, "sw1", "status.dat"), "rb").read(), b"x")
+            self.assertFalse(os.path.exists(os.path.join(d, "sw1", "export.rsc")))
+            self.assertFalse(os.path.exists(os.path.join(os.path.dirname(d), "boese")))
+        with self.assertRaisesRegex(RuntimeError, "keine Ausgabe"):
+            nb._ro_save(b"", "/nicht")
+        with self.assertRaisesRegex(RuntimeError, "netbox.json fehlt"):
+            nb._ro_save(b"CFMNB=0\r\n", "/nicht")
+
+
 class StateTest(unittest.TestCase):
     def test_load_state(self):
         with tempfile.TemporaryDirectory() as d:

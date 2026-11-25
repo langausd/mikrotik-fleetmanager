@@ -399,6 +399,20 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
   :foreach a in=$tlsFrom do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=[:tostr ($cfmG->"services"->"ssh")];"src-address"=$a}) }
   $cfmBlock m="/ip/firewall/filter" k="tlssign" l=$fl
 }
+# NetBox-Abgleich (DT2.3): SSH zum Manager auch von netbox.from (User cfm-netbox, roles/manager.rsc)
+:local nbFrom ({})
+:if ([:typeof ($cfmG->"netbox")] = "array") do={
+  :foreach x in=($cfmG->"netbox"->"from") do={
+    :local a [:tostr $x]
+    :if ([:typeof [:find $a "/"]] = "nil") do={ :set a ($a . "/32") }
+    :set ($nbFrom->[:len $nbFrom]) $a
+  }
+}
+:if ($isMgr and [:len $nbFrom] > 0) do={
+  :local fl ({})
+  :foreach a in=$nbFrom do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=[:tostr ($cfmG->"services"->"ssh")];"src-address"=$a}) }
+  $cfmBlock m="/ip/firewall/filter" k="nbread" l=$fl
+}
 :foreach s in={"telnet";"ftp";"www";"www-ssl";"reverse-proxy";"api";"api-ssl";"ssh";"winbox"} do={
   :local port ($cfmG->"services"->$s)
   :local addr [$cfmKeys $an]
@@ -413,8 +427,9 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
     :set addr [$cfmKeys $aa]
   }
   # Signer der Zertifikate (DS3.6): SSH zum Manager nur von tls.from (User cfm-cert, roles/manager.rsc)
-  :if ($s = "ssh" and $isMgr and [:len $tlsFrom] > 0) do={
+  :if ($s = "ssh" and $isMgr and ([:len $tlsFrom] + [:len $nbFrom]) > 0) do={
     :local aa ({}); :foreach x in=$addr do={ :set ($aa->$x) 1 }; :foreach x in=$tlsFrom do={ :set ($aa->$x) 1 }
+    :foreach x in=$nbFrom do={ :set ($aa->$x) 1 }
     :set addr [$cfmKeys $aa]
   }
   :if ([:len $port] > 0) do={

@@ -172,6 +172,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   links“. Dazu `netbox-import-test.py` 12, `netbox-abgleich-test.py` 30.
   2026-11-25 (`6f11075`, Agent meldet `rb` per `:parse`, Zuordnung der Gerätetypen): `e2e.sh fresh` **564 von 564**
   im ersten Lauf (rund 2 h). Auf CHR fehlt `/system/routerboard`, der Fehler wird abgefangen, `rb` bleibt leer.
+  2026-11-25 (TODO 55 Baustein 3, `global.rsc netbox`, User `cfm-netbox`): `e2e.sh fresh` 570 von 573 – alle Fehler in
+  14o: `/file/read` lehnt RouterOS für einen User mit nur `read` ab („not enough permissions“). Umgebaut: Das Skript
+  `cfm-netbox-run` gibt die Dateien selbst aus (`$cfmNetboxOut`), Zeilenenden kommen als LF. Schritt 14o danach am selben
+  Labor einzeln: **9 von 9** (Ausgabe gleich SFTP für alle 3 Geräte, cm1 `export.rsc` ~530 KB in ~8 s; Abgleich
+  `--lesend` 0 Abweichungen; GC räumt auf). Kein zweiter voller Lauf (Änderung nur im netbox-Block und einem neuen
+  Manager-Modul-Teil, der übrige Lauf war grün). Dazu `netbox-abgleich-test.py` 33, `cfm_abgleich-test.py` 2.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

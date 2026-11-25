@@ -2294,8 +2294,7 @@ Export nur Ports mit eigener Einstellung nennt. `tools/netbox-abgleich.py` liest
 Plan) und berichtet je Bereich Abweichungen und Hinweise; Kabel dreifach (NetBox ↔ Hostfile `links` ↔ LLDP/MNDP), Ports
 nach Profil und aufgelöstem 802.1Q-Ergebnis, ein vom Soll abweichendes Gerät nur als Hinweis (Release ausstehend).
 `:serialize` schreibt Ziffern-Strings als Zahl (`"10"` → `10.000000`); das Tool liest solche Werte als Text. Labor:
-`e2e.sh` Schritt 14, Tests `tools/netbox-abgleich-test.py`. Offen: Custom Script mit eigenem SSH-User nur zum Lesen,
-Vorschlag für Hostfiles (TODO 55)
+`e2e.sh` Schritt 14, Tests `tools/netbox-abgleich-test.py`. Offen: Vorschlag für Hostfiles als eigene Datei (TODO 55)
 
 **Start-Import (Baustein 2, 2026-11-25, *technisch, nicht abgefragt*):** `tools/netbox-import.py` baut aus denselben
 Daten einen Plan im Format, das der Abgleich aus NetBox liest (`plan_from_cfm`). Damit gilt als Prüfung: Plan aus cfm
@@ -2306,6 +2305,16 @@ wiederholbar ist. Ports, die `portDefault` erben, bekommen kein `cfm_port` (sons
 Standards in NetBox wirkungslos). Eine Adresse auf mehreren Routern (VIP) ist in NetBox nur einem Interface
 zuordenbar, deshalb nicht zugeordnet mit Rolle VRRP. Kabel kommen aus `links`, sonst aus LLDP/MNDP, nur zwischen
 Geräten im Inventar.
+
+**Aus NetBox (Baustein 3, 2026-11-25, *technisch, nicht abgefragt*; Rahmen vom Nutzer: Container, SSH, lesender User):**
+`global.rsc` `netbox`={"from"=…} legt auf dem Primary-Manager den User `cfm-netbox` an (Gruppe `ssh,read`, nur per Key
+aus `authorized_keys.cfm-netbox`, nur von `from`) und das Skript `cfm-netbox-run` mit `dont-require-permissions`, das
+`$cfmNetbox` für das letzte Release startet – nach dem Muster von `cfm-cert`/`cfm-cert-pull` (DS3.6). Das Skript gibt
+die Dateien gleich mit aus (`$cfmNetboxOut`, `/file/read` in Stücken zu 30 000 Bytes), ein SSH-Aufruf genügt. SFTP
+bräuchte die Policy `ftp` (= Schreibrecht), `/file/read` lehnt RouterOS für einen User mit nur `read` ab („not enough
+permissions“, Labor 2026-11-25), `/file/get` liest nur ~60 KB (`export.rsc` eines Managers hat ~500 KB). Nur auf dem Primary, weil dort der Status der Geräte liegt. Das Custom Script
+liest den Plan über das ORM (kein Token im Container) und ruft für Soll, Ist und Abgleich `netbox-abgleich.py` auf, das
+im Container liegt; so gibt es die Logik nur einmal. Die ORM-Abbildung ist gegen den REST-Weg getestet.
 
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
 

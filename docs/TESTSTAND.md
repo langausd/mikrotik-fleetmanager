@@ -170,6 +170,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   3 Geräte, 21 Interfaces, 2 Kabel, 16 Adressen) von Hand nachgestellt: grün; derselbe Stand über die NetBox im
   Speicher importiert (61 Objekte) und zurückgelesen: 0 Abweichungen, nur die 4 erwarteten Hinweise „im Hostfile fehlt
   links“. Dazu `netbox-import-test.py` 12, `netbox-abgleich-test.py` 30.
+  2026-11-25 (`6f11075`, Agent meldet `rb` per `:parse`, Zuordnung der Gerätetypen): `e2e.sh fresh` **564 von 564**
+  im ersten Lauf (rund 2 h). Auf CHR fehlt `/system/routerboard`, der Fehler wird abgefangen, `rb` bleibt leer.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

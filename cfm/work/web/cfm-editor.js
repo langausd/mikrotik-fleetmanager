@@ -1,6 +1,6 @@
-// cfm-editor.js 933cbac42eab - erzeugt von tools/editor/build.py, nicht von Hand ändern
+// cfm-editor.js 758e2b4411cb - erzeugt von tools/editor/build.py, nicht von Hand ändern
 (() => {
-const STAND = '933cbac42eab';
+const STAND = '758e2b4411cb';
 const alt = window.__cfmEd;
 if (alt && alt.stand === STAND) { alt.show(); return; }
 if (alt && alt.drop && !alt.drop()) { alt.show(); return; }
@@ -386,7 +386,9 @@ const css = `
 #cfmed nav div.akt{background:#13534b;color:#fff}
 #cfmed nav div.ro{color:#778}
 #cfmed section{flex:1;display:flex;flex-direction:column;min-width:0}
-#cfmed .bar{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #ccd;flex-wrap:wrap;background:#fafbfa}
+#cfmed .cfmed-bar{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #ccd;flex-wrap:wrap;background:#fafbfa}
+#cfmed .cfmed-bar>*{visibility:visible!important;opacity:1!important}
+#cfmed .cfmed-bar>button,#cfmed .cfmed-bar>span,#cfmed .cfmed-bar>b,#cfmed .cfmed-bar>label,#cfmed .cfmed-bar>select{display:inline-block!important}
 #cfmed .ed{flex:1;display:flex;min-height:0;font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace}
 #cfmed .gut{width:48px;overflow:hidden;text-align:right;padding:6px 6px 6px 0;color:#99a;background:#f0f1f0;white-space:pre;user-select:none}
 #cfmed textarea{flex:1;border:0;padding:6px 8px;resize:none;font:inherit;white-space:pre;overflow:auto;outline:none;tab-size:2}
@@ -534,7 +536,7 @@ const gut = el('div', { class: 'gut' });
 root.append(el('main', {},
 el('nav', {}),
 el('section', {},
-el('div', { class: 'bar' },
+el('div', { class: 'cfmed-bar' },
 el('button', { class: 'prim', onclick: save, id: 'cfmed-save', disabled: '' }, 'Speichern'),
 el('button', { onclick: reload }, 'Neu laden'),
 el('button', { onclick: newFile }, 'Neue Datei'),
@@ -700,7 +702,7 @@ const ps = cfmRadios.proposals(out);
 if (!ps.length) { vor.textContent = 'kein Vorschlag'; return; }
 ps.forEach((p) => vor.append(el('button', { onclick: () => takeOver(p, b), title: p.line }, '„' + p.name + '“ übernehmen (Kosten ' + p.kosten + ')')));
 });
-const bar = el('div', { class: 'bar scanbar' }, el('b', {}, 'WLAN-Scan'), band,
+const bar = el('div', { class: 'cfmed-bar scanbar' }, el('b', {}, 'WLAN-Scan'), band,
 el('label', {}, all, ' alle EU-Kanäle'), el('label', {}, dat, ' letzte Messung'), ap, go, vor,
 el('button', { onclick: () => bar.remove() }, 'Schließen'));
 $('pre').before(bar);

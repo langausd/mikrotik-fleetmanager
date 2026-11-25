@@ -11,7 +11,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Überblick
 
-* **Labor:** Mit RouterOS 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
+* **Labor:** Mit RouterOS 7.25.2 (2026-11-25, `e2e.sh`), 7.25.1 (zuvor 7.25, 7.24.2, 7.24.5, 7.25rc1 und 7.25rc2, der Gesamttest auch mit 7.26beta1) laufen
   alle vier Tests fehlerfrei – zuletzt am 2026-11-24 der Gesamttest (563 Prüfungen, ein bekannter Zeitfehler einzeln nachgestellt grün), am 2026-11-22 der Gesamttest (544), VRRP (184), MLAG (72) und das Onboarding (14/15/18), am 2026-11-21 der Gesamttest (542), am 2026-11-20 der Gesamttest (532), am 2026-11-16 der Gesamttest (485), am 2026-11-12 abends der Gesamttest (477) und drei VRRP-Router mit
   Standortkopplung (184, dazu `asymRouting` mit Netzen DR3.2.1 und Standort ohne `pubkey` DR4.3.1), am Vormittag
   desselben Tages der Gesamttest (477, zwei veraltete Erwartungen korrigiert) und VRRP (164); am 2026-11-08 der Gesamttest (469), VRRP (137),
@@ -178,6 +178,8 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Labor einzeln: **9 von 9** (Ausgabe gleich SFTP für alle 3 Geräte, cm1 `export.rsc` ~530 KB in ~8 s; Abgleich
   `--lesend` 0 Abweichungen; GC räumt auf). Kein zweiter voller Lauf (Änderung nur im netbox-Block und einem neuen
   Manager-Modul-Teil, der übrige Lauf war grün). Dazu `netbox-abgleich-test.py` 33, `cfm_abgleich-test.py` 2.
+  2026-11-25 abends, **RouterOS 7.25.2** (`59e3555`, CHR-Image 7.25.2): `e2e.sh fresh` **573 von 573** im ersten Lauf
+  (20:24–22:20), damit auch Schritt 14o im vollen Lauf grün. Freigabe für das Update der Geräte auf 7.25.2.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

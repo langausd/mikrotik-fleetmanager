@@ -237,6 +237,16 @@ class ImportTest(unittest.TestCase):
         self.assertEqual((i.neu, i.ergaenzt), (0, 0))
         self.assertEqual(len(nb.posts), n)
 
+    def test_vorhandener_prefix_bekommt_vlan(self):
+        """Pilot-Standort 2026-11-25: Prefix von Hand angelegt, ohne VLAN -> VLAN ergänzen, nicht doppelt anlegen"""
+        nb = MemNB()
+        p, vid = next((p, v) for p, v in sorted(self.plan["prefixes"].items()) if v is not None)
+        o = nb.post("ipam/prefixes", {"prefix": p, "status": "active"})
+        i, out = self.importiere(nb)
+        self.assertIn("~ Prefix %s (VLAN %s): vlan" % (p, vid), out)
+        self.assertTrue(nb.obj("ipam/prefixes", o["id"]).get("vlan"))
+        self.assertEqual(len([x for x in nb._all("ipam/prefixes").values() if x["prefix"] == p]), 1)
+
     def test_probelauf_schreibt_nicht(self):
         nb = MemNB()
         i, out = self.importiere(nb, schreiben=False)

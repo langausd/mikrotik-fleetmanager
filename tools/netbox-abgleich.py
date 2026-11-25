@@ -660,7 +660,9 @@ def abgleich(plan, soll, ist, alle=False):
         nbs = {}
         for e in ((ist.get(n) or {}).get("status") or {}).get("nb") or []:
             if len(e) >= 3:
-                nbs.setdefault(e[0], []).append((e[1], e[2]))
+                # ohne Identität (z.B. ein PC): MAC und Plattform zeigen; [3] = "m"MAC, [4] = Plattform
+                ident = e[1] or ("%s %s" % (str(e[3])[1:] if len(e) > 3 else "", e[4] if len(e) > 4 else "")).strip()
+                nbs.setdefault(e[0], []).append((ident, e[2]))
         ports = {p for (d, p) in peer_plan if d == n} | set(links) | set(nbs)
         for p in sorted(ports):
             obj = "%s %s" % (n, p)
@@ -682,7 +684,11 @@ def abgleich(plan, soll, ist, alle=False):
             seen = nbs.get(p) or []
             if seen:
                 if not pp:
-                    B.abw("Kabel", obj, "LLDP/MNDP sieht %s, in NetBox kein Kabel" % ", ".join("%s:%s" % x for x in seen))
+                    txt = "LLDP/MNDP sieht %s, in NetBox kein Kabel" % ", ".join("%s:%s" % x if x[1] else x[0] for x in seen)
+                    if any(x[0] in inv for x in seen):
+                        B.abw("Kabel", obj, txt)
+                    else:  # Gerät außerhalb von cfm (Fritzbox, PC): in NetBox optional
+                        B.hinweis("Kabel", obj, txt + " (Gerät außerhalb von cfm)")
                 elif not any(x[0] == pp[0] and (not x[1] or x[1] == pp[1]) for x in seen):
                     B.abw("Kabel", obj, "NetBox %s, LLDP/MNDP sieht %s" % (ptxt, ", ".join("%s:%s" % x for x in seen)))
             elif pp and pp[0] in inv and n in ist and ist[n].get("status"):

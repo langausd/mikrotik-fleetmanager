@@ -416,6 +416,15 @@ class AbgleichTest(unittest.TestCase):
         self.assertTrue(finde(items, "Kabel", "sw1 ether8", "abweichung", "hier hängt nichts"))
         self.assertTrue(finde(items, "Kabel", "rtr1 ether1", "abweichung", "LLDP/MNDP sieht sw1:uplink, in NetBox kein Kabel"))
 
+    def test_kabel_extern_hinweis(self):
+        """Pilot-Standort 2026-11-25: Fritzbox und PC (nur MAC) am Router - kein Gerät von cfm, daher Hinweis"""
+        ist = ist_basis()
+        ist["rtr1"]["status"]["nb"] += [["ether5", "fritz.box", "LAN:1", "m02:00:00:00:00:41", "AVM"],
+                                        ["ether6", "", "", "m02:00:00:00:00:42", ""]]
+        items = self.run_(ist=ist)
+        self.assertTrue(finde(items, "Kabel", "rtr1 ether5", "hinweis", "fritz.box:LAN:1, in NetBox kein Kabel (Gerät außerhalb"))
+        self.assertTrue(finde(items, "Kabel", "rtr1 ether6", "hinweis", "LLDP/MNDP sieht 02:00:00:00:00:42, in NetBox"))
+
     def test_kabel_vorschlag(self):
         s = soll_basis()
         del s["hosts"]["rtr1"]["links"]

@@ -384,7 +384,10 @@ class Importer:
             vl[int(vid)] = self.get_or_create("ipam/vlans", f, data, "VLAN %s %s" % (vid, name))["id"]
         # Prefixe
         for p, vid in sorted(plan["prefixes"].items()):
-            if self.one("ipam/prefixes", prefix=p):
+            o = self.one("ipam/prefixes", prefix=p)
+            if o:
+                if vid is not None and vid in vl and not o.get("vlan"):
+                    self.fill("ipam/prefixes", o, {"vlan": vl[vid]}, "Prefix %s (VLAN %s)" % (p, vid))
                 continue
             data = {"prefix": p, "status": "active"}
             if vid is not None and vid in vl:

@@ -300,6 +300,24 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(devs["sw1"]["device_type"], hap["id"])
         self.assertNotIn("+ Gerätetyp", out)
 
+    def test_geraetetyp_hap_ax2_nicht_ax3(self):
+        """Pilot-Standort 2026-11-25: board-name "hAP ax^2", in NetBox gibt es "hAP ax³" (anderer Standort) und den Library-Typ"""
+        self.ist["rtr1"]["status"].update({"model": "hAP ax^2", "rb": "C52iG-5HaxD2HaxD"})
+        self.ist["sw1"]["status"].update({"model": "hAP ax^2"})
+        self.ist["sw1"]["status"].pop("rb", None)
+        self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")
+        nb = MemNB()
+        mf = nb.post("dcim/manufacturers", {"name": "MikroTik", "slug": "mikrotik"})
+        nb.post("dcim/device-types", {"manufacturer": mf["id"], "model": "hAP ax³", "slug": "x"})
+        hap = nb.post("dcim/device-types", {"manufacturer": mf["id"], "model": "C52iG-5HaxD2HaxD-TC", "slug": "a"})
+        i, out = self.importiere(nb)
+        devs = {d["name"]: d for d in nb._all("dcim/devices").values()}
+        self.assertEqual(devs["rtr1"]["device_type"], hap["id"])
+        self.assertEqual(devs["sw1"]["device_type"], hap["id"])
+        self.assertNotIn("mehrere passen", out)
+        self.assertFalse(ab.modell_passt("hAP ax³", "", "hAP ax^2"))
+        self.assertTrue(ab.modell_passt("hAP ax²", "", "hAP ax^2"))
+
     def test_geraetetyp_neu_mit_teilenummer(self):
         self.ist["rtr1"]["status"].update({"model": "hAP ax²", "rb": "C52iG-5HaxD2HaxD"})
         self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")

@@ -326,7 +326,9 @@ class Importer:
             self._typen = [] if mf["id"] < 0 else self.nb.get("dcim/device-types", manufacturer_id=mf["id"])
         exakt = [t for t in self._typen if model in (t.get("model"), t.get("part_number")) or
                  (rb and rb in (t.get("model"), t.get("part_number")))]
-        cand = exakt or [t for t in self._typen if ab.modell_passt(t.get("model"), t.get("part_number"), model, rb)]
+        # rb (Routerboard-Modell) ist eindeutiger als der board-name: Treffer darüber zuerst
+        cand = exakt or ([t for t in self._typen if rb and ab.modell_passt(t.get("model"), t.get("part_number"), None, rb)]
+                         or [t for t in self._typen if ab.modell_passt(t.get("model"), t.get("part_number"), model, rb)])
         if cand:
             cand.sort(key=lambda t: (len(t.get("model") or ""), t.get("model") or ""))
             if len(cand) > 1:

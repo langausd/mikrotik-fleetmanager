@@ -471,7 +471,9 @@ class Befunde:
 
 
 def _norm(s):
-    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+    # hochgestellte Ziffern wie Ziffern: "hAP ax³" ist nicht "hAP ax" (RouterOS meldet "hAP ax^2", NetBox "hAP ax²")
+    s = str(s or "").translate(str.maketrans("¹²³⁴⁵⁶⁷⁸⁹⁰", "1234567890"))
+    return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
 def modell_passt(model, part, board, rb=None):

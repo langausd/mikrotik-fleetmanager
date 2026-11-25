@@ -1,10 +1,10 @@
 # TODO – geplante Verbesserungen
 
-## Übersicht offener Punkte (Stand 2026-11-24)
+## Übersicht offener Punkte (Stand 2026-11-25)
 
 Erledigtes steht in [ERLEDIGT.md](ERLEDIGT.md): der Verlauf, die erledigten Punkte mit ihren Nummern und die
 behobenen Fehler. Ist von einem Punkt nur ein Rest offen, steht er hier gekürzt auf diesen Rest, der frühere
-Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 99). Was auf Hardware und im Labor
+Text ebenfalls dort. Neue Punkte bekommen die nächste freie Nummer (ab 100). Was auf Hardware und im Labor
 geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 
 * **Neu 2026-11-11, Labor grün (12.11.):** Standortkopplung (15, DR4.3) mit DynDNS (DR4.4) und Freigaben nach Domain
@@ -24,6 +24,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   per Custom Script auslösbar, das im NetBox-Container läuft; Tunnel als NetBox-Objekte; einmaliger Start-Import;
   NetBox schreibt nicht in die Site-Daten (DT2.2). *Baustein 1 umgesetzt (DT2.3, Labor 562/563):* `$cfmNetbox` (Soll als JSON),
   Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). Offen: Bausteine 2 und 3.
+* **Neu 2026-11-25:** 99 (Flottenzustand als JSON für Home Assistant), Idee, erst bei konkreten Sensoren umsetzen.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -465,3 +466,17 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
     unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
     Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.
+99. **Flottenzustand als JSON für Home Assistant** (Idee des Nutzers, 2026-11-25, nach dem Muster von `$cfmNetbox`,
+    DT2.3): HA bekommt heute nur Ereignisse per Webhook (`$cfmNotify`, DU4.1) und live über die RouterOS-API
+    Clients, SSID und Port (6.7–6.9, `cfm_ssid.py`, `cfm_port.py`; die bleiben live, ein Export wäre zu alt). Ein
+    dauerhafter Zustand fehlt. Vorschlag: Der Manager schreibt in `$cfmNotifyTick` (rechnet die Zustände ohnehin)
+    zusätzlich `state/fleet.json` mit je Gerät: erreichbar/stumm (seit), Release und Ring (Soll/Ist, Apply
+    ok/Fehler), RouterOS-Version und offenes Update, Lizenz, offene Meldungen aus `meta/notify.dat`; dazu Summen
+    (z.B. „3 Geräte nicht aktuell“). Nur schreiben, wenn sich etwas ändert (Flash). HA liest die Datei mit dem
+    vorhandenen Lese-User über die API (Client aus `cfm_ssid.py`, neues Hilfsskript `cfm_fleet.py`, Ausgabe für
+    `command_line`-Sensoren mit `json_attributes`) oder per REST, falls `www-ssl` an ist. Zu klären vor dem Bau: welche
+    Sensoren HA wirklich braucht, Zugriff auf Dateien über die API mit `read`-Gruppe (Größe, `contents`),
+    Standby/Backup-Manager (Datei nur auf dem Primary; HA fragt die Manager-VIP oder beide). Ersetzt nichts
+    Vorhandenes (`$cfmStatus`, `netzplan.*` bleiben für die Konsole). Kommt ein zweites Python-Tool dazu, das die
+    Manager-JSONs liest, wandert das Einlesen (Zahlen aus `:serialize`, `[]`) aus `tools/netbox-abgleich.py` in ein
+    gemeinsames `tools/cfm_state.py`.

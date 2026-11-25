@@ -335,6 +335,9 @@ tools/netbox-import.py … --schreiben                                          
 * `--vlan-group`, `--ca`, `--unsicher` wie beim Abgleich. Tests: `tools/netbox-import-test.py` (NetBox im Speicher,
   Rundlauf Import → Abgleich ohne Abweichung).
 
+* Fehlt in NetBox ein Gerätetyp, legt der Import ihn mit Interface-Vorlagen aus den Ports des ersten Geräts an.
+  `--typ-yaml <verzeichnis>` schreibt je neuem Typ einen Entwurf für die Device-Type-Library (auch im Probelauf).
+
 ## `wg-client-setup.sh`
 
 Legt die WireGuard-Verbindung zum Admin-Netz als NetworkManager-Verbindung an (Linux, braucht

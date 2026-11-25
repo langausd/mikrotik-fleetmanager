@@ -42,7 +42,8 @@ ROLLEN = [("router", "Router"), ("switch", "Switch"), ("capsman", "Access Point"
 
 
 def slug(s):
-    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9_]+", "-", str(s).lower())).strip("-") or "x"
+    s = str(s).translate(str.maketrans("¹²³⁴⁵⁶⁷⁸⁹⁰", "1234567890")).replace("+", "-plus-")  # be³ -> be3, + -> plus, wie die Library
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9_]+", "-", s.lower())).strip("-") or "x"
 
 
 def if_typ(name):
@@ -273,6 +274,33 @@ def plan_from_cfm(soll, ist, site):
 
 # ---------------------------------------------------------------- Schreiben
 
+def _natkey(s):
+    """ether2 vor ether10"""
+    return [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]
+
+
+def typ_yaml(t):
+    """Entwurf einer Datei für die Device-Type-Library (netbox-community/devicetype-library) - von Hand prüfen und
+    ergänzen: Port-Geschwindigkeiten (aus dem Namen geschätzt), PoE, wifi, Netzteil, Gewicht, Datenblatt-Link."""
+    L = ["---", "# Entwurf aus cfm (tools/netbox-import.py --typ-yaml), Ports von %s. Vor einem Pull-Request prüfen:" % t["dev"],
+         "# Geschwindigkeit je Port (hier aus dem Namen geschätzt), PoE (poe_mode/poe_type), wifi-Interfaces,",
+         "# power-ports aus dem Datenblatt; USB/microSD hat NetBox nicht als Komponente -> nur in comments.",
+         "manufacturer: MikroTik", "model: %s" % _yq(t["model"]), "slug: %s" % t["slug"]]
+    if t["part_number"]:
+        L.append("part_number: %s" % _yq(t["part_number"]))
+    L += ["u_height: 0", "is_full_depth: false", "airflow: passive", "interfaces:"]
+    for name, typ in t["interfaces"]:
+        L += ["  - name: %s" % _yq(name), "    type: %s" % typ]
+    L += ["# power-ports:", "#   - name: DC", "#     type: dc-terminal", "#     maximum_draw: <W aus dem Datenblatt>",
+          "comments: '[%s Datasheet](https://mikrotik.com/product/<seite>)'" % (t["part_number"] or t["model"]).replace("'", "")]
+    return "\n".join(L) + "\n"
+
+
+def _yq(s):
+    s = str(s)
+    return "'%s'" % s.replace("'", "''") if re.search(r"[:#'\"{}\[\],&*?|<>=!%@`]|^\s|\s$", s) else s
+
+
 class Importer:
     def __init__(self, nb, site, schreiben=False, vlan_group=None, out=None):
         self.nb = nb
@@ -284,6 +312,7 @@ class Importer:
         self.ergaenzt = 0
         self.fake = 0
         self._typen = None
+        self.neue_typen = []   # für --typ-yaml: [{model, slug, part_number, interfaces: [(name, typ)], dev}]
         st = nb.status()
         m = re.match(r"(\d+)\.(\d+)", str(st.get("netbox-version", "")))
         self.ver = (int(m.group(1)), int(m.group(2))) if m else (4, 0)
@@ -319,7 +348,7 @@ class Importer:
         o = self.one(path, **filt)
         return o if o else self.create(path, data, was)
 
-    def geraetetyp(self, mf, model, rb):
+    def geraetetyp(self, mf, model, rb, ports=None, dev=None):
         """Gerätetyp von MikroTik: gleiches Modell/gleiche Teilenummer, sonst einer, der mit board-name oder
         Routerboard-Modell beginnt (Library: "C52iG-5HaxD2HaxD-TC" für "hAP ax²"/C52iG-5HaxD2HaxD); sonst neu."""
         if self._typen is None:
@@ -338,8 +367,16 @@ class Importer:
         data = {"manufacturer": mf["id"], "model": model, "slug": slug("mikrotik-" + model)}
         if rb and rb != model:
             data["part_number"] = rb
-        t = self.create("dcim/device-types", data, "Gerätetyp %s%s (nicht in NetBox, ohne Interface-Vorlagen)" % (
-            model, " / " + rb if rb and rb != model else ""))
+        ports = list(ports or [])
+        t = self.create("dcim/device-types", data, "Gerätetyp %s%s (nicht in NetBox%s)" % (
+            model, " / " + rb if rb and rb != model else "",
+            ", %d Interface-Vorlagen aus %s" % (len(ports), dev) if ports else ", ohne Interface-Vorlagen"))
+        # Vorlagen aus den Ports des ersten Geräts: Geräte dieses Typs bekommen ihre Interfaces dann von NetBox
+        if self.schreiben and t["id"] >= 0:
+            for name, typ in ports:
+                self.nb.post("dcim/interface-templates", {"device_type": t["id"], "name": name, "type": typ})
+        self.neue_typen.append({"model": model, "slug": data["slug"], "part_number": data.get("part_number", ""),
+                                "interfaces": ports, "dev": dev})
         self._typen.append(t)
         return t
 
@@ -361,14 +398,17 @@ class Importer:
         for d in plan["devices"].values():
             if d.get("rb"):
                 rbm.setdefault(d["model"] or "RouterOS", d["rb"])
-        for d in plan["devices"].values():
+        for dn, d in plan["devices"].items():
             r = d["nbrole"]
             if r not in roles:
                 roles[r] = self.get_or_create("dcim/device-roles", {"slug": slug(r)},
                                               {"name": r, "slug": slug(r), "color": "607d8b"}, "Geräterolle %s" % r)["id"]
             m = d["model"] or "RouterOS"
             if m not in types:
-                types[m] = self.geraetetyp(mf, m, d.get("rb") or rbm.get(m, ""))["id"]
+                # physische Ports (ohne LAG, Bridge, VLAN, WireGuard) des Geräts als Vorlage für einen neuen Typ
+                phys = [(p, e["type"]) for p, e in sorted((plan["interfaces"].get(dn) or {}).items(), key=lambda x: _natkey(x[0]))
+                        if e["type"] not in ("lag", "bridge", "virtual")]
+                types[m] = self.geraetetyp(mf, m, d.get("rb") or rbm.get(m, ""), phys, dn)["id"]
         # VLANs
         vl = {}
         gid = None
@@ -525,6 +565,8 @@ def main(argv=None):
     ap.add_argument("--unsicher", action="store_true")
     ap.add_argument("--vlan-group")
     ap.add_argument("--schreiben", action="store_true", help="wirklich anlegen (sonst Probelauf)")
+    ap.add_argument("--typ-yaml", metavar="VERZ", help="für neu angelegte Gerätetypen je einen Entwurf im Format der "
+                    "Device-Type-Library schreiben (auch im Probelauf)")
     ap.add_argument("--plan-speichern")
     ap.add_argument("--state")
     ap.add_argument("--manager")
@@ -568,6 +610,13 @@ def main(argv=None):
         print("NetBox %d.%d, Site %s - %s" % (imp.ver[0], imp.ver[1], a.site,
                                                "schreibe" if a.schreiben else "Probelauf (nichts wird angelegt)"))
         imp.run(plan)
+        if a.typ_yaml and imp.neue_typen:
+            os.makedirs(a.typ_yaml, exist_ok=True)
+            for t in imp.neue_typen:
+                fn = os.path.join(a.typ_yaml, t["slug"] + ".yaml")
+                with open(fn, "w", encoding="utf-8") as f:
+                    f.write(typ_yaml(t))
+                print("  Entwurf für die Device-Type-Library: %s" % fn)
         print("%d %s, %d %s" % (imp.neu, "angelegt" if a.schreiben else "anzulegen", imp.ergaenzt,
                                 "ergänzt" if a.schreiben else "zu ergänzen"))
         if not a.schreiben and (imp.neu or imp.ergaenzt):

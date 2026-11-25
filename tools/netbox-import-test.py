@@ -335,6 +335,25 @@ class ImportTest(unittest.TestCase):
         self.importiere(nb)
         t = [x for x in nb._all("dcim/device-types").values() if x["model"] == "hAP ax²"][0]
         self.assertEqual(t["part_number"], "C52iG-5HaxD2HaxD")
+        # Interface-Vorlagen aus den physischen Ports von rtr1 (ohne VLAN/WireGuard/Bridge)
+        vl = [x for x in nb._all("dcim/interface-templates").values() if x["device_type"] == t["id"]]
+        phys = [p for p, e in self.plan["interfaces"]["rtr1"].items() if e["type"] not in ("lag", "bridge", "virtual")]
+        self.assertEqual(sorted(x["name"] for x in vl), sorted(phys))
+        self.assertTrue(phys)
+
+    def test_typ_yaml(self):
+        self.ist["rtr1"]["status"].update({"model": "hAP be³ Media", "rb": "MA53UG+HbeH"})
+        self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")
+        i, out = self.importiere(MemNB(), schreiben=False)
+        t = [x for x in i.neue_typen if x["model"] == "hAP be³ Media"][0]
+        y = imp.typ_yaml(t)
+        self.assertIn("model: hAP be³ Media\n", y)
+        self.assertIn("part_number: MA53UG+HbeH\n", y)
+        self.assertIn("  - name: ether1\n    type: 1000base-t\n", y)
+        self.assertNotIn("vlan", y.split("interfaces:")[1].split("# power-ports")[0])
+        self.assertEqual(imp._yq("a: b"), "'a: b'")
+        self.assertEqual(imp.slug("mikrotik-hAP be³ Media"), "mikrotik-hap-be3-media")
+        self.assertEqual(imp.slug("mikrotik-C53UiG+5HPaxD2HPaxD"), "mikrotik-c53uig-plus-5hpaxd2hpaxd")
 
     def test_netbox_37(self):
         nb = MemNB("3.7.8")

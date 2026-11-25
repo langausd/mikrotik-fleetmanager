@@ -285,6 +285,21 @@ class ImportTest(unittest.TestCase):
         plan = ab.plan_from_netbox(nb, "s1")
         self.assertFalse([x for x in ab.abgleich(plan, self.soll, self.ist) if "Modell" in x["text"]])
 
+    def test_geraetetyp_ohne_rb_vom_gleichen_modell(self):
+        """Gerät ohne rb (offline, alter Agent) bekommt den Typ eines Geräts gleichen Modells mit rb"""
+        self.ist["rtr1"]["status"].update({"model": "hAP ax²"})
+        self.ist["rtr1"]["status"].pop("rb", None)
+        self.ist["sw1"]["status"].update({"model": "hAP ax²", "rb": "C52iG-5HaxD2HaxD"})
+        self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")
+        nb = MemNB()
+        mf = nb.post("dcim/manufacturers", {"name": "MikroTik", "slug": "mikrotik"})
+        hap = nb.post("dcim/device-types", {"manufacturer": mf["id"], "model": "C52iG-5HaxD2HaxD-TC", "slug": "a"})
+        i, out = self.importiere(nb)
+        devs = {d["name"]: d for d in nb._all("dcim/devices").values()}
+        self.assertEqual(devs["rtr1"]["device_type"], hap["id"])
+        self.assertEqual(devs["sw1"]["device_type"], hap["id"])
+        self.assertNotIn("+ Gerätetyp", out)
+
     def test_geraetetyp_neu_mit_teilenummer(self):
         self.ist["rtr1"]["status"].update({"model": "hAP ax²", "rb": "C52iG-5HaxD2HaxD"})
         self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")

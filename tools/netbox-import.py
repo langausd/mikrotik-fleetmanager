@@ -354,6 +354,11 @@ class Importer:
         mf = self.get_or_create("dcim/manufacturers", {"slug": "mikrotik"}, {"name": "MikroTik", "slug": "mikrotik"},
                                 "Hersteller MikroTik")
         roles, types = {}, {}
+        # rb je Modell von irgendeinem Gerät: Ein Gerät ohne rb (offline, alter Agent) bekommt denselben Typ
+        rbm = {}
+        for d in plan["devices"].values():
+            if d.get("rb"):
+                rbm.setdefault(d["model"] or "RouterOS", d["rb"])
         for d in plan["devices"].values():
             r = d["nbrole"]
             if r not in roles:
@@ -361,7 +366,7 @@ class Importer:
                                               {"name": r, "slug": slug(r), "color": "607d8b"}, "Geräterolle %s" % r)["id"]
             m = d["model"] or "RouterOS"
             if m not in types:
-                types[m] = self.geraetetyp(mf, m, d.get("rb") or "")["id"]
+                types[m] = self.geraetetyp(mf, m, d.get("rb") or rbm.get(m, ""))["id"]
         # VLANs
         vl = {}
         gid = None

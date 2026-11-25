@@ -170,7 +170,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   3 Geräte, 21 Interfaces, 2 Kabel, 16 Adressen) von Hand nachgestellt: grün; derselbe Stand über die NetBox im
   Speicher importiert (61 Objekte) und zurückgelesen: 0 Abweichungen, nur die 4 erwarteten Hinweise „im Hostfile fehlt
   links“. Dazu `netbox-import-test.py` 12, `netbox-abgleich-test.py` 30.
-  2026-11-25 (`6f11075`, Agent meldet `rb` per `:parse`, Zuordnung der Gerätetypen): `e2e.sh fresh` **564 von 564**
+  2026-11-25 (`6efc385`, Agent meldet `rb` per `:parse`, Zuordnung der Gerätetypen): `e2e.sh fresh` **564 von 564**
   im ersten Lauf (rund 2 h). Auf CHR fehlt `/system/routerboard`, der Fehler wird abgefangen, `rb` bleibt leer.
   2026-11-25 (TODO 55 Baustein 3, `global.rsc netbox`, User `cfm-netbox`): `e2e.sh fresh` 570 von 573 – alle Fehler in
   14o: `/file/read` lehnt RouterOS für einen User mit nur `read` ab („not enough permissions“). Umgebaut: Das Skript
@@ -178,7 +178,7 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Labor einzeln: **9 von 9** (Ausgabe gleich SFTP für alle 3 Geräte, cm1 `export.rsc` ~530 KB in ~8 s; Abgleich
   `--lesend` 0 Abweichungen; GC räumt auf). Kein zweiter voller Lauf (Änderung nur im netbox-Block und einem neuen
   Manager-Modul-Teil, der übrige Lauf war grün). Dazu `netbox-abgleich-test.py` 33, `cfm_abgleich-test.py` 2.
-  2026-11-25 abends, **RouterOS 7.25.2** (`59e3555`, CHR-Image 7.25.2): `e2e.sh fresh` **573 von 573** im ersten Lauf
+  2026-11-25 abends, **RouterOS 7.25.2** (`c2fcdbd`, CHR-Image 7.25.2): `e2e.sh fresh` **573 von 573** im ersten Lauf
   (20:24–22:20), damit auch Schritt 14o im vollen Lauf grün. Freigabe für das Update der Geräte auf 7.25.2.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 

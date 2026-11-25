@@ -291,6 +291,9 @@ class NetBoxTest(unittest.TestCase):
             self.assertEqual(seen["auth"], "Bearer nbt_abc.def")
             nb.NetBox("http://x", "0123abcd").get("dcim/sites")
             self.assertEqual(seen["auth"], "Token 0123abcd")
+            nb.urllib.request.urlopen = lambda req, timeout=0, context=None: (seen.update(ctx=context), R(req))[1]
+            nb.NetBox("https://x", "t", unsicher=True).get("dcim/sites")
+            self.assertEqual(seen["ctx"].verify_mode, nb.ssl.CERT_NONE)
         finally:
             nb.urllib.request.urlopen = orig
 

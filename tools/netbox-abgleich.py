@@ -32,6 +32,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -253,9 +254,14 @@ def fetch_state(dest, port, base, ver, out):
 # ---------------------------------------------------------------- Plan: NetBox REST
 
 class NetBox:
-    def __init__(self, url, token):
+    def __init__(self, url, token, ca=None, unsicher=False):
         self.url = url.rstrip("/")
         self.token = token
+        self.ctx = None
+        if unsicher:
+            self.ctx = ssl._create_unverified_context()
+        elif ca:
+            self.ctx = ssl.create_default_context(cafile=ca)
 
     def get(self, path, **params):
         q = []
@@ -274,7 +280,8 @@ class NetBox:
     def fetch(self, url):
         auth = ("Bearer " if self.token.startswith("nbt_") else "Token ") + self.token
         req = urllib.request.Request(url, headers={"Authorization": auth, "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=60) as r:
+        kw = {"context": self.ctx} if self.ctx else {}
+        with urllib.request.urlopen(req, timeout=60, **kw) as r:
             return json.loads(r.read().decode("utf-8"))
 
 
@@ -737,6 +744,8 @@ def main(argv=None):
     ap.add_argument("--token-file")
     ap.add_argument("--site", help="Slug der NetBox-Site")
     ap.add_argument("--vlan-group")
+    ap.add_argument("--ca", help="CA-Zertifikat (PEM) für eine NetBox mit eigenem Zertifikat")
+    ap.add_argument("--unsicher", action="store_true", help="Zertifikat der NetBox nicht prüfen")
     ap.add_argument("--plan", help="NetBox-Plan aus Datei statt per API")
     ap.add_argument("--plan-speichern")
     ap.add_argument("--state", help="lokale Kopie von state/ (statt --manager)")
@@ -761,7 +770,7 @@ def main(argv=None):
                     tok = f.read().strip()
             if not tok:
                 ap.error("API-Token fehlt (--token-file oder NETBOX_TOKEN)")
-            plan = plan_from_netbox(NetBox(a.netbox, tok), a.site, a.vlan_group)
+            plan = plan_from_netbox(NetBox(a.netbox, tok, a.ca, a.unsicher), a.site, a.vlan_group)
         if a.plan_speichern:
             with open(a.plan_speichern, "w", encoding="utf-8") as f:
                 json.dump(plan, f, indent=1, ensure_ascii=False, sort_keys=True)

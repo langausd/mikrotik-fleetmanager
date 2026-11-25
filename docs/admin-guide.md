@@ -2223,11 +2223,25 @@ Adressen planst du vollständig: MGMT (primary IPv4), Gateways und VIPs (Rolle V
 Routern liegen), die realen Adressen der Router (`.250+routerId`), Onboarding, feste Leases mit DNS-Namen
 (`<name>` oder `<name>.<domain>`) und die WireGuard-Adressen.
 
+**Token anlegen.** Das Tool liest nur, ein Token ohne Schreibrecht genügt. In NetBox oben rechts im Benutzermenü
+„API Tokens“ → „Add a Token“ (4.x; in 3.7 unter „Profile“), „Write enabled“ aus, wahlweise Ablaufdatum und „Allowed
+IPs“ (der Rechner, auf dem das Tool läuft). Ab 4.5 beginnt das Token mit `nbt_` und ist nur beim Anlegen zu sehen,
+gleich kopieren. Wer einen eigenen User dafür anlegt (z.B. `cfm-abgleich`), gibt ihm Leserechte (view) auf Sites,
+Devices, Device Types, Interfaces, Cables, VLANs, Prefixe, IP-Adressen und Tunnel. Ablegen nur für dich lesbar:
+
+```bash
+install -m 600 /dev/null ~/.netbox-token && nano ~/.netbox-token      # nur das Token, eine Zeile
+```
+
 **Abgleichen.**
 
 ```bash
-NETBOX_TOKEN=… tools/netbox-abgleich.py --netbox https://netbox.example --site <slug> --manager admin@<manager>
+tools/netbox-abgleich.py --netbox https://netbox.example --token-file ~/.netbox-token --site <slug> --manager admin@<manager>
 ```
+
+Statt `--token-file` geht auch `NETBOX_TOKEN=…`. Hat die NetBox ein eigenes oder selbstsigniertes Zertifikat (das
+Docker-Image bringt eines für `localhost` mit), gibst du die CA mit `--ca <pem>` an; `--unsicher` schaltet die Prüfung
+ab (nur im eigenen Netz).
 
 Das Tool startet am Manager `$cfmNetbox`: Der Manager wertet seine Site-Daten aus (Standard letztes Release; `--ver 0`
 = `work/`, also auch Änderungen, die noch nicht freigegeben sind) und legt sie unter `state/` ab. Das Tool holt sie

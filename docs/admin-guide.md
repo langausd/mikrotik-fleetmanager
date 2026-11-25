@@ -2251,9 +2251,33 @@ zusammen mit dem Status und dem Export jedes Geräts und vergleicht. `✘` ist e
 bzw. Gerät, `!` ein Hinweis, z.B. „im Hostfile fehlt links“ mit fertiger Zeile oder „Release noch nicht angewendet“,
 wenn ein Gerät vom Soll abweicht. Ein Gerät, das noch nichts gemeldet hat, fehlt im Ist (`kein Ist vom Gerät`).
 
+**Start-Import.** Einmal am Anfang überträgt `tools/netbox-import.py` den Stand von cfm nach NetBox, danach pflegst du
+dort. Es liest dieselben Daten wie der Abgleich und legt an, was fehlt: die drei Custom Fields, Site, Hersteller
+MikroTik, Gerätetypen (Modell, das das Gerät meldet) und Geräterollen (Router, Switch, Access Point, Manager), VLANs,
+Prefixe, Geräte mit Seriennummer und `cfm_role`/`cfm_port_default`, Interfaces (Ethernet-Ports, Bonds als LAG,
+VLAN-, VRRP- und WireGuard-Interfaces mit Adressen) mit `cfm_port` und 802.1Q-Modus, Kabel (aus `links`, sonst aus
+LLDP/MNDP), alle Adressen (am Interface, MGMT als primary IPv4 mit DNS-Namen, VIPs mehrerer Router nicht zugeordnet mit
+Rolle VRRP, feste Leases mit DNS-Namen) und die Standortkopplung als Tunnel. Vorhandenes ändert oder löscht es nicht,
+es füllt nur leere Felder; ein zweiter Lauf legt nichts mehr an. Ports, die `portDefault` erben, bekommen kein
+`cfm_port`, damit sie weiter `cfm_port_default` folgen.
+
+```bash
+tools/netbox-import.py --site <slug> --manager admin@<manager>                                  # nur der Plan aus cfm
+tools/netbox-import.py --site <slug> --manager admin@<manager> --netbox https://netbox.example \
+  --token-file ~/.netbox-token-rw                                                                # Probelauf
+tools/netbox-import.py … --schreiben                                                             # anlegen
+```
+
+Ohne `--schreiben` liest das Tool NetBox nur und zeigt mit `+`, was es anlegen, mit `~`, was es ergänzen würde. Zum
+Schreiben brauchst du ein eigenes Token **mit** Schreibrecht. Lösch es nach dem Import wieder, der Abgleich kommt mit
+dem lesenden aus. Gerätetypen aus der NetBox Device-Type-Library (mit Interface-Vorlagen) legst du am besten vorher
+an: Das Tool nimmt einen vorhandenen Typ mit gleichem Modell oder gleicher Teilenummer. Ein Gerät, das noch nichts
+gemeldet hat, kommt nur mit MGMT-Adresse an `vlan<mgmtVlan>`. Danach `tools/netbox-abgleich.py`: Direkt nach dem
+Import sollte es keine Abweichung melden.
+
 **Grenzen.** Kabel zu Geräten ohne LLDP/MNDP sieht nur NetBox und das Hostfile. Adressen aus DHCP (z.B. ein WAN mit
-`dhcp`) fehlen im Export. Noch nicht umgesetzt (TODO 55): Start-Import cfm → NetBox, Auslösen aus NetBox per Custom
-Script mit eigenem SSH-User nur zum Lesen, Vorschlag für die Hostfiles als Datei.
+`dhcp`) fehlen im Export. Noch nicht umgesetzt (TODO 55): Auslösen aus NetBox per Custom Script mit eigenem SSH-User
+nur zum Lesen, Vorschlag für die Hostfiles als Datei.
 
 ## 9. Sicherheitsnetze und Notfälle
 

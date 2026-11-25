@@ -91,6 +91,7 @@ Manifest holen (Fallback cm1 → cm2) → MAC prüfen → neue/geänderte Dateie
 | `tools/wifi-sign.py` | WLAN-Schild als A4-PDF mit QR-Code, SSID und Passphrase |
 | `tools/wlan-btm.py` | WLAN-Mitschnitt auswerten: meldet ein Client 802.11v/k/r, bekommt er Wechselvorschläge (DW2.5) |
 | `tools/netbox-abgleich.py` | Planung in NetBox mit cfm (Soll) und den Geräten (Ist) abgleichen (DT2.3) |
+| `tools/netbox-import.py` | Einmaliger Start-Import cfm → NetBox (DT2.3) |
 | `tools/home-assistant/` | Gast-SSID und umschaltbaren Port aus Home Assistant schalten ([Anleitung](docs/home-assistant.md)) |
 | `tools/cert-signer/` | Signer für die Gerätezertifikate: CSRs vom Manager lesen, per certbot und acme-dns signieren (DS3.6) |
 | `tools/upgrade-mirror.py` | befristeter Spiegel für das eingebaute RouterOS-Update (Geräte ohne Internet, `$cfmUpgrade … via=mirror`) |

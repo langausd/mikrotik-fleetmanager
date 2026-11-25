@@ -524,6 +524,10 @@ echo "$out" | grep -qE "✘ cm1 ether3 +LLDP/MNDP sieht cm2:ether2, in NetBox ke
 echo "$out" | grep -qE "✘ cm1 ether1 +am Gerät, fehlt in NetBox" && echo "$out" | grep -qE "✘ 192\.168\.10\.21 +in cfm \(MGMT\) \(auf sw1 vlan10\), fehlt in NetBox" \
   && echo "$out" | grep -qE "✘ 88 +in cfm \(ONBOARD\), fehlt in NetBox" \
   && ok "NetBox-Abgleich: Ports (status eth), Adressen (Soll + Export) und VLANs" || { bad "NetBox-Abgleich Ports/Adressen/VLANs"; echo "$out" | tail -12; }
+# Start-Import (Baustein 2): der Plan, den netbox-import.py aus cfm baut, passt ohne Abweichung zum Abgleich
+python3 "$ROOT/tools/netbox-import.py" --site labor --state "$LAB/nb-state" --plan-speichern "$LAB/nb-import.json" >/dev/null 2>&1
+out=$(python3 "$ROOT/tools/netbox-abgleich.py" --plan "$LAB/nb-import.json" --state "$LAB/nb-state" 2>&1)
+echo "$out" | grep -qE "^(0 Abweichungen|Keine Abweichungen)" && ok "NetBox-Import: Plan aus cfm ohne Abweichung" || { bad "NetBox-Import: Plan weicht ab"; echo "$out" | tail -8; }
 # Gerätesuche (TODO 53): live über die drei VMs; im Labor gibt es nur die Geräte selbst – ihren Ort liefert LLDP
 mgr '$cfmFind' | grep -q "Aufruf: \$cfmFind" && ok "\$cfmFind ohne Angaben: Aufruf" || bad "\$cfmFind ohne Angaben"
 swm=$(stat sw1 mac)

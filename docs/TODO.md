@@ -23,7 +23,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   cfm-Profil als Custom Field, VLANs, Prefixe, alle IPs), Abgleich gegen Soll und Ist nur auf Wunsch, aus NetBox
   per Custom Script auslösbar, das im NetBox-Container läuft; Tunnel als NetBox-Objekte; einmaliger Start-Import;
   NetBox schreibt nicht in die Site-Daten (DT2.2). *Baustein 1 umgesetzt (DT2.3, Labor 562/563):* `$cfmNetbox` (Soll als JSON),
-  Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). Offen: Bausteine 2 und 3.
+  Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). *Baustein 2 vorbereitet (25.11.):*
+  `tools/netbox-import.py`. Offen: Baustein 3, beide Bausteine gegen die echte NetBox.
 * **Neu 2026-11-25:** 99 (Flottenzustand als JSON für Home Assistant), Idee, erst bei konkreten Sensoren umsetzen.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
@@ -356,8 +357,12 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         `tools/netbox-abgleich.py` (REST oder gespeicherter Plan, `--manager` per SSH/SFTP als Admin) berichtet
         Geräte, Ports, Kabel, VLANs, Prefixe, IP-Adressen und Tunnel. Tests `tools/netbox-abgleich-test.py` (29), Labor
         `e2e.sh` Schritt 14 (2026-11-24: 562/563, der eine rote Punkt ein bekannter Zeitfehler, nachgestellt grün). Gegen
-        eine echte NetBox noch nicht gelaufen. (2) *offen:* einmaliger Start-Import cfm →
-        NetBox (Geräte, Interfaces mit `cfm_port`, Kabel, VLANs, Prefixe, IPs, Tunnel; Custom Fields anlegen).
+        eine echte NetBox noch nicht gelaufen. (2) *vorbereitet 2026-11-25:* `tools/netbox-import.py` legt an, was in
+        NetBox fehlt (Custom Fields, Site, Typen, Rollen, VLANs, Prefixe, Geräte, Interfaces mit `cfm_port`, Kabel aus
+        `links`/LLDP, Adressen samt primary IPv4, Tunnel), ändert nichts Vorhandenes, füllt nur Leeres; Probelauf ohne
+        `--schreiben`. Tests 12 (NetBox im Speicher, Rundlauf Import → Abgleich ohne Abweichung, 3.7/4.2/4.6), mit
+        dem Labor-Stand vom 24.11. ohne Abweichung; `e2e.sh` Schritt 14 prüft das künftig mit. Gegen die echte NetBox
+        (4.6.4) noch nicht gelaufen (Token mit Schreibrecht nötig).
         (3) *offen:* NetBox Custom Script „cfm-Abgleich“ (3.7 und 4.x) samt Anleitung; am Manager ein eigener User
         nur `ssh,read` (wie `cfm-cert`) und ein Skript mit `dont-require-permissions`, das `$cfmNetbox` startet. Lesen
         dann ohne SFTP (`ftp` wäre Schreibrecht), z.B. per `/file/read` in Stücken: `export.rsc` eines Managers hat

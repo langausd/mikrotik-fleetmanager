@@ -165,6 +165,11 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   danach am selben Labor mit derselben Ausgangslage (PPSK-Release v47, Secrets) einzeln nachgestellt: grün. Dazu
   `netbox-abgleich-test.py` 29. `e2e-vrrp.sh`, `e2e-mlag.sh` und `e2e-onboard.sh` nicht wiederholt (Änderung nur im
   Status des Agents und in einem neuen Manager-Modul).
+  2026-11-25 (TODO 55 Baustein 2, `tools/netbox-import.py`): kein neuer Lauf (kein RouterOS-Code geändert). Die neue
+  Prüfung in Schritt 14 („NetBox-Import: Plan aus cfm ohne Abweichung“) mit dem Labor-Stand vom 24.11. (`nb-state`,
+  3 Geräte, 21 Interfaces, 2 Kabel, 16 Adressen) von Hand nachgestellt: grün; derselbe Stand über die NetBox im
+  Speicher importiert (61 Objekte) und zurückgelesen: 0 Abweichungen, nur die 4 erwarteten Hinweise „im Hostfile fehlt
+  links“. Dazu `netbox-import-test.py` 12, `netbox-abgleich-test.py` 30.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware

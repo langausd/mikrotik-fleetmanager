@@ -277,12 +277,27 @@ class NetBox:
             url = data.get("next")
         return out
 
-    def fetch(self, url):
+    def fetch(self, url, method="GET", data=None):
         auth = ("Bearer " if self.token.startswith("nbt_") else "Token ") + self.token
-        req = urllib.request.Request(url, headers={"Authorization": auth, "Accept": "application/json"})
+        hdr = {"Authorization": auth, "Accept": "application/json"}
+        body = None
+        if data is not None:
+            body = json.dumps(data).encode("utf-8")
+            hdr["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=body, headers=hdr, method=method)
         kw = {"context": self.ctx} if self.ctx else {}
         with urllib.request.urlopen(req, timeout=60, **kw) as r:
-            return json.loads(r.read().decode("utf-8"))
+            return json.loads(r.read().decode("utf-8") or "{}")
+
+    def status(self):
+        return self.fetch(self.url + "/api/status/")
+
+    # nur für tools/netbox-import.py (Start-Import); der Abgleich liest nur
+    def post(self, path, data):
+        return self.fetch(self.url + "/api/" + path.strip("/") + "/", "POST", data)
+
+    def patch(self, path, oid, data):
+        return self.fetch(self.url + "/api/%s/%d/" % (path.strip("/"), oid), "PATCH", data)
 
 
 def _v(x, key="value"):

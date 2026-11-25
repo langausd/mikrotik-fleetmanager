@@ -22,6 +22,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`wlan-btm.py`](#wlan-btmpy) | WLAN-Mitschnitt: kann ein Client Wechselvorschläge (802.11v), bekommt er welche? |
 | [`wifi-sign.py`](#wifi-signpy) | WLAN-Schild als A4-PDF: QR-Code, SSID, Passphrase (de/en) |
 | [`netbox-abgleich.py`](#netbox-abgleichpy) | Planung in NetBox mit cfm (Soll) und den Geräten (Ist) abgleichen |
+| [`netbox-import.py`](#netbox-importpy) | Einmaliger Start-Import cfm → NetBox |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
@@ -309,6 +310,27 @@ tools/netbox-abgleich.py --plan plan.json --state <verz>                        
   `--unsicher` prüft das Zertifikat nicht.
 * `--vlan-group <slug>`: VLANs aus einer VLAN-Gruppe statt der Site. Token mit `nbt_` (NetBox 4.5) geht als Bearer,
   ältere als `Token`. Nur Standardbibliothek; Tests: `tools/netbox-abgleich-test.py`.
+
+## `netbox-import.py`
+
+Einmaliger Start-Import cfm → NetBox (TODO 55 Baustein 2, DT2.3, Admin-Guide 8.21): legt in NetBox an, was dort fehlt,
+damit danach dort geplant und mit `netbox-abgleich.py` verglichen werden kann.
+
+```bash
+tools/netbox-import.py --site <slug> --manager admin@192.168.10.2 --plan-speichern plan.json   # nur der Plan
+tools/netbox-import.py --site <slug> --state <verz> --netbox https://netbox.example --token-file <rw-token>   # Probelauf
+tools/netbox-import.py … --schreiben                                                          # anlegen
+```
+
+* Quellen wie beim Abgleich (`--manager` startet `$cfmNetbox`, oder `--state`; `--ver`, `--port`, `--base`).
+* Ohne `--netbox`: nur der Plan aus cfm (Zusammenfassung, Hinweise auf Übersprungenes, mit `--plan-speichern` als
+  Datei im Format des Abgleichs). Mit `--netbox` ohne `--schreiben`: Probelauf, NetBox wird nur gelesen, `+` =
+  würde angelegt, `~` = würde ergänzt. `--schreiben` braucht ein Token mit Schreibrecht.
+* Vorhandenes bleibt, nur leere Felder werden gefüllt; ein zweiter Lauf legt nichts an. Die Site wird angelegt, wenn
+  sie fehlt. NetBox 3.7 bis 4.6 (`device_role`/`role`, `content_types`/`object_types`, Prefix-`site`/`scope` ab 4.2,
+  Tunnel mit Kapselung WireGuard ab 4.0, davor `ip-ip`).
+* `--vlan-group`, `--ca`, `--unsicher` wie beim Abgleich. Tests: `tools/netbox-import-test.py` (NetBox im Speicher,
+  Rundlauf Import → Abgleich ohne Abweichung).
 
 ## `wg-client-setup.sh`
 

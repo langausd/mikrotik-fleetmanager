@@ -2293,8 +2293,18 @@ Export nur Ports mit eigener Einstellung nennt. `tools/netbox-abgleich.py` liest
 Plan) und berichtet je Bereich Abweichungen und Hinweise; Kabel dreifach (NetBox ↔ Hostfile `links` ↔ LLDP/MNDP), Ports
 nach Profil und aufgelöstem 802.1Q-Ergebnis, ein vom Soll abweichendes Gerät nur als Hinweis (Release ausstehend).
 `:serialize` schreibt Ziffern-Strings als Zahl (`"10"` → `10.000000`); das Tool liest solche Werte als Text. Labor:
-`e2e.sh` Schritt 14, Tests `tools/netbox-abgleich-test.py`. Offen: Start-Import, Custom Script mit eigenem SSH-User nur
-zum Lesen, Vorschlag für Hostfiles (TODO 55)
+`e2e.sh` Schritt 14, Tests `tools/netbox-abgleich-test.py`. Offen: Custom Script mit eigenem SSH-User nur zum Lesen,
+Vorschlag für Hostfiles (TODO 55)
+
+**Start-Import (Baustein 2, 2026-11-25, *technisch, nicht abgefragt*):** `tools/netbox-import.py` baut aus denselben
+Daten einen Plan im Format, das der Abgleich aus NetBox liest (`plan_from_cfm`). Damit gilt als Prüfung: Plan aus cfm
+gegen dasselbe Soll/Ist ergibt keine Abweichung (Tests, `e2e.sh`). Geschrieben wird per REST mit eigenem Token mit
+Schreibrecht, nur nach `--schreiben`, sonst Probelauf. Vorhandenes in NetBox wird weder geändert noch gelöscht, nur
+leere Felder werden gefüllt, damit ein Import in eine schon teilweise gepflegte NetBox nichts überschreibt und
+wiederholbar ist. Ports, die `portDefault` erben, bekommen kein `cfm_port` (sonst wäre eine spätere Änderung des
+Standards in NetBox wirkungslos). Eine Adresse auf mehreren Routern (VIP) ist in NetBox nur einem Interface
+zuordenbar, deshalb nicht zugeordnet mit Rolle VRRP. Kabel kommen aus `links`, sonst aus LLDP/MNDP, nur zwischen
+Geräten im Inventar.
 
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
 
@@ -2824,4 +2834,5 @@ Entscheidung: DT2.3 (in NetBox planen, cfm abgleichen; Baustein 1: `$cfmNetbox`,
 
 Anlass: Wunsch des Nutzers, Geräteinventar, Verkabelung und Portkonfiguration in NetBox zu planen und mit cfm
 abzugleichen (TODO 55, Idee seit 2026-10-16). Der Nutzer entschied Richtung, Umfang und Ablauf in zwei Fragerunden und
-wollte Baustein 1 vor den weiteren sehen.
+wollte Baustein 1 vor den weiteren sehen. Baustein 2 (Start-Import, `tools/netbox-import.py`) am 2026-11-25 auf seinen
+Wunsch vorbereitet, solange er nicht testen konnte.

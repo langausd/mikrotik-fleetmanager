@@ -138,6 +138,8 @@ class MemNB:
             return ab._host(o["address"]) in vs
         if k == "parent":
             return ipaddress.ip_address(ab._host(o["address"])) in ipaddress.ip_network(vs[0], strict=False)
+        if k.endswith("_id") and k not in o:
+            return o.get(k[:-3]) in vs
         return o.get(k) in vs
 
     def get(self, path, **f):
@@ -263,6 +265,33 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(nb.obj("dcim/interfaces", e2["id"])["mode"], "access")  # Modus war leer
         self.assertIn("~ Gerät sw1: custom_fields, serial", out)
         self.assertEqual(len([x for x in nb._all("dcim/devices").values() if x["name"] == "sw1"]), 1)
+
+    def test_geraetetyp_aus_library(self):
+        """hAP ax² meldet board-name "hAP ax²", die Library heißt C52iG-5HaxD2HaxD-TC: Treffer über rb"""
+        self.ist["rtr1"]["status"].update({"model": "hAP ax²", "rb": "C52iG-5HaxD2HaxD"})
+        self.ist["sw1"]["status"]["model"] = "CRS326-24G-2S+"
+        self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")
+        nb = MemNB()
+        mf = nb.post("dcim/manufacturers", {"name": "MikroTik", "slug": "mikrotik"})
+        hap = nb.post("dcim/device-types", {"manufacturer": mf["id"], "model": "C52iG-5HaxD2HaxD-TC", "slug": "a"})
+        nb.post("dcim/device-types", {"manufacturer": mf["id"], "model": "CRS326-24G-2S+RM", "slug": "b"})
+        din = nb.post("dcim/device-types", {"manufacturer": mf["id"], "model": "CRS326-24G-2S+IN", "slug": "c"})
+        i, out = self.importiere(nb)
+        devs = {d["name"]: d for d in nb._all("dcim/devices").values()}
+        self.assertEqual(devs["rtr1"]["device_type"], hap["id"])
+        self.assertEqual(devs["sw1"]["device_type"], din["id"])  # mehrere passen: kürzester, dann alphabetisch
+        self.assertIn("mehrere passen", out)
+        self.assertNotIn("+ Gerätetyp", out)
+        plan = ab.plan_from_netbox(nb, "s1")
+        self.assertFalse([x for x in ab.abgleich(plan, self.soll, self.ist) if "Modell" in x["text"]])
+
+    def test_geraetetyp_neu_mit_teilenummer(self):
+        self.ist["rtr1"]["status"].update({"model": "hAP ax²", "rb": "C52iG-5HaxD2HaxD"})
+        self.plan = imp.plan_from_cfm(self.soll, self.ist, "s1")
+        nb = MemNB()
+        self.importiere(nb)
+        t = [x for x in nb._all("dcim/device-types").values() if x["model"] == "hAP ax²"][0]
+        self.assertEqual(t["part_number"], "C52iG-5HaxD2HaxD")
 
     def test_netbox_37(self):
         nb = MemNB("3.7.8")

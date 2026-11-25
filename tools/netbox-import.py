@@ -110,7 +110,7 @@ def plan_from_cfm(soll, ist, site):
         if serial.startswith("SERIAL-"):
             serial = ""
         plan["devices"][n] = {
-            "serial": serial, "model": _s(st.get("model")), "part": "", "nbrole": nb_rolle(s.get("role")),
+            "serial": serial, "model": _s(st.get("model")), "part": "", "rb": _s(st.get("rb")), "nbrole": nb_rolle(s.get("role")),
             "role": ",".join(sorted(ab._roles(s.get("role")))), "port_default": _s((ports.get("*") or {}).get("spec")) or None,
             "ip": _s(s.get("ip")) or None, "status": "active"}
         eth = list(st.get("eth") or [])
@@ -283,6 +283,7 @@ class Importer:
         self.neu = 0
         self.ergaenzt = 0
         self.fake = 0
+        self._typen = None
         st = nb.status()
         m = re.match(r"(\d+)\.(\d+)", str(st.get("netbox-version", "")))
         self.ver = (int(m.group(1)), int(m.group(2))) if m else (4, 0)
@@ -318,6 +319,28 @@ class Importer:
         o = self.one(path, **filt)
         return o if o else self.create(path, data, was)
 
+    def geraetetyp(self, mf, model, rb):
+        """Gerätetyp von MikroTik: gleiches Modell/gleiche Teilenummer, sonst einer, der mit board-name oder
+        Routerboard-Modell beginnt (Library: "C52iG-5HaxD2HaxD-TC" für "hAP ax²"/C52iG-5HaxD2HaxD); sonst neu."""
+        if self._typen is None:
+            self._typen = [] if mf["id"] < 0 else self.nb.get("dcim/device-types", manufacturer_id=mf["id"])
+        exakt = [t for t in self._typen if model in (t.get("model"), t.get("part_number")) or
+                 (rb and rb in (t.get("model"), t.get("part_number")))]
+        cand = exakt or [t for t in self._typen if ab.modell_passt(t.get("model"), t.get("part_number"), model, rb)]
+        if cand:
+            cand.sort(key=lambda t: (len(t.get("model") or ""), t.get("model") or ""))
+            if len(cand) > 1:
+                self.log("!", "Gerätetyp für %s: mehrere passen (%s), nehme %s" % (
+                    model, ", ".join(t["model"] for t in cand), cand[0]["model"]))
+            return cand[0]
+        data = {"manufacturer": mf["id"], "model": model, "slug": slug("mikrotik-" + model)}
+        if rb and rb != model:
+            data["part_number"] = rb
+        t = self.create("dcim/device-types", data, "Gerätetyp %s%s (nicht in NetBox, ohne Interface-Vorlagen)" % (
+            model, " / " + rb if rb and rb != model else ""))
+        self._typen.append(t)
+        return t
+
     def run(self, plan):
         v4 = self.ver >= (4, 0)
         # Custom Fields
@@ -338,9 +361,7 @@ class Importer:
                                               {"name": r, "slug": slug(r), "color": "607d8b"}, "Geräterolle %s" % r)["id"]
             m = d["model"] or "RouterOS"
             if m not in types:
-                t = self.one("dcim/device-types", model=m) or self.one("dcim/device-types", part_number=m)
-                types[m] = (t or self.create("dcim/device-types", {"manufacturer": mf["id"], "model": m, "slug": slug(m)},
-                                             "Gerätetyp %s" % m))["id"]
+                types[m] = self.geraetetyp(mf, m, d.get("rb") or "")["id"]
         # VLANs
         vl = {}
         gid = None

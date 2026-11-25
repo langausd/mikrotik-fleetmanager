@@ -2271,7 +2271,10 @@ tools/netbox-import.py … --schreiben                                          
 Ohne `--schreiben` liest das Tool NetBox nur und zeigt mit `+`, was es anlegen, mit `~`, was es ergänzen würde. Zum
 Schreiben brauchst du ein eigenes Token **mit** Schreibrecht. Lösch es nach dem Import wieder, der Abgleich kommt mit
 dem lesenden aus. Gerätetypen aus der NetBox Device-Type-Library (mit Interface-Vorlagen) legst du am besten vorher
-an: Das Tool nimmt einen vorhandenen Typ mit gleichem Modell oder gleicher Teilenummer. Ein Gerät, das noch nichts
+an: Das Tool nimmt einen vorhandenen MikroTik-Typ mit gleichem Modell oder gleicher Teilenummer, sonst einen, dessen
+Modell mit dem Namen des Geräts beginnt. Verglichen wird mit `board-name` und dem Routerboard-Modell, das der Agent
+seit 2026-11-25 mitmeldet (`rb`, z.B. `C52iG-5HaxD2HaxD` für den hAP ax², in der Library `C52iG-5HaxD2HaxD-TC`). Passen
+mehrere (z.B. `…RM` und `…IN`), nimmt es den ersten und sagt das; fehlt einer, legt es ihn ohne Interface-Vorlagen an. Ein Gerät, das noch nichts
 gemeldet hat, kommt nur mit MGMT-Adresse an `vlan<mgmtVlan>`. Danach `tools/netbox-abgleich.py`: Direkt nach dem
 Import sollte es keine Abweichung melden.
 

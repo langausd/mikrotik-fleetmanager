@@ -153,6 +153,12 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(ip["ether3"], {"untag": 30, "tag": {20}, "disabled": False})
         self.assertTrue(ip["ether7"]["disabled"])
 
+    def test_modell_passt(self):
+        self.assertTrue(nb.modell_passt("C52iG-5HaxD2HaxD-TC", "", "hAP ax²", "C52iG-5HaxD2HaxD"))
+        self.assertTrue(nb.modell_passt("CRS326-24G-2S+RM", "", "CRS326-24G-2S+"))
+        self.assertFalse(nb.modell_passt("CRS326-24G-2S+RM", "", "hAP ax²"))
+        self.assertFalse(nb.modell_passt("RB", "", "RB5009UG+S+"))  # zu kurz für einen Präfix-Treffer
+
     def test_s(self):
         self.assertEqual(nb._s(10.0), "10")
         self.assertEqual(nb._s(None), "")

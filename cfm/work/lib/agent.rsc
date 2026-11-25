@@ -88,6 +88,9 @@
   # rsc-check: erlaubt json-typ (Kanal dahinter, siehe oben)
   :set ($s->"ros") $ros
   :set ($s->"model") [/system/resource/get board-name]
+  # Routerboard-Modell (z.B. C52iG-5HaxD2HaxD statt "hAP ax²"): damit findet der NetBox-Import den Gerätetyp der
+  # Device-Type-Library (DT2.3). CHR/x86 kennen /system/routerboard nicht - schon das Einlesen scheitert, daher :parse
+  :onerror e in={ :set ($s->"rb") [[:parse ":return [/system/routerboard/get model]"]] } do={}
   # Bridge-MAC (DP3.1): Daran erkennen die Filter isolierter VLANs die Router (der Manager schreibt die MACs
   # der Router ins Manifest). Bleibt bei :deserialize Text (Labor 2026-10-12)
   :onerror e in={ :set ($s->"mac") [:tostr [/interface/bridge/get [find where name="bridge"] mac-address]] } do={}

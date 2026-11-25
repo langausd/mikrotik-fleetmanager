@@ -2288,7 +2288,8 @@ auswerten. Deshalb wertet der Manager sie selbst aus: `$cfmNetbox [ver=N]` (`lib
 Release) schreibt `state/netbox.json` (VLANs mit Netz und Gateway, Leases mit Adresse, WireGuard, Inventar) und je Gerät
 `state/<name>/netbox.json` (Hostfile, Ports mit aufgelöstem Profil wie `$cfmShow`, Bond-Slaves, MLAG; Daten je Gerät neu
 geladen). Das Ist kommt aus dem, was der Manager ohnehin sammelt: `status.dat` (Seriennummer, Modell, Nachbarn) und
-`export.rsc` (Adressen, Bridge-Ports und -VLANs, Bonds). Neu meldet der Agent seine Ethernet-Ports (`eth`), weil der
+`export.rsc` (Adressen, Bridge-Ports und -VLANs, Bonds). Neu meldet der Agent seine Ethernet-Ports (`eth`, seit 2026-11-25 auch das Routerboard-Modell `rb`, weil `board-name`
+beim hAP ax² nur „hAP ax²“ ist und die Device-Type-Library `C52iG-5HaxD2HaxD-TC` führt), weil der
 Export nur Ports mit eigener Einstellung nennt. `tools/netbox-abgleich.py` liest NetBox per REST (oder einen gespeicherten
 Plan) und berichtet je Bereich Abweichungen und Hinweise; Kabel dreifach (NetBox ↔ Hostfile `links` ↔ LLDP/MNDP), Ports
 nach Profil und aufgelöstem 802.1Q-Ergebnis, ein vom Soll abweichendes Gerät nur als Hinweis (Release ausstehend).

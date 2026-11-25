@@ -410,6 +410,15 @@ def _norm(s):
     return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
 
 
+def modell_passt(model, part, board, rb=None):
+    """NetBox-Gerätetyp (Modell, Teilenummer) passt zum Gerät: board-name (z.B. "hAP ax²", "CRS326-24G-2S+") oder
+    Routerboard-Modell (z.B. "C52iG-5HaxD2HaxD"); die Library hängt oft noch etwas an (RM, IN, TC)."""
+    have = [_norm(x) for x in (model, part) if x]
+    want = [_norm(x) for x in (board, rb) if x]
+    return any(h and w and (h == w or (len(w) >= 4 and h.startswith(w)) or (len(h) >= 4 and w.startswith(h)))
+               for h in have for w in want)
+
+
 def _roles(s):
     return set(x.strip() for x in str(s or "").split(",") if x.strip() and x.strip() != "base")
 
@@ -489,9 +498,9 @@ def abgleich(plan, soll, ist, alle=False):
             B.hinweis("Geräte", n, "Seriennummer fehlt in NetBox (Gerät: %s)" % serial)
         board = i.get("model")
         if board and (p["model"] or p["part"]):
-            nb, np_, nm = _norm(board), _norm(p["part"]), _norm(p["model"])
-            if not any(x and (x.startswith(nb) or nb.startswith(x)) for x in (nm, np_)):
-                B.hinweis("Geräte", n, "Modell NetBox %s, Gerät meldet %s" % (p["model"] or p["part"], board))
+            if not modell_passt(p["model"], p["part"], board, i.get("rb")):
+                B.hinweis("Geräte", n, "Modell NetBox %s, Gerät meldet %s" % (
+                    p["model"] or p["part"], board + (" (%s)" % i["rb"] if i.get("rb") else "")))
         if p["role"] is not None and _roles(p["role"]) != _roles(s.get("role")):
             B.abw("Geräte", n, "Rolle NetBox (cfm_role) %s, Inventar %s" % (p["role"], s.get("role")))
         elif p["role"] is None:

@@ -26,6 +26,7 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). *Baustein 2 vorbereitet (25.11.):*
   `tools/netbox-import.py`. Offen: Baustein 3, beide Bausteine gegen die echte NetBox.
 * **Neu 2026-11-25:** 99 (Flottenzustand als JSON für Home Assistant), Idee, erst bei konkreten Sensoren umsetzen.
+  100 (von BPDU-Guard gesperrte Ports melden) und 101 (Onboarding prüft `device-mode`), beide aus dem Pilot-Standort.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -489,3 +490,17 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     Vorhandenes (`$cfmStatus`, `netzplan.*` bleiben für die Konsole). Kommt ein zweites Python-Tool dazu, das die
     Manager-JSONs liest, wandert das Einlesen (Zahlen aus `:serialize`, `[]`) aus `tools/netbox-abgleich.py` in ein
     gemeinsames `tools/cfm_state.py`.
+100. **Von BPDU-Guard gesperrte Ports melden** (Hardware, Pilot-Standort 2026-11-25): Ein NAS mit Virtual Switch (STP)
+    an einem `access`-Port war wochenlang offline, ohne dass es auffiel – der Port stand nur als inaktiv in
+    `/interface/bridge/port` („BPDU guard changed port role to disabled“), das Log reichte nicht mehr so weit zurück.
+    Vorschlag: Der Agent meldet inaktive Bridge-Ports mit `bpdu-guard=yes` im Status (`bpdu`), `$cfmStatus`/`$cfmNotify`
+    warnen („Port gesperrt (BPDU-Guard), Profil `vport`?“), `netbox-abgleich.py` nennt sie statt „nicht in der Bridge“
+    (dort Export-Zeile eines inaktiven Ports prüfen). Lösung im Fall: Profil `vport:<vid>`, Port einmal aus/an.
+    Nebenbefund: `vport` fehlte in der `profiles.rsc` der Site (älter als die Vorlage) – `$cfmCheck` könnte auf
+    Profile der Vorlage hinweisen, die der Site fehlen.
+101. **Onboarding: `device-mode` prüfen** (Hardware, 2026-11-25, neuer hAP ax² mit 7.25.2): Neue Geräte kommen im Modus
+    `home`, der `/tool/fetch` und den Scheduler sperrt; das Onboarding lief bis zum Enroll und scheiterte dort mit
+    „Agent-Installation fehlgeschlagen: not allowed by device-mode“. Freigabe nur am Gerät
+    (`/system/device-mode/update mode=advanced`, dann Mode-/Reset-Taster oder Strom aus), danach reichte
+    `$cfmEnroll`. Vorschlag: In der Probe des Onboardings `device-mode` lesen und bei `home` (bzw. ohne `fetch`/
+    `scheduler`) sofort mit Anleitung abbrechen; Admin-Guide 7.1 um den Schritt ergänzen.

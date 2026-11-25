@@ -10,6 +10,8 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-26 (Nachtschicht):** **TODO 98** behoben (DR1.6, `$cfmCheck` prüft VRRP-IDs über VID 255).
+
 * **Am 2026-11-24 (Abgleich mit den Session-Logs der Termine an einem Standort):** **TODO 94** erledigt – Hardware 2026-11-23
   (v42, ap2): Rückkehr aus dem Fallback, `cfm-fallback` trägt in derselben Sekunde beide Gast-Slaves (2,4 und 5 GHz)
   in `cfm-iso` ein und entfernt die Verweise auf die alten Interfaces. **TODO 40** erledigt (Fallback weiterer SSIDs,
@@ -1251,6 +1253,17 @@ Stand 2026-11-03, bevor die Punkte in TODO.md auf ihren offenen Rest gekürzt wu
       RouterOS-Update/Firmware aus dem Agent (DG4.3: heikelster Pfad).
 
 ## Behobene Fehler
+
+* ~~**98 – VLAN-ID über 255 mit VRRP ohne `vrid`**~~ – *behoben 2026-11-26 (DR1.6, Labor `e2e.sh` Schritt 9):*
+  `$cfmCheck` meldet als Fehler: VID über 255 mit Netz und VRRP ohne `vrid`, `vrid` außerhalb 1–255, doppelte
+  VRRP-ID (auch gegen VIDs bis 255) und VID über 255 ohne `net` und ohne `l3=no`; `vrid` an einer VID bis 255 ist eine
+  Warnung. Text bis dahin:
+
+  * **98 – VLAN-ID über 255 mit VRRP ohne `vrid`** (Befund 2026-11-24 bei der Doku-Prüfung, nicht beobachtet):
+    `roles/router.rsc` nimmt die VID als VRRP-ID, über 255 den VLAN-Schlüssel `vrid`. Fehlt er, legt die Rolle das
+    VRRP-Interface ohne gültige `vrid` an (Apply-Fehler, Rollback). `$cfmCheck` sollte das vorher melden (VID > 255,
+    `l3` nicht `no`, ein Router mit `routerId` → `vrid` 1–255 und eindeutig). Dokumentiert ist `vrid` seit 2026-11-24
+    (Admin-Guide 4, Kopf von `vlans.rsc`); ebenso braucht ein solches VLAN `net` (`$cfmNet`).
 
 * ~~**Gast-Kopie im lokalen Fallback sendet nicht**~~, ~~**Mit PPSK geht die normale Passphrase der SSID nicht
   mehr**~~ und ~~**`cfm-iso` nach dem Neuverbinden veraltet**~~ – *auf Hardware behoben (TODO 74):* PPSK 2026-11-17

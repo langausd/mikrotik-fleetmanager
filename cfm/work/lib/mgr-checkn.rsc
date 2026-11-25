@@ -1,7 +1,8 @@
 # ============================================================
-# cfm lib/mgr-checkn.rsc – Manager-Funktionen: WireGuard-Teil der inhaltlichen Prüfung
+# cfm lib/mgr-checkn.rsc – Manager-Funktionen: Netz-Teil der inhaltlichen Prüfung (WireGuard, VLANs)
 #   $cfmCheckNet z=<Zonen>   prüft wireguard.rsc (Admin-Peers DR4.1/DR4.2, Standortkopplung DR4.3, DynDNS DR4.4)
 #                            und asymRouting in vlans.rsc (DR3.2, DR3.2.1 - Netze im Vergleich mit den Standorten)
+#              [vrr=<router>]  VRRP-IDs der VLANs (DR1.6), vrr = ein Router mit routerId (leer: ohne VRRP)
 #                            -> {"err"={..};"warn"={..}}
 #   Aufruf nur aus $cfmCheck (lib/mgr-check.rsc), nachdem der die Daten geladen hat. Eigene Datei,
 #   weil /file get nur ca. 60 KB liest (wie lib/mgr-checkw.rsc, DM1.1); $cfmCheck lädt sie aus demselben Stand nach.
@@ -127,6 +128,32 @@
         :foreach t0 in=[:toarray ($cfmG->"policy"->$z)] do={
           :local pt [$cfmTarget $t0]
           :if ([:len [:tostr ($pt->"nat")]] > 0) do={ :set ($warn->[:len $warn]) ($vw . "internet wirkt nicht, solange die Zone " . $z . " NAT hat (" . $t0 . ") - die Router setzen dann kein notrack") }
+        }
+      }
+    }
+  }
+  # VRRP-IDs (TODO 98): Mit routerId nimmt die Rolle router die VID als VRRP-ID, über 255 den Schlüssel vrid -
+  # fehlt er, scheitert der Apply (Rollback). Eindeutig, damit die virtuelle MAC (00:00:5E:00:01:<vrid>) an der
+  # gemeinsamen Bridge je VLAN verschieden bleibt. Über 255 gibt es kein Default-Netz: ohne net weder Adresse noch VRRP
+  :local vids ({})
+  :local vrN [:tostr $vrr]
+  :foreach vid,v in=$cfmVlans do={
+    :if ([:tostr ($v->"l3")] != "no") do={
+      :local vw ("vlans.rsc: VLAN " . $vid . ": ")
+      :local big ([:tonum $vid] > 255)
+      :if ($big and [:len [:tostr ($v->"net")]] = 0) do={ :set ($err->[:len $err]) ($vw . "VID über 255 braucht net (kein Default 192.168.<VID>.0/24) oder l3=no") }
+      :local vr [:tostr ($v->"vrid")]
+      :local id [:tonum $vid]
+      :if ([:len $vr] > 0) do={
+        :local x [:tonum $vr]
+        :if ([:typeof $x] != "num" or $x < 1 or $x > 255) do={ :set ($err->[:len $err]) ($vw . "vrid " . $vr . " (1-255)"); :set x "" }
+        :if ($big) do={ :set id $x } else={ :set ($warn->[:len $warn]) ($vw . "vrid wirkt nur bei VID über 255, sonst gilt die VID") }
+      } else={ :if ($big) do={ :set id "" } }
+      :if ([:len $vrN] > 0 and [:len ([$cfmNet $vid]->"net")] > 0) do={
+        :if ($big and [:len $vr] = 0) do={ :set ($err->[:len $err]) ($vw . "VID über 255 mit VRRP (routerId an " . $vrN . ") braucht vrid 1-255") }
+        :if ([:typeof $id] = "num") do={
+          :if ([:typeof ($vids->[:tostr $id])] != "nothing") do={ :set ($err->[:len $err]) ($vw . "VRRP-ID " . $id . " hat schon VLAN " . ($vids->[:tostr $id]) . " - vrid eindeutig wählen") }
+          :set ($vids->[:tostr $id]) $vid
         }
       }
     }

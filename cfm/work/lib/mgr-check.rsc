@@ -348,6 +348,8 @@
   :local fneed ({})
   :local rtr false
   :foreach n,d in=$inv do={ :if (("," . [:tostr ($d->"role")] . ",") ~ ",router,") do={ :set rtr true } }
+  # Router mit VRRP (routerId im Hostfile): Name des ersten, für die Prüfung der VRRP-IDs ($cfmCheckNet, DR1.6)
+  :local vrr ""
   :if ($rtr and [:len $cfmDns] > 0) do={ :set ($fneed->"router.dns") "dns.rsc" }
   :if ($rtr and [:len ($cfmDns->"self"->"zones")] > 0) do={ :set ($fneed->"router.dnsreq") "dns.rsc self" }
   :if ($rtr and [:len ($cfmWg->"peers")] > 0) do={ :set ($fneed->"router.wg") "wireguard.rsc peers" }
@@ -392,6 +394,7 @@
       :local he ""
       :onerror e in={ [[:parse [/file/get $hf contents]]] } do={ :set he $e }
       :if ([:len $he] > 0) do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . $he) } else={
+        :if ([:len $vrr] = 0 and (("," . [:tostr ($d->"role")] . ",") ~ ",router,") and [:len [:tostr ($cfmHost->"routerId")]] > 0) do={ :set vrr $n }
         :if ([:len ($cfmHost->"bonds")] > 0) do={ :set ($fneed->"base.bond") ("hosts/" . $n . ".rsc bonds") }
         # umschaltbare Ports (DP1.4): Name a-z0-9, Port mit Profil, alt-Profil gültig (unten mit den übrigen)
         :local psx ({})
@@ -625,7 +628,7 @@
   :if ([$fex ($w . "/lib/mgr-checkn.rsc")]) do={ :onerror e in={ [[:parse [/file/get ($w . "/lib/mgr-checkn.rsc") contents]]] } do={ :set ($err->[:len $err]) ("lib/mgr-checkn.rsc: " . $e) } }
   :global cfmCheckNet
   :if ([:typeof $cfmCheckNet] = "nothing") do={ :set ($err->[:len $err]) "lib/mgr-checkn.rsc fehlt: wireguard.rsc nicht geprüft - Framework hochladen: tools/upload-seed.sh" } else={
-    :local cn [$cfmCheckNet z=$zones]
+    :local cn [$cfmCheckNet z=$zones vrr=$vrr]
     :foreach x in=($cn->"err") do={ :set ($err->[:len $err]) $x }
     :foreach x in=($cn->"warn") do={ :set ($warn->[:len $warn]) $x }
   }

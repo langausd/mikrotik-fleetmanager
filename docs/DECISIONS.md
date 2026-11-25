@@ -1032,6 +1032,25 @@ Die Rolle fragte für den DHCP-Server den Zustand des VRRP-Interface ab; im Prob
 
 **Begründung:** Die VIP selbst wandert weiter ohne Verzögerung, nur die Dienste dahinter folgen 5 s später. Bei einem echten Ausfall fällt das nicht auf: DHCP-Clients wiederholen ihre Anfrage, ein WireGuard-Client braucht nach dem Wechsel ohnehin etwa 15 s für den neuen Handshake. Kein STP im Spiel (Bridge des CHR ohne Protokoll). Wechselt der Zustand in den 5 s mehrmals, prüft jeder Lauf erneut. Beim Update: Eine Änderung an `on-master`/`on-backup` startet das VRRP-Interface neu – der Master geht kurz auf Backup, ein Backup übernimmt für etwa 9 s (Labor 7.24.5), danach preemptet der Master wieder; das erste Release mit DR1.5 verursacht also je VLAN einen kurzen Wechsel (WireGuard-Clients etwa 15–30 s ohne Tunnel). Labor: `e2e-vrrp.sh` Schritt 7b (r2 verwirft die VRRP-Werbung 3 s lang per `raw`, wird Master, DHCP bleibt aus; nach der Rückkehr kein DHCP und kein Tunnel auf r2), Wartezeiten nach dem Umschalten in den Schritten 6, 8 und 9 von 6–8 auf 10 s; Gegenprobe ohne Wartezeit: r2 schaltet DHCP während des Ausflugs ein
 
+#### <a id="dr1.6"></a>DR1.6 · VRRP-IDs über VID 255 vorab prüfen
+
+*2026-11-26 · Nutzer (TODO 98)*
+
+**Frage:** Mit `routerId` nimmt die Rolle `router` die VID als VRRP-ID, über 255 den VLAN-Schlüssel `vrid`. Fehlt er,
+legt sie das VRRP-Interface ohne gültige ID an, der Apply scheitert (Rollback mit Neustart). Wie streng soll
+`$cfmCheck` das vorher melden?
+
+**Entscheidung:** als **Fehler** (stoppt `$cfmRelease`, Nutzer): VID über 255 mit Netz und einem Router mit `routerId`
+ohne `vrid`; `vrid` außerhalb 1–255; VRRP-ID doppelt (auch gegen die VIDs bis 255, die selbst die ID sind); VID über
+255 ohne `net` und ohne `l3=no` (es gibt kein Default-Netz, das Interface bliebe ohne Adresse und VRRP). `vrid` an
+einer VID bis 255 ist nur eine Warnung (wirkt nicht).
+
+**Verworfen:** nur Warnung (der Apply scheiterte ohnehin)
+
+**Begründung:** Der Fehler fiele sonst erst auf den Routern auf, nacheinander je Ring, jedes Mal mit Neustart. Eindeutig
+sein muss die ID, damit die virtuelle MAC `00:00:5E:00:01:<vrid>` an der gemeinsamen Bridge je VLAN verschieden
+bleibt. Labor: `e2e.sh` Schritt 9 (VLAN 300–303 mit den vier Fehlern, VLAN 30 mit Warnung). Die Prüfung steht in `lib/mgr-checkn.rsc` (`$cfmCheckNet vrr=`), `mgr-check.rsc` ist nahe an der Grenze von 60 KB.
+
 ### <a id="dr2"></a>DR2 · Firewall, NAT, Queues
 
 #### <a id="dr2.1"></a>DR2.1 · Firewall-Zonen über Interface-Listen
@@ -2846,3 +2865,10 @@ Anlass: Wunsch des Nutzers, Geräteinventar, Verkabelung und Portkonfiguration i
 abzugleichen (TODO 55, Idee seit 2026-10-16). Der Nutzer entschied Richtung, Umfang und Ablauf in zwei Fragerunden und
 wollte Baustein 1 vor den weiteren sehen. Baustein 2 (Start-Import, `tools/netbox-import.py`) am 2026-11-25 auf seinen
 Wunsch vorbereitet, solange er nicht testen konnte.
+
+### Nachtschicht: Prüfungen, Meldungen, Flottenzustand (2026-11-26)
+
+Entscheidungen: DR1.6 (VRRP-IDs über 255 vorab prüfen).
+
+Anlass: offene Punkte 98–101 aus der Doku-Prüfung und vom Pilot-Standort (2026-11-24/25). Der Nutzer wählte die Punkte
+für eine Nachtschicht und entschied sie in drei Fragerunden; Umsetzung und Labortests unbeaufsichtigt.

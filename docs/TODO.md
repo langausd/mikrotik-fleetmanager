@@ -206,12 +206,6 @@ bei PPSK, `cfm-iso` nach dem Neuverbinden) sind seit 2026-11-23 auf Hardware beh
   Agent-Log von sw2 fehlt. Bei Wiederkehr vor dem Stoppen `/log/print where message~"gesetzt|entfernt|angelegt"`
   auf sw2 sichern.
 
-* **98 – VLAN-ID über 255 mit VRRP ohne `vrid`** (Befund 2026-11-24 bei der Doku-Prüfung, nicht beobachtet):
-  `roles/router.rsc` nimmt die VID als VRRP-ID, über 255 den VLAN-Schlüssel `vrid`. Fehlt er, legt die Rolle das
-  VRRP-Interface ohne gültige `vrid` an (Apply-Fehler, Rollback). `$cfmCheck` sollte das vorher melden (VID > 255,
-  `l3` nicht `no`, ein Router mit `routerId` → `vrid` 1–255 und eindeutig). Dokumentiert ist `vrid` seit 2026-11-24
-  (Admin-Guide 4, Kopf von `vlans.rsc`); ebenso braucht ein solches VLAN `net` (`$cfmNet`).
-
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein

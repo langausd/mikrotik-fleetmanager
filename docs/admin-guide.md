@@ -990,6 +990,14 @@ DO1.7): Den Port schaltest du selbst, der Manager erledigt den Rest wie oben.
 $cfmOnboard manual=yes name=ap3 sw=core port=ether7     # sw/port nur als Notiz
 ```
 1. Vorher den Port am Switch **von Hand** ins Onboarding-VLAN schalten: untagged, PVID = VID des
+* **device-mode:** Neue Geräte ab RouterOS 7.17 kommen oft im Modus `home`, der unter anderem
+  `/tool/fetch` und den Scheduler sperrt; ohne beide läuft der Agent nicht. Die Probe liest den Modus. Sperrt er
+  etwas, wartet die Sitzung im Status `devmode` (Meldung im Log und per `notify`, `$cfmOnboardStatus` nennt die
+  Schritte) und probt alle 2 Minuten neu. Freigeben geht nur am Gerät: per WebFig oder SSH (Werks-IP bzw. Lease im
+  Onboarding-VLAN, Aufkleber-Passwort) `/system/device-mode/update mode=advanced`, dann binnen 5 Minuten den
+  **Mode- oder Reset-Taster kurz drücken** oder den **Strom aus- und wieder einschalten**. Danach macht das
+  Onboarding von selbst weiter; mit dem Eintritt in `devmode` beginnt `onboard.timeout` einmal neu (TODO 101, DO1.9).
+  Beim Aufnehmen eines Bestandsgeräts (7.3) bricht `$cfmEnroll` mit demselben Hinweis ab;
    Onboarding-VLANs (die Meldung nennt sie), `frame-types=admit-all`.
 2. Gerät einstecken; Fortschritt mit `$cfmOnboardStatus` („Sitzung manuell …“).
 3. Nach dem Ende (Erfolg, Fehler, Timeout oder `$cfmOnboardAbort`) steht im Log des Managers
@@ -1653,7 +1661,7 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 | `wlan` | AP läuft im lokalen Fallback (kein CAPsMAN verbunden, DW1.6) |
 | `update` | RouterOS-Update fehlgeschlagen, Fenster verpasst oder zu wenig Platz |
 | `lizenz` | CHR-Lizenz des Managers: `next-renewal-at` mindestens einen Tag überfällig, oder `deadline-at` näher als `notify.licWarn` (Standard 14 Tage) |
-| `onboard` | Onboarding gescheitert oder abgelaufen (`"state":"once"`, kein „wieder ok“) |
+| `onboard` | Onboarding gescheitert oder abgelaufen, oder es wartet auf die Freigabe des device-mode am Gerät (`"state":"once"`, kein „wieder ok“; DO1.9) |
 | `primary` | nur vom **Backup-Manager**: Spiegel-Abruf per SFTP beim Primary scheitert seit `notify.stale` (`device` = Primary) |
 | `primary-tick` | nur vom Backup-Manager: Primary erreichbar, aber der neueste gespiegelte Gerätestatus ist älter als `notify.stale` – sein Manager-Tick steht |
 | `dnsreq` | nur von einem **Router** mit DNS-Selbstbedienung (DN3.2, 8.14), direkt und sofort, nicht über den Manager-Tick: ein Client hat eine Domain freigeschaltet (`result` `allowed`), verlängert (`extended`) oder wurde wegen `self.deny` abgewiesen (`denied`); `"state":"once"`, `level` `action`, dazu `domain`, `client`, `result`, `until` (Ablauf, Unixzeit), `key` `dnsreq:<Domain>`. Ohne Wiederholung: Kommt sie nicht an, steht nur im Log des Routers `cfm: DNS-Freischaltung: Meldung nicht zugestellt: …` |
@@ -2708,3 +2716,4 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 
 Hilfreich auf dem Gerät: `/log print where message~"cfm"` und `:put [/file get cfm/state.json contents]`.
 Auf dem Manager: `$cfmStatus`, `$cfmOnboardStatus` und `/log print where message~"cfm"`.
+| Onboarding in `devmode`, oder `$cfmEnroll`: „Agent-Installation fehlgeschlagen: not allowed by device-mode“ | Gerät im device-mode `home` (Standard vieler neuer Geräte), `fetch` und Scheduler gesperrt | am Gerät `/system/device-mode/update mode=advanced`, binnen 5 min Mode-/Reset-Taster kurz drücken oder Strom aus und an; das Onboarding macht dann selbst weiter, sonst `$cfmEnroll` wiederholen (7.1) |

@@ -246,7 +246,12 @@
   :local sdis "no"; :if ($noapply = "yes") do={ :set sdis "yes" }
   :set c ($c . "/system/scheduler/remove [find where name=\"cfm-agent\"]; /system/scheduler/add name=cfm-agent comment=\"cfm-sys:agent\" start-time=startup interval=" . ($cfmG->"interval") . " disabled=" . $sdis . " on-event=\"/system script run cfm-agent\"; :put ok")
   :set r [$cfmExec ip=$ip cmd=$c]
-  :if (!(($r->"output") ~ "ok")) do={ :error ("Agent-Installation fehlgeschlagen: " . ($r->"output")) }
+  :if (!(($r->"output") ~ "ok")) do={
+    # device-mode home sperrt fetch und scheduler (TODO 101): Freigabe nur am Gerät
+    :local dh ""
+    :if (($r->"output") ~ "device-mode") do={ :set dh " - am Gerät /system/device-mode/update mode=advanced, dann Mode-/Reset-Taster oder Strom aus und an (Admin-Guide 7.1)" }
+    :error ("Agent-Installation fehlgeschlagen: " . ($r->"output") . $dh)
+  }
   # 6) Vertrauen: neues Gerät kennt alle Manager; neuer Manager wird allen Geräten bekannt
   :global cfmTrust
   :if (("," . ($d->"role") . ",") ~ ",manager") do={ $cfmTrust } else={ $cfmTrust host=$name }

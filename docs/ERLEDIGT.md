@@ -10,7 +10,8 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
-* **Am 2026-11-26 (Nachtschicht):** **TODO 98** behoben (DR1.6, `$cfmCheck` prüft VRRP-IDs über VID 255).
+* **Am 2026-11-26 (Nachtschicht):** **TODO 98** behoben (DR1.6, `$cfmCheck` prüft VRRP-IDs über VID 255). **TODO 101**
+  erledigt (DO1.9, das Onboarding wartet bei device-mode `home` auf die Freigabe am Gerät).
 
 * **Am 2026-11-24 (Abgleich mit den Session-Logs der Termine an einem Standort):** **TODO 94** erledigt – Hardware 2026-11-23
   (v42, ap2): Rückkehr aus dem Fallback, `cfm-fallback` trägt in derselben Sekunde beide Gast-Slaves (2,4 und 5 GHz)
@@ -854,6 +855,19 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
     Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf (bis 15 min) offen, die `fb-…`
     im Fallback ebenso. Jetzt Abgleich in jedem Takt.
+
+101. ~~**Onboarding: `device-mode` prüfen**~~ – *erledigt 2026-11-26 (DO1.9, Labor `e2e-onboard.sh fresh devmode` 20/20):*
+    Die Probe liest `/system/device-mode`; sperrt er `fetch` oder `scheduler` (oder ist das Gerät `flagged`), wartet
+    die Sitzung im Status `devmode` mit Anleitung (Warnung im Log, Meldung `onboard`, Zeitfenster einmal neu) und probt
+    alle 2 min neu, bis jemand am Gerät freigibt. `$cfmEnroll` nennt die Freigabe bei „not allowed by device-mode“.
+    Hardware offen: ein neues Gerät im Modus `home` mit Taster. Text bis dahin:
+
+  * **101 – Onboarding: `device-mode` prüfen** (Hardware, 2026-11-25, neuer hAP ax² mit 7.25.2): Neue Geräte kommen im Modus
+    `home`, der `/tool/fetch` und den Scheduler sperrt; das Onboarding lief bis zum Enroll und scheiterte dort mit
+    „Agent-Installation fehlgeschlagen: not allowed by device-mode“. Freigabe nur am Gerät
+    (`/system/device-mode/update mode=advanced`, dann Mode-/Reset-Taster oder Strom aus), danach reichte
+    `$cfmEnroll`. Vorschlag: In der Probe des Onboardings `device-mode` lesen und bei `home` (bzw. ohne `fetch`/
+    `scheduler`) sofort mit Anleitung abbrechen; Admin-Guide 7.1 um den Schritt ergänzen.
 
 ## Frühere Fassungen
 

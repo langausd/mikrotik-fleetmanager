@@ -239,7 +239,8 @@
 }
 
 # Zustandsmaschine der Onboarding-Sitzung (Tick, jede Minute):
-#   update -> wait -> probe -> eval -> (update | pending | push) -> enroll -> Ende
+#   update -> wait -> probe -> eval -> (update | pending | devmode | push) -> enroll -> Ende
+#   devmode -> wait (erneute Probe, bis device-mode fetch und scheduler erlaubt, TODO 101)
 :global cfmOnbTick do={
   :global cfmJson; :global cfmWrite; :global cfmMB; :global cfmNow; :global cfmG; :global cfmLoadData
   :global cfmInvLoad; :global cfmVaultGet; :global cfmOnbVid; :global cfmNet; :global cfmOnboardEnd
@@ -272,6 +273,11 @@
   # update: nach dem Update-Neustart erneut prüfen
   :if ($st = "update") do={
     :if (($now - [:tonum ($s->"tu")]) > 150) do={ :set st "wait"; :set ($s->"msg") "Update sollte fertig sein, prüfe erneut" }
+  }
+
+  # devmode: nach 2 min erneut proben (TODO 101); über wait, das auch den Fail-safe des Ports erneuert
+  :if ($st = "devmode") do={
+    :if (($now - [:tonum ($s->"tdm")]) > 110) do={ :set st "wait" }
   }
 
   # wait: Gerät suchen (Werks-IP .1 oder DHCP-Lease) und Probe hochladen
@@ -348,18 +354,34 @@
         :set st "pending"
       } else={
         :set ($s->"dev") $nm
-        :local up [:tostr ($s->"p-update")]
-        :if ($up ~ "^[0-9]") do={
-          :set ($s->"upd") ([:tonum ($s->"upd")] + 1)
-          :if (($s->"upd") > 2) do={ :set fail "Update wiederholt erfolglos" } else={
-            :set st "update"
-            :set ($s->"tu") $now
-            :set ($s->"msg") ("RouterOS-Update auf " . $up . " läuft")
+        # device-mode (TODO 101): sperrt der Modus fetch/scheduler, scheiterte erst der Enroll. Warten, bis der Admin am
+        # Gerät freigibt (Taster oder Strom aus), alle 2 min erneut proben; Meldung und neues Zeitfenster einmal
+        :local dmx [:tostr ($s->"p-devmiss")]
+        :if ([:len $dmx] > 0) do={
+          :set st "devmode"
+          :set ($s->"tdm") $now
+          :set ($s->"msg") ("device-mode " . ($s->"p-devmode") . " sperrt" . $dmx . " - am Gerät /system/device-mode/update mode=advanced, dann binnen 5 min Mode- oder Reset-Taster kurz drücken oder Strom aus und wieder an; cfm probt alle 2 min erneut")
+          :if ([:tostr ($s->"dmn")] != "1") do={
+            :set ($s->"dmn") "1"
+            :set ($s->"t0") $now
+            :log warning ("cfm: Onboarding " . $nm . ": " . ($s->"msg"))
+            :global cfmNotify; $cfmNotify ev="onboard" host=$nm st="once" msg=("Onboarding wartet: " . ($s->"msg"))
           }
         } else={
-          :if (![$cfmVerGe ($s->"p-ver") ($cfmG->"rosMin")]) do={
-            :set fail ("RouterOS " . ($s->"p-ver") . " ist älter als " . ($cfmG->"rosMin") . " und ein Update war nicht möglich (" . $up . ")")
-          } else={ :set st "push" }
+          :if ([:tostr ($s->"dmn")] = "1") do={ :set ($s->"dmn") "2"; :log info ("cfm: Onboarding " . $nm . ": device-mode " . ($s->"p-devmode") . " erlaubt fetch und scheduler, weiter") }
+          :local up [:tostr ($s->"p-update")]
+          :if ($up ~ "^[0-9]") do={
+            :set ($s->"upd") ([:tonum ($s->"upd")] + 1)
+            :if (($s->"upd") > 2) do={ :set fail "Update wiederholt erfolglos" } else={
+              :set st "update"
+              :set ($s->"tu") $now
+              :set ($s->"msg") ("RouterOS-Update auf " . $up . " läuft")
+            }
+          } else={
+            :if (![$cfmVerGe ($s->"p-ver") ($cfmG->"rosMin")]) do={
+              :set fail ("RouterOS " . ($s->"p-ver") . " ist älter als " . ($cfmG->"rosMin") . " und ein Update war nicht möglich (" . $up . ")")
+            } else={ :set st "push" }
+          }
         }
       }
     }

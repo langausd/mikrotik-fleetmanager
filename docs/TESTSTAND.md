@@ -45,8 +45,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   an `www-ssl`/`api-ssl`, Erneuern mit neuem Schlüssel, Aufräumen.
 * `tools/editor/cfm-qr-test.py`: QR-Encoder des WLAN-Schilds (gjs erzeugt, libzbar dekodiert), auch in der CI.
 * `tools/editor/cfm-radios-test.py`: Kanalvorschlag in `wifi.rsc` übernehmen (node; nur das gescannte Band, Rückweg-Kommentar), auch in der CI.
-* `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15) und hinter
-  einem nicht verwalteten Switch (18).
+* `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15), hinter
+  einem nicht verwalteten Switch (18) und im device-mode `home` (`devmode`, 20: Warten, erneute Probe, Freigabe per
+  hartem Neustart der VM, DO1.9).
 * `e2e-vrrp.sh`: drei VRRP-Router hinter einem Internet-Router im LAN (5 VMs) – VIPs und DHCP nur auf dem Master,
   DHCP und DNS im LAN, das zugleich WAN ist, Zonen-Policy mit fester NAT-Adresse, `mgmtExtra`, WireGuard über die
   VIP, `asymRouting`, Ausfall und Rückkehr des Masters, kurzer Master-Ausflug eines Backups, Ausfall zweier Router;
@@ -384,6 +385,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **Onboarding im device-mode `home`** (DO1.9, 2026-11-26, Labor grün): neues Gerät mit Werks-Modus `home` an den
+  Onboarding-Port; erwartet Status `devmode` mit Anleitung und eine Meldung `onboard`. Freigabe per
+  `/system/device-mode/update mode=advanced` und Mode- oder Reset-Taster, danach weiter ohne Neustart der Sitzung.
 * **Zertifikate – Rest** (DS3.6): Browser und `api-ssl` mit dem Namen (Home Assistant), Erneuern nach `renew` Tagen ohne
   Eingriff (erstmals ~Januar 2027), Signer für einen zweiten Manager (anderer Standort).
 * **Je AP: Pool, `txPower`, Band aus** (DW3.7, 2026-11-16, Labor grün): Senkt `txPower` am CAP den Pegel wie an der

@@ -723,6 +723,28 @@ festes Onboarding-Passwort; GUI: **Login-Seite mit cfm-Start, Skin für die Grup
 **Begründung und Stand:** Plan in [NETINSTALL.md](NETINSTALL.md), Prototyp in `tools/branding/` (Login-Seite, Stub,
 CAPs-Mode-Skript, Skin, Baubeschreibung für den Branding Maker). Umsetzung: TODO 79.
 
+#### <a id="do1.9"></a>DO1.9 · device-mode in der Probe, Warten auf die Freigabe am Gerät
+
+*2026-11-26 · Nutzer (TODO 101)*
+
+**Frage:** Neue Geräte kommen im device-mode `home`, der `/tool/fetch` und den Scheduler sperrt (Befund 2026-11-25, hAP
+ax² mit 7.25.2). Das Onboarding lief bis zum Enroll und scheiterte dort („not allowed by device-mode“). Freigeben lässt
+sich der Modus nur am Gerät (Taster oder Strom). Was soll das Onboarding tun?
+
+**Optionen (gewählt fett):** **warten und erneut proben** (Nutzer) · sofort mit Fehler und Anleitung abbrechen
+
+**Entscheidung:** Die Probe liest `/system/device-mode` und meldet `devmode` (Modus) und `devmiss` (gesperrt von dem,
+was cfm braucht: `fetch`, `scheduler`, dazu `flagged`). Ist `devmiss` nicht leer, geht die Sitzung nach der
+Seriennummer und vor der Update-Entscheidung in den Status `devmode`: Anleitung in `msg`, beim ersten Mal eine Warnung
+im Log und eine Meldung (`ev=onboard`, `once`), und `onboard.timeout` beginnt einmal neu. Alle 2 min geht sie über `wait`
+zur nächsten Probe (das erneuert auch den Fail-safe am Port); ist der Modus frei, läuft das Onboarding weiter. Die Probe
+löscht ihr altes Ergebnis jetzt zuerst, damit der Manager kein früheres liest. `$cfmEnroll` (Bestandsgeräte) bricht mit
+demselben Hinweis ab.
+
+**Begründung:** Den Taster drückt ohnehin jemand vor Ort, oft kurz nach dem Einstecken. Mit dem Warten muss danach
+niemand die Sitzung neu starten. Ohne Menü (vor 7.17) bleibt `devmiss` leer und alles wie bisher. Labor:
+`e2e-onboard.sh fresh devmode` (CHR mit `mode=home`, bestätigt durch einen harten Neustart der VM).
+
 ### <a id="do2"></a>DO2 · Bestandsgeräte und Inventar
 
 #### <a id="do2.1"></a>DO2.1 · Bestandsgerät übernehmen, das noch selbst routet
@@ -2868,7 +2890,7 @@ Wunsch vorbereitet, solange er nicht testen konnte.
 
 ### Nachtschicht: Prüfungen, Meldungen, Flottenzustand (2026-11-26)
 
-Entscheidungen: DR1.6 (VRRP-IDs über 255 vorab prüfen).
+Entscheidungen: DR1.6 (VRRP-IDs über 255 vorab prüfen), DO1.9 (device-mode in der Probe, Warten auf die Freigabe).
 
 Anlass: offene Punkte 98–101 aus der Doku-Prüfung und vom Pilot-Standort (2026-11-24/25). Der Nutzer wählte die Punkte
 für eine Nachtschicht und entschied sie in drei Fragerunden; Umsetzung und Labortests unbeaufsichtigt.

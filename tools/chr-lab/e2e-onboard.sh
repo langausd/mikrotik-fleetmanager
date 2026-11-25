@@ -5,11 +5,13 @@
 #   vm3 = neues Gerät "ob1" an cm1/ether3 (Stern-Topologie aus lab.sh)
 # Der Werkszustand wird auf dem frischen CHR simuliert: 192.168.88.1 auf ether2,
 # admin ohne Passwort (echte Geräte: Aufkleber-Passwort per $cfmRegister pw=...).
-#   ./e2e-onboard.sh [fresh] [dhcp] [manual]
+#   ./e2e-onboard.sh [fresh] [dhcp] [manual] [devmode]
 #   dhcp = Werksgerät im CAPs-Modus: DHCP-Client auf dem Uplink statt 192.168.88.1, wie ein hAP,
 #          der per PoE an ether1 hängt (dessen normale Werks-Config dort eine WAN-Firewall hat)
 #   manual = Switch gilt als nicht verwaltet ($cfmOnboard manual=yes, TODO 31): der Test schaltet
 #          cm1/ether3 "von Hand" um und zurück, cfm darf den Port nicht anfassen
+#   devmode = Werksgerät im device-mode home (fetch und scheduler gesperrt, TODO 101): das Onboarding wartet im
+#          Zustand devmode; der Test gibt frei (mode=advanced, "Strom aus" = VM hart neu starten), danach läuft es durch
 # ------------------------------------------------------------------
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -27,10 +29,13 @@ put()  { printf '#!/bin/sh\necho ""\n' > "$LAB/askpass"
 mgr()  { r 1 "/system script run cfm-mgr; $1"; }
 waitssh() { for _ in $(seq 1 60); do r "$1" ':put up' | grep -q up && return 0; sleep 2; done; return 1; }
 expect() { if r "$1" ":put ($2)" | grep -q true; then ok "$3"; else bad "$3"; fi; }
+# device-mode auf vm3 setzen: RouterOS wartet bis 5 min auf "Strom aus" - auf CHR ein harter Neustart der VM
+devmode() { (timeout 20 ./lab.sh ssh 3 "/system/device-mode/update mode=$1" >/dev/null 2>&1 &); sleep 6
+  kill -9 "$(cat "$LAB/vm3.pid")" 2>/dev/null; sleep 2; ./lab.sh start 3 >/dev/null; waitssh 3; }
 stat() { mgr ':global cfmJson; :put [:tostr ([$cfmJson "cfm/state/'"$1"'/status.dat"]->"'"$2"'")]' | tail -1; }
 
-fresh=0; mode=static; man=0
-for a in "$@"; do case $a in fresh) fresh=1;; dhcp) mode=dhcp;; manual) man=1;; esac; done
+fresh=0; mode=static; man=0; dm=0
+for a in "$@"; do case $a in fresh) fresh=1;; dhcp) mode=dhcp;; manual) man=1;; devmode) dm=1;; esac; done
 if [ $fresh = 1 ]; then
   step "VMs neu aufsetzen"
   ./lab.sh stop >/dev/null; rm -f "$LAB"/vm*.qcow2; ./lab.sh start 3
@@ -60,6 +65,10 @@ else
   r 3 '/ip/address/add address=192.168.88.1/24 interface=ether2' >/dev/null
 fi
 echo "   Seriennummer vm3: $serial"
+if [ $dm = 1 ]; then
+  devmode home
+  [ "$(r 3 ':put [/system/device-mode/get mode]' | tail -1)" = home ] && ok "vm3: device-mode home (fetch, scheduler gesperrt)" || bad "vm3: device-mode home nicht gesetzt"
+fi
 
 step "3. Registrieren + Onboarding-Port cm1/ether3"
 mgr "\$cfmRegister name=ob1 serial=\"$serial\" role=switch,router ring=0 ip=192.168.10.23" | grep -q "Registriert" && ok "ob1 registriert" || bad "Registrierung"
@@ -75,17 +84,27 @@ fi
 expect 1 '[/interface/bridge/port/get [find interface=ether3] pvid] = 88' "cm1/ether3: PVID = Onboarding-VLAN"
 
 step "4. Automatischer Ablauf (Probe -> Update-Check -> Bootstrap/Reset -> Enroll -> Apply)"
-last=""; fs=0
-for _ in $(seq 1 70); do
+last=""; fs=0; dmw=0
+for _ in $(seq 1 90); do
   st=$(mgr '$cfmOnboardStatus' | tail -1)
   [ "$st" != "$last" ] && echo "   $st" && last=$st
+  if [ $dm = 1 ] && [ $dmw = 0 ] && echo "$st" | grep -q "Status: devmode .*device-mode home sperrt fetch scheduler"; then
+    dmw=1; ok "Onboarding wartet im Zustand devmode mit Anleitung"
+    mgr ':put [:len [/log/find where message~"^cfm: Onboarding ob1: device-mode home sperrt"]]' | tail -1 | grep -qx 1 && ok "Warnung im Log (einmal)" || bad "Warnung zu device-mode im Log"
+    sleep 150   # zweite Probe: bleibt im Zustand, keine zweite Warnung
+    mgr ':put [:len [/log/find where message~"^cfm: Onboarding ob1: device-mode home sperrt"]]' | tail -1 | grep -qx 1 && mgr '$cfmOnboardStatus' | tail -1 | grep -q "Status: devmode\|Status: wait\|Status: probe" && ok "nach erneuter Probe weiter devmode, keine zweite Warnung" || bad "erneute Probe bei device-mode home"
+    devmode advanced
+    [ "$(r 3 ':put [/system/device-mode/get mode]' | tail -1)" = advanced ] && ok "vm3: device-mode advanced (Freigabe am Gerät)" || bad "vm3: Freigabe device-mode"
+  fi
   [ $man = 1 ] && r 1 ':put [:len [/system/scheduler/find where name=cfm-onboard-revert]]' | tail -1 | grep -qx 1 && fs=1
   echo "$st" | grep -q "keine Onboarding-Sitzung" && break
   sleep 15
 done
+[ $dm = 1 ] && [ $dmw = 0 ] && bad "Onboarding hat device-mode home nicht erkannt"
 [ $man = 1 ] && { [ $fs = 0 ] && ok "manuell: kein Fail-safe-Timer am Switch" || bad "manuell: Fail-safe-Timer angelegt"; }
 mgr ':foreach l in=[/log/find where message~"Onboarding"] do={:put [/log/get $l message]}' | tail -3 | sed 's/^/   log: /'
 mgr ':put [:len [/log/find where message~"beendet: erfolgreich: ob1"]]' | tail -1 | grep -qx 1 && ok "Onboarding erfolgreich beendet" || bad "Onboarding nicht erfolgreich"
+[ $dm = 1 ] && { mgr ':put [:len [/log/find where message~"^cfm: Onboarding ob1: device-mode advanced erlaubt fetch und scheduler"]]' | tail -1 | grep -qx 1 && ok "nach der Freigabe weiter (Log)" || bad "keine Log-Zeile nach der Freigabe"; }
 # den Status holt der allgemeine Manager-Tick ab, der parallel zum Onboarding-Tick läuft: kurz warten
 for _ in $(seq 1 24); do [ "$(stat ob1 res)" = ok ] && break; sleep 5; done
 [ "$(stat ob1 res)" = ok ] && ok "ob1 meldet Apply ok (v$(stat ob1 v))" || bad "ob1 Status: $(stat ob1 res)"

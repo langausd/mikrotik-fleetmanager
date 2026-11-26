@@ -28,6 +28,8 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
 * **Neu 2026-11-25, erledigt 2026-11-26 (Nachtschicht):** 99 (Flottenzustand für Home Assistant, DU4.5), 100 (von
   BPDU-Guard gesperrte Ports melden, DU4.4) und 101 (Onboarding prüft `device-mode`, DO1.9), dazu 98 (DR1.6); Hardware
   offen ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
+* **Neu 2026-11-26:** 102 (neue Systeme von außen als Lease eintragen, optional mit acme-dns), Wunsch des Nutzers,
+  vor dem Bau zu klären.
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -471,3 +473,21 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
     unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
     Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.
+102. **Neue Systeme von außen eintragen** (Wunsch des Nutzers, 2026-11-26): Wer einen neuen Container, eine VM oder ein
+    IoT-Gerät einrichtet, soll es ohne cfm-Editor und Release von Hand in cfm eintragen können, typisch als feste
+    Lease (`leases.rsc`: VLAN, Name, MAC, Host-Teil, optional `wifi`/`allow`, DN1.1/DR2.9). Optional zusätzlich die
+    Einrichtung für acme-dns: CNAME `_acme-challenge.<name>.<domain>` auf die acme-dns-Subdomain (wie für die
+    Geräte in DS3.6, Admin-Guide 8.20), ggf. Registrierung eines eigenen acme-dns-Kontos für das System.
+    Zu klären vor dem Bau:
+    * **Schnittstelle:** Befehl am Manager (`$cfmLease add name= mac= vlan= [ip=]`, per SSH aufrufbar), kleines Skript
+      unter `tools/` (SSH oder API), REST/Webhook (z.B. aus Home Assistant oder einem Proxmox-Hook) oder ein
+      Lesezeichen wie cfm-DNS (DN3.2). Wer darf es (eigener User mit engem Recht wie `cfm-cert`, Zugang nur aus
+      bestimmten Netzen)?
+    * **Ablauf:** schreibt in `work/leases.rsc` und löst ein Release aus (nur Router, `$cfmCheck` vorher) oder trägt
+      die Lease sofort am DHCP-Server ein und gleicht später ab; freie IP automatisch wählen (Bereich außerhalb des
+      Pools); Name/MAC/IP doppelt → Fehler; Löschen und Ändern ebenso.
+    * **Overlay:** `leases.rsc` liegt auch im Site-Overlay – Rückweg ins Overlay (`pull-site.sh`) und Konflikt mit
+      Änderungen im cfm-Editor.
+    * **acme-dns:** Wo der CNAME entsteht (DNS des Anbieters per API, statischer Eintrag auf den Routern reicht nicht
+      für Let's Encrypt), ob das System ein eigenes acme-dns-Konto bekommt (Zugangsdaten zurückgeben) oder über den
+      Signer läuft; Änderungen am produktiven acme-dns nur nach Freigabe und Snapshot.

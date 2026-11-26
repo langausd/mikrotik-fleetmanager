@@ -2421,6 +2421,18 @@ im Container liegt; so gibt es die Logik nur einmal. Die ORM-Abbildung ist gegen
 
 **Begründung:** Gemeinsamer Code mit dem Start-Import und dem Abgleich; Ist und Plan bleiben in getrennten Feldern unterscheidbar. Offen: abweichende Plan-Werte auf Wunsch überschreiben, Lauf aus dem Custom Script (geplanter Job), Gegenrichtung NetBox → Site-Daten (TODO 55). Tests `netbox-import-test.py` (Ist-Felder). TODO 55
 
+#### <a id="dt2.5"></a>DT2.5 · NetBox: Plan als Vorschlag für die Site-Daten
+
+*2026-11-26*
+
+**Frage:** Wie kommen neue oder geänderte Plan-Daten aus NetBox in die cfm-Config, ohne DT2.2 (NetBox schreibt nicht in die Site-Daten) aufzugeben?
+
+**Entscheidung:** Eigenes Tool `tools/netbox-uebernahme.py` beim Admin: Plan aus NetBox (REST oder gespeicherter Plan) gegen ein Site-Overlay als unified diff, `--schreiben` ändert das Overlay lokal, `--diff-datei` legt ihn als Datei ab; Hostfiles (`ports` aus `cfm_port`, `portDefault`, `links` aus Kabeln zwischen cfm-Geräten), `leases.rsc` (Adressen mit DNS-Namen und MAC, die keinem cfm-Gerät gehören), `vlans.rsc` (neue VLANs nur als Kommentar); nichts wird gelöscht, Dateien als Text bearbeitet (Kommentare, Reihenfolge bleiben) (Nutzer, 2026-11-26)
+
+**Verworfen:** nur Patch-Datei ohne `--schreiben` · NetBox erzeugt die Dateien (Variante B) · Lauf im Custom Script mit Schreiben ins Overlay
+
+**Begründung:** Der Admin sieht den Vorschlag als Diff und übernimmt ihn bewusst (`upload-seed.sh --site`, Release). Lease-MAC: NetBox kennt MACs nur am Interface; was der Start-Import anlegt, trägt sie in der Beschreibung. Grenzen: neue Geräte, Bonds/MLAG, WireGuard und Zonen/DHCP neuer VLANs bleiben Handarbeit; eine Lease, die das VLAN wechselt, nur als Hinweis. Tests `netbox-uebernahme-test.py` (9). TODO 55
+
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
 
 #### <a id="dt3.1"></a>DT3.1 · Editor im Browser: Lesezeichen für WebFig

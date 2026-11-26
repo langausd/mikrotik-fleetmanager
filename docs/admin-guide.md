@@ -2326,8 +2326,26 @@ tools/netbox-import.py … --ist --plan-uebernehmen                             
 * Neue Objekte (Gerät, Port, Kabel, Adresse …) zeigt der Lauf wie der Probelauf mit `+`; `--plan-uebernehmen` legt sie
   an und füllt leere Plan-Felder. Abweichende Plan-Werte (z.B. ein anderes `cfm_port`) bleiben in NetBox stehen und
   erscheinen danach im Bericht des Abgleichs – die Planung gehört NetBox.
-* Exit-Code 1, wenn der Plan abweicht. Die Gegenrichtung (Plan aus NetBox als Vorschlag für die Site-Daten) gibt es
-  noch nicht (TODO 55).
+* Exit-Code 1, wenn der Plan abweicht.
+
+**Plan übernehmen (NetBox → cfm, DT2.5).** Was in NetBox geplant ist, kommt als Vorschlag in die Site-Daten:
+`tools/netbox-uebernahme.py` zeigt einen unified diff gegen das Site-Overlay, `--schreiben` trägt ihn dort ein.
+NetBox selbst schreibt nie in cfm – übernommen wird erst mit `upload-seed.sh --site` und einem Release.
+
+```bash
+tools/netbox-uebernahme.py --overlay site-a --netbox https://netbox.example --token-file ~/.netbox-token --site <slug>
+tools/netbox-uebernahme.py … --diff-datei vorschlag.diff     # als Datei (patch -p1 -d site-a < vorschlag.diff)
+tools/netbox-uebernahme.py … --schreiben                     # Overlay ändern, dann git diff, upload-seed.sh --site
+```
+
+* `hosts/<gerät>.rsc`: `ports` aus `cfm_port` der Interfaces (ohne LAGs), `portDefault` aus `cfm_port_default`,
+  `links` aus Kabeln zwischen zwei Geräten mit Hostfile.
+* `leases.rsc`: Adressen mit DNS-Namen in einem Prefix mit VLAN, die keinem cfm-Gerät gehören und eine MAC haben (am
+  Interface des Geräts bzw. der VM, sonst `cfm-Lease <MAC>` in der Beschreibung wie nach dem Start-Import). Name = erstes
+  Label des DNS-Namens, Adresse als Host-Anteil; neue Leases ans Ende des VLAN-Blocks, geänderte MAC/Adresse in der Zeile.
+* `vlans.rsc`: VLANs, die es nur in NetBox gibt, als Kommentar-Vorschlag am Ende – Zone, DHCP usw. entscheidest du.
+* Nichts wird gelöscht; was nur in cfm steht, nennt das Tool als Hinweis. Kommentare und Reihenfolge bleiben. Neue
+  Geräte (ohne Hostfile) nimmst du wie gewohnt auf. Exit-Code 1 = Vorschlag vorhanden.
 
 **Aus NetBox auslösen.** Das Custom Script `tools/netbox/cfm_abgleich.py` startet den Abgleich auf Knopfdruck in NetBox
 (*Anpassen → Skripte → cfm-Abgleich*, Site wählen). Es liest den Plan über die Datenbank, Soll und Ist als User
@@ -2338,7 +2356,7 @@ Kommandozeile: `netbox-abgleich.py … --manager cfm-netbox@<manager> --lesend -
 
 **Grenzen.** Kabel zu Geräten ohne LLDP/MNDP sieht nur NetBox und das Hostfile. Adressen aus DHCP (z.B. ein WAN mit
 `dhcp`) fehlen im Export. Der Weg über `cfm-netbox` wertet immer das letzte Release aus (kein `--ver`). Vorschläge für
-die Hostfiles stehen nur als Hinweis im Bericht (`links` mit fertiger Zeile), nicht als eigene Datei.
+die Site-Daten macht `netbox-uebernahme.py` (siehe oben).
 
 ## 9. Sicherheitsnetze und Notfälle
 

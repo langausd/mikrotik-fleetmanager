@@ -23,6 +23,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`wifi-sign.py`](#wifi-signpy) | WLAN-Schild als A4-PDF: QR-Code, SSID, Passphrase (de/en) |
 | [`netbox-abgleich.py`](#netbox-abgleichpy) | Planung in NetBox mit cfm (Soll) und den Geräten (Ist) abgleichen |
 | [`netbox-import.py`](#netbox-importpy) | Einmaliger Start-Import cfm → NetBox |
+| [`netbox-uebernahme.py`](#netbox-uebernahmepy) | Plan aus NetBox als Vorschlag (Diff) für die Site-Daten |
 | [`netbox/`](netbox/README.md) | NetBox Custom Script „cfm-Abgleich“: Abgleich aus NetBox heraus (eigene Anleitung) |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
@@ -416,3 +417,17 @@ Assistant: [docs/home-assistant.md](../docs/home-assistant.md), Abschnitt 9.
 
 Das Testlabor startet RouterOS als virtuelle Maschinen und spielt ganze Abläufe durch (Aufnahme,
 Release, Rollback, Onboarding, VRRP, MLAG …). Anleitung: [chr-lab/README.md](chr-lab/README.md).
+
+## `netbox-uebernahme.py`
+
+Gegenrichtung zu `netbox-import.py` (TODO 55, DT2.5, Admin-Guide 8.21): Plan aus NetBox als unified diff gegen ein
+Site-Overlay – `ports`/`portDefault`/`links` der Hostfiles, Leases mit DNS-Namen und MAC, neue VLANs als Kommentar.
+
+```bash
+tools/netbox-uebernahme.py --overlay site-a --netbox https://netbox.example --token-file <ro-token> --site <slug>
+tools/netbox-uebernahme.py --overlay site-a --plan plan.json        # Plan aus netbox-abgleich.py --plan-speichern (ohne Leases)
+tools/netbox-uebernahme.py … --diff-datei vorschlag.diff | --schreiben
+```
+
+Nichts wird gelöscht, Kommentare und Reihenfolge bleiben; Exit-Code 0 = nichts zu tun, 1 = Vorschlag, 2 = Fehler.
+Tests: `tools/netbox-uebernahme-test.py`.

@@ -375,11 +375,11 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         Key. `netbox-abgleich.py --lesend` braucht dafür einen SSH-Aufruf. Custom Script `tools/netbox/cfm_abgleich.py` (Plan per ORM, 3.7–4.6) mit Anleitung
         `tools/netbox/README.md`, Tests (ORM-Abbildung gleich REST), `e2e.sh` Schritt 14o. (4) *umgesetzt 2026-11-26
         (DT2.4):* `netbox-import.py --ist` pflegt Ist-Felder regelmäßig, zeigt Neues und Abweichungen,
-        `--plan-uebernehmen` legt Neues an. *Offen:* Vorschlag für die Hostfiles als eigene Datei (Gegenrichtung
-        NetBox → Site-Daten, entschieden 2026-11-26: eigenes Tool `tools/netbox-uebernahme.py` mit Diff für
-        `hosts/*.rsc`, `leases.rsc`, `vlans.rsc`, `--schreiben` ändert das Overlay lokal); bei `--plan-uebernehmen`
-        abweichende Plan-Werte auf Wunsch überschreiben; `--ist` als geplanter Job im Custom Script; erster Lauf in der
-        echten NetBox.
+        `--plan-uebernehmen` legt Neues an. (5) *umgesetzt 2026-11-26 (DT2.5):* Gegenrichtung
+        NetBox → Site-Daten, `tools/netbox-uebernahme.py` (Diff für `hosts/*.rsc`, `leases.rsc`, `vlans.rsc`,
+        `--schreiben` ändert das Overlay lokal; Tests 9). *Offen:* erster Lauf gegen die echte NetBox (beide
+        Richtungen); Bonds/MLAG und WireGuard in der Übernahme; bei `--plan-uebernehmen`
+        abweichende Plan-Werte auf Wunsch überschreiben; `--ist` als geplanter Job im Custom Script.
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und
     Rückweg im Admin-Guide 6.8; *Hardware 2026-11-04:* Grundzustand aus, Einschalten mit Ablauf nach 8 h, Aus/Ein

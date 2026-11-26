@@ -287,6 +287,11 @@ Im Hostfile als `"<port>"="<profil>[:<arg>]"`, zum Beispiel `"ether5"="access:40
 Eigene Profile: `tag` (`"*"`, Zonen, VIDs, `"!x"` schließt aus), `untag` (`"arg"` = Argument),
 `edge`, `bridge`, `disabled`.
 
+Die `profiles.rsc` einer Site ersetzt die der Vorlage ganz. Kommt in der Vorlage ein Profil dazu (z.B. `vport`), fehlt
+es am Standort, bis man es dort einträgt: im cfm-Editor oder im Overlay. `tools/upload-seed.sh --site` nennt die
+Profile der Vorlage, die im Overlay fehlen („Profile der Vorlage fehlen in profiles.rsc des Overlays: …“, nur ein
+Hinweis). Nutzt ein Hostfile ein unbekanntes Profil, meldet `$cfmCheck` einen Fehler mit Verweis auf diesen Abschnitt.
+
 ### `wifi.rsc`
 
 * `ssids`: interner Schlüssel → `ssid`, `vlan`, `bands` (`"2,5"`, mit 6 GHz `"2,5,6"`); optional `sec`, `ft`,
@@ -1659,6 +1664,7 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 | `apply` | Gerät meldet einen Apply-Fehler, Rollback (`failed …`, `rollback-watchdog`) oder eine noch aktuelle `bad`-Version |
 | `stumm` | kein neuer Status seit `notify.stale` (Standard 30 min; Uhr des Geräts wie bei `$cfmStatus`) |
 | `wlan` | AP läuft im lokalen Fallback (kein CAPsMAN verbunden, DW1.6) |
+| `bpdu` | ein Bridge-Port ist von BPDU-Guard gesperrt (Rolle disabled, inaktiv bis zum Aus- und Einschalten; Text nennt die Ports, TODO 100) |
 | `update` | RouterOS-Update fehlgeschlagen, Fenster verpasst oder zu wenig Platz |
 | `lizenz` | CHR-Lizenz des Managers: `next-renewal-at` mindestens einen Tag überfällig, oder `deadline-at` näher als `notify.licWarn` (Standard 14 Tage) |
 | `onboard` | Onboarding gescheitert oder abgelaufen, oder es wartet auf die Freigabe des device-mode am Gerät (`"state":"once"`, kein „wieder ok“; DO1.9) |
@@ -1668,7 +1674,7 @@ wenn der Zustand wieder in Ordnung ist (`"off"`); offene Meldungen stehen in `me
 | `ros` | neue RouterOS-Version im Kanal `rosChannel` (einmal am Tag bei `upgrade.mikrotik.com` gefragt), wenn ein aufgenommenes Gerät älter ist (`"on"`, offen in `meta/notify.dat` `roso`). `"off"`, sobald kein Gerät mehr älter ist (in jedem Tick geprüft, also kurz nach dem letzten `$cfmUpgrade`), oder `"off"` mit „überholt durch …“, wenn eine neuere Version kommt, bevor alle aktualisiert sind – dann erst danach das `"on"` der neuen. Absichtlich ausgelassene Geräte halten die Meldung offen: beim Empfänger abhaken (TODO 64) |
 
 Zusätzlich trägt jede Meldung `level`, `device` und `message` für einfache Empfänger: `level` ist
-`error` (`apply`, `onboard`, `stumm`, `primary`, `primary-tick`), `warning` (`wlan` und jedes „wieder ok“), `action`
+`error` (`apply`, `onboard`, `stumm`, `primary`, `primary-tick`), `warning` (`wlan`, `bpdu` und jedes „wieder ok“), `action`
 (Admin-Eingriff nötig: `update`, `lizenz`, `ros`) oder `info` (Probemeldung); `device` ist das
 betroffene Gerät (bei `ros` der Manager), `message` gleich `text`. `key` ordnet `"on"` und `"off"` ohne
 Textvergleich einander zu: `<ev>:<host>` (z.B. `apply:ap1`), bei `ros` `ros:<Version>` mit dem Feld `ver`
@@ -2258,7 +2264,8 @@ Das Tool startet am Manager `$cfmNetbox`: Der Manager wertet seine Site-Daten au
 = `work/`, also auch Änderungen, die noch nicht freigegeben sind) und legt sie unter `state/` ab. Das Tool holt sie
 zusammen mit dem Status und dem Export jedes Geräts und vergleicht. `✘` ist eine Abweichung zwischen NetBox und cfm
 bzw. Gerät, `!` ein Hinweis, z.B. „im Hostfile fehlt links“ mit fertiger Zeile oder „Release noch nicht angewendet“,
-wenn ein Gerät vom Soll abweicht. Ein Gerät, das noch nichts gemeldet hat, fehlt im Ist (`kein Ist vom Gerät`).
+wenn ein Gerät vom Soll abweicht. Ein Gerät, das noch nichts gemeldet hat, fehlt im Ist (`kein Ist vom Gerät`). Einen
+Port, den BPDU-Guard gesperrt hat, nennt der Abgleich als Abweichung „am Gerät von BPDU-Guard gesperrt“ (TODO 100).
 
 **Start-Import.** Einmal am Anfang überträgt `tools/netbox-import.py` den Stand von cfm nach NetBox, danach pflegst du
 dort. Es liest dieselben Daten wie der Abgleich und legt an, was fehlt: die drei Custom Fields, Site, Hersteller
@@ -2692,7 +2699,7 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | Log `cfm: RouterBOARD-Firmware … geflasht … Neustart zum Aktivieren` | gewollt: neue Firmware wird nach einem RouterOS-Update erst mit einem weiteren Neustart aktiv | nichts zu tun, der Agent startet einmal neu |
 | Log `cfm: RouterBOARD-Firmware … nach dem Neustart nicht aktiv`, in `$cfmStatus` `fw X!` | Flashen hat nicht gewirkt; der Agent startet dafür nur einmal neu | auf dem Gerät `/system/routerboard/print` prüfen, `/system/routerboard/upgrade`, dann `/system/reboot` |
 | `upload-seed.sh`: „ABBRUCH: … enthält echte Seriennummern“ | `--seed-inventory` auf einen Manager mit aufgenommenen Geräten | ohne `--seed-inventory` hochladen; nur mit `--force`, wenn das Inventar wirklich ersetzt werden soll |
-| Bridge-Port inaktiv, Log „BPDU guard changed port role to disabled“ | Edge-Port (`access`) bekommt BPDUs, z.B. von der Bridge eines Virtualisierungshosts | Profil `vport:<vid>` verwenden, Port einmal `disabled=yes` und wieder `no` setzen |
+| `$cfmStatus` `BPDU!` und „Warnung: <gerät>: <port> von BPDU-Guard gesperrt“, Meldung `bpdu`; Bridge-Port inaktiv, Log „BPDU guard changed port role to disabled“ | Edge-Port (`access`) bekommt BPDUs, z.B. von der Bridge eines Virtualisierungshosts oder einem Switch | Profil `vport:<vid>` (bzw. `trunk` für einen Switch) verwenden, Port einmal `disabled=yes` und wieder `no` setzen. Der Agent meldet die Sperre bei jedem Lauf (`bpdu` im Status, TODO 100), bis der Port wieder frei ist |
 | `$cfmPush`: „kein Push (nicht aufgenommen): …“, `$cfmStatus`: `nicht aufgenommen` | Inventar-Eintrag ohne Geräteschlüssel (Platzhalter oder per `$cfmRegister` vorgemerkt) | gewollt; Gerät aufnehmen (Kapitel 7) oder Eintrag aus `meta/inventory.rsc` löschen |
 | `$cfmUpgrade`: „zu wenig Platz für die Pakete … kein Auftrag“, Agent: „Platz fehlt“ | Pakete + 1 MB Reserve passen nicht in den freien Speicher (16-MB-Geräte) | aufräumen (`/file`), dann neuer Auftrag; sonst das eingebaute Update mit Internet am Gerät (TODO 38) |
 | `$cfmUpgrade`: „Pakete fehlen oder sind ungültig“ | Manager ohne Internet oder Paket ohne NPK-Kennung (z.B. Fehlerseite) | die genannten Dateien von download.mikrotik.com nach `<pkgPath>/<ver>/` legen; vorab `check=yes` |

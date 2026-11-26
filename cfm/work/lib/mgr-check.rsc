@@ -62,7 +62,7 @@
     :local c [:find $sp ":"]
     :if ([:typeof $c] != "nil") do={ :set pn [:pick $sp 0 $c]; :set arg [:pick $sp ($c + 1) [:len $sp]] }
     :local pr ($cfmProfiles->$pn)
-    :if ([:typeof $pr] != "array") do={ :return ("unbekanntes Port-Profil " . $sp) }
+    :if ([:typeof $pr] != "array") do={ :return ("unbekanntes Port-Profil " . $sp . " - fehlt in profiles.rsc (Profile einer neueren Vorlage nachtragen, Admin-Guide 4 \"profiles.rsc\")") }
     :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :return ("VLAN " . $arg . " fehlt in vlans.rsc") }
     :return ""
   }
@@ -430,7 +430,7 @@
           :local c [:find $sp ":"]
           :if ([:typeof $c] != "nil") do={ :set pn [:pick $sp 0 $c]; :set arg [:pick $sp ($c + 1) [:len $sp]] }
           :local pr ($cfmProfiles->$pn)
-          :if ([:typeof $pr] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": unbekanntes Port-Profil " . $sp) } else={
+          :if ([:typeof $pr] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": unbekanntes Port-Profil " . $sp . " - fehlt in profiles.rsc (Profile einer neueren Vorlage nachtragen, Admin-Guide 4 \"profiles.rsc\")") } else={
             :if ([:tostr ($pr->"untag")] = "arg" and [:typeof ($cfmVlans->$arg)] != "array") do={ :set ($err->[:len $err]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": VLAN " . $arg . " fehlt in vlans.rsc") }
             # isoliertes VLAN ungetaggt an einem Port mit weiteren getaggten VLANs: kein Client-Port (DP3.1)
             :if ([:tostr ($pr->"untag")] = "arg" and [:tostr ($cfmVlans->$arg->"isolate")] = "yes" and [:len [:tostr ($pr->"tag")]] > 0) do={ :set ($warn->[:len $warn]) ("hosts/" . $n . ".rsc: " . ($ps->0) . ": isoliertes VLAN " . $arg . " an einem Port mit getaggten VLANs - dort wird nicht isoliert (nur reine Access-Ports)") }

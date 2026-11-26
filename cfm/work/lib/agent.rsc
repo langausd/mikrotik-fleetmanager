@@ -127,6 +127,11 @@
   :local eth ({})
   :onerror e in={ :foreach i in=[/interface/ethernet/find] do={ :set ($eth->[:len $eth]) [/interface/ethernet/get $i name] } } do={}
   :set ($s->"eth") $eth
+  # Von BPDU-Guard gesperrte Bridge-Ports (TODO 100): RouterOS setzt die Rolle auf disabled und schreibt den Grund in
+  # about; der Port bleibt inaktiv, bis ihn jemand aus- und wieder einschaltet - im Log steht es nur einmal
+  :local bg ({})
+  :onerror e in={ :foreach i in=[/interface/bridge/port/find where inactive and !disabled and about~"BPDU guard"] do={ :set ($bg->[:len $bg]) [:tostr [/interface/bridge/port/get $i interface]] } } do={}
+  :if ([:len $bg] > 0) do={ :set ($s->"bpdu") $bg }
   # APs: aktueller Kanal je Radio ($cfmChannels, $cfmWifiScan), {Radio;"c"Kanal}. Ein CAPsMAN meldet nur
   # seine eigenen Radios, wenn sie senden (capsmanRadios, TODO 46) - seine Interface-Liste enthält
   # auch die aller CAPs

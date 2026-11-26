@@ -165,6 +165,22 @@ class UploadSeed(unittest.TestCase):
         self.assertIn("mlag.rsc", out.split("aus der Vorlage ergänzt")[1].splitlines()[0])
         self.assertNotIn("vlans.rsc", out.split("aus der Vorlage ergänzt")[1].splitlines()[0])
 
+    def test_profile_der_vorlage_fehlen(self):
+        # TODO 100: profiles.rsc des Overlays ersetzt die der Vorlage; fehlende Profile nur als Hinweis
+        ov = os.path.join(self.tmp, "site")
+        os.makedirs(os.path.join(ov, "hosts"))
+        with open(ROOT / "cfm/work/profiles.rsc", encoding="utf-8") as fh:
+            txt = fh.read()
+        with open(os.path.join(ov, "profiles.rsc"), "w", encoding="utf-8") as fh:
+            fh.write(txt.replace('  "vport"={"untag"="arg"};\n', "") + ':set ($cfmProfiles->"eigen") {"tag"="*"}\n')
+        out = self.upload("--overlay", ov, "--site")
+        zeile = [z for z in out.splitlines() if "Profile der Vorlage fehlen" in z]
+        self.assertEqual(len(zeile), 1, out)
+        self.assertIn(": vport (", zeile[0])
+        # vollständig: keine Zeile
+        shutil.copy(ROOT / "cfm/work/profiles.rsc", ov)
+        self.assertNotIn("Profile der Vorlage fehlen", self.upload("--overlay", ov, "--site"))
+
     def test_all_features(self):
         self.upload("--site")
         out = self.upload("--all-features")

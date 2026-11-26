@@ -582,6 +582,7 @@ def abgleich(plan, soll, ist, alle=False):
         st = (ist.get(n) or {}).get("status") or {}
         ex = (ist.get(n) or {}).get("export")
         eth = list(st.get("eth") or [])
+        bpdu = set(st.get("bpdu") or [])
         if not eth and ex:
             eth = sorted(set(ex["eth_set"]) | {p for p in ex["bports"] if p not in ex["bonds"]})
         bonds = set((ex or {}).get("bonds", {}))
@@ -641,7 +642,11 @@ def abgleich(plan, soll, ist, alle=False):
                     B.hinweis("Ports", obj, "NetBox %s, Profil %s %s" % (
                         "aktiv" if pi.get("enabled", True) else "abgeschaltet", sspec,
                         "schaltet ab" if rs["disabled"] else "ist aktiv"))
-            if rs and ex is not None and rs["bridge"]:
+            if p in bpdu:
+                # TODO 100: der Port steht in der Bridge, RouterOS hat ihn wegen empfangener BPDUs abgeschaltet
+                B.abw("Ports", obj, "am Gerät von BPDU-Guard gesperrt (inaktiv) - Switch oder VM-Bridge dahinter? "
+                      "Profil vport:<vid> oder trunk statt %s, dann Port aus und an" % (sspec or "access"))
+            elif rs and ex is not None and rs["bridge"]:
                 ii = ip_ports.get(p)
                 if ii is None:
                     B.hinweis("Ports", obj, "Soll %s (%s), am Gerät nicht in der Bridge - Release noch nicht angewendet?" % (sspec, _fmt(rs)))

@@ -2260,6 +2260,31 @@ Version (später aufgenommen oder zurückgestuft), öffnet der nächste Tick sie
 
 **Begründung:** `global.rsc` → `snmp`: `from` (MGMT-Adresse des Servers – laut TODO 54 bekommt er eine zweite Schnittstelle im MGMT-VLAN, entschieden 2026-10-16), `user` (Standard `librenms`), `auth` (Standard SHA256), `contact`, `location`. Die Rolle `base` legt die Community `cfm:snmp:<user>` an (authPriv, AES, nur lesend, `addresses` = `from`, Hostadressen als `/32` wie RouterOS sie zurückliest), Passwörter beim Anlegen zufällig (`a=`) – dabei fordert sie den Secret-Push an (SV 0, wie bei WireGuard DR4.2), sonst blieben sie bis zur nächsten Vault-Änderung zufällig –, schaltet die Standard-Community `public` ab und SNMP ein. Ohne `snmp` bleibt `/snmp` unangetastet – ein Bestandsgerät kann es für anderes nutzen; nach dem Wegfall entfernt die GC die Community (`/snmp/community` in `cfmMenus`). Keine Firewall-Regel: Der input-Block der Nicht-Router und die Zonen-Firewall der Router nehmen das MGMT-Netz an (`cfm-mgmt`). RouterOS 7.25 (Labor): Auth MD5/SHA1/SHA256/SHA384/SHA512, Verschlüsselung nur AES (128) oder DES, `public` lässt sich nicht löschen („can not remove default community“), abgeschaltet antwortet v2c nicht mehr; `/tool/snmp-get` mit v3 (`security=private`, `authentication-protocol`/`-password`, `encryption-protocol`/`-password`) liefert mit richtigem Passwort, mit falschem oder von einer nicht freigegebenen Adresse nichts. `$cfmCheck`: `from` gültig, `auth` bekannt (ohne MD5), Passwörter vorhanden (Warnung) und mindestens 8 Zeichen (Fehler), `syslogFormat`. `remote-log-format` setzt `base` nur, wenn RouterOS es kennt. Was das `wifi`-Paket per SNMP liefert, bleibt am hAP zu prüfen. Labor: `e2e.sh` Schritt 14k
 
+#### <a id="du4.4"></a>DU4.4 · Von BPDU-Guard gesperrte Ports melden
+
+*2026-11-26 · Nutzer (TODO 100)*
+
+**Frage:** Ein NAS mit eigener Bridge (STP) an einem `access`-Port war wochenlang offline (Pilot-Standort 2026-11-25):
+BPDU-Guard hatte den Port abgeschaltet, sichtbar nur als inaktiver Bridge-Port, das Log reichte nicht mehr so weit
+zurück. Wie weit soll cfm die Sperre melden?
+
+**Optionen (gewählt fett):** **Status, `$cfmStatus` und Benachrichtigung** (Nutzer) · nur Status und `$cfmStatus` ·
+zusätzlich nach einer Zeit selbst entsperren (bei einer echten Schleife gefährlich). Fehlende Profile der Vorlage:
+**Hinweis in `tools/upload-seed.sh --site`, Fehlermeldung bei unbekanntem Profil mit Verweis, Admin-Guide** (Nutzer) ·
+Prüfung in `$cfmCheck` (bräuchte eine Kopie der Profile im Code; der Manager kennt die Vorlage nicht mehr, die Site
+ersetzt `profiles.rsc` ganz).
+
+**Entscheidung:** Der Agent meldet bei jedem Lauf `bpdu` = Bridge-Ports, die inaktiv und nicht abgeschaltet sind und
+deren `about` „BPDU guard“ nennt (RouterOS: „BPDU guard changed port role to disabled due to received BPDU frame,
+manual bridge port re-enable is required“, Labor 7.25.2). `$cfmStatus` zeigt `BPDU!` in der Spalte ERGEBNIS und je
+Gerät eine Warnzeile unter der Tabelle; `$cfmNotifyTick` meldet `bpdu:<gerät>` (Stufe `warning`, „wieder ok“, sobald
+der Port frei ist); `tools/netbox-abgleich.py` nennt den Port als Abweichung statt „Release noch nicht angewendet“.
+Entsperren bleibt Handarbeit (Profil `vport`/`trunk`, Port aus und an).
+
+**Begründung:** Die Sperre ist ein Dauerzustand, den RouterOS nur einmal ins Log schreibt. Der Status des Agents trägt
+ihn so lange, wie er besteht. Selbst entsperren hieße, eine echte Schleife wieder aufzumachen. Labor: `e2e.sh` Schritt
+18 (cm1/ether2 als `access` vor sw1 mit RSTP), `netbox-abgleich-test.py`, `upload-seed-test.py`.
+
 ## <a id="dt"></a>DT · Tools und Test
 
 ### <a id="dt1"></a>DT1 · Test und Prüfung
@@ -2890,7 +2915,8 @@ Wunsch vorbereitet, solange er nicht testen konnte.
 
 ### Nachtschicht: Prüfungen, Meldungen, Flottenzustand (2026-11-26)
 
-Entscheidungen: DR1.6 (VRRP-IDs über 255 vorab prüfen), DO1.9 (device-mode in der Probe, Warten auf die Freigabe).
+Entscheidungen: DR1.6 (VRRP-IDs über 255 vorab prüfen), DO1.9 (device-mode in der Probe, Warten auf die Freigabe),
+DU4.4 (von BPDU-Guard gesperrte Ports melden).
 
 Anlass: offene Punkte 98–101 aus der Doku-Prüfung und vom Pilot-Standort (2026-11-24/25). Der Nutzer wählte die Punkte
 für eine Nachtschicht und entschied sie in drei Fragerunden; Umsetzung und Labortests unbeaufsichtigt.

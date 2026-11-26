@@ -667,6 +667,7 @@
   # NAME-Spalte so breit wie der längste Name (mindestens 10)
   :local nw 10
   :foreach n,x in=$inv do={ :if ([:len $n] >= $nw) do={ :set nw ([:len $n] + 1) } }
+  :local bw ({})
   :put ([$cfmPad "NAME" $nw] . [$cfmPad "RING" 5] . [$cfmPad "SOLL" 6] . [$cfmPad "IST" 6] . [$cfmPad "ERGEBNIS" 26] . [$cfmPad "SV" 4] . [$cfmPad "ROUTEROS" 16] . "ZULETZT")
   :foreach name,d in=$inv do={
     :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
@@ -689,9 +690,15 @@
     :if ([:typeof $bv] = "num" and ($bv >= $iv or $bv = $sv0)) do={ :set res ("bad v" . $bv . " " . $res) }
     :if ([:len [:tostr ($s->"fwe")]] > 0) do={ :set res ($res . " fw " . ($s->"fwe") . "!") }
     :if ([:tostr ($s->"wfb")] = "1") do={ :set res ($res . " WLAN lokal") }
+    # von BPDU-Guard gesperrte Ports (TODO 100): kurz in der Spalte, ausführlich unter der Tabelle
+    :if ([:len ($s->"bpdu")] > 0) do={
+      :set res ("BPDU! " . $res)
+      :set ($bw->[:len $bw]) ($name . ": " . [:tostr ($s->"bpdu")])
+    }
     :if (![$cfmEnrolled $d]) do={ :set res "nicht aufgenommen" }
     :put ([$cfmPad $name $nw] . [$cfmPad ($d->"ring") 5] . [$cfmPad ("v" . ($rg->("r" . ($d->"ring")))) 6] . [$cfmPad ("v" . [:tostr ($s->"v")]) 6] . [$cfmPad [:pick $res 0 25] 26] . [$cfmPad $sv 4] . [$cfmPad $ros 16] . $age)
   }
+  :foreach x in=$bw do={ :put ("Warnung: " . $x . " von BPDU-Guard gesperrt (Port inaktiv) - Switch oder VM-Bridge dahinter? Profil vport:<vid> oder trunk, dann Port einmal aus und an") }
 }
 
 # ---------- Audit (Hand-Objekte auf einem Gerät) ----------

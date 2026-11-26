@@ -123,6 +123,13 @@ elif [ -z "$seed_inventory" ]; then
       [ -f "$f" ] && [ ! -f "$overlay/$(basename "$f")" ] && ergaenzt="$ergaenzt $(basename "$f")"
     done
     [ -n "$ergaenzt" ] && echo "--site: aus der Vorlage ergänzt (nicht im Overlay):$ergaenzt"
+    # Port-Profile (TODO 100): Die profiles.rsc des Overlays ersetzt die der Vorlage ganz. Kennt sie ein Profil
+    # der Vorlage nicht (z.B. vport, neu seit DP1.2), fehlt es am Standort - nur ein Hinweis, kein Abbruch
+    if [ -f "$overlay/profiles.rsc" ]; then
+      profile() { grep -oE '^[[:space:]]*"[A-Za-z0-9_-]+"=\{|\$cfmProfiles->"[A-Za-z0-9_-]+"' "$1" | grep -oE '"[A-Za-z0-9_-]+"' | tr -d '"' | sort -u; }
+      fehlt=$(comm -23 <(profile "$root/cfm/work/profiles.rsc") <(profile "$overlay/profiles.rsc") | tr '\n' ' ')
+      [ -n "$fehlt" ] && echo "--site: Profile der Vorlage fehlen in profiles.rsc des Overlays: ${fehlt% } (bei Bedarf nachtragen, Admin-Guide 4)"
+    fi
   fi
   remote=$(mktemp -d)
   (cd "$stage/work" && { find . -maxdepth 1 -type f; find ./hosts -type f 2>/dev/null; }) | sed 's|^\./||' | sort > "$remote/liste"

@@ -10,7 +10,7 @@
 # Der Body ist JSON: {"site","host","ev","state","msg","text","time","key"} - z.B. für einen
 # Webhook-Trigger von Home Assistant (docs/home-assistant.md), ntfy o.ä. mit derselben URL-Form.
 # Dazu level/device/message für einen einfachen Empfänger: level error (apply, onboard, stumm), warning
-# (wlan, "wieder ok"), action (update, lizenz, ros = Admin-Eingriff nötig), info (Probe); device = das
+# (wlan, bpdu, "wieder ok"), action (update, lizenz, ros = Admin-Eingriff nötig), info (Probe); device = das
 # betroffene Gerät, message = text. key ordnet "on" und "off" ohne Textvergleich zu (TODO 64): "<ev>:<host>",
 # bei ros "ros:<Version>" und zusätzlich das Feld ver.
 # Neue RouterOS-Version (ros): einmal am Tag NEWESTa7.<rosChannel> bei upgrade.mikrotik.com. Ist ein
@@ -261,6 +261,8 @@
       :local sn [:tonum ($s->"seen")]
       :if ([:typeof $sn] = "num" and ($now - $sn) > $stale) do={ :set ($cur->("stumm:" . $name)) ("stumm: kein Status seit " . (($now - $sn) / 60) . " min") }
       :if ([:tostr ($s->"wfb")] = "1") do={ :set ($cur->("wlan:" . $name)) "WLAN lokal: kein CAPsMAN verbunden" }
+      # von BPDU-Guard gesperrte Ports (TODO 100): Der Port bleibt aus, bis ihn jemand aus- und einschaltet
+      :if ([:len ($s->"bpdu")] > 0) do={ :set ($cur->("bpdu:" . $name)) ("Port " . [:tostr ($s->"bpdu")] . " von BPDU-Guard gesperrt - Profil vport:<vid> oder trunk, dann Port aus und an") }
       :local ug [:tostr ($s->"upg")]
       :if ($ug ~ "^(fehlgeschlagen|Fenster verpasst|Platz fehlt)") do={ :set ($cur->("update:" . $name)) ("RouterOS-Update: " . $ug) }
     }

@@ -563,7 +563,7 @@
   :local s [:find $1 ":"]
   :if ([:typeof $s] != "nil") do={ :set name [:pick $1 0 $s]; :set arg [:pick $1 ($s + 1) [:len $1]] }
   :local pr ($cfmProfiles->$name)
-  :if ([:typeof $pr] != "array") do={ :error ("unbekanntes Port-Profil: " . $1) }
+  :if ([:typeof $pr] != "array") do={ :error ("unbekanntes Port-Profil: " . $1 . " (fehlt in profiles.rsc)") }
   :local u [:tostr ($pr->"untag")]
   :if ($u = "arg") do={ :set u $arg }
   :local tg ({})

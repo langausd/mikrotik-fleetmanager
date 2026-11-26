@@ -401,6 +401,16 @@ class AbgleichTest(unittest.TestCase):
         items = self.run_(ist=ist)
         self.assertTrue(finde(items, "Ports", "sw1 ether2", "hinweis", "Release noch nicht angewendet"))
 
+    def test_port_bpdu_gesperrt(self):
+        # TODO 100: der Agent meldet den von BPDU-Guard gesperrten Port; statt "Release noch nicht angewendet"
+        ist = ist_basis()
+        ist["sw1"]["status"]["bpdu"] = ["ether2"]
+        ist["sw1"]["export"]["bports"]["ether2"]["pvid"] = 40
+        items = self.run_(ist=ist)
+        self.assertTrue(finde(items, "Ports", "sw1 ether2", "abweichung", "von BPDU-Guard gesperrt"))
+        self.assertTrue(finde(items, "Ports", "sw1 ether2", "abweichung", "statt access:20"))
+        self.assertFalse(finde(items, "Ports", "sw1 ether2", "hinweis", "Release noch nicht angewendet"))
+
     def test_tagged_all(self):
         p = plan_basis()
         p["vlans"]["99"] = "TEST"

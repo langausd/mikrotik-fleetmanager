@@ -15,8 +15,17 @@ Aufruf (aus dem Wurzelverzeichnis des Repos):
   tools/netbox-import.py … --schreiben                 # wirklich anlegen (Token mit Schreibrecht)
   tools/netbox-import.py --site <slug> --state <verz> --plan-speichern plan.json   # ohne NetBox: nur der Plan
 Optionen wie netbox-abgleich.py: --state, --manager, --port, --base, --ver, --vlan-group, --ca, --unsicher.
-Exit-Code: 0 = gelaufen, 2 = Fehler.
+Regelmäßiges Update (TODO 55, DT2.4):
+  tools/netbox-import.py --site <slug> --manager … --netbox … --token-file <f> --ist
+      pflegt nur Ist-Felder (Custom Fields cfm_ist_ros, cfm_ist_seen am Gerät, cfm_ist_nachbar am Interface; leere
+      Seriennummer), zeigt neue Objekte (wie der Probelauf) und die Abweichungen des Plans (wie netbox-abgleich.py);
+      Plan-Felder bleiben, wie sie sind. Für einen Timer oder ein geplantes Custom Script.
+  … --ist --plan-uebernehmen    legt die neuen Objekte zusätzlich an und füllt leere Plan-Felder (wie --schreiben);
+      abweichende Plan-Werte bleiben stehen und erscheinen im Bericht.
+  --lesend/--key/--known-hosts wie netbox-abgleich.py (User cfm-netbox).
+Exit-Code: 0 = gelaufen, 1 = (--ist) Abweichungen im Plan, 2 = Fehler.
 """
+import datetime
 import argparse
 import importlib.util
 import ipaddress
@@ -37,6 +46,9 @@ _s = ab._s
 
 CF = [("cfm_role", "cfm-Rollen", "dcim.device"), ("cfm_port_default", "cfm-Portprofil (Standard)", "dcim.device"),
       ("cfm_port", "cfm-Portprofil", "dcim.interface")]
+# Ist-Felder (--ist): nur von cfm geschrieben, nie Plan
+IST_CF = [("cfm_ist_ros", "cfm Ist: RouterOS", "dcim.device"), ("cfm_ist_seen", "cfm Ist: zuletzt gemeldet", "dcim.device"),
+          ("cfm_ist_nachbar", "cfm Ist: Nachbar (LLDP/MNDP)", "dcim.interface")]
 ROLLEN = [("router", "Router"), ("switch", "Switch"), ("capsman", "Access Point"), ("ap", "Access Point"),
           ("cap", "Access Point"), ("manager", "Manager")]
 
@@ -556,8 +568,76 @@ class Importer:
                             "Tunnel %s an %s %s" % (tn, n, tn))
 
 
+def _seen(x):
+    try:
+        t = int(float(x))
+    except (TypeError, ValueError):
+        return None
+    if t <= 0:
+        return None
+    return datetime.datetime.fromtimestamp(t, datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def ist_soll(ist):
+    """Ist-Werte je Gerät: {n: {"cf": {cfm_ist_ros, cfm_ist_seen}, "serial": .., "nachbar": {port: text}}}"""
+    r = {}
+    for n, x in sorted(ist.items()):
+        st = x.get("status") or {}
+        nbr = {}
+        for e in st.get("nb") or []:
+            if len(e) >= 2 and e[0]:
+                t = _s(e[1]) + (":" + _s(e[2]) if len(e) > 2 and _s(e[2]) else "")
+                if not _s(e[1]) and len(e) > 3:
+                    t = _s(e[3]).lstrip("m")
+                nbr.setdefault(_s(e[0]), []).append(t)
+        r[n] = {"cf": {"cfm_ist_ros": _s(st.get("ros")) or None, "cfm_ist_seen": _seen(st.get("seen"))},
+                "serial": _s(st.get("serial")), "nachbar": {p: ", ".join(sorted(set(v))) for p, v in nbr.items()}}
+    return r
+
+
+def ist_update(imp, ist):
+    """Ist-Felder in NetBox nachziehen (schreibt nur bei Änderung). -> Anzahl geänderter Objekte"""
+    v4 = imp.ver >= (4, 0)
+    n_ch = 0
+    for name, label, ot in IST_CF:
+        imp.get_or_create("extras/custom-fields", {"name": name},
+                          {"name": name, "label": label, "type": "text",
+                           ("object_types" if v4 else "content_types"): [ot]}, "Custom Field %s" % name)
+    site = imp.one("dcim/sites", slug=imp.site)
+    if not site:
+        imp.log("!", "Site %s fehlt in NetBox - erst den Start-Import" % imp.site)
+        return 0
+    for n, w in ist_soll(ist).items():
+        o = imp.one("dcim/devices", name=n, site_id=site["id"])
+        if not o:
+            continue  # neues Gerät: zeigt der Probelauf
+        ocf = o.get("custom_fields") or {}
+        ch = {}
+        cf = {k: v for k, v in w["cf"].items() if (ocf.get(k) or None) != v}
+        if cf:
+            ch["custom_fields"] = cf
+        if w["serial"] and not o.get("serial"):
+            ch["serial"] = w["serial"]
+        elif w["serial"] and o.get("serial") != w["serial"]:
+            imp.log("!", "Gerät %s: Seriennummer in NetBox %s, am Gerät %s (Plan bleibt)" % (n, o.get("serial"), w["serial"]))
+        if ch:
+            n_ch += 1
+            imp.log("~", "Ist %s: %s" % (n, ", ".join(sorted(list(cf) + (["serial"] if "serial" in ch else [])))))
+            if imp.schreiben:
+                imp.nb.patch("dcim/devices", o["id"], ch)
+        for i in imp.nb.get("dcim/interfaces", device_id=o["id"]):
+            want = w["nachbar"].get(i["name"]) or None
+            have = (i.get("custom_fields") or {}).get("cfm_ist_nachbar") or None
+            if want != have:
+                n_ch += 1
+                imp.log("~", "Ist %s %s: Nachbar %s" % (n, i["name"], want or "(keiner)"))
+                if imp.schreiben:
+                    imp.nb.patch("dcim/interfaces", i["id"], {"custom_fields": {"cfm_ist_nachbar": want}})
+    return n_ch
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Start-Import cfm -> NetBox (TODO 55 Baustein 2)")
+    ap = argparse.ArgumentParser(description="Start-Import cfm -> NetBox (TODO 55 Baustein 2), mit --ist regelmäßig")
     ap.add_argument("--site", required=True, help="Slug der NetBox-Site (wird angelegt, wenn sie fehlt)")
     ap.add_argument("--netbox", help="URL der NetBox (ohne: nur den Plan bauen)")
     ap.add_argument("--token-file")
@@ -573,6 +653,11 @@ def main(argv=None):
     ap.add_argument("--port", type=int, default=22)
     ap.add_argument("--base", default="cfm")
     ap.add_argument("--ver", type=int)
+    ap.add_argument("--ist", action="store_true", help="regelmäßig: nur Ist-Felder pflegen, Neues und Abweichungen zeigen")
+    ap.add_argument("--plan-uebernehmen", action="store_true", help="mit --ist: neue Objekte anlegen, leere Plan-Felder füllen")
+    ap.add_argument("--lesend", action="store_true", help="als User cfm-netbox (nur Lesen, global.rsc netbox)")
+    ap.add_argument("--key", help="SSH-Schlüssel (z.B. für cfm-netbox)")
+    ap.add_argument("--known-hosts", help="known_hosts-Datei für --lesend")
     a = ap.parse_args(argv)
     tmp = None
     try:
@@ -580,7 +665,10 @@ def main(argv=None):
             d = a.state
         elif a.manager:
             tmp = tempfile.mkdtemp(prefix="cfm-nbi-")
-            ab.fetch_state(a.manager, a.port, a.base, a.ver, tmp)
+            if a.lesend:
+                ab.fetch_state_lesend(a.manager, a.port, tmp, a.key, a.known_hosts)
+            else:
+                ab.fetch_state(a.manager, a.port, a.base, a.ver, tmp, a.key)
             d = tmp
         else:
             ap.error("--state oder --manager angeben")
@@ -606,7 +694,28 @@ def main(argv=None):
                 tok = f.read().strip()
         if not tok:
             ap.error("API-Token fehlt (--token-file oder NETBOX_TOKEN)")
-        imp = Importer(ab.NetBox(a.netbox, tok, a.ca, a.unsicher), a.site, a.schreiben, a.vlan_group)
+        if a.plan_uebernehmen and not a.ist:
+            ap.error("--plan-uebernehmen nur mit --ist (sonst --schreiben)")
+        nbc = ab.NetBox(a.netbox, tok, a.ca, a.unsicher)
+        if a.ist:
+            # 1. neue Objekte (gezeigt bzw. angelegt), 2. Ist-Felder (schreibt immer), 3. Abweichungen des Plans
+            imp = Importer(nbc, a.site, a.plan_uebernehmen, a.vlan_group)
+            print("NetBox %d.%d, Site %s - neue Objekte und leere Plan-Felder %s" % (
+                imp.ver[0], imp.ver[1], a.site, "(lege an)" if a.plan_uebernehmen else "(nur gezeigt, --plan-uebernehmen legt an)"))
+            imp.run(plan)
+            print("%d %s, %d %s" % (imp.neu, "angelegt" if a.plan_uebernehmen else "neu", imp.ergaenzt,
+                                    "ergänzt" if a.plan_uebernehmen else "zu ergänzen"))
+            if not imp.one("dcim/sites", slug=a.site):
+                print("Site %s fehlt in NetBox - erst der Start-Import (--schreiben) oder --plan-uebernehmen" % a.site)
+                return 0
+            ii = Importer(nbc, a.site, True, a.vlan_group)
+            print("Ist-Felder")
+            print("%d Objekte mit neuem Ist" % ist_update(ii, ist))
+            items = ab.abgleich(ab.plan_from_netbox(nbc, a.site, a.vlan_group), soll, ist)
+            src = "v%s" % soll.get("v") if soll.get("v") else "work/"
+            sys.stdout.write("\n" + ab.bericht(items, "Plan in NetBox <-> cfm %s (Abweichungen bleiben im Plan stehen)" % src))
+            return 1 if any(x["art"] == "abweichung" for x in items) else 0
+        imp = Importer(nbc, a.site, a.schreiben, a.vlan_group)
         print("NetBox %d.%d, Site %s - %s" % (imp.ver[0], imp.ver[1], a.site,
                                                "schreibe" if a.schreiben else "Probelauf (nichts wird angelegt)"))
         imp.run(plan)

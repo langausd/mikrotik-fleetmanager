@@ -2311,6 +2311,24 @@ Netzteil). Ein Gerät, das noch nichts
 gemeldet hat, kommt nur mit MGMT-Adresse an `vlan<mgmtVlan>`. Danach `tools/netbox-abgleich.py`: Direkt nach dem
 Import sollte es keine Abweichung melden.
 
+**Regelmäßiges Update (`--ist`, DT2.4).** Nach dem Start-Import hält `netbox-import.py --ist` die Ist-Felder in NetBox
+aktuell, z.B. per Timer im NetBox-Container (Token mit Schreibrecht):
+
+```bash
+tools/netbox-import.py --site <slug> --manager cfm-netbox@<manager> --lesend --key <key> \
+  --netbox https://netbox.example --token-file ~/.netbox-token-rw --ist                # Ist pflegen, Rest zeigen
+tools/netbox-import.py … --ist --plan-uebernehmen                                      # Neues auch anlegen
+```
+
+* Ist-Felder (eigene Custom Fields, nur cfm schreibt sie): `cfm_ist_ros` (RouterOS) und `cfm_ist_seen` (letzte
+  Statusmeldung, UTC) am Gerät, `cfm_ist_nachbar` (LLDP/MNDP: `<Gerät>:<Port>`) am Interface; eine leere Seriennummer
+  wird gefüllt, eine abweichende nur gemeldet. Geschrieben wird nur, was sich geändert hat.
+* Neue Objekte (Gerät, Port, Kabel, Adresse …) zeigt der Lauf wie der Probelauf mit `+`; `--plan-uebernehmen` legt sie
+  an und füllt leere Plan-Felder. Abweichende Plan-Werte (z.B. ein anderes `cfm_port`) bleiben in NetBox stehen und
+  erscheinen danach im Bericht des Abgleichs – die Planung gehört NetBox.
+* Exit-Code 1, wenn der Plan abweicht. Die Gegenrichtung (Plan aus NetBox als Vorschlag für die Site-Daten) gibt es
+  noch nicht (TODO 55).
+
 **Aus NetBox auslösen.** Das Custom Script `tools/netbox/cfm_abgleich.py` startet den Abgleich auf Knopfdruck in NetBox
 (*Anpassen → Skripte → cfm-Abgleich*, Site wählen). Es liest den Plan über die Datenbank, Soll und Ist als User
 `cfm-netbox` vom Primary-Manager. Der darf nur lesen und `cfm-netbox-run` starten; das Skript gibt Soll und Ist als Text

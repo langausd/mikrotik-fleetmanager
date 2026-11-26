@@ -2409,6 +2409,18 @@ permissions“, Labor 2026-11-25), `/file/get` liest nur ~60 KB (`export.rsc` ei
 liest den Plan über das ORM (kein Token im Container) und ruft für Soll, Ist und Abgleich `netbox-abgleich.py` auf, das
 im Container liegt; so gibt es die Logik nur einmal. Die ORM-Abbildung ist gegen den REST-Weg getestet.
 
+#### <a id="dt2.4"></a>DT2.4 · NetBox: Ist regelmäßig nachziehen
+
+*2026-11-26*
+
+**Frage:** Nach dem Start-Import (DT2.3) soll NetBox den Ist-Zustand regelmäßig zeigen, ohne die Planung zu überschreiben
+
+**Entscheidung:** Modus `--ist` in `tools/netbox-import.py` (kein eigenes Tool): pflegt nur Ist-Felder als eigene Custom Fields (`cfm_ist_ros`, `cfm_ist_seen` am Gerät, `cfm_ist_nachbar` am Interface; leere Seriennummer), schreibt nur Änderungen, zeigt neue Objekte (Probelauf des Imports) und Abweichungen des Plans (Bericht von `netbox-abgleich.py`); `--plan-uebernehmen` legt Neues an und füllt leere Plan-Felder, abweichende Plan-Werte bleiben (Nutzer, 2026-11-26)
+
+**Verworfen:** alles aus cfm nachziehen (NetBox wäre nur ein Spiegel, widerspricht Variante C) · eigenes Tool `netbox-sync.py` · Ist in Journal-Einträgen oder Tags
+
+**Begründung:** Gemeinsamer Code mit dem Start-Import und dem Abgleich; Ist und Plan bleiben in getrennten Feldern unterscheidbar. Offen: abweichende Plan-Werte auf Wunsch überschreiben, Lauf aus dem Custom Script (geplanter Job), Gegenrichtung NetBox → Site-Daten (TODO 55). Tests `netbox-import-test.py` (Ist-Felder). TODO 55
+
 ### <a id="dt3"></a>DT3 · Browser-Werkzeuge
 
 #### <a id="dt3.1"></a>DT3.1 · Editor im Browser: Lesezeichen für WebFig

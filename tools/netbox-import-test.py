@@ -247,6 +247,35 @@ class ImportTest(unittest.TestCase):
         self.assertTrue(nb.obj("ipam/prefixes", o["id"]).get("vlan"))
         self.assertEqual(len([x for x in nb._all("ipam/prefixes").values() if x["prefix"] == p]), 1)
 
+    def test_ist_felder(self):
+        """--ist (DT2.4): Ist-Felder nur bei Änderung, Plan-Felder bleiben, abweichende Seriennummer nur gemeldet"""
+        nb = MemNB()
+        self.importiere(nb)
+        self.ist["sw1"]["status"].update({"ros": "7.25.2", "seen": 1795000000})
+        self.ist["rtr1"]["status"]["ros"] = "7.25.1"
+        sw1 = next(d for d in nb._all("dcim/devices").values() if d["name"] == "sw1")
+        nb.patch("dcim/devices", sw1["id"], {"serial": "HANDPLAN"})
+        out = io.StringIO()
+        i = imp.Importer(nb, "s1", True, out=out)
+        n = imp.ist_update(i, self.ist)
+        o = out.getvalue()
+        self.assertIn("~ Ist sw1: cfm_ist_ros, cfm_ist_seen", o)
+        self.assertIn("~ Ist sw1 uplink: Nachbar rtr1:ether1", o)
+        self.assertIn("! Gerät sw1: Seriennummer in NetBox HANDPLAN, am Gerät BBB222 (Plan bleibt)", o)
+        d = nb.obj("dcim/devices", sw1["id"])
+        self.assertEqual(d["serial"], "HANDPLAN")
+        self.assertEqual(d["custom_fields"]["cfm_ist_ros"], "7.25.2")
+        self.assertEqual(d["custom_fields"]["cfm_ist_seen"], "2026-11-18 11:06 UTC")
+        self.assertGreaterEqual(n, 3)
+        # zweiter Lauf ohne Änderung schreibt nichts
+        out = io.StringIO()
+        self.assertEqual(imp.ist_update(imp.Importer(nb, "s1", True, out=out), self.ist), 0)
+        # Nachbar weg -> Feld geleert
+        self.ist["sw1"]["status"]["nb"] = []
+        out = io.StringIO()
+        imp.ist_update(imp.Importer(nb, "s1", True, out=out), self.ist)
+        self.assertIn("~ Ist sw1 uplink: Nachbar (keiner)", out.getvalue())
+
     def test_probelauf_schreibt_nicht(self):
         nb = MemNB()
         i, out = self.importiere(nb, schreiben=False)

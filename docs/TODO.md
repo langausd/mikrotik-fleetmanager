@@ -373,8 +373,12 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
         `cfm-netbox-run` (`dont-require-permissions`, startet `$cfmNetbox` und gibt die Dateien per `/file/read` in
         Stücken aus, `$cfmNetboxOut`: der User selbst darf weder SFTP noch `/file/read`); `$cfmCheck` prüft `from` und
         Key. `netbox-abgleich.py --lesend` braucht dafür einen SSH-Aufruf. Custom Script `tools/netbox/cfm_abgleich.py` (Plan per ORM, 3.7–4.6) mit Anleitung
-        `tools/netbox/README.md`, Tests (ORM-Abbildung gleich REST), `e2e.sh` Schritt 14o. *Offen:* Vorschlag für
-        die Hostfiles als eigene Datei (bisher nur die `links`-Zeilen als Hinweis im Bericht); erster Lauf in der
+        `tools/netbox/README.md`, Tests (ORM-Abbildung gleich REST), `e2e.sh` Schritt 14o. (4) *umgesetzt 2026-11-26
+        (DT2.4):* `netbox-import.py --ist` pflegt Ist-Felder regelmäßig, zeigt Neues und Abweichungen,
+        `--plan-uebernehmen` legt Neues an. *Offen:* Vorschlag für die Hostfiles als eigene Datei (Gegenrichtung
+        NetBox → Site-Daten, entschieden 2026-11-26: eigenes Tool `tools/netbox-uebernahme.py` mit Diff für
+        `hosts/*.rsc`, `leases.rsc`, `vlans.rsc`, `--schreiben` ändert das Overlay lokal); bei `--plan-uebernehmen`
+        abweichende Plan-Werte auf Wunsch überschreiben; `--ist` als geplanter Job im Custom Script; erster Lauf in der
         echten NetBox.
 <!-- -->
 58. **Schaltbare SSID – Rest** (umgesetzt: feste Interfaces DW4.2, Neuprovisionieren DW4.3; Umstieg und

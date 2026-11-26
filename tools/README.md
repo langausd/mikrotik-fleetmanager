@@ -336,6 +336,9 @@ tools/netbox-import.py … --schreiben                                          
   Tunnel mit Kapselung WireGuard ab 4.0, davor `ip-ip`).
 * `--vlan-group`, `--ca`, `--unsicher` wie beim Abgleich. Tests: `tools/netbox-import-test.py` (NetBox im Speicher,
   Rundlauf Import → Abgleich ohne Abweichung).
+* Regelmäßig (DT2.4): `--ist` pflegt nur Ist-Felder (`cfm_ist_ros`, `cfm_ist_seen`, `cfm_ist_nachbar`, leere
+  Seriennummer), zeigt neue Objekte und die Abweichungen des Plans; `--ist --plan-uebernehmen` legt Neues an und füllt
+  leere Plan-Felder. `--lesend --key … --known-hosts …` wie beim Abgleich (User `cfm-netbox`). Exit-Code 1 bei Abweichungen.
 
 * Fehlt in NetBox ein Gerätetyp, legt der Import ihn mit Interface-Vorlagen aus den Ports des ersten Geräts an.
   `--typ-yaml <verzeichnis>` schreibt je neuem Typ einen Entwurf für die Device-Type-Library (auch im Probelauf).

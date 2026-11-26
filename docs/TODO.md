@@ -209,6 +209,13 @@ bei PPSK, `cfm-iso` nach dem Neuverbinden) sind seit 2026-11-23 auf Hardware beh
   Agent-Log von sw2 fehlt. Bei Wiederkehr vor dem Stoppen `/log/print where message~"gesetzt|entfernt|angelegt"`
   auf sw2 sichern.
 
+* **Labor-Wackler Backup-Manager cm2 in `e2e.sh` 14b/14c** (7.25.2, 2026-11-26, TESTSTAND): erster Lauf zwei ✘ in
+  14b (cm2 Apply v20, Backup wartet auf den SFTP des Primary), zweiter Lauf 14b grün, dafür 6 ✘ in 14c: Rolle
+  `manager-backup,ap` ohne WLAN-Teil angewendet, Folgeprüfungen ebenso. Danach am Labor dreimal von Hand richtig.
+  Vermutung: Zeitfehler mit dem Spiegel des Backups (Warnung „Spiegel unvollstaendig“ zur selben Zeit; `invrole`
+  baut die Manifeste ohne neues Release). Bei Wiederkehr vor dem Stoppen das Agent-Log von cm2 und `meta/` des
+  Spiegels sichern.
+
 * **hAP be³ Media meldet beim Start einen Fehler im Werks-Skript** (Befund 2026-10-18, 7.24.5):
   `error while running customized default configuration script: no such item (/interface/wifi/get; line 1)`,
   obwohl `/system/default-configuration` kein eigenes Skript hat. Vermutlich sucht das Werks-Skript ein

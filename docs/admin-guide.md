@@ -980,6 +980,14 @@ Das dauert je nach Update 5–15 Minuten. Zu beachten:
   ether1 ein Management-Port mit DHCP-Client ohne Firewall; der Manager findet das Gerät über seine
   DHCP-Lease im Onboarding-VLAN, der Rest läuft wie gewohnt. Ein laufendes Gerät bringst du mit
   `/system reset-configuration caps-mode=yes` in diesen Zustand;
+* **device-mode:** Neue Geräte ab RouterOS 7.17 kommen oft im Modus `home`, der unter anderem
+  `/tool/fetch` und den Scheduler sperrt; ohne beide läuft der Agent nicht. Die Probe liest den Modus. Sperrt er
+  etwas, wartet die Sitzung im Status `devmode` (Meldung im Log und per `notify`, `$cfmOnboardStatus` nennt die
+  Schritte) und probt alle 2 Minuten neu. Freigeben geht nur am Gerät: per WebFig oder SSH (Werks-IP bzw. Lease im
+  Onboarding-VLAN, Aufkleber-Passwort) `/system/device-mode/update mode=advanced`, dann binnen 5 Minuten den
+  **Mode- oder Reset-Taster kurz drücken** oder den **Strom aus- und wieder einschalten**. Danach macht das
+  Onboarding von selbst weiter; mit dem Eintritt in `devmode` beginnt `onboard.timeout` einmal neu (TODO 101, DO1.9).
+  Beim Aufnehmen eines Bestandsgeräts (7.3) bricht `$cfmEnroll` mit demselben Hinweis ab;
 * ein Fail-safe-Timer auf dem Switch setzt den Port spätestens nach `onboard.timeout` + 10 min zurück;
 * ohne `name=` sucht der Manager unter allen registrierten, noch nicht aufgenommenen Geräten;
   unbekannte Seriennummern erscheinen in `$cfmPending` und werden per `$cfmApprove` freigegeben.
@@ -990,14 +998,6 @@ DO1.7): Den Port schaltest du selbst, der Manager erledigt den Rest wie oben.
 $cfmOnboard manual=yes name=ap3 sw=core port=ether7     # sw/port nur als Notiz
 ```
 1. Vorher den Port am Switch **von Hand** ins Onboarding-VLAN schalten: untagged, PVID = VID des
-* **device-mode:** Neue Geräte ab RouterOS 7.17 kommen oft im Modus `home`, der unter anderem
-  `/tool/fetch` und den Scheduler sperrt; ohne beide läuft der Agent nicht. Die Probe liest den Modus. Sperrt er
-  etwas, wartet die Sitzung im Status `devmode` (Meldung im Log und per `notify`, `$cfmOnboardStatus` nennt die
-  Schritte) und probt alle 2 Minuten neu. Freigeben geht nur am Gerät: per WebFig oder SSH (Werks-IP bzw. Lease im
-  Onboarding-VLAN, Aufkleber-Passwort) `/system/device-mode/update mode=advanced`, dann binnen 5 Minuten den
-  **Mode- oder Reset-Taster kurz drücken** oder den **Strom aus- und wieder einschalten**. Danach macht das
-  Onboarding von selbst weiter; mit dem Eintritt in `devmode` beginnt `onboard.timeout` einmal neu (TODO 101, DO1.9).
-  Beim Aufnehmen eines Bestandsgeräts (7.3) bricht `$cfmEnroll` mit demselben Hinweis ab;
    Onboarding-VLANs (die Meldung nennt sie), `frame-types=admit-all`.
 2. Gerät einstecken; Fortschritt mit `$cfmOnboardStatus` („Sitzung manuell …“).
 3. Nach dem Ende (Erfolg, Fehler, Timeout oder `$cfmOnboardAbort`) steht im Log des Managers
@@ -2705,6 +2705,7 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 | Webfig o.ä. bleibt aus, obwohl in `services` eingetragen | falscher Dienstname (`http` statt `www`) | RouterOS-Namen verwenden (Kapitel 4, `services`) |
 | Onboarding bleibt in `wait` | Gerät nicht erreichbar: Kabel, Router an `ether1`, falsches Aufkleber-Passwort | `$cfmOnboardStatus`, Log am Manager, Registrierung prüfen |
 | Onboarding: „Seriennummer passt nicht“ | anderes Gerät am Port | Registrierung oder Gerät prüfen |
+| Onboarding in `devmode`, oder `$cfmEnroll`: „Agent-Installation fehlgeschlagen: not allowed by device-mode“ | Gerät im device-mode `home` (Standard vieler neuer Geräte), `fetch` und Scheduler gesperrt | am Gerät `/system/device-mode/update mode=advanced`, binnen 5 min Mode-/Reset-Taster kurz drücken oder Strom aus und an; das Onboarding macht dann selbst weiter, sonst `$cfmEnroll` wiederholen (7.1) |
 | Onboarding: „RouterOS … älter als …“ | kein Update möglich (Internet über den Router?) | Router-Rolle/`policy` `onboard`, notfalls von Hand updaten |
 | Log `cfm: Apply wartete N s auf einen Manager-Befehl` (Manager) | gewollt: ein Manager-Befehl (`$cfmCheck`, `$cfmShow` …) importierte gerade Daten, der Apply wartet darauf (`cfmMgrData`, höchstens 120 s) | nichts zu tun; bei „120 s gewartet“ den Befehl prüfen, der so lange lief |
 | Apply: „MLAG (mlag.rsc) braucht RouterOS 7.22 oder neuer“ | Knoten eines MLAG-Paars mit älterem RouterOS | Knoten aktualisieren, bis dahin das Paar aus `mlag.rsc` nehmen |
@@ -2716,4 +2717,3 @@ sowie die Freischaltungen `dnsui:tmp:<Ablauf> <IP>` und `dnsui:perm <IP> <Datum>
 
 Hilfreich auf dem Gerät: `/log print where message~"cfm"` und `:put [/file get cfm/state.json contents]`.
 Auf dem Manager: `$cfmStatus`, `$cfmOnboardStatus` und `/log print where message~"cfm"`.
-| Onboarding in `devmode`, oder `$cfmEnroll`: „Agent-Installation fehlgeschlagen: not allowed by device-mode“ | Gerät im device-mode `home` (Standard vieler neuer Geräte), `fetch` und Scheduler gesperrt | am Gerät `/system/device-mode/update mode=advanced`, binnen 5 min Mode-/Reset-Taster kurz drücken oder Strom aus und an; das Onboarding macht dann selbst weiter, sonst `$cfmEnroll` wiederholen (7.1) |

@@ -2285,6 +2285,33 @@ Entsperren bleibt Handarbeit (Profil `vport`/`trunk`, Port aus und an).
 ihn so lange, wie er besteht. Selbst entsperren hieße, eine echte Schleife wieder aufzumachen. Labor: `e2e.sh` Schritt
 18 (cm1/ether2 als `access` vor sw1 mit RSTP), `netbox-abgleich-test.py`, `upload-seed-test.py`.
 
+#### <a id="du4.5"></a>DU4.5 · Flottenzustand für Home Assistant (Skript `cfm-fleet`)
+
+*2026-11-26 · Nutzer (TODO 99)*
+
+**Frage:** HA bekommt Meldungen nur beim Wechsel (DU4.1). Wie kommt der aktuelle Zustand der Geräte dorthin?
+
+**Optionen (gewählt fett):** Inhalt: **je Gerät erreichbar/stumm, Release und Apply, RouterOS-Version mit Update und
+Lizenz, offene Meldungen; keine Summen** (Nutzer). Zugriff: **RouterOS-API mit dem Lese-User aus `capsmanApi`**
+(Nutzer) · REST über `www-ssl`. User auf den Managern: **immer, sobald `capsmanApi.from` gesetzt ist** (Nutzer) · nur
+mit eigenem Schalter. Form in HA: **ein Sensor, Zustand = Anzahl offener Meldungen, Geräte und Meldungen als
+Attribute** (Nutzer) · ein Sensor je Gerät.
+
+**Entscheidung:** Der Primary schreibt in `$cfmNotifyTick` (auch ohne `notify.url`) den Flottenzustand als Quelltext des
+Skripts `cfm-fleet` (nie ausgeführt, `policy` leer), von Hand als
+JSON gebaut wie `$cfmNotify` (`:serialize` schriebe Ziffern-Strings als Zahl), nur wenn sich der Inhalt ändert;
+„stumm“ hat dort einen festen Text mit `seit`, damit das Skript nicht jede Minute neu entsteht. Die Rolle `base` legt
+den API-User auch auf Primary und Backup an. `tools/home-assistant/cfm_fleet.py` fragt alle genannten Manager und
+nimmt den neuesten Stand (es gibt keine gemeinsame Adresse der Manager), Zeiten als ISO 8601.
+
+**Begründung:** Die Zustände rechnet der Tick ohnehin für die Meldungen. Ein Skript statt globaler Variablen, weil die
+API globale Variablen nur Usern mit `write` und `policy` zeigt; statt einer Datei, weil `/file/print` über die API
+den Inhalt nur bis 4 KB liefert (der erste Laborlauf mit `state/fleet.json` scheiterte daran) und `/file/read` mehr
+als `read` braucht (ROUTEROS-EIGENHEITEN). Vorbild: `cfm-conf` auf jedem Gerät (Daten im Skript). Nur auf dem Primary: ein
+ausgefallener Primary meldet sich schon über `primary` (DU4.1). Labor: `e2e.sh` Schritt 14c
+(API auf beiden Managern, `cfm_fleet.py` über die API-Weiterleitung des Labors) und 18 (Meldung `bpdu:cm1`, kein
+Neuschreiben ohne Änderung), `cfm_fleet-test.py`.
+
 ## <a id="dt"></a>DT · Tools und Test
 
 ### <a id="dt1"></a>DT1 · Test und Prüfung
@@ -2916,7 +2943,7 @@ Wunsch vorbereitet, solange er nicht testen konnte.
 ### Nachtschicht: Prüfungen, Meldungen, Flottenzustand (2026-11-26)
 
 Entscheidungen: DR1.6 (VRRP-IDs über 255 vorab prüfen), DO1.9 (device-mode in der Probe, Warten auf die Freigabe),
-DU4.4 (von BPDU-Guard gesperrte Ports melden).
+DU4.4 (von BPDU-Guard gesperrte Ports melden), DU4.5 (Flottenzustand im Skript `cfm-fleet` für Home Assistant).
 
 Anlass: offene Punkte 98–101 aus der Doku-Prüfung und vom Pilot-Standort (2026-11-24/25). Der Nutzer wählte die Punkte
 für eine Nachtschicht und entschied sie in drei Fragerunden; Umsetzung und Labortests unbeaufsichtigt.

@@ -40,7 +40,7 @@ cd tools/chr-lab
 ./lab.sh stop         # alle VMs stoppen
 ```
 
-Netz: Jede VM hat `ether1` am QEMU-Netz des Rechners (SSH-Weiterleitung auf Port 2200 + 10·n). vm1
+Netz: Jede VM hat `ether1` am QEMU-Netz des Rechners (SSH-Weiterleitung auf Port 2200 + 10·n, RouterOS-API auf 2200 + 10·n + 8). vm1
 ist mit `ether2`, `ether3` … sternförmig mit den anderen VMs verbunden. Die Testskripte starten und
 stoppen die VMs selbst, `lab.sh` brauchst du nur zum Nachsehen.
 

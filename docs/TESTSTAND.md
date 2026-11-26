@@ -42,7 +42,9 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   von `$cfmCheck` (Schritt 7), `$cfmIsPrimary` ohne Daten auf dem Backup (Schritt 10) und Manager-Module aus `work/`
   samt Sperre nach einem Rollback (Schritt 17, DM1.4); seit 2026-11-23 Zertifikate (Schritt 14n, DS3.6): Schlüssel und CSR
   auf dem Gerät, Signer mit Test-CA über SSH als `cfm-cert` ohne Schreibrecht, `cfm-cert-pull`, Import mit Kette, Bindung
-  an `www-ssl`/`api-ssl`, Erneuern mit neuem Schlüssel, Aufräumen.
+  an `www-ssl`/`api-ssl`, Erneuern mit neuem Schlüssel, Aufräumen; seit 2026-11-26 die VRRP-IDs in `$cfmCheck` (Schritt 9, DR1.6), der API-User
+  auf beiden Managern und `cfm_fleet.py` über die API (14c, DU4.5) sowie ein von BPDU-Guard gesperrter Port in Status,
+  `$cfmStatus` und `cfm-fleet` (Schritt 18, DU4.4).
 * `tools/editor/cfm-qr-test.py`: QR-Encoder des WLAN-Schilds (gjs erzeugt, libzbar dekodiert), auch in der CI.
 * `tools/editor/cfm-radios-test.py`: Kanalvorschlag in `wifi.rsc` übernehmen (node; nur das gescannte Band, Rückweg-Kommentar), auch in der CI.
 * `e2e-onboard.sh`: automatisches Onboarding mit Werks-IP (14 Prüfungen), im CAPs-Modus per DHCP (15), hinter
@@ -181,6 +183,15 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
   Manager-Modul-Teil, der übrige Lauf war grün). Dazu `netbox-abgleich-test.py` 33, `cfm_abgleich-test.py` 2.
   2026-11-25 abends, **RouterOS 7.25.2** (`c2fcdbd`, CHR-Image 7.25.2): `e2e.sh fresh` **573 von 573** im ersten Lauf
   (20:24–22:20), damit auch Schritt 14o im vollen Lauf grün. Freigabe für das Update der Geräte auf 7.25.2.
+  2026-11-26 Nachtschicht (TODO 98–101): `e2e-onboard.sh fresh devmode` **20 von 20**. `e2e.sh fresh` mit 98, 100
+  und 99 als Datei `state/fleet.json`: 580 von 583 – `cfm_fleet.py` las die Datei leer, weil `/file/print` über die
+  API `contents` nur bis 4 KB liefert (ROUTEROS-EIGENHEITEN); dazu zwei ✘ in 14b (cm2 Apply v20, Backup wartet auf den
+  SFTP des Primary). Umgebaut auf das Skript `cfm-fleet`, am Labor von Hand mit 100 Geräten (~8 KB) über die API
+  gelesen. Zweiter Lauf: **579 von 585**, alle neuen Prüfungen grün (14c API auf beiden Managern und `cfm_fleet.py`,
+  Schritt 18 BPDU und `cfm-fleet`), 14b diesmal grün; 6 ✘ in 14c am AP-Teil von cm2 (Rolle `manager-backup,ap`
+  ohne WLAN-Teil angewendet, Folgeprüfungen ebenso). Nicht nachstellbar: derselbe Rollenwechsel am Labor danach
+  dreimal hintereinander richtig angewendet. Vermutung: Zeitfehler mit dem Spiegel des Backups (Warnung „Spiegel
+  unvollstaendig“ zur selben Zeit; `invrole` baut die Manifeste ohne neues Release), im ersten Lauf grün.
 * **7.26beta1 (Kanal development, 2026-10-12):** `e2e.sh` grün (292); Changelog-Punkte: TODO 49.
 
 ## Hardware
@@ -385,6 +396,12 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **Von BPDU-Guard gesperrter Port** (DU4.4, 2026-11-26, Labor grün): Gerät mit STP (Switch, Bridge eines
+  Virtualisierungshosts) an einen `access`-Port; erwartet `BPDU!` in `$cfmStatus` mit Warnung, Meldung `bpdu` am
+  Webhook, im NetBox-Abgleich eine Abweichung; nach Profil `vport`/`trunk` und Port aus/an wieder frei.
+* **Flottenzustand in Home Assistant** (DU4.5, 2026-11-26, Labor grün): Sensor nach `home-assistant.md` 9 gegen beide
+  Manager; API-User auf den Managern nach dem Secret-Push, Freigabe vom HA-Netz ins MGMT, Größe des Skripts
+  `cfm-fleet` mit allen Geräten, Wechsel der Attribute bei einer Meldung.
 * **Onboarding im device-mode `home`** (DO1.9, 2026-11-26, Labor grün): neues Gerät mit Werks-Modus `home` an den
   Onboarding-Port; erwartet Status `devmode` mit Anleitung und eine Meldung `onboard`. Freigabe per
   `/system/device-mode/update mode=advanced` und Mode- oder Reset-Taster, danach weiter ohne Neustart der Sitzung.

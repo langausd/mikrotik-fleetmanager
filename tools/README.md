@@ -28,6 +28,7 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
 | [`home-assistant/cfm_port.py`](#home-assistantcfm_portpy) | Umschaltbaren Port (Dockingstation) aus Home Assistant schalten |
+| [`home-assistant/cfm_fleet.py`](#home-assistantcfm_fleetpy) | Zustand aller Geräte (Skript `cfm-fleet` des Managers) für Home Assistant |
 | [`cert-signer/`](cert-signer/README.md) | Signer für Gerätezertifikate (Let's Encrypt per acme-dns, DS3.6): CSRs vom Manager lesen, signieren, Manager anstoßen |
 | [`chr-lab/`](chr-lab/README.md) | Testlabor mit RouterOS-CHR in QEMU (eigene Anleitung); `fake-ddns.py` = dyndns2-Attrappe für den DynDNS-Test |
 | [`branding/`](branding/README.md) | Prototyp für das cfm-Branding-Paket: Stub, CAPs-Mode-Skript, cfm auf der WebFig-Login-Seite (Plan: docs/NETINSTALL.md, noch nicht gebaut) |
@@ -394,6 +395,19 @@ cfm_port.py 192.168.10.30 dock normal | alt | state
 
 Liegt neben `cfm_ssid.py` (nutzt dessen API-Client und `cfm_ssid.json`). Einbau in Home Assistant:
 [docs/home-assistant.md](../docs/home-assistant.md), Abschnitt 8.
+
+## `home-assistant/cfm_fleet.py`
+
+Liest den Flottenzustand aus dem Skript `cfm-fleet` (TODO 99, DU4.5) per RouterOS-API von den Managern und gibt ihn als eine
+Zeile JSON für einen `command_line`-Sensor aus: je Gerät stumm, Release, Apply, RouterOS-Version, Update, Lizenz,
+dazu die offenen Meldungen. Fragt alle genannten Manager und nimmt den neuesten Stand.
+
+```bash
+cfm_fleet.py 192.168.10.2,192.168.10.3        # oder "managers" in cfm_ssid.json
+```
+
+Liegt neben `cfm_ssid.py` (nutzt dessen API-Client und `cfm_ssid.json`). Tests: `cfm_fleet-test.py`. Einbau in Home
+Assistant: [docs/home-assistant.md](../docs/home-assistant.md), Abschnitt 9.
 
 ## `chr-lab/`
 

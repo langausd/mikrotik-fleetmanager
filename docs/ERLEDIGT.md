@@ -11,7 +11,10 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 ## Verlauf
 
 * **Am 2026-11-26 (Nachtschicht):** **TODO 98** behoben (DR1.6, `$cfmCheck` prüft VRRP-IDs über VID 255). **TODO 101**
-  erledigt (DO1.9, das Onboarding wartet bei device-mode `home` auf die Freigabe am Gerät).
+  erledigt (DO1.9, das Onboarding wartet bei device-mode `home` auf die Freigabe am Gerät). **TODO 100** erledigt
+  (DU4.4, von BPDU-Guard gesperrte Ports in Status, `$cfmStatus`, Meldung und NetBox-Abgleich; fehlende Port-Profile
+  in `upload-seed.sh`). **TODO 99** erledigt (DU4.5, Flottenzustand im Skript `cfm-fleet`, `cfm_fleet.py` für Home
+  Assistant).
 
 * **Am 2026-11-24 (Abgleich mit den Session-Logs der Termine an einem Standort):** **TODO 94** erledigt – Hardware 2026-11-23
   (v42, ap2): Rückkehr aus dem Fallback, `cfm-fallback` trägt in derselben Sekunde beide Gast-Slaves (2,4 und 5 GHz)
@@ -855,6 +858,46 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
     Hardware offen, Testplan in TESTSTAND*): `cfm-fallback` trug `cfm-iso` nur zwei Takte nach dem Verbinden nach – der
     Gast-Slave am 5-GHz-Radio entsteht erst nach der CAC und blieb bis zum Agent-Lauf (bis 15 min) offen, die `fb-…`
     im Fallback ebenso. Jetzt Abgleich in jedem Takt.
+
+99. ~~**Flottenzustand für Home Assistant**~~ – *erledigt 2026-11-26 (DU4.5, Labor `e2e.sh` 14c und 18):* Der Primary
+    schreibt in `$cfmNotifyTick` (auch ohne `notify.url`) den Zustand als JSON in den Quelltext des Skripts `cfm-fleet`
+    (nie ausgeführt), nur bei einer Änderung: je Gerät stumm (seit), Ring, Soll/Ist, Apply, RouterOS-Version,
+    `rosNeu`, Update, beim CHR-Manager die Lizenz; dazu die offenen Meldungen, ohne Summen (Nutzer). Der Lese-User aus
+    `capsmanApi` steht jetzt auch auf den Managern. `tools/home-assistant/cfm_fleet.py` fragt alle Manager per API und
+    nimmt den neuesten Stand; in HA ein `command_line`-Sensor mit Attributen (`home-assistant.md` 9). Erst als Datei
+    `state/fleet.json` gebaut – über die API kommt `contents` nur bis 4 KB (ROUTEROS-EIGENHEITEN). Hardware offen: der
+    Sensor in der echten HA. Text bis dahin:
+
+  * **99 – Flottenzustand als JSON für Home Assistant** (Idee des Nutzers, 2026-11-25, nach dem Muster von `$cfmNetbox`,
+    DT2.3): HA bekommt heute nur Ereignisse per Webhook (`$cfmNotify`, DU4.1) und live über die RouterOS-API
+    Clients, SSID und Port (6.7–6.9, `cfm_ssid.py`, `cfm_port.py`; die bleiben live, ein Export wäre zu alt). Ein
+    dauerhafter Zustand fehlt. Vorschlag: Der Manager schreibt in `$cfmNotifyTick` (rechnet die Zustände ohnehin)
+    zusätzlich `state/fleet.json` mit je Gerät: erreichbar/stumm (seit), Release und Ring (Soll/Ist, Apply
+    ok/Fehler), RouterOS-Version und offenes Update, Lizenz, offene Meldungen aus `meta/notify.dat`; dazu Summen
+    (z.B. „3 Geräte nicht aktuell“). Nur schreiben, wenn sich etwas ändert (Flash). HA liest die Datei mit dem
+    vorhandenen Lese-User über die API (Client aus `cfm_ssid.py`, neues Hilfsskript `cfm_fleet.py`, Ausgabe für
+    `command_line`-Sensoren mit `json_attributes`) oder per REST, falls `www-ssl` an ist. Zu klären vor dem Bau: welche
+    Sensoren HA wirklich braucht, Zugriff auf Dateien über die API mit `read`-Gruppe (Größe, `contents`),
+    Standby/Backup-Manager (Datei nur auf dem Primary; HA fragt die Manager-VIP oder beide). Ersetzt nichts
+    Vorhandenes (`$cfmStatus`, `netzplan.*` bleiben für die Konsole). Kommt ein zweites Python-Tool dazu, das die
+    Manager-JSONs liest, wandert das Einlesen (Zahlen aus `:serialize`, `[]`) aus `tools/netbox-abgleich.py` in ein
+    gemeinsames `tools/cfm_state.py`.
+
+100. ~~**Von BPDU-Guard gesperrte Ports melden**~~ – *erledigt 2026-11-26 (DU4.4, Labor `e2e.sh` 18):* Der Agent meldet
+    inaktive Bridge-Ports, die BPDU-Guard gesperrt hat (`bpdu`), `$cfmStatus` zeigt `BPDU!` mit Warnung und Abhilfe,
+    `$cfmNotify` meldet `bpdu:<gerät>`, `netbox-abgleich.py` nennt den Port als Abweichung. Fehlende Port-Profile:
+    `upload-seed.sh --site` nennt Profile der Vorlage, die der `profiles.rsc` des Overlays fehlen; die Fehlermeldung
+    „unbekanntes Port-Profil“ verweist auf `profiles.rsc` (Admin-Guide 4). Hardware offen: ein echter BPDU-Fall. Text
+    bis dahin:
+
+  * **100 – Von BPDU-Guard gesperrte Ports melden** (Hardware, Pilot-Standort 2026-11-25): Ein NAS mit Virtual Switch (STP)
+    an einem `access`-Port war wochenlang offline, ohne dass es auffiel – der Port stand nur als inaktiv in
+    `/interface/bridge/port` („BPDU guard changed port role to disabled“), das Log reichte nicht mehr so weit zurück.
+    Vorschlag: Der Agent meldet inaktive Bridge-Ports mit `bpdu-guard=yes` im Status (`bpdu`), `$cfmStatus`/`$cfmNotify`
+    warnen („Port gesperrt (BPDU-Guard), Profil `vport`?“), `netbox-abgleich.py` nennt sie statt „nicht in der Bridge“
+    (dort Export-Zeile eines inaktiven Ports prüfen). Lösung im Fall: Profil `vport:<vid>`, Port einmal aus/an.
+    Nebenbefund: `vport` fehlte in der `profiles.rsc` der Site (älter als die Vorlage) – `$cfmCheck` könnte auf
+    Profile der Vorlage hinweisen, die der Site fehlen.
 
 101. ~~**Onboarding: `device-mode` prüfen**~~ – *erledigt 2026-11-26 (DO1.9, Labor `e2e-onboard.sh fresh devmode` 20/20):*
     Die Probe liest `/system/device-mode`; sperrt er `fetch` oder `scheduler` (oder ist das Gerät `flagged`), wartet

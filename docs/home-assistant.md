@@ -3,7 +3,8 @@
 Anleitung für die Einbindung in Home Assistant (HA): Abschnitte 1–6 schalten das Gast-WLAN,
 [Abschnitt 7](#7-benachrichtigungen-von-cfm) empfängt Meldungen des Netz-Managers (DU4.1),
 [Abschnitt 8](#8-umschaltbaren-port-schalten-dockingstation) schaltet einen Port, z.B. den einer Dockingstation, zwischen
-normalem Netz und Gastnetz um (DP1.4.1). Sie setzt kein Wissen über cfm oder RouterOS
+normalem Netz und Gastnetz um (DP1.4.1), [Abschnitt 9](#9-zustand-der-geräte-flottenzustand) zeigt den Zustand aller
+Geräte (TODO 99). Sie setzt kein Wissen über cfm oder RouterOS
 voraus. Die Netzseite richtet der Netz-Admin ein (Admin-Guide 6.7 und 6.8, Entscheidungen DW4.1 und DW4.2), die
 konkreten Werte bekommst du von ihm.
 
@@ -442,3 +443,113 @@ Automation aus Abschnitt 7 (oder einer eigenen mit derselben Webhook-ID) bei `ev
 Automationen, die hin- und herschalten. Der Zustand bleibt über Neustarts und Releases erhalten. Im Zustand alt fehlt
 dem Port das MGMT-VLAN: Ein Admin-Laptop am Dock erreicht die Geräte dann nur über WLAN; HA schaltet weiter, es
 spricht das Gerät über das Netz an, nicht über den Port.
+
+## 9. Zustand der Geräte (Flottenzustand)
+
+Die Meldungen aus Abschnitt 7 kommen nur beim Wechsel. Den aktuellen Stand – welche Geräte stumm sind, welche einen
+Release noch nicht angewendet haben, wo ein Update ansteht – schreibt der Primary-Manager als JSON in das
+Skript `cfm-fleet` (Quelltext, wird nie ausgeführt), sobald sich daran etwas ändert. HA liest es über die RouterOS-API der Manager, mit demselben
+Lese-User wie beim Gast-WLAN (cfm legt ihn auch auf den Managern an).
+
+```
+Home Assistant ──RouterOS-API, TCP 8728──▶ Primary-Manager (und Backup-Manager)
+  command_line-Sensor                        └─ Skript cfm-fleet (Manager-Tick, nur bei Änderung)
+  └─ cfm_fleet.py (Hilfsskript)
+```
+
+### 9.1 Werte vom Netz-Admin
+
+| Wert | Beispiel | Bedeutung |
+|---|---|---|
+| Manager | `192.168.10.2,192.168.10.3` | MGMT-Adressen der Manager, Primary zuerst (wie `managers` in `global.rsc`) |
+| User/Passwort | – | wie beim Gast-WLAN (`cfm_ssid.json`) |
+
+Es gibt keine gemeinsame Adresse der Manager. `cfm_fleet.py` fragt alle genannten und nimmt den neuesten Stand. Nur
+der Primary schreibt ihn: Fällt der Primary aus, ist der Sensor nicht verfügbar (der Ausfall selbst kommt als Meldung
+`primary` vom Backup, Abschnitt 7); nach dem Umzug auf einen neuen Primary schreibt der ihn.
+
+### 9.2 Datei ablegen und von Hand testen
+
+`tools/home-assistant/cfm_fleet.py` nach `/config/cfm/cfm_fleet.py` – **neben** `cfm_ssid.py` und `cfm_ssid.json`
+(wie in 8.2). Die Manager-Adressen stehen im Aufruf oder als `"managers": ["192.168.10.2", "192.168.10.3"]` in
+`cfm_ssid.json`. Im Container von HA:
+
+```sh
+python3 /config/cfm/cfm_fleet.py 192.168.10.2,192.168.10.3
+```
+
+Ausgabe, eine Zeile JSON (hier umbrochen):
+
+```json
+{"anzahl": 1, "stand": "2026-11-26T01:10:00+00:00", "manager": "cm1", "quelle": "192.168.10.2",
+ "geraete": {"ap1": {"stumm": true, "seit": "2026-11-26T00:31:00+00:00", "ring": 1, "soll": 42, "ist": 42,
+                     "apply": "ok", "ros": "7.25.2"},
+             "cm1": {"stumm": false, "ring": 2, "soll": 42, "ist": 42, "apply": "ok", "ros": "7.25.2",
+                     "rosNeu": "7.25.3", "lizenz": "ok"}},
+ "meldungen": [{"key": "stumm:ap1", "text": "stumm: kein Status", "seit": "2026-11-26T00:31:00+00:00"}]}
+```
+
+| Feld je Gerät | Bedeutung |
+|---|---|
+| `stumm`, `seit` | kein Status seit `notify.stale` (Standard 30 min); `seit` = letzter Status, nur wenn stumm |
+| `ring`, `soll`, `ist` | Ring des Geräts, Release-Version seines Rings und die angewendete |
+| `apply` | `ok` oder der Fehler des letzten Apply (wie in `$cfmStatus`) |
+| `ros`, `rosNeu` | RouterOS-Version; `rosNeu` nur, wenn es eine neuere gibt (der Manager fragt einmal am Tag, nur mit `notify.url`) |
+| `update` | Zustand eines geplanten oder gescheiterten RouterOS-Updates (`$cfmUpgrade`), sonst fehlt das Feld |
+| `lizenz` | nur beim Manager als CHR: `ok` oder die Warnung zur Lizenz |
+
+`meldungen` sind dieselben Zustände wie die Meldungen aus Abschnitt 7 (`key` wie dort), auch ohne eingerichteten
+Webhook; `anzahl` zählt sie. Zeiten sind die Uhr des Managers, in UTC. Fehler nach stderr mit `cfm_fleet:` (z.B.
+„kein Skript cfm-fleet“: Manager-Stand ohne TODO 99 oder Backup-Manager). Optionen: `--config`, `--timeout`.
+
+### 9.3 `configuration.yaml`
+
+```yaml
+command_line:
+  - sensor:
+      name: cfm Netz
+      unique_id: cfm_fleet
+      icon: mdi:lan
+      command: python3 /config/cfm/cfm_fleet.py 192.168.10.2,192.168.10.3
+      value_template: '{{ value_json.anzahl }}'
+      json_attributes:
+        - stand
+        - manager
+        - geraete
+        - meldungen
+      command_timeout: 30
+      scan_interval: 300
+```
+
+Der Zustand ist die Anzahl der offenen Meldungen (0 = alles in Ordnung), die Geräte und Meldungen stehen als
+Attribute. Eine Markdown-Karte zeigt sie an:
+
+```yaml
+type: markdown
+content: >-
+  {% set g = state_attr('sensor.cfm_netz', 'geraete') or {} %}
+  {% for n, d in g.items() | sort %}
+  {{ '🔴' if d.stumm else ('🟠' if d.apply != 'ok' or d.ist != d.soll else '🟢') }}
+  **{{ n }}** v{{ d.ist }}{{ ' (Soll v' ~ d.soll ~ ')' if d.ist != d.soll }} · {{ d.ros }}
+  {{- ' → ' ~ d.rosNeu if d.rosNeu }}{{ ' · ' ~ d.apply if d.apply != 'ok' }}
+  {% endfor %}
+  {% for m in state_attr('sensor.cfm_netz', 'meldungen') or [] %}
+  ⚠️ {{ m.text }} ({{ as_datetime(m.seit) | as_local }})
+  {% endfor %}
+```
+
+Braucht ein Gerät eine eigene Entität (Historie, Automation), leitet ein Template-Sensor sie ab:
+
+```yaml
+template:
+  - binary_sensor:
+      - name: ap1 erreichbar
+        unique_id: cfm_ap1_erreichbar
+        device_class: connectivity
+        state: "{{ not (state_attr('sensor.cfm_netz', 'geraete') or {}).get('ap1', {}).get('stumm', true) }}"
+```
+
+**Verhalten:** Der Manager schreibt die Datei nur, wenn sich etwas ändert. `stand` ist also der Zeitpunkt der letzten
+Änderung, nicht der letzten Prüfung. Ein Abfrageintervall von 5 Minuten reicht, jede Abfrage meldet sich am Manager an
+und ab (zwei Zeilen im Log). Neue Geräte erscheinen ohne Änderung am YAML.
+

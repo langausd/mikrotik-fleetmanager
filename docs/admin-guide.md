@@ -944,6 +944,19 @@ Secret-Push setzt das Passwort (`$cfmSecretPush host=<gerät>` beschleunigt). HA
 `portSwitch`. Jeder Wechsel – auch vom Taster – geht als Meldung `ev` `port` an `notify.url`. Entfernt man
 `portSwitch`, räumt der nächste Apply API, User und Freigabe dort wieder ab (außer am CAPsMAN).
 
+### 6.10 Zustand der Geräte in Home Assistant (TODO 99)
+
+Der Primary-Manager schreibt im Manager-Tick den Flottenzustand als JSON in den Quelltext des Skripts `cfm-fleet` (wird
+nie ausgeführt), nur wenn sich etwas ändert: je Gerät stumm oder
+erreichbar, Ring, Soll- und Ist-Version, Ergebnis des letzten Apply, RouterOS-Version, eine neuere Version
+(`rosNeu`, mit `notify.url`) und den Zustand eines Updates, beim Manager als CHR die Lizenz; dazu die offenen Meldungen
+mit denselben Zuständen und Schlüsseln wie `notify` (8.9), auch ohne `notify.url`. Mit `capsmanApi` legt cfm den
+Lese-User auch auf den Managern an (Primary und Backup, gleiche Freigabe für `capsmanApi.from`). HA liest das Skript
+mit `tools/home-assistant/cfm_fleet.py` (Anleitung `home-assistant.md`, Abschnitt 9) von allen Managern und nimmt
+den neuesten Stand. Ein Skript statt einer Datei, weil die API Dateien über 4 KB nicht liefert (ROUTEROS-EIGENHEITEN).
+Nur der Primary schreibt es: Fällt er aus, meldet `cfm_fleet.py` einen Fehler (Sensor in HA nicht verfügbar), der
+Backup meldet den Ausfall wie gehabt (`primary`, 8.9). Das Skript ersetzt nichts: `$cfmStatus` und die Meldungen bleiben, wie sie sind.
+
 ## 7. Geräte aufnehmen
 
 ### 7.1 Automatisch: Push in die Werks-Config (empfohlen)

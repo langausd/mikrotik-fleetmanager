@@ -38,5 +38,7 @@ jobs:
         run: python3 tools/netbox-import-test.py -v
       - name: NetBox Custom Script cfm-Abgleich (ORM-Abbildung gleich REST)
         run: python3 tools/netbox/cfm_abgleich-test.py -v
+      - name: cfm_fleet.py (Flottenzustand für Home Assistant, TODO 99)
+        run: python3 tools/home-assistant/cfm_fleet-test.py -v
       - name: new-site.py erzeugt eine prüfbare Site
         run: python3 tools/new-site.py "$RUNNER_TEMP/site-ci" --name cm-ci --uplink ether2 --user ci --mgmt-extra 10.0.0.0/8

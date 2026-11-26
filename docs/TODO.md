@@ -25,9 +25,9 @@ geprüft ist: [TESTSTAND.md](TESTSTAND.md). Offen, grob nach Nutzen:
   NetBox schreibt nicht in die Site-Daten (DT2.2). *Baustein 1 umgesetzt (DT2.3, Labor 562/563):* `$cfmNetbox` (Soll als JSON),
   Ethernet-Ports im Agent-Status, `tools/netbox-abgleich.py` (Admin-Guide 8.21). *Baustein 2 vorbereitet (25.11.):*
   `tools/netbox-import.py`. Offen: Baustein 3, beide Bausteine gegen die echte NetBox.
-* **Neu 2026-11-25:** 99 (Flottenzustand als JSON für Home Assistant), Idee, erst bei konkreten Sensoren umsetzen.
-  100 (von BPDU-Guard gesperrte Ports melden) und 101 (Onboarding prüft `device-mode`, *erledigt 2026-11-26, DO1.9*),
-  beide aus dem Pilot-Standort.
+* **Neu 2026-11-25, erledigt 2026-11-26 (Nachtschicht):** 99 (Flottenzustand für Home Assistant, DU4.5), 100 (von
+  BPDU-Guard gesperrte Ports melden, DU4.4) und 101 (Onboarding prüft `device-mode`, DO1.9), dazu 98 (DR1.6); Hardware
+  offen ([TESTSTAND.md](TESTSTAND.md#offen-auf-hardware)).
 * **Neu 2026-11-22 (Nachtschicht):** 6 erledigt (Plan-Bericht über 60 KB, ERLEDIGT); 62 vorbereitet (`tools/wlan-btm.py`,
   Hardware-Test mit 97); Konzept 802.1X/RADIUS für 65b in [RADIUS.md](RADIUS.md) (Fragen an den Nutzer offen).
 * **Neu 2026-11-18 (Hardware, Rollout DW1.12):**
@@ -471,25 +471,3 @@ Alle erledigt (zuletzt 6 am 2026-11-22), siehe [ERLEDIGT.md](ERLEDIGT.md#erledig
     Durchsatz in beide Richtungen (iperf3, ein und vier Streams), Latenz und Jitter (Ping 100×), CPU der Router beider Standorte
     unter Last, je ein Host mit Gateway VIP und einer mit Fritz!Box-Gateway in A. Danach Entscheidung (Nutzer), welcher
     Tunnel bleibt; beim cfm-Tunnel den `asymRouting`-Eintrag entfernen, beim Fritz-Tunnel `pubkey` wieder leer.
-99. **Flottenzustand als JSON für Home Assistant** (Idee des Nutzers, 2026-11-25, nach dem Muster von `$cfmNetbox`,
-    DT2.3): HA bekommt heute nur Ereignisse per Webhook (`$cfmNotify`, DU4.1) und live über die RouterOS-API
-    Clients, SSID und Port (6.7–6.9, `cfm_ssid.py`, `cfm_port.py`; die bleiben live, ein Export wäre zu alt). Ein
-    dauerhafter Zustand fehlt. Vorschlag: Der Manager schreibt in `$cfmNotifyTick` (rechnet die Zustände ohnehin)
-    zusätzlich `state/fleet.json` mit je Gerät: erreichbar/stumm (seit), Release und Ring (Soll/Ist, Apply
-    ok/Fehler), RouterOS-Version und offenes Update, Lizenz, offene Meldungen aus `meta/notify.dat`; dazu Summen
-    (z.B. „3 Geräte nicht aktuell“). Nur schreiben, wenn sich etwas ändert (Flash). HA liest die Datei mit dem
-    vorhandenen Lese-User über die API (Client aus `cfm_ssid.py`, neues Hilfsskript `cfm_fleet.py`, Ausgabe für
-    `command_line`-Sensoren mit `json_attributes`) oder per REST, falls `www-ssl` an ist. Zu klären vor dem Bau: welche
-    Sensoren HA wirklich braucht, Zugriff auf Dateien über die API mit `read`-Gruppe (Größe, `contents`),
-    Standby/Backup-Manager (Datei nur auf dem Primary; HA fragt die Manager-VIP oder beide). Ersetzt nichts
-    Vorhandenes (`$cfmStatus`, `netzplan.*` bleiben für die Konsole). Kommt ein zweites Python-Tool dazu, das die
-    Manager-JSONs liest, wandert das Einlesen (Zahlen aus `:serialize`, `[]`) aus `tools/netbox-abgleich.py` in ein
-    gemeinsames `tools/cfm_state.py`.
-100. **Von BPDU-Guard gesperrte Ports melden** (Hardware, Pilot-Standort 2026-11-25): Ein NAS mit Virtual Switch (STP)
-    an einem `access`-Port war wochenlang offline, ohne dass es auffiel – der Port stand nur als inaktiv in
-    `/interface/bridge/port` („BPDU guard changed port role to disabled“), das Log reichte nicht mehr so weit zurück.
-    Vorschlag: Der Agent meldet inaktive Bridge-Ports mit `bpdu-guard=yes` im Status (`bpdu`), `$cfmStatus`/`$cfmNotify`
-    warnen („Port gesperrt (BPDU-Guard), Profil `vport`?“), `netbox-abgleich.py` nennt sie statt „nicht in der Bridge“
-    (dort Export-Zeile eines inaktiven Ports prüfen). Lösung im Fall: Profil `vport:<vid>`, Port einmal aus/an.
-    Nebenbefund: `vport` fehlte in der `profiles.rsc` der Site (älter als die Vorlage) – `$cfmCheck` könnte auf
-    Profile der Vorlage hinweisen, die der Site fehlen.

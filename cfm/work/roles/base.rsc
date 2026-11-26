@@ -331,14 +331,15 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
 :if ([:typeof $cfmWg] = "array" and [:len ($cfmWg->"peers")] > 0 and [:len [:tostr ($cfmWg->"net")]] > 0) do={
   :set ($an->[:tostr ($cfmWg->"net")]) 1
 }
-# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN und auf Geräten mit umschaltbarem Port, nur für capsmanApi.from
+# Lese-Zugang per RouterOS-API nur auf dem CAPsMAN, auf Geräten mit umschaltbarem Port und auf den Managern (Primary und
+# Backup: Flottenzustand cfm-fleet, TODO 99), nur für capsmanApi.from
 # (DU2.1, z.B. Home Assistant: welcher Client an welchem AP, Port umschalten DP1.4.1) - unabhängig von services und
 # den Management-Netzen. Gruppe read,api,test, User (Passwort per Secret-Push aus dem Vault, user.<name>; bis dahin
 # abgeschaltet), Freigabe in local-input. Entfällt beides (CAPsMAN zieht um, portSwitch entfernt), räumt die GC auf.
 :global cfmIsCapsman
 :local capi ($cfmG->"capsmanApi")
 :local capiOn false
-:if ([:typeof $capi] = "array") do={ :if ([:len ($capi->"from")] > 0 and ([$cfmIsCapsman] or [:len $psw] > 0)) do={ :set capiOn true } }
+:if ([:typeof $capi] = "array") do={ :if ([:len ($capi->"from")] > 0 and ([$cfmIsCapsman] or [:len $psw] > 0 or $isMgr)) do={ :set capiOn true } }
 :if ($capiOn) do={
   :local au [:tostr ($capi->"user")]
   :if ([:len $au] = 0) do={ :set au "homeassistant" }

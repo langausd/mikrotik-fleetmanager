@@ -66,7 +66,7 @@ start)
     if [ -f "$LAB/vm$i.pid" ] && kill -0 "$(cat "$LAB/vm$i.pid")" 2>/dev/null; then echo "vm$i läuft bereits"; continue; fi
     qemu-system-x86_64 -enable-kvm -m "$MEM" -smp 1 -name "cfm-vm$i" \
       -drive file="$disk",format=qcow2,if=virtio \
-      -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:$(port "$i")-:22$(gfwd)" \
+      -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:$(port "$i")-:22,hostfwd=tcp:127.0.0.1:$(( $(port "$i") + 8 ))-:8728$(gfwd)" \
       -device virtio-net-pci,netdev=n0,mac=52:54:00:00:0$i:01 \
       $(topo "$i" "$n") \
       -serial unix:"vm$i.serial",server,nowait -monitor none \

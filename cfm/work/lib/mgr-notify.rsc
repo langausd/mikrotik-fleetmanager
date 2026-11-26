@@ -4,6 +4,8 @@
 #   $cfmNotify test=yes                                       Probemeldung an notify.url
 #   $cfmNotifyTick                                            Zustände prüfen, Wechsel melden
 #                                                             (aus $cfmTick, nur auf dem Primary)
+#   $cfmFleet cur= fl= b= now= lic= chr=                      Skript cfm-fleet schreiben (aus $cfmNotifyTick,
+#                                                             auch ohne notify.url; TODO 99, Home Assistant)
 #   $cfmNotifyBackupTick                                      auf dem Backup: Primary stumm? (ev primary)
 #   (Übersicht aller Befehle: lib/mgr-core.rsc)
 # Ziel: global.rsc "notify"={"url"=…;"stale"="30m";"licWarn"="14d"}, url leer = aus.
@@ -219,6 +221,70 @@
 # Nie zwei Läufe zugleich (Sperre cfmNotBusy): ein Aufruf von Hand neben dem Scheduler-Tick las sonst dasselbe
 # notify.dat und schickte jede Meldung doppelt (Labor 2026-11-06). Wartet bis 60 s, eine Sperre älter als 5 min
 # gilt als liegengeblieben
+# Flottenzustand für Home Assistant (TODO 99): JSON als Quelltext des Skripts cfm-fleet (nie ausgeführt, policy leer),
+# nur bei einer Änderung geschrieben (Flash). HA liest es per API mit dem Lese-User aus capsmanApi
+# (tools/home-assistant/cfm_fleet.py). Keine Datei: /file/print liefert über die API den Inhalt nur bis 4 KB, /file/read
+# und /system/script/environment brauchen mehr als die Gruppe read (Labor 2026-11-26). Von Hand gebautes JSON wie in $cfmNotify:
+# :serialize schriebe Ziffern-Strings als Zahl und Umlaute nicht als UTF-8. Felder je Gerät: stumm (seit = letzter
+# Status, nur wenn stumm), ring, soll, ist, apply ("ok" oder der Fehler), ros, rosNeu (neuere Version aus dem täglichen
+# Abruf, nur mit notify.url), update (Zustand von $cfmUpgrade), lizenz (nur der Manager als CHR); dazu meldungen
+# [{key;text;seit}] mit denselben Zuständen wie $cfmNotify. cur/fl/lic/chr aus $cfmNotifyTick0
+:global cfmFleet do={
+  :global cfmJStr; :global cfmJson; :global cfmVerGe; :global cfmFleetX; :global cfmFleetM
+  :local sc [/system/script/find where name="cfm-fleet"]
+  # seit je Meldung: aus dem letzten Stand (nach einem Neustart des Managers aus dem Skript)
+  :if ([:typeof $cfmFleetM] != "array") do={
+    :set cfmFleetM ({})
+    :local o ({})
+    :if ([:len $sc] > 0) do={ :onerror e in={ :set o [:deserialize from=json [/system/script/get $sc source]] } do={} }
+    :foreach m in=($o->"meldungen") do={ :set ($cfmFleetM->[:tostr ($m->"key")]) [:tonum ($m->"seit")] }
+  }
+  :local rosv [:tostr ([$cfmJson ($b . "/meta/notify.dat")]->"rosv")]
+  :if ([:len $rosv] > 1) do={ :set rosv [:pick $rosv 1 [:len $rosv]] } else={ :set rosv "" }
+  :local me [/system/identity/get name]
+  :local g ""
+  :foreach n,x in=$fl do={
+    :local j ("\"stumm\":" . [:tostr ($x->"stumm")])
+    :if ($x->"stumm") do={ :set j ($j . ",\"seit\":" . [:tonum ($x->"seit")]) }
+    :set j ($j . ",\"ring\":" . [:tonum ($x->"ring")] . ",\"soll\":" . [:tonum ($x->"soll")] . ",\"ist\":" . [:tonum ($x->"ist")] . ",\"apply\":" . [$cfmJStr ($x->"apply")])
+    :local rv [:tostr ($x->"ros")]
+    :set j ($j . ",\"ros\":" . [$cfmJStr $rv])
+    :if ([:len $rosv] > 0 and [:len $rv] > 0) do={ :if (![$cfmVerGe $rv $rosv]) do={ :set j ($j . ",\"rosNeu\":" . [$cfmJStr $rosv]) } }
+    :if ([:len [:tostr ($x->"upg")]] > 0) do={ :set j ($j . ",\"update\":" . [$cfmJStr ($x->"upg")]) }
+    :if ($n = $me and $chr) do={
+      :local lt "ok"
+      :if ([:len $lic] > 0) do={ :set lt $lic }
+      :set j ($j . ",\"lizenz\":" . [$cfmJStr $lt])
+    }
+    :if ([:len $g] > 0) do={ :set g ($g . ",") }
+    :set g ($g . [$cfmJStr $n] . ":{" . $j . "}")
+  }
+  # stumm mit festem Text (der von $cfmNotify nennt die Minuten und änderte sich jede Minute)
+  :local ml ""; :local nm ({})
+  :foreach k,t in=$cur do={
+    :local sk [:tonum ($cfmFleetM->$k)]
+    :if ([:typeof $sk] != "num") do={ :set sk $now }
+    :local tx [:tostr $t]
+    :if ($k ~ "^stumm:") do={
+      :set tx "stumm: kein Status"
+      :local sn [:tonum ($fl->[:pick $k 6 [:len $k]]->"seit")]
+      :if ([:typeof $sn] = "num") do={ :set sk $sn }
+    }
+    :set ($nm->$k) $sk
+    :if ([:len $ml] > 0) do={ :set ml ($ml . ",") }
+    :set ml ($ml . "{\"key\":" . [$cfmJStr $k] . ",\"text\":" . [$cfmJStr $tx] . ",\"seit\":" . $sk . "}")
+  }
+  :set cfmFleetM $nm
+  :local x ("\"geraete\":{" . $g . "},\"meldungen\":[" . $ml . "]")
+  :if ($x = $cfmFleetX and [:len $sc] > 0) do={ :return false }
+  :local v ("{\"t\":" . $now . ",\"manager\":" . [$cfmJStr $me] . "," . $x . "}")
+  :if ([:len $sc] = 0) do={
+    /system/script/add name=cfm-fleet policy="" comment="cfm-sys:fleet Flottenzustand (JSON) für Home Assistant, nicht ausführen" source=$v
+  } else={ /system/script/set $sc source=$v }
+  :set cfmFleetX $x
+  :return true
+}
+
 :global cfmNotifyTick do={
   :global cfmNotifyTick0; :global cfmNotBusy; :global cfmNow
   :local i 0
@@ -236,7 +302,8 @@
   :global cfmRosLatest; :global cfmVerGe; :global cfmNotifySync
   $cfmLoadData
   :local nc ($cfmG->"notify")
-  :if ([:len [:tostr ($nc->"url")]] = 0) do={ :return 0 }
+  # ohne notify.url nur cfm-fleet (TODO 99), keine Meldungen
+  :local nourl ([:len [:tostr ($nc->"url")]] = 0)
   :local stale 1800
   :if ([:len [:tostr ($nc->"stale")]] > 0) do={ :set stale ([:tonsec [:totime ($nc->"stale")]] / 1000000000) }
   :local lw 14
@@ -246,6 +313,8 @@
   :local rg [$cfmRings]
   # aktuelle Probleme: Schlüssel "<art>:<gerät>" -> Text
   :local cur ({})
+  # je Gerät für cfm-fleet ($cfmFleet): {stumm;seit;ring;soll;ist;apply;ros;upg}
+  :local fl ({})
   :foreach name,d in=[$cfmInvLoad] do={
     :if ([$cfmEnrolled $d]) do={
       :local s [$cfmJson ($b . "/state/" . $name . "/status.dat")]
@@ -265,6 +334,10 @@
       :if ([:len ($s->"bpdu")] > 0) do={ :set ($cur->("bpdu:" . $name)) ("Port " . [:tostr ($s->"bpdu")] . " von BPDU-Guard gesperrt - Profil vport:<vid> oder trunk, dann Port aus und an") }
       :local ug [:tostr ($s->"upg")]
       :if ($ug ~ "^(fehlgeschlagen|Fenster verpasst|Platz fehlt)") do={ :set ($cur->("update:" . $name)) ("RouterOS-Update: " . $ug) }
+      :local st0 ([:typeof $sn] = "num" and ($now - $sn) > $stale)
+      :local ap "ok"; :if ([:len $p] > 0) do={ :set ap $p }
+      :local rv [:tostr ($s->"ros")]
+      :set ($fl->$name) ({"stumm"=$st0;"seit"=$sn;"ring"=[:tonum ($d->"ring")];"soll"=$sv0;"ist"=$iv;"apply"=$ap;"ros"=[:pick $rv 0 [:find ($rv . " ") " "]];"upg"=$ug})
     }
   }
   # Lizenz des Managers selbst (nur CHR hat next-renewal-at/deadline-at)
@@ -272,6 +345,9 @@
   :onerror x in={ :set lic [/system/license/get] } do={}
   :local lm [$cfmNotifyLic now=[/system/clock/get date] renew=($lic->"next-renewal-at") deadline=($lic->"deadline-at") warn=$lw]
   :if ([:len $lm] > 0) do={ :set ($cur->("lizenz:" . [/system/identity/get name])) $lm }
+  :global cfmFleet
+  :onerror e in={ $cfmFleet cur=$cur fl=$fl b=$b now=$now lic=$lm chr=([:len [:tostr ($lic->"deadline-at")]] > 0) } do={ :log warning ("cfm: cfm-fleet: " . $e) }
+  :if ($nourl) do={ :return 0 }
   # Wechsel gegen meta/notify.dat melden
   :local f ($b . "/meta/notify.dat")
   :local nj [$cfmJson $f]

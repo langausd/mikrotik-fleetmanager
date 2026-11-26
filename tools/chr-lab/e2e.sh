@@ -921,7 +921,8 @@ mgr '$cfmSecretPush host=sw1' >/dev/null
 expect 2 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "yes|true" and [/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "sw1: Secret-Push setzt die PSK und schaltet den CAPsMAN ein"
 applied cm1 && ok "cm1 nach dem Umzug angewendet" || bad "cm1: $(stat cm1 res)"
 expect 1 '[:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false" and [:len [/interface/wifi/provisioning/find where comment~"^cfm:wprov"]] = 0 and [:len [/interface/wifi/security/find where comment~"^cfm:wsec"]] = 0' "cm1: CAPsMAN aus, Profile abgeräumt"
-expect 1 '[/ip/service/get [find name=api] disabled] and [:len [/user/find where name=hatest]] = 0 and [:len [/ip/firewall/filter/find where comment~"^cfm:capi"]] = 0' "cm1: API, User und Freigabe mit der Rolle capsman abgeräumt"
+# Manager behalten den Lese-User (Flottenzustand cfm-fleet für Home Assistant, TODO 99)
+expect 1 '![/ip/service/get [find name=api] disabled] and [/user/get [find name=hatest] group] = "cfm-api" and [:len [/ip/firewall/filter/find where comment~"^cfm:capi"]] >= 1' "cm1: als Manager behält API, User und Freigabe nach dem Umzug des CAPsMAN (TODO 99)"
 expect 2 '![/ip/service/get [find name=api] disabled] and [/user/get [find name=hatest] group] = "cfm-api" and ![/user/get [find name=hatest] disabled]' "sw1: API-Zugang umgezogen, User nach dem Secret-Push aktiv"
 expect 2 '[:len [/ip/firewall/filter/find where comment~"^cfm:fw:" and chain=forward and out-interface-list="Z-mgmt" and dst-port="8728"]] = 1' "sw1: als CAPsMAN weiter Forward-Freigabe in die MGMT-Zone (für weitere API-Geräte), selbst über local-input"
 applied cm2 && ok "cm2 als manager-backup,ap angewendet" || bad "cm2 ap: $(stat cm2 res)"
@@ -929,6 +930,11 @@ expect 3 '[:tostr [/interface/wifi/cap/get caps-man-addresses]] = "192.168.10.21
 expect 3 '[:len [/interface/wifi/configuration/find where comment~"^cfm:wcf:l"]] = 2 and [/interface/wifi/datapath/get [find name="cfm-main"] vlan-id] = 20 and [:tostr [/interface/wifi/capsman/get enabled]] ~ "no|false"' "cm2: lokale Fallback-Konfiguration je Band, Datapath mit VLAN, kein CAPsMAN"
 mgr '$cfmSecretPush host=cm2' >/dev/null
 expect 3 '[/interface/wifi/security/get [find name="cfm-main"] passphrase] = "lab-psk-12345"' "cm2: PSK für den lokalen Fallback per Secret-Push"
+expect 3 '![/ip/service/get [find name=api] disabled] and [/user/get [find name=hatest] group] = "cfm-api" and ![/user/get [find name=hatest] disabled]' "cm2 (manager-backup): API-User nach dem Secret-Push aktiv (TODO 99)"
+# Flottenzustand (TODO 99): HA liest das Skript cfm-fleet per API von beiden Managern (API-Weiterleitung des Labors)
+printf '{"user":"hatest","password":"Api-Lab-2026"}' > "$LAB/fleet-ha.json"
+out=$(python3 "$ROOT/tools/home-assistant/cfm_fleet.py" --config "$LAB/fleet-ha.json" "127.0.0.1:$((LABPORT+18)),127.0.0.1:$((LABPORT+38))" 2>&1)
+echo "$out" | python3 -c 'import json,sys; j=json.load(sys.stdin); g=j["geraete"]; assert j["manager"]=="cm1" and set(g)>={"cm1","sw1","cm2"} and g["sw1"]["apply"]=="ok" and isinstance(g["sw1"]["ist"],int) and g["sw1"]["stumm"] is False and j["stand"], j' 2>/dev/null && ok "cfm_fleet.py: Skript cfm-fleet über die API der Manager (cm1, sw1, cm2)" || { bad "cfm_fleet.py"; echo "$out" | tail -3; }
 # Fallback-Anzeige (TODO 40d): Status-Feld wfb passt zum CAP-Zustand (CHR ohne Radios: verbunden oder nicht)
 conn=$(r 3 ':put [:len [:tostr [/interface/wifi/cap/get current-caps-man-identity]]]' | tail -1 | tr -dc 0-9)
 t0=$(stat cm2 t); mgr '$cfmPush host=cm2 force=yes' >/dev/null
@@ -1604,5 +1610,34 @@ echo "$out" | grep -q "Warnung: v$V wurde auf diesem Manager zurückgerollt" && 
 [ -n "$N" ] && agentwait 1 "$N" cm1 && ok "cm1 hat v$N angewendet" || bad "cm1 Apply v${N:-?}"
 out=$(r 1 '/system script run cfm-mgr; :global cfmMgrWork; :global cfmMgrRb; :put ("W=" . [:len $cfmMgrWork] . " RB=[" . $cfmMgrRb . "]")')
 echo "$out" | grep -qx 'W=0 RB=\[\]' && ! echo "$out" | grep -q "Rollback von" && ok "cm1: nach dem Apply Flag aus, installierte Module gleich work/lib/ (nichts doppelt geladen)" || { bad "cm1: Lader nach dem Apply"; echo "$out" | tail -3; }
+
+step "18. Von BPDU-Guard gesperrter Port (TODO 100) und Flottenzustand (TODO 99)"
+# cm1/ether2 als access (Edge, BPDU-Guard): sw1 dahinter spricht RSTP, RouterOS sperrt den Port. Zuletzt, weil sw1
+# danach bis zum Zurückstellen nicht erreichbar ist
+mgr ':global e2eH18 [/file/get [/file/find name="cfm/work/hosts/cm1.rsc"] contents]; /file/set [/file/find name="cfm/work/hosts/cm1.rsc"] contents=($e2eH18 . ":set (\$cfmHost->\"ports\"->\"ether2\") \"access:10\"\n")' >/dev/null
+rv=$(mgr '$cfmRelease msg=" BPDU-Guard" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (ether2 access) angewendet" || bad "cm1 Apply v$rv"
+agentwait 3 "$rv" cm2 || true   # sonst ändert sein Apply cfm-fleet mitten in der Prüfung unten
+for _ in $(seq 1 20); do r 1 ':put [/interface/bridge/port/get [find interface=ether2] about]' | grep -q "BPDU guard" && break; sleep 3; done
+expect 1 '[/interface/bridge/port/get [find interface=ether2] inactive] and [/interface/bridge/port/get [find interface=ether2] about] ~ "BPDU guard"' "cm1/ether2: von BPDU-Guard gesperrt (RouterOS)"
+r 1 '/system script run cfm-agent' >/dev/null
+for _ in $(seq 1 20); do [ "$(stat cm1 bpdu)" = ether2 ] && break; sleep 3; done
+[ "$(stat cm1 bpdu)" = ether2 ] && ok "cm1: Agent meldet bpdu=ether2 im Status" || bad "cm1: bpdu im Status: '$(stat cm1 bpdu)'"
+out=$(mgr '$cfmStatus')
+echo "$out" | grep -q "^cm1 .*BPDU!" && echo "$out" | grep -q "^Warnung: cm1: ether2 von BPDU-Guard gesperrt (Port inaktiv)" && ok "\$cfmStatus: BPDU! in der Tabelle, Warnung darunter" || { bad "\$cfmStatus ohne BPDU-Warnung"; echo "$out" | tail -4; }
+mgr ':global cfmNotifyTick; $cfmNotifyTick' >/dev/null
+out=$(r 1 ':put [/system/script/get cfm-fleet source]')
+echo "$out" | grep -q '"key":"bpdu:cm1","text":"Port ether2 von BPDU-Guard gesperrt' && ok "cfm-fleet: Meldung bpdu:cm1 (TODO 99/100)" || { bad "cfm-fleet ohne bpdu:cm1"; echo "$out" | tail -2; }
+s1=$(r 1 ':put [/system/script/get cfm-fleet source]' | md5sum); mgr ':global cfmNotifyTick; $cfmNotifyTick' >/dev/null
+[ "$(r 1 ':put [/system/script/get cfm-fleet source]' | md5sum)" = "$s1" ] && ok "cfm-fleet: ohne Änderung nicht neu geschrieben" || bad "cfm-fleet ändert sich ohne Anlass"
+# zurück: trunk, Port einmal aus und an (RouterOS gibt ihn sonst nicht frei)
+mgr ':global e2eH18; /file/set [/file/find name="cfm/work/hosts/cm1.rsc"] contents=$e2eH18' >/dev/null
+rv=$(mgr '$cfmRelease msg=" BPDU-Guard zurück" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 || bad "cm1 Apply v$rv (zurück)"
+r 1 '/interface/bridge/port/disable [find interface=ether2]; :delay 1s; /interface/bridge/port/enable [find interface=ether2]' >/dev/null
+for _ in $(seq 1 20); do r 1 ':put [/ping 192.168.10.21 count=1]' | tail -1 | grep -qx 1 && break; sleep 3; done
+r 1 '/system script run cfm-agent' >/dev/null
+for _ in $(seq 1 20); do [ -z "$(stat cm1 bpdu)" ] && break; sleep 3; done
+[ -z "$(stat cm1 bpdu)" ] && r 1 ':put [/ping 192.168.10.21 count=2]' | tail -1 | grep -q '[12]' && ok "cm1/ether2 wieder frei: kein bpdu im Status, sw1 erreichbar" || bad "cm1/ether2 nach dem Zurückstellen: bpdu='$(stat cm1 bpdu)'"
 
 echo; echo "Ergebnis: $pass ok, $fail fehlgeschlagen"; [ $fail -eq 0 ]

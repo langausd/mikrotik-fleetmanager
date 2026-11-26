@@ -1569,6 +1569,43 @@ rv=$(mgr '$cfmRelease msg=" ohne NetBox" all=yes' | grep -o 'Release v[0-9]*' | 
 agentwait 1 "$rv" cm1 || bad "Apply v$rv (ohne netbox): cm1 $(stat cm1 res)"
 expect 1 '[:len [/user/find where name="cfm-netbox"]] = 0 and [:len [/user/group/find where name="cfm-netbox"]] = 0 and [:len [/system/script/find where name="cfm-netbox-run"]] = 0 and [:len [/ip/firewall/filter/find where comment~"nbread"]] = 0' "cm1: ohne netbox User, Gruppe, Skript und Freigabe weg"
 
+step "14p. Leases von außen (DN1.3): User cfm-lease, Skript cfm-lease schreibt leases.rsc und gibt ein Release heraus"
+# Wie tools/pve/cfm-lease-pve.sh: SSH als cfm-lease (Quelle 10.0.2.2 = lease.from), Argumente als Text in $cfmLeaseArg
+L="$LAB/lease"; rm -rf "$L"; mkdir -p "$L"
+ssh-keygen -q -t ed25519 -N "" -C cfm-lease@lab -f "$L/key"
+echo "put $L/key.pub cfm/work/authorized_keys.cfm-lease" | put 1
+mgr ':global e2eG14p [/file/get [/file/find name="cfm/work/global.rsc"] contents]; /file/set [/file/find name="cfm/work/global.rsc"] contents=($e2eG14p . ":set (\$cfmG->\"lease\") {\"from\"={\"10.0.2.2\"};\"acme\"=\"abc.auth.example.net\"}\n")' >/dev/null
+mgr '$cfmCheck' | grep -qiE "lease:|cfm-lease" && { bad "\$cfmCheck meldet etwas zu lease"; mgr '$cfmCheck' | grep -i lease; } || ok "\$cfmCheck: lease mit from und Key ohne Meldung"
+rv=$(mgr '$cfmRelease msg=" Leases von aussen" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 && ok "cm1 hat v$rv (lease) angewendet" || bad "Apply v$rv (lease): cm1 $(stat cm1 res)"
+expect 1 '[:len [/user/find where name="cfm-lease" and group="cfm-lease" and !disabled]] = 1 and !([/user/group/get [find name="cfm-lease"] policy] ~ "(^|,)(write|ftp)") and [:len [/user/ssh-keys/find where user="cfm-lease"]] = 1 and [:len [/system/script/find where name="cfm-lease" and dont-require-permissions]] = 1 and [:len [/ip/firewall/filter/find where comment~"lsext" and src-address~"^10.0.2.2"]] = 1' "cm1: User cfm-lease (ssh,read, Key), Skript cfm-lease, SSH-Freigabe"
+LK=(ssh -p $((LABPORT + 10)) "${O[@]}" -o BatchMode=yes -i "$L/key" cfm-lease@127.0.0.1)
+"${LK[@]}" '/file/add name=e2e-le.txt contents=x' >/dev/null 2>&1
+expect 1 '[:len [/file/find where name="e2e-le.txt"]] = 0' "cfm-lease: kein Schreibzugriff ohne das Skript"
+o=$("${LK[@]}" ':global cfmLeaseArg "add name=e2e-ct vlan=30 acme=yes"; /system script run cfm-lease' 2>&1 | tr -d '\r')
+mac=$(echo "$o" | sed -n 's/^LEASE ok .*mac=\([0-9A-F:]*\) .*/\1/p')
+rl=$(echo "$o" | sed -n 's/^RELEASE v\([0-9]*\).*/\1/p')
+echo "$o" | grep -q "^LEASE ok vlan=30 name=e2e-ct mac=02:.* ip=192.168.30.201" && echo "$o" | grep -q "^ERGEBNIS ok" && [ -n "$rl" ] \
+  && ok "cfm-lease add: MAC $mac, erste freie Adresse über dem Pool (.201), Release v$rl" || { bad "cfm-lease add"; echo "$o" | tail -8; }
+echo "$o" | grep -q "^CNAME _acme-challenge.e2e-ct.internal. CNAME abc.auth.example.net." && ok "acme=yes: CNAME-Zeile aus lease.acme" || bad "acme=yes: CNAME fehlt"
+agentwait 2 "$rl" sw1 && expect 2 "[:len [/ip/dhcp-server/lease/find where comment=\"cfm:lease:30:e2e-ct\" and mac-address=\"$mac\" and address=\"192.168.30.201\"]] = 1" "sw1: Lease e2e-ct nach dem Release am DHCP-Server" || bad "Apply v$rl (Lease): sw1 $(stat sw1 res)"
+o=$("${LK[@]}" ':global cfmLeaseArg "add name=e2e-ct vlan=30"; /system script run cfm-lease' 2>&1 | tr -d '\r')
+echo "$o" | grep -q "^LEASE vorhanden" && echo "$o" | grep -q "^RELEASE nein (unverändert)" && ok "zweiter Aufruf: vorhanden, kein Release" || { bad "zweiter Aufruf"; echo "$o" | tail -4; }
+o=$("${LK[@]}" ":global cfmLeaseArg \"add name=e2e-x vlan=30 mac=$mac\"; /system script run cfm-lease" 2>&1 | tr -d '\r')
+echo "$o" | grep -q "^ERGEBNIS fehler: MAC .* schon bei e2e-ct" && ok "MAC doppelt: Abbruch" || { bad "MAC doppelt"; echo "$o" | tail -3; }
+o=$("${LK[@]}" ':global cfmLeaseArg "add name=e2e-y vlan=30 ip=201"; /system script run cfm-lease' 2>&1 | tr -d '\r')
+echo "$o" | grep -q "^ERGEBNIS fehler: ip .201 schon bei e2e-ct" && ok "IP doppelt: Abbruch" || { bad "IP doppelt"; echo "$o" | tail -3; }
+o=$("${LK[@]}" ':global cfmLeaseArg "add name=e2e-z vlan=30 ip=1;/system/identity/set name=boese"; /system script run cfm-lease' 2>&1 | tr -d '\r')
+expect 1 '[/system/identity/get name] != "boese"' "Argumente werden nicht ausgeführt"
+# wie REST: /execute in einem Aufruf (die :global gilt in derselben Sitzung)
+o=$("${LK[@]}" ':put [/execute script=":global cfmLeaseArg \"del name=e2e-ct release=no\"; /system script run cfm-lease" as-string]' 2>&1 | tr -d '\r')
+echo "$o" | grep -q "LEASE entfernt vlan=30 name=e2e-ct" && ok "cfm-lease del per /execute (Weg von REST)" || { bad "cfm-lease del per /execute"; echo "$o" | tail -4; }
+# aufräumen: lease aus -> GC entfernt User, Skript und Freigabe
+mgr ':global e2eG14p; /file/set [/file/find name="cfm/work/global.rsc"] contents=$e2eG14p; /file/remove [find name="cfm/work/authorized_keys.cfm-lease"]' >/dev/null
+rv=$(mgr '$cfmRelease msg=" ohne Leases von aussen" all=yes' | grep -o 'Release v[0-9]*' | tr -dc 0-9)
+agentwait 1 "$rv" cm1 || bad "Apply v$rv (ohne lease): cm1 $(stat cm1 res)"
+expect 1 '[:len [/user/find where name="cfm-lease"]] = 0 and [:len [/system/script/find where name="cfm-lease"]] = 0 and [:len [/ip/firewall/filter/find where comment~"lsext"]] = 0' "cm1: ohne lease User, Skript und Freigabe weg"
+
 step "15. Werks-User admin abschalten (zuletzt: danach kein admin-SSH mehr auf sw1)"
 # Antwort mit Markierung, weil die ssh-exec-Ausgabe mit Zeilenumbruch endet (tail -1 wäre leer)
 chk() { mgr ':global cfmExec; :local r [$cfmExec ip=192.168.10.21 cmd="'"$1"'"]; :put ("RES=" . ($r->"output"))' | sed -n 's/^RES=//p' | head -1; }

@@ -400,6 +400,25 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
   :foreach a in=$tlsFrom do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=[:tostr ($cfmG->"services"->"ssh")];"src-address"=$a}) }
   $cfmBlock m="/ip/firewall/filter" k="tlssign" l=$fl
 }
+# Leases von außen (DN1.3): SSH (rest=yes: auch www-ssl) zum Manager von lease.from (User cfm-lease, roles/manager.rsc)
+:local leFrom ({})
+:local leRest false
+:if ([:typeof ($cfmG->"lease")] = "array") do={
+  :set leRest ([:tostr ($cfmG->"lease"->"rest")] = "yes")
+  :foreach x in=($cfmG->"lease"->"from") do={
+    :local a [:tostr $x]
+    :if ([:typeof [:find $a "/"]] = "nil") do={ :set a ($a . "/32") }
+    :set ($leFrom->[:len $leFrom]) $a
+  }
+}
+:if ($isMgr and [:len $leFrom] > 0) do={
+  :local fl ({})
+  :foreach a in=$leFrom do={
+    :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=[:tostr ($cfmG->"services"->"ssh")];"src-address"=$a})
+    :if ($leRest and [:len [:tostr ($cfmG->"services"->"www-ssl")]] > 0) do={ :set ($fl->[:len $fl]) ({"chain"="local-input";"action"="accept";"protocol"="tcp";"dst-port"=[:tostr ($cfmG->"services"->"www-ssl")];"src-address"=$a}) }
+  }
+  $cfmBlock m="/ip/firewall/filter" k="lsext" l=$fl
+}
 # NetBox-Abgleich (DT2.3): SSH zum Manager auch von netbox.from (User cfm-netbox, roles/manager.rsc)
 :local nbFrom ({})
 :if ([:typeof ($cfmG->"netbox")] = "array") do={
@@ -428,9 +447,15 @@ $cfmSet m="/tool/mac-server/mac-winbox" p=({"allowed-interface-list"="MGMT"})
     :set addr [$cfmKeys $aa]
   }
   # Signer der Zertifikate (DS3.6): SSH zum Manager nur von tls.from (User cfm-cert, roles/manager.rsc)
-  :if ($s = "ssh" and $isMgr and ([:len $tlsFrom] + [:len $nbFrom]) > 0) do={
+  :if ($s = "ssh" and $isMgr and ([:len $tlsFrom] + [:len $nbFrom] + [:len $leFrom]) > 0) do={
     :local aa ({}); :foreach x in=$addr do={ :set ($aa->$x) 1 }; :foreach x in=$tlsFrom do={ :set ($aa->$x) 1 }
     :foreach x in=$nbFrom do={ :set ($aa->$x) 1 }
+    :foreach x in=$leFrom do={ :set ($aa->$x) 1 }
+    :set addr [$cfmKeys $aa]
+  }
+  # Leases per REST (DN1.3): www-ssl am Manager auch für lease.from
+  :if ($s = "www-ssl" and $isMgr and $leRest and [:len $leFrom] > 0 and [:len $port] > 0) do={
+    :local aa ({}); :foreach x in=$addr do={ :set ($aa->$x) 1 }; :foreach x in=$leFrom do={ :set ($aa->$x) 1 }
     :set addr [$cfmKeys $aa]
   }
   :if ([:len $port] > 0) do={

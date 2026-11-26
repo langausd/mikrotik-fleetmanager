@@ -17,6 +17,7 @@
 #   mgr-auto     Automatik (Scheduler cfm-mgr-tick), Spiegel des Backups, Beförderung
 #   mgr-notify   Benachrichtigungen per HTTP-POST bei Zustandswechseln (DU4.1)
 #   mgr-netbox   Soll-Daten als JSON für den NetBox-Abgleich ($cfmNetbox, TODO 55)
+#   mgr-lease    feste Leases von außen eintragen ($cfmLease, Skript cfm-lease, DN1.3)
 #   mgr-mf       Manifest-Regeln (welche Dateien ein Gerät bekommt); lädt $cfmManifests aus der
 #                jeweiligen Version (DG2.5)
 # Die Module hängen nur beim Aufruf voneinander ab (:global in den Funktionen), die

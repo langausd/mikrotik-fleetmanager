@@ -51,6 +51,8 @@ Warum etwas so gebaut ist, steht in [DECISIONS.md](DECISIONS.md), Eigenheiten vo
   das Gerät selbst, signiert wird außerhalb von RouterOS (8.20).
 * **NetBox:** Wer Geräte, Kabel, Ports und Adressen in NetBox plant, gleicht den Plan mit cfm und den Geräten ab
   (8.21); NetBox schreibt dabei nichts in cfm.
+* **Leases von außen:** Neue Container, VMs oder Geräte bekommen ihre feste Lease per SSH oder REST, z.B.
+  automatisch aus Proxmox (8.22).
 
 **Was cfm nicht macht:** kein Monitoring mit Messwerten und Verlauf (es gibt Status, Logs, Syslog
 und die Meldungen bei Zustandswechseln; Messwerte und Verlauf liefert LibreNMS über SNMPv3, 8.12; Syslog sammelt z.B. Graylog, 8.15), keine eigene grafische Oberfläche (Terminal-Befehle am
@@ -234,6 +236,7 @@ irgendetwas ausgerollt wird.
 | `tls` | Zertifikate einer öffentlichen CA für `www-ssl`/`api-ssl` (DS3.6, 8.20): `{"signer"="http://…:8080";"from"={"<Signer-IP>"};"services"={"www-ssl";"api-ssl"};"renew"=30}` – Name je Gerät `<name>.<domain>`; leer = aus | `{}` |
 | `capsmanApi` | Lese-Zugang per RouterOS-API auf dem CAPsMAN und auf Geräten mit `portSwitch`, z.B. für Home Assistant (DU2.1, DP1.4.1, 6.7): `{"from"={"192.168.10.50/32"};"user"="homeassistant";"port"=8728}`, Passwort `$cfmSecret key=user.<user>`; leer = aus | `{}` |
 | `netbox` | Abgleich aus NetBox heraus (DT2.3, 8.21): `{"from"={"192.168.10.60/32"}}` = Adresse des NetBox-Containers; der Primary-Manager bekommt den User `cfm-netbox` (nur `ssh,read`, Key aus `authorized_keys.cfm-netbox`) und das Skript `cfm-netbox-run`; leer = aus | `{}` |
+| `lease` | Leases von außen (DN1.3, 8.22): `{"from"={"192.168.10.70/32"};"rest"="no";"acme"="<acme-dns-Subdomain>"}`; der Primary-Manager bekommt den User `cfm-lease` (`ssh,read`, Key aus `authorized_keys.cfm-lease`; `rest="yes"`: dazu `api,rest-api` und `www-ssl` für `from`) und das Skript `cfm-lease`; leer = aus | `{}` |
 | `hook` | Git-Host (`host`, `user`), leer = aus | |
 | `notify` | Benachrichtigungen (DU4.1, 8.9): `url` (HTTP-POST mit JSON, leer = aus), `stale` (Gerät gilt als stumm), `licWarn` (Vorlauf vor dem Ablauf einer CHR-Lizenz), optional `site` (Name in der Meldung, Standard: Identity des Managers) | `{"url"="";"stale"="30m";"licWarn"="14d"}` |
 
@@ -2358,6 +2361,49 @@ Kommandozeile: `netbox-abgleich.py … --manager cfm-netbox@<manager> --lesend -
 `dhcp`) fehlen im Export. Der Weg über `cfm-netbox` wertet immer das letzte Release aus (kein `--ver`). Vorschläge für
 die Site-Daten macht `netbox-uebernahme.py` (siehe oben).
 
+### 8.22 Leases von außen eintragen (DN1.3)
+
+Ein neuer Container, eine VM oder ein IoT-Gerät bekommt seine feste Lease, ohne dass jemand den cfm-Editor öffnet:
+Ein Skript am Primary-Manager trägt sie in `work/leases.rsc` ein, prüft und gibt ein Release heraus.
+
+**Was der Befehl macht** (`$cfmLease add …`, von außen über das Skript `cfm-lease`):
+
+* Ohne `mac` wählt er eine zufällige, lokal verwaltete MAC (`02:…`) – die setzt man dann am Gast. Ohne `ip` nimmt er
+  die erste freie Adresse über dem DHCP-Pool, sonst darunter, nie Gateway, `dhcpGw` oder .251–.254.
+* Name, MAC oder IP schon vergeben → Abbruch, nichts geändert. Dieselbe Lease noch einmal (Name, VLAN, MAC gleich)
+  → `LEASE vorhanden`, kein Release. Ein Fehler von `$cfmCheck` zur neuen Lease nimmt sie wieder heraus.
+* Release nur, wenn `work/` sonst dem letzten Release entspricht – liegen im Editor noch andere Änderungen, bleibt die
+  Lease in `work/` und das Release macht der Admin (`RELEASE nein (…)`). Stehen alle Ringe auf der neuesten Version,
+  geht das Release an alle, sonst nur an Ring 0.
+* `acme=yes` gibt den CNAME `_acme-challenge.<name>.<domain>` für acme-dns aus (Ziel aus `lease.acme`); anlegen muss
+  man ihn beim DNS-Anbieter selbst.
+* `del name=<n>` entfernt eine Lease, die als eigene Zeile in `leases.rsc` steht (so legt `add` sie an: im Block des
+  VLANs oder, ohne Block, als angehängte `:set`-Zeile); mehrere Leases in einer Zeile löscht man im Editor.
+  `list [vlan=<vid>]` zeigt die Leases. Danach `pull-site.sh`, damit das Site-Overlay
+  den Stand bekommt.
+
+**Einrichten.**
+
+1. `global.rsc`: `"lease"={"from"={"<Adresse des Aufrufers>"}}`, für acme-dns zusätzlich `"acme"="<fulldomain>"`.
+2. Schlüssel des Aufrufers erzeugen (`ssh-keygen -t ed25519 -N "" -f …`), den öffentlichen Teil als
+   `work/authorized_keys.cfm-lease` ablegen, `$cfmRelease`.
+3. Aufruf: `tools/cfm-lease.sh -k <key> cfm-lease@<manager> add name=web1 vlan=30` oder direkt
+   `ssh cfm-lease@<manager> ':global cfmLeaseArg "add name=web1 vlan=30"; /system script run cfm-lease'`.
+   Die Ausgabe nennt `LEASE ok … ip=…`, `RELEASE v<N>` und am Ende `ERGEBNIS ok` bzw. `ERGEBNIS fehler: …`.
+4. REST (z.B. Home Assistant): `"rest"="yes"` und `www-ssl` in `services`; Passwort einmal am Primary setzen
+   (`/user/set cfm-lease password=…`, es bleibt bei jedem Apply), dann `CFM_LEASE_PW=… tools/cfm-lease.sh -r cfm-lease@<manager> add …`
+   (POST `/rest/execute` mit demselben Befehl).
+
+**Proxmox** (`tools/pve/`, Anleitung in `tools/pve/README.md`): `cfm-lease-pve.py` läuft als systemd-Timer alle zwei
+Minuten und trägt jeden Gast mit dem Tag `cfm` ein – Name = VM-Name bzw. Hostname des Containers, MAC und VLAN
+(`tag=`) aus `net0`, ohne Tag das VLAN aus `VLAN_MAP`/`DEFAULT_VLAN`. Container mit fester Adresse in `net0` lässt es aus.
+Für die Proxmox Community Scripts gibt es zusätzlich den Hook `cfm-lease-hook.sh` (`var_post_install` in
+`/usr/local/community-scripts/default.vars`): Er setzt beim neuen Container den Tag und trägt ihn sofort ein.
+
+**Grenzen.** Die erste DHCP-Anfrage eines neuen Gasts kann noch eine Adresse aus dem Pool bekommen (Release und Apply
+brauchen etwa eine Minute); dann im Gast die Lease erneuern oder neu starten. Ein gelöschter Gast bleibt in
+`leases.rsc` (`del` von Hand). Nur `net0` zählt.
+
 ## 9. Sicherheitsnetze und Notfälle
 
 | Situation | Automatisch | Deine Aufgabe |
@@ -2639,6 +2685,7 @@ Inventarname.
 | `$cfmUpgrade` · `$cfmUpgrade cancel=yes host=…\|ring=…\|all=yes` | offene Aufträge anzeigen bzw. zurückziehen |
 | `$cfmPkgPrune` | Paketversionen ohne Einsatz löschen (läuft automatisch) |
 | `$cfmLinks [accept=yes] [export=yes]` | Verkabelung prüfen, Netzplan schreiben; Baseline einfrieren bzw. Graphviz/CSV |
+| `$cfmLease add name=<n> vlan=<vid> [mac=..] [ip=..] [wifi=yes] [allow=..] [acme=yes] [release=no]` / `del name=<n>` / `list [vlan=<vid>]` | feste Lease in `work/leases.rsc` eintragen bzw. entfernen, prüfen, Release (8.22) |
 | `$cfmNetbox [ver=<N>]` | Soll-Daten als JSON nach `state/netbox.json` und `state/<name>/netbox.json` für den NetBox-Abgleich (8.21); Standard letztes Release, `ver=0` = `work/` |
 | `$cfmFind [text] [host=<n>] [port=<p>] [ap=<ap>] [ssid=<s>] [vlan=<vid>] [signal=<dBm>]` | Gerät suchen: live über alle Geräte, Endpunkt-Port bzw. AP mit Band, SSID und Signal (8.11, DU1.4) |
 | `$cfmChannels` | Kanäle der APs (und des mitfunkenden CAPsMAN) live vom CAPsMAN, Sendeleistung am Anschluss + Antennengewinn = EIRP (Spalte `DBM`), Warnung bei gleichem Kanal an einem Switch |

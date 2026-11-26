@@ -125,6 +125,30 @@ $cfmEnsure m="/system/scheduler" k="sys:mgr-onb-tick" n=({"name"="cfm-mgr-onb-ti
   } else={ $cfmLog "netbox: authorized_keys.cfm-netbox fehlt - NetBox kann sich nicht anmelden" }
 }
 
+# --- Leases von außen (DN1.3, global.rsc lease): User cfm-lease nur mit ssh,read (rest=yes: dazu api,rest-api),
+#     nur von lease.from, per Key (authorized_keys.cfm-lease) bzw. Passwort von Hand (REST), und das Skript
+#     cfm-lease (dont-require-permissions): liest die Argumente als Text aus $cfmLeaseArg (in derselben Sitzung
+#     gesetzt) und ruft $cfmLeaseRun. Nur auf dem Primary. Ohne lease räumt die GC auf ---
+:local lsc ($cfmG->"lease")
+:if (!$backup and [:typeof $lsc] = "array" and [:len ($lsc->"from")] > 0) do={
+  :local fa ""
+  :foreach x in=($lsc->"from") do={ :local a [:tostr $x]; :if (!($a ~ "/")) do={ :set a ($a . "/32") }; :if ([:len $fa] > 0) do={ :set fa ($fa . ",") }; :set fa ($fa . $a) }
+  :local lpol "ssh,read"
+  :if ([:tostr ($lsc->"rest")] = "yes") do={ :set lpol "ssh,read,api,rest-api" }
+  $cfmEnsure m="/user/group" k="grp:lease" n=({"name"="cfm-lease"}) p=({"name"="cfm-lease";"policy"=$lpol})
+  $cfmEnsure m="/user" k="user:cfm-lease" n=({"name"="cfm-lease"}) p=({"name"="cfm-lease";"group"="cfm-lease";"address"=$fa;"disabled"="no"}) a=({"password"=[:rndstr length=40 from="abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"]})
+  :local src ":global cfmLeaseArg; :local a [:tostr \$cfmLeaseArg]; :set cfmLeaseArg; :if ([:len [/system/script/job/find where script=\"cfm-lease\"]] > 1) do={ :put \"ERGEBNIS fehler: cfm-lease laeuft bereits\"; :error \"cfm-done\" }; /system script run cfm-mgr; :global cfmLeaseRun; \$cfmLeaseRun \$a"
+  $cfmEnsure m="/system/script" k="sys:lease" n=({"name"="cfm-lease"}) p=({"name"="cfm-lease";"source"=$src;"policy"=$pol;"dont-require-permissions"="yes"})
+  :local akx false
+  :onerror e in={ :set akx ([:len [/file/get ($cfmDl . "/authorized_keys.cfm-lease") name]] > 0) } do={}
+  :if ($akx) do={
+    :global cfmCtx; :global cfmFeat
+    :set cfmCtx ({"users"={"cfm-lease"="cfm-lease"}})
+    $cfmFeat "base.sshkeys"
+    :set cfmCtx ({})
+  } else={ :if ([:tostr ($lsc->"rest")] != "yes") do={ $cfmLog "lease: authorized_keys.cfm-lease fehlt - Anmeldung per SSH nicht moeglich" } }
+}
+
 # --- SFTP-Zugang der Geräte (User cfmd-<name> legt $cfmEnroll an) ---
 $cfmEnsure m="/user/group" k="grp:dev" n=({"name"="cfm-dev"}) p=({"name"="cfm-dev";"policy"="ssh,ftp,read"})
 

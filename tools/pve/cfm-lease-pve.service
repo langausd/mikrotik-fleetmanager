@@ -1,0 +1,7 @@
+[Unit]
+Description=cfm: Gäste mit Tag cfm als feste Lease eintragen
+After=network-online.target pve-cluster.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/cfm-lease-pve.py sweep

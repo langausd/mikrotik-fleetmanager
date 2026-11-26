@@ -396,6 +396,10 @@ Hardware-Ergebnis mit Datum unter [Bestanden](#bestanden), was noch fehlt unter 
 
 ## Offen auf Hardware
 
+* **Leases von außen** (DN1.3, 2026-11-26, Labor `e2e.sh` 14p): `lease.from` = PVE-Host, `cfm-lease-pve.py add <vmid>`
+  für einen Gast mit Tag `cfm`; erwartet `LEASE ok`, Release, Lease am DHCP-Server, Eintrag im Overlay nach
+  `pull-site.sh` sauber im VLAN-Block; danach Timer und ein Container über die Community Scripts (`var_post_install`).
+  REST über https (`tools/cfm-lease.sh -r`) mit `lease.rest="yes"`.
 * **Von BPDU-Guard gesperrter Port** (DU4.4, 2026-11-26, Labor grün): Gerät mit STP (Switch, Bridge eines
   Virtualisierungshosts) an einen `access`-Port; erwartet `BPDU!` in `$cfmStatus` mit Warnung, Meldung `bpdu` am
   Webhook, im NetBox-Abgleich eine Abweichung; nach Profil `vport`/`trunk` und Port aus/an wieder frei.

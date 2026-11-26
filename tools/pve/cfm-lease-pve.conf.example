@@ -1,0 +1,17 @@
+# /etc/cfm-lease-pve.conf – cfm-lease-pve.py (TODO 102, DN1.3)
+# Primary-Manager: User cfm-lease (global.rsc lease.from = Adresse dieses PVE-Hosts) und SSH-Port aus services
+MANAGER=cfm-lease@192.168.10.2
+PORT=22
+# Schlüssel: ssh-keygen -t ed25519 -N "" -C cfm-lease-pve -f /etc/cfm-lease-pve/id_ed25519
+# der öffentliche Teil kommt nach work/authorized_keys.cfm-lease am Manager (danach Release)
+KEY=/etc/cfm-lease-pve/id_ed25519
+KNOWN_HOSTS=/etc/cfm-lease-pve/known_hosts
+# nur Gäste mit diesem PVE-Tag
+TAG=cfm
+# VLAN, wenn net0 kein tag= hat: je Bridge (VLAN_MAP="vmbr0=30 vmbr1=40") oder für alle
+VLAN_MAP=""
+DEFAULT_VLAN=
+# acme=yes mitschicken: der Manager gibt die CNAME-Zeile für acme-dns aus (Ziel aus global.rsc lease.acme)
+ACME=no
+# hier merkt sich das Tool, was es schon eingetragen hat (ein Gast wird nur bei einer Änderung erneut gefragt)
+STATE=/var/lib/cfm-lease-pve

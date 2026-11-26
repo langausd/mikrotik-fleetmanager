@@ -1379,6 +1379,18 @@ Hardware: offen.
 
 **Begründung:** Der Internet-Router bleibt Default-Gateway der Clients, die anderen VLANs erreichen sie über dessen statische Routen zur VIP (wie bisher). DNS über die Router löst die Namen aus `leases.rsc` als `<name>.<domain>` auf und fragt sonst weiter. `$cfmCheck`: dhcpGw nur mit `dhcp` (sonst Warnung), nicht im DHCP-Bereich, keine feste Lease auf dieser Adresse, Hinweis wenn gleich `gw`. `$cfmShow` nennt das Gateway der Clients. `$cfmFind` nimmt die festen Adressen aus `leases.rsc` als IP dazu. Labor: `e2e.sh` Schritt 9 (dhcpGw 5 in VLAN 30: Gateway .5, DNS .1; Prüfung im Pool bzw. ohne dhcp)
 
+#### <a id="dn1.3"></a>DN1.3 · Feste Leases von außen eintragen
+
+*2026-11-26*
+
+**Frage:** Wer einen Container, eine VM oder ein IoT-Gerät einrichtet, soll es ohne cfm-Editor als feste Lease eintragen können, auch automatisch aus Proxmox (TODO 102)
+
+**Entscheidung:** Skript `cfm-lease` am Primary (`dont-require-permissions`) für den User `cfm-lease` (Gruppe `ssh,read`, mit `rest="yes"` dazu `api,rest-api`; nur von `global.rsc lease.from`; Key aus `authorized_keys.cfm-lease`, für REST ein Passwort von Hand). Argumente als Text in `$cfmLeaseArg`, gesetzt in derselben Sitzung (SSH-Befehl bzw. REST `/execute`); `$cfmLeaseRun` zerlegt ihn und lässt nur bekannte Schlüssel und Zeichen zu, nichts wird ausgeführt. `$cfmLease add|del|list` bearbeitet `work/leases.rsc` als Text (Kommentare und Reihenfolge bleiben; neue Zeile am Ende des VLAN-Blocks, sonst `:set`-Zeile), lädt das Ergebnis vor dem Schreiben, prüft danach mit `$cfmCheck` (Fehler zur neuen Lease → zurück) und gibt ein Release heraus, wenn `work/` sonst dem letzten Release entspricht (Hash aus `index.dat`), an alle Ringe, wenn sie auf dem neuesten Stand sind, sonst nur Ring 0. Ohne `mac` eine zufällige lokal verwaltete MAC (`02:…`), ohne `ip` die erste freie Adresse über dem Pool, sonst darunter; Name, MAC oder IP doppelt → Abbruch, dieselbe Lease noch einmal → „vorhanden“. `acme=yes` gibt nur die CNAME-Zeile aus (Ziel `lease.acme`). Proxmox: `tools/pve/cfm-lease-pve.py` als systemd-Timer für Gäste mit Tag `cfm` (Name, MAC, VLAN aus `net0`), dazu als Hook `var_post_install` der Proxmox Community Scripts (Nutzer, 2026-11-26)
+
+**Verworfen:** Lease sofort am DHCP-Server und später abgleichen (Soll und Ist liefen auseinander) · nur `work/` ohne Release · Hookscript je Gast (PVE kennt keinen Hook beim Anlegen, nur Start/Stopp) · eigener Dienst · Parameter per Log wie DN3.2 · acme-dns-Konto oder CNAME beim Anbieter automatisch anlegen (vorerst nur Ausgabe)
+
+**Begründung:** Labor 7.25.2: Eine `:global`, die ein User mit `ssh,read` in derselben SSH-Sitzung bzw. im selben `/execute` setzt, sieht das danach gestartete Skript mit `dont-require-permissions`; das Skript darf schreiben, der User selbst nicht. Ein Release nur bei sonst unverändertem `work/` verhindert, dass halbfertige Änderungen aus dem Editor mit hinausgehen. Die Adresse über dem Pool, weil unterhalb oft Geräte mit fester Adresse außerhalb von cfm stehen. Der Rückweg ins Site-Overlay bleibt `pull-site.sh`. Grenzen: Die erste DHCP-Anfrage eines neuen Gasts kann noch eine Adresse aus dem Pool bekommen (Release und Apply dauern etwa eine Minute); gelöschte Gäste bleiben in `leases.rsc`; REST bisher nur über `/execute` per SSH nachgestellt. Labor: `e2e.sh` Schritt 14p. TODO 102
+
 ### <a id="dn2"></a>DN2 · Zeit
 
 #### <a id="dn2.1"></a>DN2.1 · Zeitquelle der Router

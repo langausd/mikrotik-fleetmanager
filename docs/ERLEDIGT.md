@@ -10,6 +10,9 @@ Begründungen stehen in [DECISIONS.md](DECISIONS.md), Testergebnisse in [TESTSTA
 
 ## Verlauf
 
+* **Am 2026-11-26 (Tag):** **TODO 102** umgesetzt (DN1.3, Admin-Guide 8.22): feste Leases von außen über das Skript
+  `cfm-lease` am Primary (User `cfm-lease`, SSH oder REST), `tools/cfm-lease.sh`, Proxmox-Gäste mit Tag `cfm` per
+  Timer und Hook der Community Scripts (`tools/pve/`); Rest (Hardware, REST über https, acme-dns) bleibt in TODO 102.
 * **Am 2026-11-26 (Nachtschicht):** **TODO 98** behoben (DR1.6, `$cfmCheck` prüft VRRP-IDs über VID 255). **TODO 101**
   erledigt (DO1.9, das Onboarding wartet bei device-mode `home` auf die Freigabe am Gerät). **TODO 100** erledigt
   (DU4.4, von BPDU-Guard gesperrte Ports in Status, `$cfmStatus`, Meldung und NetBox-Abgleich; fehlende Port-Profile

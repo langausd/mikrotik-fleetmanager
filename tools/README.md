@@ -25,6 +25,8 @@ Einen anderen Key als den Standard gibst du mit `SFTP_OPTS="-i ~/.ssh/<key>"` vo
 | [`netbox-import.py`](#netbox-importpy) | Einmaliger Start-Import cfm → NetBox |
 | [`netbox-uebernahme.py`](#netbox-uebernahmepy) | Plan aus NetBox als Vorschlag (Diff) für die Site-Daten |
 | [`netbox/`](netbox/README.md) | NetBox Custom Script „cfm-Abgleich“: Abgleich aus NetBox heraus (eigene Anleitung) |
+| [`cfm-lease.sh`](#cfm-leasesh) | feste Lease von außen eintragen (SSH oder REST, DN1.3) |
+| [`pve/`](pve/README.md) | Proxmox-Gäste mit Tag `cfm` automatisch als Lease (Timer, Hook der Community Scripts) |
 | [`wg-client-setup.sh`](#wg-client-setupsh) | WireGuard-Zugang am Linux-Laptop einrichten |
 | [`git-host/cfm-git-sync`](#git-hostcfm-git-sync) | Sicherung des Managers in ein Git-Repo |
 | [`home-assistant/cfm_ssid.py`](#home-assistantcfm_ssidpy) | Gast-SSID aus Home Assistant schalten |
@@ -418,6 +420,22 @@ Assistant: [docs/home-assistant.md](../docs/home-assistant.md), Abschnitt 9.
 Das Testlabor startet RouterOS als virtuelle Maschinen und spielt ganze Abläufe durch (Aufnahme,
 Release, Rollback, Onboarding, VRRP, MLAG …). Anleitung: [chr-lab/README.md](chr-lab/README.md).
 
+## `cfm-lease.sh`
+
+Feste Lease von außen eintragen (TODO 102, DN1.3, Admin-Guide 8.22): ruft am Primary-Manager das Skript `cfm-lease`
+auf, per SSH als User `cfm-lease` (Key, `global.rsc lease.from`) oder mit `-r` per REST (`/rest/execute`, Passwort in
+`CFM_LEASE_PW`, `lease.rest="yes"`).
+
+```bash
+tools/cfm-lease.sh -k ~/.ssh/cfm-lease cfm-lease@192.168.10.2 add name=web1 vlan=30        # MAC und IP wählt der Manager
+tools/cfm-lease.sh -k ~/.ssh/cfm-lease cfm-lease@192.168.10.2 add name=cam2 vlan=40 mac=02:00:00:00:00:41 ip=60 acme=yes
+tools/cfm-lease.sh -k ~/.ssh/cfm-lease cfm-lease@192.168.10.2 del name=web1
+CFM_LEASE_PW=… tools/cfm-lease.sh -r -c ca.pem cfm-lease@manager.example.net list vlan=30
+```
+
+Ausgabe: `LEASE ok vlan=… name=… mac=… ip=…`, `RELEASE v<N>` bzw. `RELEASE nein (<Grund>)`, ggf. `CNAME …`, am Ende
+`ERGEBNIS ok` (Exit-Code 0) oder `ERGEBNIS fehler: …` (1). Für Proxmox: `tools/pve/`.
+
 ## `netbox-uebernahme.py`
 
 Gegenrichtung zu `netbox-import.py` (TODO 55, DT2.5, Admin-Guide 8.21): Plan aus NetBox als unified diff gegen ein
@@ -431,3 +449,4 @@ tools/netbox-uebernahme.py … --diff-datei vorschlag.diff | --schreiben
 
 Nichts wird gelöscht, Kommentare und Reihenfolge bleiben; Exit-Code 0 = nichts zu tun, 1 = Vorschlag, 2 = Fehler.
 Tests: `tools/netbox-uebernahme-test.py`.
+

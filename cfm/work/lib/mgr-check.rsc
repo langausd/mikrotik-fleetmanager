@@ -600,6 +600,13 @@
     :foreach e in=($ct->"err") do={ :set ($err->[:len $err]) $e }
     :foreach e in=($ct->"warn") do={ :set ($warn->[:len $warn]) $e }
   }
+  # Leases von außen (TODO 102, DN1.3): Prüfung in lib/mgr-lease.rsc
+  :global cfmCheckLease
+  :if ([:typeof $cfmCheckLease] != "nothing") do={
+    :local ct [$cfmCheckLease w=$w]
+    :foreach e in=($ct->"err") do={ :set ($err->[:len $err]) $e }
+    :foreach e in=($ct->"warn") do={ :set ($warn->[:len $warn]) $e }
+  }
   :local slf [:tostr ($cfmG->"syslogFormat")]
   :if ([:len $slf] > 0 and $slf != "syslog" and $slf != "default") do={ :set ($err->[:len $err]) ("global.rsc: syslogFormat=" . $slf . " unbekannt (syslog|default)") }
   # WLAN-Debug-Log (DU3.5): {"<Gerät>"=<RAM-Zeilen>}; der Name muss genau so im Inventar stehen (die Rolle vergleicht
@@ -640,8 +647,9 @@
     :local fn [/file/get $f name]
     :local rel [:pick $fn ([:len $w] + 1) [:len $fn]]
     :local u [:pick $rel 16 [:len $rel]]
-    :if ([:typeof ($cfmG->"users"->$u)] = "nothing" and $u != "cfm-cert" and $u != "cfm-netbox") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
+    :if ([:typeof ($cfmG->"users"->$u)] = "nothing" and $u != "cfm-cert" and $u != "cfm-netbox" and $u != "cfm-lease") do={ :set ($warn->[:len $warn]) ($rel . ": " . $u . " steht nicht in global.rsc users - die Keys wirken nirgends") }
     :if ($u = "cfm-cert" and [:typeof ($cfmG->"users"->$u)] != "nothing") do={ :set ($err->[:len $err]) "global.rsc users: cfm-cert ist der User des Zertifikat-Signers (DS3.6) - anderen Namen wählen" }
+    :if ($u = "cfm-lease" and [:typeof ($cfmG->"users"->$u)] != "nothing") do={ :set ($err->[:len $err]) "global.rsc users: cfm-lease ist der User für Leases von außen (DN1.3) - anderen Namen wählen" }
     :if ($u = "cfm-netbox" and [:typeof ($cfmG->"users"->$u)] != "nothing") do={ :set ($err->[:len $err]) "global.rsc users: cfm-netbox ist der User des NetBox-Abgleichs (DT2.3) - anderen Namen wählen" }
     :local ln 0
     :local t ([/file/get $f contents] . "\n")

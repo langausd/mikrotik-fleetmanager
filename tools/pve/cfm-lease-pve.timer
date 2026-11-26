@@ -1,0 +1,9 @@
+[Unit]
+Description=cfm: Gäste mit Tag cfm als feste Lease eintragen (alle 2 Minuten)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target

@@ -41,6 +41,7 @@
   "capsmanApi"={};
   "tls"={};
   "netbox"={};
+  "lease"={};
   "hook"={"host"="";"user"="cfm"};
   "notify"={"url"="";"stale"="30m";"licWarn"="14d"}
 }
@@ -119,3 +120,11 @@
 #             Die Manager bekommen den User cfm-netbox (Gruppe ssh,read; nur Key aus authorized_keys.cfm-netbox; nur
 #             von from) und das Skript cfm-netbox-run, das $cfmNetbox startet. Das Custom Script in NetBox
 #             (tools/netbox/) liest damit Soll und Ist; ändern kann der User nichts. {} = aus.
+#  lease      Feste Leases von außen eintragen (DN1.3, TODO 102), z.B. aus einem Proxmox-Host (tools/pve/):
+#             {"from"={"192.168.10.70/32"};"rest"="no";"acme"="<acme-dns-Subdomain>"}. Der Primary bekommt den User
+#             cfm-lease (Gruppe ssh,read; per Key aus authorized_keys.cfm-lease; nur von from) und das Skript cfm-lease:
+#               ssh cfm-lease@<manager> ':global cfmLeaseArg "add name=web1 vlan=30"; /system script run cfm-lease'
+#             Es schreibt work/leases.rsc (ohne mac/ip: zufällige MAC 02:…, erste freie Adresse außerhalb des Pools),
+#             prüft und gibt ein Release heraus, wenn work/ sonst dem letzten Release entspricht. rest="yes":
+#             zusätzlich api,rest-api und www-ssl für from (REST /execute, Passwort von Hand am Primary:
+#             /user/set cfm-lease password=…). acme: CNAME-Ziel für acme=yes (nur Ausgabe). {} = aus.
